@@ -1,0 +1,24 @@
+{
+  "_comment": "check-docs config. Copied once from jig's scaffold, then owned by this project. Set repo to <owner>/<name>. rosters: which docs claim a COMPLETE skill/agent roster (check-docs verifies them both ways). historical: docs whose citations describe a past state on purpose and are exempt from the live-path check, each with a reason. knownForeign / knownForeignAgents: slash commands and agents named in docs that belong to other tools, so the roster check does not flag them. Every project's copy differs; that is the point.",
+  "repo": "mobiustripper42/haul",
+  "rosters": {
+    "CLAUDE.md": {
+      "skills": true,
+      "agents": true
+    }
+  },
+  "historical": {
+    "docs/RETROSPECTIVES.md": "per-phase record of what was true at phase close",
+    "docs/PROJECT_PLAN.md": "closed task rows cite what they retired"
+  },
+  "knownForeign": [
+    "clear",
+    "code-review",
+    "config",
+    "help",
+    "init",
+    "mcp",
+    "review",
+    "security-review"
+  ]
+}

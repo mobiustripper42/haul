@@ -1,0 +1,74 @@
+# The dictionary. Three keys per entry, no others.
+#
+#   term  the canonical name. Unique across the file.
+#   says  plain English, max 160 characters. May not lean on an unregistered term.
+#   not   forbidden alternates. Using one fails the build, naming the canonical term.
+#
+# `docs/DICTIONARY.md` is generated from this file by `npm run gen:dictionary`. Never edit the
+# markdown.
+
+# ── The farm's products ─────────────────────────────────────────────────────────
+
+- term: CSA
+  says: community supported agriculture — a season of weekly farm produce boxes, paid for up front
+  not: []
+
+- term: POS
+  says: point of sale — the farm's in-person checkout terminal and iPad
+  not: []
+
+# ── Software ────────────────────────────────────────────────────────────────────
+
+- term: API
+  says: the way one program asks another for data or actions over the network
+  not: []
+
+- term: SDK
+  says: a code library a vendor ships so other programs can use its service
+  not: []
+
+- term: SQL
+  says: the language used to read and change rows in the database directly
+  not: []
+
+- term: CRUD
+  says: create, read, update and delete — the four basic screens for editing a table
+  not: []
+
+- term: UI
+  says: user interface — the screens and words a person sees and touches
+  not: []
+
+- term: ID
+  says: a unique identifier for one record
+  not: []
+
+- term: CSV
+  says: a plain spreadsheet file, one row per line with commas between columns
+  not: []
+
+- term: SMS
+  says: a text message to a phone
+  not: []
+
+# ── Network ─────────────────────────────────────────────────────────────────────
+
+- term: DNS
+  says: the internet's address book, which turns a name like members.ohiocityfarm.com into a server address
+  not: []
+
+- term: IP
+  says: the numeric network address a request comes from
+  not: []
+
+- term: TLS
+  says: the encryption that protects traffic between a browser and a server, shown as the padlock
+  not: []
+
+- term: SSL
+  says: the older name for the same encryption, still used in settings screens such as Cloudflare's
+  not: []
+
+- term: CA
+  says: certificate authority — whoever signs a server's certificate so browsers trust it
+  not: []

@@ -1,0 +1,227 @@
+# Claude Code — Workflow Shell
+
+> **Read `.claude/CLAUDE-context.md` first.** It holds this project's name, stack, data model, commands, and any project-specific overrides to the workflow below. Treat it as authoritative for every project-specific fact. If it does not exist, stop and tell the user to create it from jig's `scaffold/claude/CLAUDE-context.md`.
+>
+> Nothing project-specific goes in this file — it is replaced wholesale on the next update, and anything added here is lost.
+
+## Key Docs
+
+| File | Purpose |
+|------|---------|
+| `docs/SPEC.md` | What we're building — scope, and what isn't planned |
+| `docs/decisions/` | Why each choice was made — one decision, one file |
+| `docs/DECISIONS.md` | **Generated** index. Never edit by hand |
+| `docs/PROJECT_PLAN.md` | Phases and scope. Read at planning, written at retro; current tasks are GitHub Issues |
+| `docs/RETROSPECTIVES.md` | Written by `/retro` |
+| `docs/AGENTS.md` | Agent and skill specs |
+| `docs/VELOCITY_AND_POKER_GUIDE.md` | Estimation methodology |
+| `sessions/*.md` | Per-session files, `YYYY-MM-DD-HHMM-<slug>.md`, on the orphan `sessions` branch via `.sessions-worktree/` |
+| `.claude/jig-version` | Which generation this project was installed at. Compare against jig's `jig-version` to see what migrations are owed |
+
+Project-specific docs are listed in `.claude/CLAUDE-context.md` under `## Additional Docs`. The shell names only docs every project has; naming one a whole project type lacks is a dead reference in every one of them.
+
+## Micro Workflow (every task, no exceptions)
+
+1. **Spec it** — **after a `/clear`, a fresh context starts by reading the open session file's Next Steps** (found the way `/kill-this` finds it; at session start `/its-alive`'s briefing has already done this, from the previous session): it holds the next task, the standing rules, the parking lot and what the last task left for this one. Restore its parking lot as this conversation's; obey the standing rules from the file. Then: poker estimate + acceptance criteria. A task with a screen is not specced until it names the job in one line, the existing screen and components it reuses, and what's on the screen in order with its actual wording — approved before code. Reuse is the default; anything new is named and argued for. Rules and data alone ("admin can book") are not a spec. Pin what "done" looks like before writing code: enumerate the concrete set from source and confirm it. Live words override prior docs. **Get the whole spec down before any code is written** — the model does its best work on a complete brief in one turn, not one assembled across a dozen exchanges. **A task of 3+ points that changes behaviour is specced in its issue body, from `.claude/skills/build-task/task-spec.md`**, and built with `/build-task`, which the operator runs to approve the spec. It replaces the plan, prove, build and run-the-proof steps below and ends in `/kill-this`.
+2. **Plan it** — summarize what you're going to do. Wait for explicit approval.
+3. **Cut the branch** — `git checkout -b task/X.Y-short-description`.
+4. **Prove it first** — when behaviour changes, the check comes before the change: write it, run it, watch it fail *for the reason you expect*. That failure is what proves the check bites; one written afterwards has never been observed failing, so it may assert nothing. The check must exercise the thing in its own title — a test named for one thing that calls another turns an unverified claim into an apparently-verified one. **What counts as a check: the `Proof` slot in `.claude/CLAUDE-context.md` § Workflow Mechanisms.**
+5. **Build it** — until it passes. Writing code first and then reconstructing the proof by deleting it to watch the test fail is the prove-it step the long way round.
+6. **Run the proof** — the checks covering what you touched, not the whole suite. **The test is coverage, not confidence:** if the checks you ran exercise the files you changed, that is the whole proof. Running everything again *because you are about to hand back* is the banned case, and the one that actually happens — "I'm finishing" feels like a reason and isn't. If a change plausibly reaches code you can't name, say so and ask. **Command: the `Proof command` slot.**
+7. **Ship it: run `/kill-this` when the proof passes** — yourself, without waiting to be asked (DEC-J014). The approved plan already approved shipping it; the pull request is where the work gets looked at, and merging is the gate. It commits, pushes, runs `@code-review`, opens the pull request with `closes #<issue>`, and appends a `## Task <N>` block to the session file. **Reaching the same end state by hand is never acceptable** — a hand-typed `git push` + `gh pr create` produces a pull request that looks identical and has never been read by `@code-review`, and that absence announces itself to nobody. **Don't ship when the proof can't pass, or when the build hit a decision the plan didn't settle** — stop there and ask, as before.
+8. **Stop with the pull request.** Hand back the link, what changed and what passes, then **stop and wait**. Do not start the next task: it needs its own approved plan, however obvious it is. **If the change made something a person looks at — a screen, a report, a command's output — put it in front of them here**, rendered rather than described. In a terminal session a file card cannot be delivered, so Read each screenshot before the hand-back reply, one PNG per call: the app shows an image the session reads inline in the transcript, where the operator can open it on any device.
+9. **Pick up another task or close out** — between tasks, `/save-this` then `/clear`, and the next task starts at step 1 in a clean context; or `/its-dead` once at the end of the window. Merge pull requests whenever.
+
+**No proof, no push.** Proof is the checks the `Proof` slot names, passing. A person looking at the change is the hand-back at the stop, never a gate on the push — a context file that puts a device, a page or a screenshot inside "proof" has made the look a precondition, and `/kill-this` waits on it every task.
+
+**The proof steps name a slot, not a tool.** The shell says what the step must achieve; the context file says how it's done here. Slots are filled, not overridden. Nothing cites a step *number* — numbers move, and a stale cross-reference in an always-loaded file fails silently.
+
+**An unfilled slot is a real answer and must be written as one.** `Proof: none — this repo has no test runner yet` is checkable. Blank is not.
+
+## Migration Protocol
+
+- **All schema changes go through migrations.** Migrations are the source of truth — never edit schema through a dashboard, never hand-patch an applied migration.
+- **Before creating one:** check for open pull requests touching the same tables (`gh pr list`). If they overlap, merge first or rename to a later timestamp.
+
+Toolchain specifics live in `.claude/CLAUDE-context.md` under `## Migration Protocol (project)`. Projects without a database mark it `N/A` there.
+
+## Conventions
+
+Project coding conventions — typing, structure, data fetching, auth, error handling, naming, testing layout — are stack-specific and live in `.claude/CLAUDE-context.md` under `## Conventions`.
+
+## Decision Record
+
+**One decision, one file**, at `docs/decisions/DEC-<id>-<slug>.md`. `docs/DECISIONS.md` is generated. `npm run check:decisions` fails on a stale index, duplicate id, unknown topic, dangling reference, oversized record, missing `revisit_if`, or a declared spec amendment that never landed — so the shape of a record is enforced, not remembered, and this section does not restate it.
+
+Two things the gate cannot check, which is why they are here:
+
+**Search before you write, every time.** Name the subject, run `grep -rli --exclude-dir=archive "<subject>" docs/decisions/`, and **say what came back** in the pull request — *"returned DEC-<id>; this supersedes it"*, or *"nothing on rate limiting; new id."* That sentence is the whole control: a session that would have to write "DEC-<id> covers deposits and this is not that" cannot do it when it's false.
+
+**A change of mind is a new record, not an edit to the old one** (DEC-J005). The new record carries `supersedes: [DEC-<id>]`; the old one flips to `status: superseded`. Amending in place is retired — records grow, the cap is 2,000 bytes, and the carve-out that let amendments escape it also let a record quoting the convention escape every other rule. Two decisions that merely relate carry a plain **see also**.
+
+**Records written before schema v1 are frozen**, listed by fingerprint in `docs/decisions-baseline.txt`. Editing one fails the build; the fix is to convert it to v1, splitting it if it turns out to be several decisions. The list is generated once at adoption by `scripts/gen-decisions-baseline.mjs` and never regenerated.
+
+**A record that is retired but still cited moves to `docs/decisions/archive/`.** It leaves `DECISIONS.md`, stops coming back in the search above, and keeps resolving — so the successor that says *"supersedes DEC-<id>"* stays true. That is why retirement is a move rather than a delete: a citation to a deleted record points at nothing. Use it when the index has grown too long to read, or when a record turns out never to have been a decision. Archiving does **not** unfreeze anything — a frozen record stays frozen in `archive/`.
+
+**Don't cite a decision you only saw in the index.** The index carries titles, not holdings.
+
+## Session Skills
+
+| Skill | When | What |
+|-------|------|------|
+| `/its-alive` | Session start | Open the per-session file, read context, recommend a task |
+| `/build-task` | 3+ point task, spec in the issue | `@test-writer` readback and failing tests, `@implementer` to green, the Lead verifies, then `/kill-this`. Running it approves the spec |
+| `/kill-this` | **Per task** | Build check, commit, open a pull request, append `## Task <N>`. Run once per task |
+| `/save-this` | Between tasks, before `/clear` | Write the next task, open PRs, standing rules, parking lot and carry-over into the session file's Next Steps |
+| `/its-dead` | Session end (once) | Stamp `ended:`, tally points, close the session file |
+| `/start-phase` | Phase start | Materialize the phase as Issues with `phase:N`, `points:X` |
+| `/retro` | Phase end | A one-screen retro: points, days and drift from GitHub `points:N` labels, what happened, your take in a sentence or two, a one-paragraph PM read. Marks `[x]`, runs version bumps |
+| `/bump-major` | Breaking change | Major bump, CHANGELOG entry, tag on `main` |
+| `/promote-production` | Ship | ff-merge `main` → `production`, push, wait for the deploy to land. Projects with that branch only |
+
+**Task model:** PROJECT_PLAN.md is read at planning and written at retro, untouched mid-phase. Current tasks are GitHub Issues. The phase ends when its issues close.
+
+**Workflow fixes don't get made here.** A skill or shared agent that misbehaves in this project is not fixed in this project — those files are canonical in jig, no automation syncs them in either direction, and a local fix becomes invisible drift in a file meant to be identical everywhere. Say what broke. Do not edit the file here, and do not copy a fix in from jig yourself: fixing it is a deliberate act in jig, and bringing the fix here is a jig session's copy, asked for by name.
+
+## Agents
+
+| Agent | Model | When | Purpose |
+|-------|-------|------|---------|
+| @architect | Opus | Before design decisions, new dependencies, scope creep | Coherence vs SPEC + decisions |
+| @code-review | Sonnet | After every commit (wired into `/kill-this`) | Catch issues early |
+| @pm | Sonnet | Session start/end via skills | Progress, risks |
+| @ui-reviewer | Sonnet | After interface work, phase boundaries | Design quality |
+| @test-writer | Opus | `/build-task` | Readback, then failing tests from the issue spec |
+| @implementer | Sonnet | `/build-task` | Makes the tests pass; may not edit them |
+
+## Model Selection
+
+**Choose the cheapest model and effort that does the job at full quality** (DEC-J016). Quality comes first; each step up in model or effort draws the plan's usage down faster, so a step up needs a reason. Write the aliases, `opus` and `sonnet`, never a version — a version number in a file loaded every session is stale the day the next one ships.
+
+- **Sessions run `opus`; effort is `medium` by default**, set by `effortLevel` in the settings master. `xhigh` for an 8-point task. `max` rarely, and for spec and analysis, not for writing code.
+- **Agents pin model and effort in frontmatter, fixed per agent.** `@architect` and `@test-writer` are `opus`, the other four `sonnet`, and all six run at `effort: high` so they do not drop with the session default. A new agent starts at `sonnet` and `high`.
+
+## Pull Request Workflow
+
+- One branch per task: `task/X.Y-short-description`. Pull request title references the issue: `closes #N`.
+- `/kill-this` opens the pull request. Self-merge after review unless a stakeholder needs to look.
+- Keep ≤3 open pull requests. Prefer 1.
+- Never two open pull requests with migrations on the same table.
+- **Stacking is preferred** when tasks depend on each other — branch the next task off the previous task branch, not off `main`. Only wait for a merge when there's a migration conflict.
+- **Never rebase a task branch that already has commits on origin.** If `main` advanced, leave it — GitHub's "Update branch" handles it at merge. Rebasing rewrites remote history and needs a force-push.
+
+### Production branch
+
+`main` is the always-active trunk; every task PRs into it. Deployable projects add a `production` branch — a deploy pointer the host watches, never a pull request base. Ship with `/promote-production`, which ff-merges and pushes.
+
+Adopting one: `git checkout -b production main && git push -u origin production`, then repoint the host **before** `main` takes active work, or unfinished work auto-deploys to production.
+
+## Versioning
+
+Every dev project carries a SemVer version in `package.json`, mirrored to a git tag on `main`.
+
+- **Patch** — `/promote-production` on each ship, or `/retro` per merged pull request on projects that deploy straight off `main`.
+- **Minor** — `/retro` at phase close.
+- **Major** — `/bump-major`, with a rationale supplied.
+
+All tags land on `main` at bump time; `production` only ever receives an already-tagged commit. The skills gate on `package.json` having a `version` field and no-op silently without one — the field rather than the file, because "has a `package.json`" was only ever a proxy for "is a versioned thing", and the two came apart the first time a repo wanted a test runner without a version.
+
+## Workflow Notes
+
+- **Diagnostic commands** (build, lint, typecheck, test): run them directly.
+- **Environment-changing commands** (installs, migrations, pushes, deploys): output them for the user to run — **except where a skill owns the action.** Invoking a skill is the approval for the pushes inside its own ritual: `/its-alive` bootstrapping the `sessions` branch, `/kill-this` pushing the task branch and opening the pull request, `/promote-production` pushing the ff-merge. A skill that stops to ask permission for the push it exists to perform has not run. Anything outside a skill's own ritual is still yours.
+- **On a surprise or mismatch, reconcile before diagnosing.** Pin the assumption and the environment first — dev vs prod, which database, is the server even up. One environmental check beats a multi-step debug built on an unchecked premise.
+- **A denied command is a decision, not a syntax error.** Re-issuing the same intent in a new shell shape is routing around the answer. Once is a fair guess; twice on materially the same command, stop and ask what the denial means.
+- **A scripted edit must fail loudly when its anchor doesn't match — and a one-line `sed -i` is a scripted edit.** That clause is not padding: one session wrote a `python3` script with `assert n == 1`, correctly, and ninety minutes later ran a bare `sed -i` with no check at all. The rule reads as being about *scripts*, and a one-liner doesn't feel like one. Assert the match count per file and exit non-zero on zero matches, or "done" means the script ran, not that the change landed — and the file it silently skipped looks reviewed.
+- **Read files with the Read tool.** `grep` to *search* across files is fine; the banned shape is extracting a section from one file whose path you already know.
+- **Don't guess a third-party service's shapes** from naming or a 403/404 — stop and ask for the docs. Never write code against a guess.
+- **Never write a bare `#N`.** Say `issue #699` or `pull request #707`. GitHub draws both from one shared counter, so the sequences interleave and nothing in the number tells you which. The exception is `closes #N` in a pull request body, which is syntax.
+- **Context docs carry decisions, rationale and pointers — never inventory.** These files load as ground truth, so a stale sentence is believed rather than checked. Rationale doesn't rot; a snapshot of current state is stale the day the code moves, and no doc audit catches it, because the claim is false against **code** — the corpus doc sweeps never read. Write a pointer instead: `ls <dir>/*-channel.ts` sends the reader to the truth and is checkable. `check:context` asserts every path and glob these files cite still resolves; it cannot judge a characterization.
+  - **An env-overridable number is not a fact a repo can state.** Cite where the constant is defined and say the deployed value lives in the host's env.
+  - **Before asserting what is built or live, check the code in the same turn.** One session read "text messaging = later swap" from a context file, filed an issue declaring a feature blocked on an adapter that had shipped weeks earlier, and explained the blockage at length.
+  - **It binds hardest on anything outside this checkout** — a sibling repo, another project's decisions, a machine's config. That is where the habit doesn't fire, and where nobody downstream can check you: three sessions asserted a sibling repo's user base, its architecture, and a monitoring system's coverage as settled fact, none from a file read. Each was wrong. Sibling repos are on disk — open the file, or say you haven't.
+  - **A document meant to be read without the user present raises the cost from wrong to irreversible.** In a handoff brief or runbook, every sentence about another repo names the file it came from, or it doesn't go in.
+
+Project-specific debugging gotchas live in `.claude/CLAUDE-context.md` under `## Workflow Notes (project)`.
+
+## Where this repo differs from the median
+
+Entry test: **would a competent default do the wrong thing here?** Not "what do I prefer" — a preference belongs in the output style or a settings key, where it is applied rather than recalled. Starts nearly empty and grows one incident at a time.
+
+Filled in per project under `## Median gaps` in `.claude/CLAUDE-context.md`.
+
+## Approval Before Action (all tasks)
+
+For every task — bug, feature, or question — explain the plan and wait before doing anything:
+
+1. State what you'll create or modify and why, and list the commands you'll run.
+2. For a bug or question: explain the cause and your proposed fix first.
+3. Wait for "go", "do it", or equivalent.
+
+**A task specced in its issue for `/build-task` is the one exception, and only in form:** the written plan is the issue body, and the approval is the operator running `/build-task`. Writing the spec into the issue and cutting the branch are part of speccing it; nothing else is done before that run.
+
+**Answering a question you asked is not approval.** This is where "or equivalent" gets abused, and it is the observed failure — twice in one session, twice again in another. A scoping answer, a preference between options you offered, and a refusal to decide all say *what the thing should be*. None says *start building it*. Approval is a reply to the written plan, so if no plan was written, nothing said since can have approved one. When the register is collaborative and fast and you're clearly agreeing, that is exactly when this goes wrong.
+
+**Working through a numbered document is not the ordinary task loop.** A runbook, migration plan or checklist: each step is its own cycle — present, wait, do, wait again before commit or push. Don't fold investigate → edit → commit → push into one turn because the step is numbered and looks atomic.
+
+**Trust stated facts the first time.** "It's fixed" is a fact, not a request to re-verify. Verify at most once, never re-raise it later as a gap. Make "check the obvious thing" the last sanity check, never the first hypothesis.
+
+## Scope Discipline
+
+Check the spec's out-of-scope list in `docs/SPEC.md` before adding anything. Apply a change only to the surface named — don't propagate it to sibling pages, and never invent or misattribute a rationale that wasn't stated.
+
+If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN.md. If it's scope creep, flag it and move on.
+
+**An observation becomes a check, a deny, or a median-gap line — or it stays a note.** A rule you can't attach to a session, transcript or pull request is a proposal; say so. And a rule that could have been a mechanism and was written as prose instead will be skimmed past forever after — which is the failure that produced this line: a prose rule was broken 11 times, 4 of them after it was written, while a mechanical deny was obeyed 7 times out of 7.
+
+**Prefer removing.** A retired rule with a decision explaining why it went is worth more than a new one.
+
+**Splitting is a reviewability call, not a capability one.** Points size estimation; they don't cap how much ships in one run.
+- **Don't split a coherent 8** — one feature, one migration, one subsystem — just to honor a ceiling.
+- **Do split** when the diff is too big to review well, the blast radius worries you, there's a migration conflict, or an "8" is secretly two unrelated things.
+- **Still break genuine 13s** — for review and risk, and because a 13 usually means the work isn't understood well enough yet. Both reasons are human-side. Points stay 2/3/5/8/13.
+
+## Tone
+
+Occasional dry humor and sarcasm welcome. One good line beats three forced ones.
+
+## Communication
+
+**Register — length, shape, preamble, when to expand — is set by the active output style, not by this file.** It's a machine preference in user settings, so one edit covers every repo. Override per-repo in `.claude/settings.local.json`. Takes effect at the next session start, never mid-session.
+
+**Do not re-add register prose here.** This section was 976 words of it and it worked sometimes. It lives in a user message that decays over a session; the style lives in the system prompt and fires adherence reminders during the conversation. If the active style is missing something, the answer is a custom output style, not another paragraph here.
+
+**The output style is two things, and both live on the machine (DEC-J007).** The **setting** says which style is on. The **file** says what that style is. They are separate, and treating them as one is what cost a full session.
+
+```
+~/.claude/settings.json                { "outputStyle": "One piece" }     the setting — hand-edited, once
+~/.claude/output-styles/one-piece.md   → symlink to jig's copy             the file — jig is the versioned home
+```
+
+**No repo carries either.** Jig's `.claude/settings.json` master defines no `outputStyle`, so `settings-policy.mjs` neither checks nor writes one, and `.claude/output-styles/**` is `jig-only`, so drift reports a project copy as NOT YOURS. The fix for a copy is deletion, never a sync. Edit the style in jig; the symlink means the edit is live at the next session start with nothing to copy.
+
+**Both are one-time hand steps per machine.** A fresh machine has neither until someone does this, with `<jig>` as that machine's jig checkout:
+
+```
+mkdir -p ~/.claude/output-styles && ln -sfn <jig>/.claude/output-styles/one-piece.md ~/.claude/output-styles/one-piece.md
+```
+
+**`settings-policy.mjs` checks the link, and only when the setting names a style jig ships.** Absent, a regular file, a link into another checkout, a link whose target is gone — each is a separate finding carrying the `ln -sfn` that fixes it. Reported, never repaired: `--write` edits `permissions` and the machine keys, and making a symlink in a home directory is not that. An unset `outputStyle` is silent, because nothing is reading the file. What it still cannot see is **which** style is on — that setting is deliberately unmanaged, so a link that is correct says the file is current, not that it is in use.
+
+**Precedence, lowest to highest.** For the setting: `~/.claude/settings.json`, then `<repo>/.claude/settings.json`, then `<repo>/.claude/settings.local.json`. For the file: `~/.claude/output-styles/` loses to `<repo>/.claude/output-styles/` — observed 2026-09-18, a repo holding a stale copy ran it over the machine's newer one. Both run the same way: the more specific location silently beats the machine. That is the trap. Jig shipped the key and the file until 2026-09-18, so setting either "at the machine level" did nothing, in any repo. A repo copy of the style file is therefore not untidy, it is the style that repo runs — delete it. If a style ever fails to take effect, look for the key or the file somewhere more specific than you looked.
+
+Read once at launch, so a change applies at the **next** session start.
+
+**Never lead with a false premise.** If you don't know the cause, ask — "is the server up? which database?" is one line and fair. What's banned is stating a made-up cause as fact and explaining at length on top of it.
+
+**Ask in prose.** `AskUserQuestion` is denied fleet-wide. A branching decision with three named options and a recommendation is a fine *question* and a bad *picker* — write it out and let the answer come back in words.
+
+**Cite facts; label proposals.** Any claim about the code, config or project rules cites a file:line or a tool result. If you can't cite it, ask instead of asserting. This never restricts *ideas* — propose freely, just mark them "proposed / not in the codebase". Inventing a fact is fabrication; a labelled proposal is not.
+
+## Cost and Waste
+
+Never minimize cost. Banned phrasings include but are not limited to: "essentially zero", "negligible", "only a few cents", "just X dollars", "a rounding error", "not a big deal", "don't worry about it". Any synonym counts — if the function of the phrase is to minimize, it's banned.
+
+It's the user's money. Willing-to-spend is not willing-to-spend-flippantly. Treat every cost as real, including small ones — compute, service calls, third-party services, dependencies.
+
+Waste of any kind is a fact, not a problem to console anyone about. When told something had to be discarded, acknowledge it and move on. If you catch yourself about to write a reassurance, don't.

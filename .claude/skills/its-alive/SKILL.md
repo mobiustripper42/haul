@@ -1,0 +1,310 @@
+---
+name: its-alive
+description: Session start. Stamps the start time, opens a per-session file on the orphan `sessions` branch via `.sessions-worktree/`, captures the active JSONL transcript path, reads last session context, reads the project plan, and presents a briefing with task recommendation. Waits for confirmation before any work begins.
+---
+
+You are executing the session start ritual.
+
+## Step 0 — Branch check
+
+**Worktree check first:** run `git rev-parse --git-dir`.
+- If the output contains `/worktrees/`: this is a **linked worktree session** — the normal shape of concurrent work, created before this session started. Skip the rest of Step 0; the branch here is intentional. Note "Linked worktree" in the briefing and continue to Step 0.6.
+- Otherwise: continue.
+
+This is a **report**, not a decision. Nothing downstream branches on it: the session's shell, checkout and branch are the same thing either way, which is what lets every other skill use plain `git`.
+
+Run `git fetch origin` to refresh remote state. Capture `BRANCH=$(git branch --show-current)`.
+
+**Branch handling:**
+- `task/*` or other intentional feature branch: continue (PR-flow project).
+- `claude/*` (CC Desktop / web / mobile auto-branch): accept and continue. The platform pre-cuts this branch when launching a session. This branch is the **session-anchor**; per-task code branches get cut as work proceeds, each PR'd separately. Session-file commits go to the orphan `sessions` branch via the worktree, NOT to this branch.
+- `main`: `git pull --ff-only origin main`. On divergence, show `git log --oneline origin/main..HEAD` and `git log --oneline HEAD..origin/main`, then ask: **"(a) rebase, (b) reset to origin/main, (c) abort?"** Wait for the choice.
+- Anything else (manual non-standard branch): if `git status --porcelain` is dirty, stop and ask the user to commit/stash. If clean, ask the user **"Stay on `$BRANCH` or switch to `main`?"** Wait for the choice.
+
+### Step 0.5 — Orphan branch + PR-state scan
+
+Before stamping time, check for leftover work from prior sessions. The CC platform creates a new `claude/*` branch per session, so previous sessions' branches and PRs stay alive on the remote until explicitly merged or deleted. After a **squash merge** (GitHub's default for this workflow), the branch's original commits never appear on `$WORKING_BRANCH` — which has only the squashed commit — so a naive "commits not on main" scan flags every shipped branch as an orphan. Step 0.5 must cross-reference PR state to avoid that false alarm.
+
+**Resolve `WORKING_BRANCH`:**
+```
+WORKING_BRANCH=main
+```
+The active trunk is always `main`; a `production` branch, if present, is a downstream deploy pointer and never the orphan-scan base.
+
+**Scan A — remote `claude/*` branches with commits not on `$WORKING_BRANCH`:**
+```
+git for-each-ref refs/remotes/origin/claude/ --format='%(refname:short)'
+```
+For each `origin/claude/<slug>` (other than the current branch): `git log --oneline origin/$WORKING_BRANCH..<ref>`. If non-empty, it's a Scan-A candidate.
+
+**Scan B — PRs (open AND closed) keyed by branch:**
+- `gh pr list --state all --base "$WORKING_BRANCH" --json number,title,headRefName,state,mergedAt,createdAt,updatedAt --limit 50` (or `mcp__github__list_pull_requests` with `state: all` if `gh` is unavailable).
+
+For each Scan-A candidate, find the most recent PR whose `headRefName` matches the branch's short name (strip the `origin/` prefix; highest PR number wins). The PR's state and merge status determine the category:
+
+| Category | Definition | Action |
+|----------|------------|--------|
+| Open-with-PR | Most recent PR is OPEN | Silent. In-flight — nothing to do. |
+| Merged-cleanable | Most recent PR is CLOSED with `mergedAt` set (non-null) | Silent. Squash-merge artifact, safe to delete but harmless. Don't prompt. |
+| Orphan-abandoned | Most recent PR is CLOSED with `mergedAt` null | Silent. PR closed without merging — the close was the decision. |
+| Orphan-without-PR | Branch has commits but NO PR was ever opened for it | **Real problem — work has no shipping path.** Surface and **wait**: "(a) open a PR now, (b) cherry-pick onto current branch, (c) delete (commits lost)?" |
+| Stale-no-commits | Branch on remote, zero commits ahead of `$WORKING_BRANCH` and no associated PR commits | Silent. |
+
+**Why the PR cross-reference still runs even though only one category surfaces.** Scan B is not optional decoration — it's what keeps **Orphan-without-PR** honest. Without the merged-state lookup, every squash-merged branch (whose original commits never land on `$WORKING_BRANCH`) would match "branch has commits, looks like no PR" and false-alarm every session. The cross-reference is what tells a genuinely-orphaned branch apart from a shipped-and-squashed one. Keep the scan; suppress the output.
+
+**Gating rule.** Surface **exactly one** category: **Orphan-without-PR**, and only when it's non-empty — that's real lost work with no shipping path, and it blocks the briefing until the user decides. Every other category is computed silently and produces **no output and no prompt**. The old per-session nag (merged-branch cleanup prompts, abandoned-PR advisories, stale-branch deletion suggestions) is gone — it printed "nothing wrong" every session and trained you to ignore it. If you ever want to reap merged/stale branches, that's an explicit ad-hoc ask, not a session-open ritual.
+
+**Tool-outage fallback.** If `gh` and `mcp__github__list_pull_requests` are both unavailable, skip Scan B entirely and surface every Scan-A candidate as "branch has commits — PR state check unavailable, do not assume orphan." Don't false-alarm during a tool outage. Note the skipped check in the session Context section.
+
+### Step 0.6 — Ensure `.sessions-worktree/`
+
+The session file lives on an orphan `sessions` branch checked out at `.sessions-worktree/`. Skills commit there; the user's main checkout never moves.
+
+**Check for worktree.** `[ -e .sessions-worktree/.git ] && echo present || echo missing`. (`-e`, not `-d`: in a linked worktree `.git` is a *file* — a `gitdir:` pointer — so `-d` reports `missing` on a worktree that is present, and sends the session into sub-case (a) below to fail on `already exists`.)
+
+**If present:** `git -C .sessions-worktree fetch origin sessions && git -C .sessions-worktree reset --hard origin/sessions`. Continue to Step 1. (`git -C`, not `cd` — shell state doesn't persist between Bash calls, and a stray `cd` that fails leaves the next command running in the wrong tree. The `&&` chain here made it safer than the unchained version but not correct.) This `reset --hard` is why the permission policy denies the `-C` spellings of force-push, `clean -f` and `branch -D` but not of `reset --hard`: denying it would stop every session from opening.
+
+**If missing — three sub-cases:**
+
+a. **`origin/sessions` exists on remote** (fresh clone / accidental delete): `git fetch origin sessions` then `git worktree add .sessions-worktree sessions`. Continue. (`git worktree add <path> [<commit-ish>]` takes **one** ref — the two-ref form `… sessions origin/sessions` is a usage error, and git answers it with a fragment of its own `--help` output rather than anything that reads like a failure.) In a linked worktree this fails with `already checked out`: the lane was made without the link from the concurrent-session recipe in Step 2. Stop and give the user that recipe's `ln -s`, settings and ignore lines.
+
+b. **`origin/sessions` does NOT exist** (first run on this project — migration path): bootstrap the orphan branch.
+```
+git checkout --orphan sessions
+git rm -rf . 2>/dev/null || true
+# If a sessions/ dir existed on main, bring its contents over:
+git checkout main -- sessions/ 2>/dev/null || mkdir -p sessions
+[ -d sessions ] || mkdir sessions
+[ -f sessions/README.md ] || echo "# Sessions branch. Each project session writes one file here." > sessions/README.md
+git add sessions/
+git commit -m "Initialize sessions branch"
+git push -u origin sessions
+git checkout main
+# Remove sessions/ from main if it existed:
+[ -d sessions ] && git rm -r sessions && git commit -m "Move sessions to orphan sessions branch" && git push origin main
+# Add .gitignore entry on main:
+grep -q "^\.sessions-worktree/" .gitignore 2>/dev/null || (echo ".sessions-worktree/" >> .gitignore && git add .gitignore && git commit -m "Ignore .sessions-worktree" && git push origin main)
+# Attach worktree:
+git worktree add .sessions-worktree sessions
+```
+Note: on protected main, the two follow-up commits (remove `sessions/`, add `.gitignore`) may need a PR instead of direct push. Detect with `gh api repos/{owner}/{repo}/branches/main/protection --silent 2>/dev/null`; if protected, open a "Migrate sessions to the orphan branch" PR with those commits on a `claude/migrate-sessions` branch and surface the URL.
+
+c. **`origin/sessions` exists but local sessions/ also has uncommitted files** (mid-migration): stop and ask the user to resolve manually.
+
+After Step 0.6 completes, `.sessions-worktree/` is checked out to the `sessions` branch and reflects `origin/sessions`. All subsequent session-file paths in this skill refer to `.sessions-worktree/sessions/<file>.md`.
+
+## Step 1 — Stamp the time
+
+```
+START_UTC=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+DATE_PART=$(date -u +%Y-%m-%d)
+TIME_PART=$(date -u +%H%M)
+```
+
+## Step 2 — Derive the slug
+
+```
+case "$BRANCH" in
+  task/*)    SLUG="${BRANCH#task/}" ;;
+  feature/*) SLUG="${BRANCH#feature/}" ;;
+  claude/*)  SLUG="${BRANCH#claude/}" ;;
+  main|master) SLUG="main" ;;
+  *) SLUG=$(echo "$BRANCH" | tr '/' '-') ;;
+esac
+```
+
+Sanitize: lowercase, replace any non-`[a-z0-9.-]` with `-`, collapse repeats.
+
+**Concurrent session check:** `grep -l "^status: open" .sessions-worktree/sessions/*.md 2>/dev/null`. If a session is already open, report it — session number, branch, started — and ask whether it is **live** (another window is working right now: say so and continue, nothing to resolve) or **stale** (mark `status: abandoned` in that file and continue).
+
+**This skill creates exactly one worktree, `.sessions-worktree/`, and never another**. A concurrent session's code worktree is made **before** the session exists, by the user, in a terminal, from the main checkout — the original one, never a lane, where `.git` is a directory and `.sessions-worktree` is real:
+
+```
+git worktree add ../<repo>-<slug> -b task/<slug> main
+ln -s "$PWD/.sessions-worktree" ../<repo>-<slug>/.sessions-worktree
+printf '{ "permissions": { "additionalDirectories": ["%s"] } }\n' "$PWD/.sessions-worktree" > ../<repo>-<slug>/.claude/settings.local.json
+for p in .sessions-worktree .claude/settings.local.json; do git -C ../<repo>-<slug> check-ignore -q $p || echo $p >> .git/info/exclude; done
+cd ../<repo>-<slug> && claude
+```
+
+The link gives the new lane the main checkout's `sessions` worktree: adding a second one fails, because `sessions` is already checked out there. The settings line lets the lane write through the link: the session file resolves outside the lane's working directory, so without it every session-file edit asks for approval. A new worktree has no `settings.local.json` — it is per-checkout and never committed — so writing it fresh overwrites nothing. The ignore line is needed because a `.sessions-worktree/` pattern matches only a directory and a link is not one, and because not every project's `.gitignore` covers `settings.local.json`; it does nothing for a path already ignored.
+
+When the lane is finished — its session closed by `/its-dead`, its pull request merged — clean it up from the main checkout. Removing the worktree takes the link, never the session files behind it. Or keep the lane and cut its next branch there; the setup is then once per repo.
+
+```
+git worktree remove ../<repo>-<slug>
+```
+
+Then the local branch, with `git branch -D` and its name. That one is the user's to run: the permission policy denies it to a session, and the safe `--delete` refuses after a squash merge, which leaves the branch's commits off `main`.
+
+Do not offer to create it here, and do not create it if asked. A worktree made mid-session cannot capture the shell — the harness pins the working directory where `claude` launched and resets any `cd`. The session would end up with its code in one checkout and its shell in another, which is the split every downstream skill then has to detect and work around. Creating the worktree first makes the session's shell, checkout and branch the same thing, which is what every skill already assumes.
+
+If the user asks for a concurrent worktree here, give them those five lines and stop; asked to clean one up, give them the removal line and the branch deletion. Starting the session is their next move, not this one's.
+
+## Step 3 — Determine session number
+
+Use the **Glob** tool with `path: .sessions-worktree/sessions` and `pattern: *.md` to list current session files. Filter out `README.md` from the result. Call the remaining count `NEW_COUNT`.
+
+`SESSION_NUM = NEW_COUNT + 1`. Compute in head — no bash needed.
+
+(Glob + Grep replaces a chained `ls | wc -l` + `grep | grep | sort | tail` pipeline — same validator-silence reason as Step 4.)
+
+## Step 4 — Capture the transcript path
+
+```
+echo "$HOME/.claude/projects/$(pwd | tr '/' '-')/$CLAUDE_CODE_SESSION_ID.jsonl"
+```
+
+Capture as `TRANSCRIPT`. If `$CLAUDE_CODE_SESSION_ID` is empty, leave `transcript:` blank rather than guessing.
+
+**The session's own id, never a directory listing.** This step used to glob `*.jsonl` in that directory and take `result[0]`, which identifies a file by its position in a list and relies on an ordering nothing states. The id is sitting in the environment and the transcript is named after it, so there is no reason to search.
+
+It breaks on **two windows in the same checkout** — the case Step 2's concurrent-session check exists to handle, which means the skill anticipated the collision and then resolved the transcript in a way that could not survive it. (It does *not* break across linked worktrees: `JSONL_DIR` is derived from `pwd`, so each worktree reads its own project directory.) Either way the old `transcript:` values are unverifiable — nothing downstream could tell a right answer from a wrong one.
+
+`/its-dead` uses this same id to name the captured tape, so a wrong value here is a tape filed under the wrong session.
+
+## Step 5 — Write the open session file (in the worktree)
+
+```
+SESSION_FILE=".sessions-worktree/sessions/${DATE_PART}-${TIME_PART}-${SLUG}.md"
+```
+
+Write the file with this content (atomic, no time-math fields):
+
+```
+---
+session: <N>
+slug: <SLUG>
+branch: <BRANCH>
+started: <START_UTC>
+ended:
+points:
+pr_numbers: []
+status: open
+transcript: <TRANSCRIPT>
+---
+
+# Session <N> — <SLUG>
+
+<!-- Task blocks appended by /kill-this, one per task. -->
+
+**Next Steps:**
+
+**Context:**
+```
+
+Commit and push **on the sessions branch** using `git -C` to target the worktree directory (no `cd` — shell state doesn't persist between Bash tool calls):
+
+```
+git -C .sessions-worktree add sessions/$(basename "$SESSION_FILE")
+git -C .sessions-worktree commit -m "Open Session $SESSION_NUM entry"
+git -C .sessions-worktree push origin sessions
+git -C .sessions-worktree checkout sessions 2>/dev/null || true
+```
+
+The final `checkout sessions` re-pins the worktree HEAD to the `sessions` branch — guards against a detached-HEAD state.
+
+## Step 6 — Read last session context
+
+Find the most recent CLOSED session file in the worktree:
+
+```
+PREV=$(ls -t .sessions-worktree/sessions/*.md 2>/dev/null | grep -v README | grep -v "$(basename $SESSION_FILE)" | head -10)
+```
+
+For each candidate (newest first), check for `status: closed`. The first match is the previous session. If none exist, say so — a first session has no predecessor, and that is a fact rather than a gap to fill.
+
+Extract:
+- **Task blocks** (`## Task <N>` sections in the body) — what was shipped
+- **Next Steps** — verbatim
+- **Context** — gotchas
+
+## Step 7 — Read project state
+
+**Skip-when-directed.** If the user already named a task or goal when they launched this session, you do **not** need to compute a recommendation — they've told you what they're doing. Skip the recommendation-building below; Step 6's context read (last session, Next Steps, gotchas) is the part that always matters. The recommendation exists for the cold open, when you start a session with no task in hand. Don't spend the session's first move ranking the backlog the user has already overruled.
+
+When a recommendation *is* wanted (cold open), grep `docs/PROJECT_PLAN.md`:
+- Unchecked: `grep "\[ \]" docs/PROJECT_PLAN.md`
+- Deferred: `grep "\[~\]" docs/PROJECT_PLAN.md`
+- Priority: `grep "Next session priority" docs/PROJECT_PLAN.md -A 2`
+- Current phase: `grep -E "^## Phase " docs/PROJECT_PLAN.md | head -3`
+
+If the project uses phase-rituals: `gh issue list --label "phase:current" --state open --json number,title,labels --limit 50`.
+
+## Step 7.5 — Drift against jig
+
+Resolve the jig checkout (skill arg → `../jig` sibling → `$JIG_REPO`), then:
+
+```
+node <jig>/scripts/drift.mjs .
+```
+
+Read-only. It prints which `logic`-class files differ from the templates, which are absent, and whether this project owes a schema migration.
+
+**Report it in the briefing only when there is something to report** — a `DRIFT` count, or a `jig-version` gap. Silence when clean; a line every session that always says "nothing differs" is a line nobody reads by the third one.
+
+**Why this check lives here rather than in jig.** A repo's drift only matters when you are about to work in it, and that is exactly when this runs. A dormant project can sit twelve template changes behind for months at no cost — the day you open it for a one-line bugfix, the briefing says so and you decide whether to sync first or ignore it. That also means there is no fleet list to maintain, and no report enumerating repos nobody has touched since spring.
+
+**It reports; it does not act.** Do not sync, do not copy, do not offer to. Deciding what should cross is the part that needs a person, and this exists so that person is not guessing at the state. When they decide, the copy is done from a session *in jig*, which commits on a branch in this repo and opens the pull request here. Not from this session: the bytes that cross are what jig already reviewed, so a jig session copying them is moving reviewed code, while this session writing them is authoring a change to workflow files it does not own.
+
+If jig doesn't resolve, skip silently and say so in Context. A session must never be blocked by a checkout not being on this machine.
+
+### Step 7.6 — Permission policy
+
+Same resolved jig checkout, one more read-only command:
+
+```
+node <jig>/scripts/settings-policy.mjs --all .
+```
+
+It compares against `.claude/settings.json` — the master — in the two places that govern this session: `~/.claude/settings.json` (**user settings**, this machine, every project) and `<repo>/.claude/settings.json` (**shared project**, committed, and the only policy that travels with the repo).
+
+| checked | where | repairable by `--write` |
+|---|---|---|
+| `permissions` | both levels | yes |
+| `theme`, `effortLevel`, `tui`, `agentPushNotifEnabled`, `enabledPlugins` | user settings only — machine preferences | yes |
+| retired machinery still wired — a `SessionEnd` tape hook, a leftover queue | user settings only | **no** — remove by hand |
+
+**`outputStyle` is in `MACHINE_KEYS` and is deliberately absent from the master, so it is neither checked nor written.** It was in the master until 2026-09-18, and because a project-level `.claude/settings.json` beats the user-level one, every installed project carried jig's answer and no machine default was ever consulted. Whoever is at the keyboard picks the style; nothing that travels should carry one. Setting it is a hand-edit of `~/.claude/settings.json`, and `--write` will not touch it.
+
+A deliberate per-repo override in `.claude/settings.local.json` — `Explanatory` while designing, say — is **not** reported: those keys are read at the user level only.
+
+**Report only when something is not current.** Silence on `Current.`, same reason as Step 7.5.
+
+**On a `STALE` or `ABSENT` result, surface the fix and stop there** — `node <jig>/scripts/settings-policy.mjs --write <path>`. Do not run it. It writes the file that carries this machine's hooks, and it is the user's call whether a policy change lands now or after the task in hand.
+
+**Two things worth knowing when you report it.** Permissions are read once at launch, so a repair applies at the *next* session, not this one — say so rather than implying the session just got safer. And the shared-project file is the one that covers a machine whose user settings are not installed yet — it travels with the repo, so an absent one there is no seatbelt at all rather than a stale one.
+
+**Why this is here and not a fleet report.** Nothing can enumerate a machine you are not sitting at — but the box you *are* on is readable, and it is the only one you can fix. Checking at session start means every machine checks itself, every session, with no list to maintain and nothing to remember.
+
+If jig doesn't resolve, skip silently — same rule as Step 7.5.
+
+## Step 8 — Present briefing
+
+Emit the briefing as plain prose lines, never inside a code fence — a fence does not wrap on a phone. Drop the leading `>`; it marks the example boundary here. The shape:
+
+> Session <N> — <DATE_PART>
+> Started: <local time> (<UTC time>)
+> Branch (session anchor): <BRANCH>
+> Session file: <SESSION_FILE>   (lives on `sessions` branch via .sessions-worktree/)
+>
+> Last session: [one-line summary]
+>
+> Next Steps from last session: [verbatim or paraphrased]
+> Context to remember: [gotchas worth mentioning]
+>
+> Recommended task: [task ID + name + why — OMIT this line entirely if the user opened with their own task]
+>
+> Branch already cut: <BRANCH> — good to go. Each task today gets its own /kill-this; the session file lives on the orphan `sessions` branch independent of any task branch.
+
+Then ask: **"Ready to go? Confirm the task or redirect me."** — or, if the user already named the task, just confirm you've got the context and restate their task in one line: **"Context loaded. Picking up <their task> — go?"**
+
+Stop. Do not begin work until the user confirms.
+
+## Workflow reminders
+
+- One Claude window opens **one** session. `/its-dead` runs **once** at the end.
+- `/kill-this` may run multiple times — one per task — each opens its own PR and appends a `## Task <N>` block to this session file (on the sessions branch).
+- Between tasks: `/save-this`, then `/clear`. The save writes what the clear would lose into this file's Next Steps, and the cleared context reads it back.
+- Time math happens at `/retro`, not at close. `/its-dead` displays wall_clock to screen for gut-check but writes no time field.
+- Once `/its-dead` writes `ended:` and `status: closed`, this file is never modified again. Atomic.

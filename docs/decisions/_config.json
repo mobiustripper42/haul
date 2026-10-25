@@ -1,0 +1,11 @@
+{
+  "spec": "docs/SPEC.md",
+  "topics": [
+    "Open questions",
+    "Stack & hosting",
+    "Payments",
+    "Data model",
+    "Product rules",
+    "Interface"
+  ]
+}
