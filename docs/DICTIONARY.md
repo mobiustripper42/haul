@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-15 terms.
+16 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -16,6 +16,7 @@ alternates start being caught.
 | **CRUD** | create, read, update and delete — the four basic screens for editing a table | — |
 | **CSA** | community supported agriculture — a season of weekly farm produce boxes, paid for up front | — |
 | **CSV** | a plain spreadsheet file, one row per line with commas between columns | — |
+| **DMARC** | a record in a domain's address book telling mail servers how to treat email that claims to come from it but cannot prove it | — |
 | **DNS** | the internet's address book, which turns a name like members.ohiocityfarm.com into a server address | — |
 | **ID** | a unique identifier for one record | — |
 | **IP** | the numeric network address a request comes from | — |

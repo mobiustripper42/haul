@@ -186,7 +186,25 @@ client IP trusted only from Cloudflare's ranges (muster's pattern).
 
 A health endpoint reports database reachability, the last charge run, any week pending past its
 cutoff, and the last backup — polled by sheepdog. Backups are Crunchy's plus an independent nightly
-dump, with a restore drill run once before the unattended period.
+dump, with a restore drill run once before the unattended period. Runtime errors on member pages
+alert as well. One full rehearsal week runs in production before the first real January charge.
+
+Service accounts (Vercel, Crunchy, Resend, Cloudflare, the Square developer app): **proposed** that
+the farm owns and pays for all of them, so the farm can keep running without the developer. Being
+put to the farm in the proposal; not yet agreed.
+
+### 7.12 Consent and legal pages
+
+Signup states the recurring charge plainly next to the pay button — amount now, amount weekly at
+cutoff, until cancelled, and how to cancel — behind a required checkbox, and records what the member
+agreed to and when. Terms and privacy pages use the farm's existing legal text, are linked from
+signup and every email, and exist in both designs and both languages.
+
+### 7.13 Languages
+
+The Phase 0–2 goal is **translatable**: every string in translation files. Spanish is the one
+language filled in, by a machine pass and a review at the end of Phase 1. A check fails when a key
+is missing from a language file. Further languages are files plus a review.
 
 ### 7.11 Exports
 
@@ -203,12 +221,13 @@ audit triggers.
 
 ### 8.1 Phase 1 — Supper Club on sale
 Seeded product and options, the Square port, signup with card and first charge, the cap, the
-confirmation email, the admin member list, production, Square cutover, go-live.
+confirmation email, the admin member list, production, Square cutover, go-live, the Spanish pass,
+consent wording and legal pages.
 
 ### 8.2 Phase 2 — Runs without the developer
 The calendar, the charge run, cron and declines, the member portal, skip, switch, cancel, menu
 builder, menu email and page, menu translation, pick list, card update and retry, health endpoint,
-backups.
+backups, the admin handbook, and a rehearsal week in production.
 
 ### 8.3 Phase 3 — Product builder and CSA on sale
 Admin product builder, CSA seasons and shares sold up front, sales page, pickup locations, portal
@@ -243,6 +262,14 @@ Viewable reports, scoped once the farm says what Square does not already give th
     signup? Proposed: by emailing Lenny, applied by the developer in SQL.
 12. DNS: does the farm move `ohiocityfarm.com`'s nameservers to Cloudflare (the zone also carries
     the Wix site and email), or is a single-subdomain setup possible on their plan?
+13. **Blocks task 1.1.** One Supper Club subscription per member, or several (a household taking
+    two boxes)?
+14. Receipts: does Square email the receipt for each charge, or does the app?
+15. Price changes: do existing subscribers keep their price, or move to the new one with notice?
+    Settle before the real prices are seeded.
+16. Email sender: which farm address sends, which inbox receives replies, and who adds the email
+    authentication records (DMARC) to the farm's DNS?
+17. The farm's existing terms of service and privacy policy text, for task 1.12.
 
 ## 10. Out of scope
 
@@ -255,3 +282,4 @@ No phase above plans these. Ideas worth keeping are in `docs/FUTURE_IDEAS.md`.
 - Admin editing of public page copy
 - Multi-select options within one option type
 - SMS
+- Member data deletion requests — deferred; what the farm promises is not yet decided
