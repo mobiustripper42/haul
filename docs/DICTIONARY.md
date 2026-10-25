@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-15 terms.
+18 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -16,12 +16,15 @@ alternates start being caught.
 | **CRUD** | create, read, update and delete — the four basic screens for editing a table | — |
 | **CSA** | community supported agriculture — a season of weekly farm produce boxes, paid for up front | — |
 | **CSV** | a plain spreadsheet file, one row per line with commas between columns | — |
+| **DKIM** | a signature on outgoing email, checked against a key in the domain's address book, proving the domain sent it | — |
+| **DMARC** | a record in a domain's address book telling mail servers how to treat email that claims to come from it but cannot prove it | — |
 | **DNS** | the internet's address book, which turns a name like members.ohiocityfarm.com into a server address | — |
 | **ID** | a unique identifier for one record | — |
 | **IP** | the numeric network address a request comes from | — |
 | **POS** | point of sale — the farm's in-person checkout terminal and iPad | — |
 | **SDK** | a code library a vendor ships so other programs can use its service | — |
 | **SMS** | a text message to a phone | — |
+| **SPF** | a record in a domain's address book listing which servers may send its email | — |
 | **SQL** | the language used to read and change rows in the database directly | — |
 | **SSL** | the older name for the same encryption, still used in settings screens such as Cloudflare's | — |
 | **TLS** | the encryption that protects traffic between a browser and a server, shown as the padlock | — |

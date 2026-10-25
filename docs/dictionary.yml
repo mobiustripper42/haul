@@ -57,6 +57,18 @@
   says: the internet's address book, which turns a name like members.ohiocityfarm.com into a server address
   not: []
 
+- term: DMARC
+  says: a record in a domain's address book telling mail servers how to treat email that claims to come from it but cannot prove it
+  not: []
+
+- term: SPF
+  says: a record in a domain's address book listing which servers may send its email
+  not: []
+
+- term: DKIM
+  says: a signature on outgoing email, checked against a key in the domain's address book, proving the domain sent it
+  not: []
+
 - term: IP
   says: the numeric network address a request comes from
   not: []
