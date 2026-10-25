@@ -1,71 +1,110 @@
-# [Project Name] — Project Plan
+# Haul — Project Plan
 
-**Start date:** [YYYY-MM-DD]
-**Target:** TBD — a date, if there is one
-**Critical path:** [What must be true before this is useful to anyone]
+**Start date:** 2026-10-24
+**Target:** Supper Club on sale mid-December 2026 (Phase 1); running unattended before the first
+January 2027 pickup (Phase 2).
+**Critical path:** Square production credentials and DNS for `members.ohiocityfarm.com` from the
+farm — both have lead time code cannot make up.
 
 ---
 
 ## Estimation Method
 
 Fibonacci scale (2, 3, 5, 8, 13). See `VELOCITY_AND_POKER_GUIDE.md` for definitions.
-All estimates from planning poker between [your name] and Claude.
-Disagreements logged in the Standing Disagreements table at the bottom.
+All estimates from planning poker between Eric and Claude, 2026-10-24/25. Where we disagreed, the
+higher number won.
 Tests are baked into every task estimate — no separate testing tasks.
+Every screen is two designs, desktop and mobile, and the points include both.
 
 ---
 
-## Phase 0: Infrastructure
+## Phase 0: Foundation
 
-Before any feature work: get the environment, the test harness and the docs to a state where every
-later session is faster and safer. No user-facing value ships in this phase.
-
-**The rows below are questions, not a checklist.** Every project answers them differently — a
-webapp stands up a local database and a browser runner, firmware needs a bench node and a way to
-read packets off it, a library needs neither. Delete rows that do not apply and add the ones this
-stack needs. Points are yours to set.
+Docs, the skeleton, the data layer, and the cross-cutting pieces every later task stands on:
+translation, email, auth, the admin guard and audit.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 0.1 | Local environment runs the thing | [N] | [what "runs" means here] |
-| 0.2 | Data layer, if there is one — schema under migrations, seed data for tests | [N] | Delete if no database |
-| 0.3 | Test harness installed and one real test passing | [N] | The `Proof` slot in `.claude/CLAUDE-context.md` names what a check is here |
-| 0.4 | The gate runs end to end and is green | [N] | One command. `/kill-this` runs it before every commit |
-| 0.5 | Security-shaped tests for whatever guards access | [N] | Delete if nothing guards access |
-| 0.6 | `@ui-reviewer` spec + `.claude/ui-context.md`, if there is a UI | [N] | Delete for a project with no surface |
-| 0.7 | Session skills present in `.claude/skills/` | 1 | Installed with the rest of jig |
-| 0.8 | `CLAUDE.md`, `.claude/CLAUDE-context.md`, `docs/SPEC.md`, `docs/decisions/` filled in | [N] | Before the first working session if possible |
+| 0.1 | Scaffold commit, spec, context, plan, future ideas, first decision records | 3 | |
+| 0.2 | Next skeleton, framework-free core, the gate | 3 | Muster's tsconfig split and `@core/*` alias; check whether webpack is still needed |
+| 0.3 | Local Postgres, migrations, repository port with in-memory and Postgres adapters | 5 | Contract test runs both adapters; TLS inside the constructor |
+| 0.4 | i18n: translation files, language resolution, Spanish proof page | 3 | Lint rule fails on a bare string |
+| 0.5 | Email port: fake and Resend adapters, templates through i18n | 2 | Fold candidate with 0.6 |
+| 0.6 | Email-code auth: 6-digit code, session, rate limit | 3 | Ported from muster |
+| 0.7 | Admin role and guarded admin area | 3 | Tests: signed out, member, expired session |
+| 0.8 | Audit by trigger on every table | 5 | **@architect pass.** Test fails if a table lacks the trigger |
 
-**Phase 0 total: [sum] pts**
+**Phase 0 total: 27 pts**
 
 **Ejection point:** the environment is trustworthy. Nothing user-facing exists yet.
 
-**Demo:** the gate, green, from a clean checkout.
+**Demo:** the gate, green, from a clean checkout; a page in Spanish; signing in by code.
 
 ---
 
-## Phase 1: [Name]
+## Phase 1: Supper Club on sale
 
-[Description of what this phase delivers and why it comes first]
+A member can sign up, pay for their first week and hold one of the ~50 spots. Due mid-December.
 
-| # | Task | Effort | Notes |
+| # | Task | Points | Notes |
 |---|------|--------|-------|
-| 1.1 | [Task name] | [N] | |
-| 1.2 | [Task name] | [N] | |
+| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff setting | 5 | SQL and seeds only |
+| 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
+| 1.3 | Public signup page | 5 | Pickers generated from option types |
+| 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6 |
+| 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
+| 1.6 | Signup confirmation email | 2 | |
+| 1.7 | Admin member list and CSV | 3 | Cards on mobile |
+| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's |
+| 1.9 | Square production cutover and smoke test | 2 | Fold candidate with 1.10 |
+| 1.10 | Wix link and go-live checklist | 2 | |
 
-**Phase 1 total: [sum] pts**
+**Phase 1 total: 43 pts**
 
-**Ejection point:** [What's working / what can be demoed at end of this phase]
+**Ejection point:** the Supper Club is on sale at `members.ohiocityfarm.com` and Lenny can see who
+signed up.
 
 ---
 
-## Phase 2: [Name]
+## Phase 2: Runs without the developer
 
-| # | Task | Effort | Notes |
+Everything the Supper Club needs week to week, working unattended. Due before the first January
+pickup.
+
+| # | Task | Points | Notes |
 |---|------|--------|-------|
-| 2.1 | [Task name] | [N] | |
+| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure | 8 | |
+| 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13 |
+| 2.3 | Cron route, real charges, decline email and flag | 5 | |
+| 2.4 | Member portal: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
+| 2.5 | Skip one or more weeks | 3 | Cutoff enforced on the server |
+| 2.6 | Switch size or preference | 3 | |
+| 2.7 | Cancel | 2 | |
+| 2.8 | Menu builder: library, duplicate, edit, assign; missing-menu email | 8 | Lenny builds on his phone |
+| 2.9 | Weekly menu email and public menu page | 5 | |
+| 2.10 | Pick list, skips CSV, printable pickup list | 3 | |
+| 2.11 | Health endpoint for sheepdog | 3 | Sheepdog itself is out of this plan |
+| 2.12 | Backups and witnessed restore drill | 3 | |
+| 2.13 | Update card and retry declined weeks | 8 | |
+| 2.14 | Menu translation: port, provider, stored translations | 5 | |
 
-**Phase 2 total: [sum] pts**
+**Phase 2 total: 69 pts**
+
+**Ejection point:** a January week runs end to end — menu out, charges in, pick list ready — with
+nobody touching it.
+
+---
+
+## Phases 3–6 (proposal level, not estimated)
+
+- **Phase 3 — Product builder and CSA on sale.** Admin product builder, CSA seasons, shares sold up
+  front, sales page, pickup locations, portal shares and donate-a-share, season exports, Square
+  member and order import. As soon as possible after Phase 2: summer shares go on sale ~Jan 1.
+- **Phase 4 — Delivery.** Target ~June 1, or handled by hand at first.
+- **Phase 5 — Pickup check-in.** iPad, last-name lookup.
+- **Phase 6 — Reports.**
+
+See `docs/SPEC.md` §8.
 
 ---
 
@@ -77,6 +116,7 @@ One row per phase, written by `/retro` at close.
 |-------|--------|--------|------|--------------|-----------|
 | 0 | — | — | — | — | — |
 | 1 | — | — | — | — | — |
+| 2 | — | — | — | — | — |
 
 **Points** is done / planned. **Net drift** is final points minus original estimates; positive means tasks ran bigger than pointed.
 
@@ -84,11 +124,7 @@ One row per phase, written by `/retro` at close.
 
 ## Estimation Poker — Standing Disagreements
 
-Unresolved estimate disagreements. Revisit when the task starts.
-
-| Task | Claude says | You say | Question |
-|------|------------|---------|----------|
-| [task] | [N] | [N] | [what's in dispute] |
+None. Every disagreement on 2026-10-24/25 was settled by taking the higher number.
 
 ---
 
@@ -104,8 +140,8 @@ At the end of every phase:
 
 ## Cuttable Tasks (if behind)
 
-Tasks that can move to a later phase, or out of scope, without breaking core functionality. Reference before any scope cut conversation.
-
 | Task | Why it's cuttable | Move to |
 |------|------------------|---------|
-| [task ID] | [reason] | Phase [N], or out of scope |
+| 2.14 | Menus can go out in English with browser translation as the fallback | Phase 3 |
+| 2.13 | Lenny can chase declined cards by hand; the box is made regardless | Phase 3 |
+| 2.10 printable list | The pick-list counts are what the kitchen needs; the binder can survive a few weeks | Phase 3 |

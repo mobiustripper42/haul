@@ -1,50 +1,242 @@
-# [Project Name] — Product Specification
+# Haul — Product Specification
 
-## Overview
-[One paragraph: what it is, who uses it, what it replaces or enables.]
+Haul is the internal name: repo, folders, dev docs. Members and the farm see only Ohio City Farm's
+Supper Club and CSA management tool; "Haul" never appears in the product.
 
-## Philosophy
-[The guiding principle. How should users feel? What does the app stand for? What should it NOT be?]
+Sources this spec was written from, kept verbatim in `docs/sources/`:
+`2026-10-23-requirements.md` (the Oct 23 meeting, Lenny's notes, follow-up decisions),
+`2026-10-24-lenny-answers.md` (Lenny's answers and the Supper Club copy), and
+`2026-10-market-scan.md` (background research). Where this spec and a source disagree, this spec is
+current.
 
-## Target
-- **Target:** TBD — a date, if there is one
-- **Critical path:** [What must be true before this is useful to anyone — e.g., "payments live"]
+## 1. Overview
 
-## Stack
+Ohio City Farm (Cleveland) sells a weekly meal subscription (the Supper Club) and seasonal CSA
+shares. Today it runs on a paper binder at pickup and email to staff for every change. Haul is a
+thin app on top of Square: Square keeps the money, the customer directory and the in-person POS;
+Haul owns what Square cannot do — cutoff-based weekly charging, skip and switch, the member portal,
+menus, pick lists and exports. It is linked from the farm's Wix site, which stays.
 
-What this is built with and where it runs. One line per layer; delete the layers this project does
-not have rather than writing `none` beside half of them.
+Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
-- **[Layer]** — [choice, and the version if it matters]
-- **[Layer]** — [choice]
-- **Hosting / target** — [where it runs]
-- **Dev environment** — [what a developer needs running locally]
-- **Testing** — [the tooling, and what each part covers]
+## 2. Philosophy
 
-## Roles
-- **[Role 1]** — [what they manage or do]
-- **[Role 2]** — [what they do]
-- **[Role 3]** — [what they do]
+- **The smallest unit that gets a job done, then layer on.** Each task ships one working piece.
+- **Decide late, behind adapters.** Everything outside the domain core — payments, email,
+  storage, translation, geocoding — sits behind a port with a permanent fake adapter. A real
+  adapter is chosen on the date its lead time forces, not before.
+- **Every screen has a desktop design and a mobile design, both first class.** Tablet uses mobile.
+  No screen ships mobile-only or desktop-only.
+- **Configuration is edited with SQL and seeds** by the developer, not through admin screens,
+  unless a screen is named in a phase below. Admin screens exist only where the farm must act
+  without the developer (the menu builder, closing a week, and from Phase 3 the product builder).
+- **Language-light for members who are not native English speakers.** Every UI string is
+  translated; nothing is hard-coded.
 
-## Core Concepts
-- **[Concept 1]** — [definition and why it exists as a distinct thing]
-- **[Concept 2]** — [definition]
+## 3. Target
 
-## Phases
+- **Supper Club on sale:** mid-December 2026 (end of Phase 1).
+- **Supper Club runs unattended:** before the first January 2027 pickup (end of Phase 2). The weekly
+  charge, skips, menus and pick lists must work without the developer present.
+- **CSA summer shares:** sales open ~Jan 1, season starts ~June 1. Until Phase 3 ships, the farm
+  sells shares in its Square store and Phase 3 imports them; the sooner Phase 3 lands, the fewer to
+  import.
+- **Critical path:** Square production credentials and DNS for `members.ohiocityfarm.com` from the
+  farm. Both have lead time the code cannot make up.
 
-Scope is described by phase, and only by phase. A label for a release ("V1", "MVP", "launch") invites every session to argue what belongs in it, and the answers end up scattered through the docs disagreeing with each other.
+## 4. Stack
 
-### Phase 0 — Infrastructure
-A local environment that runs the thing, a test harness with one real test passing, a green gate, and the docs filled in. See `docs/PROJECT_PLAN.md` Phase 0.
+- **Web framework** — Next.js (App Router), one app with member and admin route groups.
+- **Domain core** — framework-free TypeScript in `src/`, consumed by Next (the muster pattern).
+- **Database** — Postgres. Local Postgres in dev; Crunchy Bridge in production, TLS applied inside
+  every connection constructor.
+- **Hosting** — Vercel, behind Cloudflare's proxy (Origin CA cert, SSL Full (Strict)).
+- **Scheduler** — Vercel Cron, driving idempotent runs.
+- **Payments** — Square only: Web Payments SDK, Customers, Cards, Payments APIs. No Square
+  Subscriptions API.
+- **Email** — Resend, behind an email port.
+- **Translation** — a machine-translation provider behind a translation port, chosen at task 2.14.
+- **Domain** — `members.ohiocityfarm.com`.
+- **Dev environment** — mill-dev; local Postgres.
+- **Monitoring** — sheepdog (a separate project) polls Haul's health endpoint.
+- **Testing** — chosen in task 0.2.
 
-### Phase 1 — [Name]
-[High-level description of this phase's goal and the features it includes]
+## 5. Roles
 
-### Phase 2 — [Name]
-[etc.]
+- **Member** — subscribes, pays, skips, switches, manages their own details and language.
+- **Admin** — Lenny (Farm Store and Kitchen Coordinator) and Michael. Sees members, builds menus,
+  closes weeks, exports lists. Stored as a role, not a flag, so more roles can come later.
+- **Operator** — the developer, editing configuration through SQL and seeds.
 
-## Out of scope
-[Things no phase above plans to build. This is the scope guardrail — Claude checks here before adding anything. Moving one into a phase is a decision, made out loud.]
+## 6. Products
 
-- [Feature X] — not planned
-- [Feature Y] — not planned
+### 6.1 Supper Club
+
+- A weekly auto-renewing subscription with no end date. Pickup only.
+- Sizes (placeholder prices until the farm confirms): **2 person, $50** and **3–4 person, $80**.
+- Preference: **standard or vegan**, whole box, no price difference.
+- Members can cancel any time, skip any number of weeks, and switch size or preference, each until
+  that week's cutoff.
+- Capped at ~50 active subscriptions; the signup page shows sold out when full.
+- No sales tax on the Supper Club or the CSA.
+
+### 6.2 CSA (Phase 3)
+
+- Seasons are data (summer 20 weeks, fall 6 weeks; a winter season must fit without code). Two
+  sizes per season, sold up front as one purchase, capped per product.
+- A sales page with CSA information and photos. Account created or login required at purchase.
+- No cancellations. A share not picked up is donated to Re:Source Cleveland's Pantry Program for
+  Newcomers; the app records a member's "donate this week" if they press it, and needs no
+  donation report.
+- Import of the ~300 existing members and any shares sold in the Square store, matched on Square
+  customer ID. Every current member has an email on file.
+
+### 6.3 Delivery (Phase 4)
+
+- A CSA add-on, charged weekly ($11.25 now, may rise), skippable, switchable with pickup.
+- A delivery zone (~10 mi, being re-evaluated) enforced at checkout and on address change.
+- No routing; export names and addresses. The Supper Club is never delivered.
+
+## 7. Core concepts
+
+### 7.1 Options
+
+Each product has **option types** (size, preference) and each type has **options**, each with a
+price in cents. A member picks exactly one option per type; the price is the sum of the chosen
+options. Signup shows one picker per type; the pick list counts each combination. A new dimension
+(e.g. heat: mild/spicy) is a new type in data, not code. Multi-select within a type is not
+supported.
+
+### 7.2 Calendar
+
+- **Pickup window:** Sunday and Monday. Members do not choose a day; they come either day.
+- **Cutoff:** Monday at midnight, Cleveland time, for the window that follows it. One setting row,
+  changeable by SQL. All changes and the weekly charge key off it.
+- **Closed weeks:** Thanksgiving, Christmas and New Year's weeks have no pickup and no charge.
+- **Moved windows:** holiday weeks may move to Saturday and Sunday.
+- **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen burned
+  down). Before cutoff nobody is charged; after cutoff payments are sorted out by hand.
+
+### 7.3 Payments and the ledger
+
+- Square is the processor and the customer directory. At signup a member is matched to an
+  existing Square customer by email; one match links, none creates, several links the most
+  recently updated and logs the rest for the farm to merge in Square.
+- **The first week is charged at signup**, for the first pickup whose cutoff has not passed. Every
+  later week is charged by the app's own run at cutoff, on the card on file.
+- **The ledger** is one row per member per pickup week, written before any charge, keyed unique on
+  member and week. It is the work queue for the charge run and the source of all history: paid,
+  skipped, closed, declined.
+- Every charge carries an idempotency key derived from its ledger row, so a retried or overlapping
+  run never charges twice. Money is integer cents.
+- **Declined card:** the box is still made. The member gets an automatic email to update their
+  card, is flagged for the admin, and saving a new card retries the declined weeks.
+- **Refunds and store credit are manual**, done by the farm in Square. The app builds neither.
+
+### 7.4 Cap
+
+A signup reserves a spot under the cap before any charge, confirms it after the charge succeeds,
+and releases it if the charge fails. A held spot with a payment attempt never expires on its own.
+Nobody is charged and then refused.
+
+### 7.5 Menus and translation
+
+- Menus are records in a library: a standard text and a vegan text. Admins find, duplicate and
+  edit them, and assign one to each pickup week, as far ahead as they like — on phone or desktop.
+- Admins get an email when a week coming up soon has no menu.
+- Each week the assigned menu goes out by email to members picking up that week and appears on a
+  public menu page.
+- Admin-written text is machine-translated once per menu per language and stored, each row marked
+  machine or human. A human translation is never overwritten by a re-translation.
+
+### 7.6 Member portal
+
+Subscription, upcoming weeks with skip and switch, history from the ledger, contact details and
+language, card update, cancel. Changing email re-verifies it, since email is the login and the
+Square match key.
+
+### 7.7 Multilingual
+
+All UI strings live in translation files from day one, enforced by a lint rule that fails on a bare
+string in a component. Each member has a language preference; transactional email goes out in it.
+Browser page translation is the fallback for anything else. English and Spanish first; the farm's
+real language list is an open question.
+
+### 7.8 Audit
+
+Every table is audited by Postgres trigger: table, row, operation, before and after, when, and who.
+The app sets the acting member or admin per transaction; SQL sessions record the database user.
+A test fails the build if any table lacks the trigger.
+
+### 7.9 Auth
+
+Passwordless: a 6-digit code by email, signed session cookie, rate-limited per IP with Cloudflare's
+client IP trusted only from Cloudflare's ranges (muster's pattern).
+
+### 7.10 Operations
+
+A health endpoint reports database reachability, the last charge run, any week pending past its
+cutoff, and the last backup — polled by sheepdog. Backups are Crunchy's plus an independent nightly
+dump, with a restore drill run once before the unattended period.
+
+### 7.11 Exports
+
+CSV: the member list, the weekly pick list (counts by option combination), weekly skips, a printable
+pickup list by last name (until check-in in Phase 5), and from Phase 4 delivery names and addresses.
+
+## 8. Phases
+
+Detail and points live in `docs/PROJECT_PLAN.md`.
+
+### 8.0 Phase 0 — Foundation
+Docs, the Next skeleton and gate, Postgres with the repository port, i18n, email, auth, admin role,
+audit triggers.
+
+### 8.1 Phase 1 — Supper Club on sale
+Seeded product and options, the Square port, signup with card and first charge, the cap, the
+confirmation email, the admin member list, production, Square cutover, go-live.
+
+### 8.2 Phase 2 — Runs without the developer
+The calendar, the charge run, cron and declines, the member portal, skip, switch, cancel, menu
+builder, menu email and page, menu translation, pick list, card update and retry, health endpoint,
+backups.
+
+### 8.3 Phase 3 — Product builder and CSA on sale
+Admin product builder, CSA seasons and shares sold up front, sales page, pickup locations, portal
+shares and donate-a-share, season exports, Square member and order import.
+
+### 8.4 Phase 4 — Delivery
+Geocoding port, zone check, weekly delivery charge on the Phase 2 run, skips, pickup↔delivery
+switch, delivery export, card add for imported members.
+
+### 8.5 Phase 5 — Pickup check-in
+An iPad screen: find a member by the first letters of their last name and check off their box.
+Big buttons, little text.
+
+### 8.6 Phase 6 — Reports
+Viewable reports, scoped once the farm says what Square does not already give them.
+
+## 9. Open questions
+
+1. Is the cutoff reading right: Monday midnight closes the following Sunday/Monday window?
+2. Does the signup charge always pay for the first pickup whose cutoff has not passed?
+3. Supper Club size names and prices (placeholders $50 / $80).
+4. The free gift: confirm it is dropped.
+5. Is the benefit week a closed week, and which weeks move to Saturday/Sunday?
+6. Which languages do members speak, ranked?
+7. Does Constant Contact stay for newsletters and recipes?
+8. Pickup location and hours for the Supper Club and the CSA.
+9. CSA share prices and size names; confirm fall is 6 weeks.
+10. Delivery zone size, and any cutoff for switching pickup↔delivery.
+
+## 10. Out of scope
+
+No phase above plans these. Ideas worth keeping are in `docs/FUTURE_IDEAS.md`.
+
+- Refunds and store credit in the app — manual in Square
+- Square Subscriptions API — the app runs its own charge loop
+- Delivery routing — export only
+- A free signup gift
+- Admin editing of public page copy
+- Multi-select options within one option type
+- SMS

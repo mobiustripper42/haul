@@ -13,7 +13,7 @@ Build-time version display, reads `process.env.NEXT_PUBLIC_APP_VERSION` + `proce
 Wiring:
 - `next.config.ts` (or `next.config.js`) forwards `npm_package_version` → `NEXT_PUBLIC_APP_VERSION`. Critical — without `NEXT_PUBLIC_`, client trees silently render `v0.0.0`.
 - Wire into login screen and footer.
-- Vercel sets `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` automatically. Local `npm run dev` outside Vercel omits the commit hash — that's intentional.
+- Vercel sets `NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA` automatically. A local dev server outside Vercel omits the commit hash — that's intentional.
 
 ```tsx
 import { VersionTag } from "@/components/VersionTag";

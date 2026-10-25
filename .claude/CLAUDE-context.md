@@ -1,168 +1,92 @@
-# [Project Name] — Project Context
+# Haul — Project Context
 
-Everything specific to **this** project. The `CLAUDE.md` shell reads this file at session start and treats it as authoritative for project-specific facts. Fill in every `[placeholder]`; delete sections that don't apply — a tool project with no database replaces Migration Protocol with `N/A`. Nothing here syncs from jig; it's yours to edit freely.
+Everything specific to **this** project. The `CLAUDE.md` shell reads this file at session start and treats it as authoritative for project-specific facts. Nothing here syncs from jig; it's yours to edit freely.
 
 ## What We're Building
 
-[One paragraph — what it replaces, who uses it, what it does.]
+A thin app on top of Square for Ohio City Farm (Cleveland): a weekly Supper Club meal subscription
+charged at a cutoff, then CSA shares, delivery, pickup check-in and reports. Square keeps the money
+and the customer directory; Haul owns cutoffs, skip and switch, the member portal, menus, pick lists
+and exports. "Haul" is internal only — the product is Ohio City Farm's. Full scope: `docs/SPEC.md`.
 
 Roles:
-- **Admin** — [what they manage]
-- **[Role 2]** — [what they do]
+- **Admin** — Lenny and Michael at the farm: members, menus, week closures, exports
+- **Member** — subscribes, pays, skips, switches, manages their own details and language
+- **Operator** — the developer, editing configuration through SQL and seeds
 
 ## Stack
 
-What this project is built with, and what it runs on. One line per layer; delete the rows that do
-not apply rather than writing `N/A` beside six of them.
+- **Web** — Next.js (App Router), one app with member and admin route groups
+- **Domain core** — framework-free TypeScript, consumed by Next (muster's pattern)
+- **Database** — Postgres: local in dev, Crunchy Bridge in production
+- **Hosting/target** — Vercel behind Cloudflare's proxy, at `members.ohiocityfarm.com`
+- **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
+- **Email** — Resend, behind a port
+- **Testing** — chosen in task 0.2
 
-- **[Layer]** — [choice, and the version if it matters]
-- **[Layer]** — [choice]
-- **Hosting/target** — [where it runs]
-- **Testing** — [what the test tooling is]
-
-## Core Data Model
-
-```
-[Entity relationships — e.g.:]
-
-things → sub_things → line_items
-              ↓
-        memberships (user × thing)
-```
+Why each was chosen: `docs/DECISIONS.md`.
 
 ## Commands
 
-Every command a session might need to run, spelled the way it should be typed.
-
-**Locally-pinned binaries are spelled `npm run <script>` or `./node_modules/.bin/<bin>`, never
-`npx`** — and the equivalent for whatever the toolchain is. `Bash(npx *)` is denied fleet-wide and
-`deny` beats `allow`, so no project can allowlist its way out: the same syntax that runs an
-installed dependency also fetches an arbitrary package off the network, and the command string
-cannot distinguish them. A doc that spells a denied command reads as sanctioned and fails as a
-permission refusal, which looks like the agent being difficult rather than the doc being stale.
+Locally-pinned binaries are spelled `npm run <script>` or `./node_modules/.bin/<bin>`, never `npx`.
 
 ```bash
-# Development
-[run it locally]
-[build it]
-[lint it]
-
 # The gate — what /kill-this runs before committing
-[the one command that must pass]
+npm run verify
 
-# Testing
-[full suite]
-[one file, during development]
+# Decision records
+npm run gen:decisions        # regenerate docs/DECISIONS.md after adding a record
+npm run check:decisions
 ```
 
-## Additional Docs
+Development, lint and test commands arrive with task 0.2.
 
-Project-specific docs beyond the shell's `## Key Docs`. jig ships three that are webapp-shaped and belong here rather than in the shell — keep the rows this project installed, delete the rest.
+## Additional Docs
 
 | File | Purpose |
 |------|---------|
 | `docs/BRAND.md` | Brand and visual direction |
 | `docs/USER_STORIES.md` | What each role does |
-| `docs/DEV_REFERENCE.md` | Deploy + review reference — `<VersionTag />` wiring, CHANGELOG format, phone PR-review notes |
+| `docs/DEV_REFERENCE.md` | Deploy + review reference |
+| `docs/FUTURE_IDEAS.md` | Ideas caught but not planned |
+| `docs/sources/` | The requirements, Lenny's answers and the market scan, verbatim |
 
 ## Workflow Mechanisms
 
-The shell's `## Micro Workflow` says what its two proof steps must achieve and names a slot for how. Fill each one. **These are slots, not overrides** — the shell states no default to correct, and nothing here should cite a step *number*: numbers move, and a stale cross-reference in an always-loaded file fails silently.
-
 | Slot | What it answers | This project |
 |---|---|---|
-| **Proof** | What counts as a check written before the change | `<what a check is, here>` |
-| **Proof command** | How to run the checks covering what you touched | `<the command>` |
-
-**The gate** (`npm run verify`, `cargo test`, …) is what `/kill-this` runs before committing — name it under `## Commands`, not here.
-
-**Every slot gets a real answer, including "none".** `Proof: none — no test runner in this repo yet` is checkable and can be argued with. A blank slot is indistinguishable from one nobody has thought about.
+| **Proof** | What counts as a check written before the change | none yet — no test runner until task 0.2; until then the doc checks in `npm run verify` are the only checks |
+| **Proof command** | How to run the checks covering what you touched | `npm run verify` until task 0.2 names a test command |
 
 ## Median gaps
 
-Where this repo would make a competent default do the wrong thing. The shell's `## Where this repo differs from the median` states the entry test; this is where the instances go.
-
-Not preferences — a preference belongs in the output style or a settings key, where it is applied rather than recalled. The test is whether someone doing the obvious correct thing would be wrong here.
-
 | Gap | Why the default is wrong here |
 |---|---|
-| `<the gap>` | `<what a competent default would assume>` |
-
-Starts empty. Add one line the first time an incident produces one.
+| Every screen is two designs, desktop and mobile, both first class | A competent default builds responsive-from-mobile and calls desktop done. Here a screen is not specced until both designs are named; tablet uses mobile |
+| Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the spec's Philosophy section names one (DEC-007) |
+| Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither (`docs/SPEC.md` §7.3) |
+| Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
 
 ## Blast-Radius Triggers
 
-Read by `/kill-this` Step 3.5. When a branch diff hits one of these, the skill runs `/security-review` locally. **Name paths, not categories** — "the money path" is unmatchable against a diff; `src/billing/**` is.
-
-If this section is absent the skill falls back to five generic triggers, which are better than nothing and worse than a real list — a generic trigger can't know that this project's payroll export is the dangerous file.
-
-| Trigger | Paths |
-|---|---|
-| Money moving | `<paths>` |
-| Money computed | `<paths>` |
-| Auth / capability URL | `<paths>` |
-| Data-changing migration | `<migrations containing drop / alter … type / update / delete — an additive add column does not trigger>` |
-
-**The test when a path isn't listed:** *does a number this code produces end up on someone's paycheck or invoice?* If yes it's the money path, whether or not a payment provider is anywhere near the diff. Add it the first time you notice, not the second.
+None yet — no code exists. The money paths arrive with task 1.2 (the Square port), task 1.4 (the
+signup charge) and task 2.2 (the charge run), and each of those tasks adds its paths here. Until
+then `/kill-this` uses its generic triggers.
 
 ## Migration Protocol (project)
 
-The migration **discipline** is in the shell and is universal: schema changes go through
-migrations, migrations are the source of truth, never edit an applied one, check for open work on
-the same tables first.
-
-This section holds **this project's toolchain** — the commands, and whatever guard stops a
-destructive one reaching production. Projects without a database: `N/A — no database.`
-
-- **Create a migration:** [command]
-- **Apply locally:** [command]
-- **Apply to the deployed environment:** [command, and who runs it]
-- **Regenerate types, if the stack has generated types:** [command]
-
-### Production write protection
-
-[How a destructive command is stopped from reaching production, and what it does NOT cover.]
-
-Two layers is the shape that has worked: a discipline (never point local tooling at production)
-and a mechanism that refuses the dangerous subcommands. State both, and state what the mechanism
-misses — a wrapper around one binary does not stop a direct database connection, and writing that
-down is what keeps the discipline load-bearing rather than assumed.
-
-## Post-promote checks
-
-What `/promote-production` runs after pushing `production`, to see the deploy land. Each check is
-one command that does its own waiting: it polls the host until the host reports the commit or tag
-just pushed, exits 0 when it does, and exits non-zero with a message when it gives up. Say where to
-look when it fails. Projects without a `production` branch, or that want no check: delete this
-section, and the skill reports the deploy as not checked.
-
-The command must be one the permission policy allows a session to run — `curl` is denied, so wrap
-the fetch in an `npm run` script.
-
-- [`npm run deploy:wait` — waits up to N minutes for the host to report the pushed commit. On failure: where the deploy log is.]
+Tooling is chosen in task 0.3, which fills this section. Production write protection is written in
+task 1.8.
 
 ## Conventions
 
-How this project is written — typing, structure, data fetching, auth, error handling, naming,
-testing layout. **Stack-specific, so this project owns them**: every webapp is not Next.js on
-Vercel, and a convention inherited by not deleting it was never chosen.
+- **Money** — integer cents everywhere, never floats
+- **Time** — cutoffs and pickup windows are computed in America/New_York
+- **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
+- **Audit** — every table carries the audit trigger; a test enforces it (task 0.8)
 
-Write what this project actually does, not what a template guessed.
-
-- **[Language/typing]** — [what]
-- **[Structure]** — [where things live, and the size at which you split them]
-- **[Error handling]** — [the contract: what a failure returns and where it surfaces]
-- **[Naming]** — [files, symbols, database columns, migrations]
-- **[Testing layout]** — [what runs where]
+The rest is set in tasks 0.2 and 0.3.
 
 ## Workflow Notes (project)
 
-Debugging gotchas specific to this project. The shell holds the universal rules; this is the local
-knowledge that would otherwise be rediscovered once a quarter.
-
-Start empty. Add one the first time something costs you twenty minutes and would have been a
-sentence — a stale process serving an old build, a tool that needs its environment loaded and one
-that does not, a config whose glob syntax is subtly wrong. Write the symptom first, because the
-symptom is what a future session will be looking at:
-
-- **[Symptom someone would actually see]** — [what is really happening, and the fix.]
+Start empty. Add one the first time something costs you twenty minutes.
