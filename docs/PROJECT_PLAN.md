@@ -15,6 +15,7 @@ All estimates from planning poker between Eric and Claude, 2026-10-24/25. Where 
 higher number won.
 Tests are baked into every task estimate — no separate testing tasks.
 Every screen is two designs, desktop and mobile, and the points include both.
+Hours for pricing, and how they were derived: `docs/ESTIMATE-2026-10-25.md` (a dated snapshot).
 
 ---
 
