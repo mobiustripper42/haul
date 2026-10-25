@@ -1,0 +1,108 @@
+# Agents and Skills
+
+Canonical specs for the shared roster. The shell's `## Session Skills` and `## Agents` tables are
+the summary a session reads; this is the detail.
+
+This file is installed byte-identical in every project, so it describes the roster and never one
+repo's progress through it. What ships is what appears here: a file in `.claude/skills/` with no
+entry is an unclassified file, which is the state this workflow keeps finding defects in.
+
+## Skills — nine
+
+| Skill | When | What |
+|-------|------|------|
+| `/its-alive` | Session start | Open the per-session file on the orphan `sessions` branch, read context, run the drift and permission-policy checks, recommend a task |
+| `/build-task` | A 3+ point task that changes behaviour, spec in the issue | Readback by `@test-writer`, then failing tests, then `@implementer` until they pass; the Lead locks the tests by committing them first, runs the proof itself, then `/kill-this`. Running it approves the spec. The spec template, `task-spec.md`, ships in the skill's folder |
+| `/kill-this` | Per task | Build check, commit, `@code-review`, open the PR with `closes #<issue>`, append a `## Task <N>` block. Step 3.5 reads Blast-Radius Triggers and runs `/security-review` when the diff hits one |
+| `/save-this` | Between tasks, before `/clear` | Replace the session file's Next Steps with the next task, open PRs, standing rules (word for word), the parking lot (nothing dropped unless closed) and a carry-over for the next task; push the `sessions` branch. The cleared context reads it back at the spec step |
+| `/its-dead` | Session end, once | Stamp `ended:`, tally points, display wall clock, close the session file. No time math, no version bump |
+| `/start-phase` | Phase start | Materialize the phase as GitHub Issues with `phase:N` and `points:X` labels |
+| `/retro` | Phase end | A one-screen retro: points, days and drift from issue labels, what happened, the operator's take, a one-paragraph @pm read. Marks `[x]`, writes `RETROSPECTIVES.md`, runs version bumps |
+| `/bump-major` | Breaking change | Major bump with a supplied rationale, CHANGELOG entry, tag on `main` |
+| `/promote-production` | Ship | ff-merge `main` → `production`, push, then wait for the project's post-promote checks to report the deploy landed. Projects with that branch only |
+
+### Not carried
+
+| Skill | Why |
+|-------|-----|
+| `read-the-tape` | ~$2 a session and produced little anyone could use. Its input — the `SessionEnd` capture hook — is removed |
+| `@workout` | Output was 20k characters nobody read |
+| `doc-consistency-check` | **0 invocations** across 60 retained transcripts, 2026-07-26 → 2026-08-26 |
+| `pause-this`, `restart-this` | Sat marked "review" through the whole first pass and were never resolved in either direction |
+
+## Agents — six
+
+| Agent | Model | When | Purpose |
+|-------|-------|------|---------|
+| `@architect` | Opus | Before design decisions, new dependencies, scope creep | Coherence against SPEC and the decision record |
+| `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
+| `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
+| `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
+| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion. Never writes production code |
+| `@implementer` | Sonnet | `/build-task`, after the tests | The smallest change that makes the tests pass. May not edit them; stops and reports a test it believes is wrong |
+
+The three reviewers are `context` class: they arrive as install-time starting points and each
+project owns its copy afterwards. They reason about a project's *substance*, so a good one is
+necessarily project-specific and cannot be derived from a template. The accepted cost is that a
+good idea emerging in one project's reviewer never auto-surfaces for backporting; harvesting it
+upstream is a deliberate act.
+
+`@pm` is `logic`, identical everywhere (DEC-J011). It holds no project substance — its facts come
+from the plan, the session files and the retro log — and as `context` it silently fell out of step
+with `/retro`. `@test-writer` and `@implementer` are `logic` for the same reason: each reads the
+project from the issue spec and the context file at run time.
+
+**Descriptions are project-agnostic.** An earlier generation carried `[Project]` in the
+`description:` frontmatter, filled in per install, which made every agent permanently differ from
+its template and forced the drift check to normalize that one line before comparing. There is no
+substitution step now, so the placeholder goes: "Post-commit code reviewer for this project."
+Nothing is lost, because the agent already reads project facts from the context file.
+
+### Not carried
+
+| Agent | Why |
+|-------|-----|
+| `@doc-consistency` | 1,450 words shipped into every project. **0 invocations in a month** |
+| `@ideas` | 1,138 words. **0 invocations in a month** — and its file was missing from the library's own `.claude/` from the day it was written, so `@ideas` never resolved there either |
+| `@tape-reader` | Read the tape, which is gone |
+
+**The test that produced those zeros is mechanical and reusable:** count invocations across
+retained transcripts. It beats judgment about what feels useful, and it works anywhere transcripts
+are kept. Zero is the meaningful number — `/retro` at 1 and `/promote-production` at 3 are low but
+plausible, because they fire at phase boundaries.
+
+## Output styles — one
+
+The style is one file, kept here at `.claude/output-styles/one-piece.md`, and no project holds a
+copy (DEC-J007). The class is `jig-only`: drift reports a project copy as NOT YOURS, and the fix
+is deletion. Every session on the machine reads jig's file through a symlink at
+`~/.claude/output-styles/one-piece.md`, so an edit here is live at the next session start with
+nothing to copy. Which style is **on** is `{ "outputStyle": "One piece" }` in
+`~/.claude/settings.json`, hand-edited once; the master defines no such key, so `settings-policy`
+neither checks nor writes one.
+
+Until 2026-09-18 both travelled — the file as `logic`, the key in the master — and a project-level
+`.claude/settings.json` beats the user-level one, so the machine default was never consulted in
+any installed repo. If a style does not take effect, look for the key or a stray file somewhere
+more specific first.
+
+| Style | What it adds |
+|-------|--------------|
+| `One piece` | One judgment per turn, ending at the fork. Every reply opens with a one-word tag — `Lookup.` `Action.` `Judgment.` `Summary.` — that commits to a shape before the reply exists, and closes with a numbered parking lot of every displaced thread, so a turn that overruns is countable rather than arguable and nothing raised is dropped. Revised three times in muster, v3 to v6 by its own numbering, before moving here |
+
+The machine default is set outside this repo and is not listed here — it is a preference, not part
+of the roster.
+
+**A style with no entry here is an unclassified file**, same as a skill. Nothing checks that
+automatically: `.claude/doc-check.json` defines roster comparisons for `skills` and `agents` only,
+and `check-docs.mjs` has no styles concept, so this table and the directory can drift apart
+silently. It is written down because the gate cannot.
+
+## Model selection
+
+Agents pin model and effort in frontmatter, fixed per agent rather than chosen per task. The rule
+is the cheapest model and effort that does the job at full quality (DEC-J016). `@architect` and
+`@test-writer` are `model: opus` — one judges designs, the other's tests define what correct means;
+the rest are `model: sonnet`. All six run `effort: high`, so they hold their level when the
+session default is `medium`. New agents start at `sonnet` and `high`. Aliases only, never a
+version: an alias resolves forward on its own, so no per-release edit is needed.

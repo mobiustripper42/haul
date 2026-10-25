@@ -1,0 +1,351 @@
+#!/usr/bin/env node
+// The dictionary gate. Makes invented vocabulary impossible rather than discouraged.
+//
+// The failure it exists to stop: one cron job called the reconciler, the sweeper, and a third
+// name, in a system where nobody could say what the job did. Synonym drift is not a style
+// problem — when a model has one concept it uses one name, so three names means there is no
+// fixed thing behind the word, and that is the shape fabrication takes in prose.
+//
+// Telling anyone to stop inventing terms has been tried. Only things that fail a build hold.
+//
+// SCOPE is prose in `docs/SPEC.md`, `docs/decisions/*.md` and `.claude/CLAUDE-context.md`. Not
+// code, not commit messages, not session logs, not the worksheets — those are noisy, and noise is
+// what kills gates. Fenced blocks, inline code spans and URLs are stripped before anything is
+// read: a backticked `payment_method_types` is code that happens to live in a markdown file.
+
+import { readFileSync, readdirSync, existsSync } from 'node:fs'
+import { load as parseYaml } from 'js-yaml'
+import { frozenRecords } from './lib/records.mjs'
+
+export const DICT = 'docs/dictionary.yml'
+export const BASELINE = 'docs/dictionary-baseline.txt'
+export const OUT = 'docs/DICTIONARY.md'
+const DECISIONS = 'docs/decisions'
+const CONFIG = `${DECISIONS}/_config.json`
+
+/** Rule 1's shape. Deliberately narrow — see `EXCLUDED` for why it cannot stand alone. */
+export const ACRONYM = /\b(?:[A-Z]{2,6}(?:-[A-Z0-9])?|[0-9][A-Z]{2,})\b/g
+
+/**
+ * Prose only. Everything here is code or a link wearing markdown.
+ *
+ * A fence is blanked character by character, keeping its newlines, because every finding's line
+ * number is counted in THIS text. Replacing a fence with one space deleted its lines, and every
+ * line after it came out short by the fence's height: sheepdog's sync worktree was pointed at a
+ * table rule and a blank line for words 38 lines further down (issue #77). Blanking to the newlines
+ * alone would join the words either side of a one-line fence into one the document never wrote.
+ */
+export const prose = (s) =>
+  s
+    .replace(/```[\s\S]*?```/g, (fence) => fence.replace(/[^\n]/g, ' '))
+    .replace(/`[^`\n]*`/g, ' ')
+    .replace(/\bhttps?:\/\/\S+/g, ' ')
+
+/**
+ * Three exclusions, measured before they were written rather than guessed at. Without them the
+ * rule fires 3,006 times on a corpus that is entirely grandfathered — 2,026 of those (67%) on
+ * things that are not vocabulary at all.
+ *
+ *  1. RECORD IDS — `DEC` matched inside every `DEC-107`, 1,713 times, because `(-[A-Z0-9])?`
+ *     eats the first digit of the number. Requirement ids (`REQ-CLAIM-1`) are the same class and
+ *     are worse: the pattern cannot even see them whole, splitting them into `REQ` and `CLAIM-1`.
+ *  2. DOC FILENAMES — `SPEC`, `CLAUDE`, `BRAND`. A filename is not a term.
+ *
+ *     `SKILL` joined the list on 2026-09-12, and the gap is worth recording because the list read
+ *     as complete. Every skill in this repo is defined in a `SKILL.md`, and no gated file had ever
+ *     written that path — the gated set talks about `.claude/skills/` as a directory rather than
+ *     naming a file inside it. The first decision record to cite one by
+ *     path (DEC-J006) was told `SKILL` is unregistered vocabulary. The dictionary's own rule says
+ *     not to register it — "registration is for a term with a specific local meaning that a reader
+ *     could otherwise guess wrong" — so the exemption is the right place and this is what the
+ *     clause above already intended.
+ *  3. ORDINARY WORDS SHOUTED FOR EMPHASIS — `**NOT**`, `**NEVER**`, `GET`, `DEAD`. House style
+ *     in this repo, 160 matches, and every one of them is English.
+ *
+ * The third one is FROZEN AT BASELINE, not computed live, and that is a correctness fix rather
+ * than an optimization. Deriving it from the current corpus meant writing `zqx` once in any
+ * prose file permanently exempted `ZQX` everywhere — the gate quietly widening its own
+ * exemption every time anyone wrote a lowercase word, with no record that it had. Frozen, the
+ * exemption is a committed list a person can read.
+ */
+export function excluded(token, families, shouted) {
+  if (/^(?:DEC|REQ)$/.test(token)) return true
+  if (families.some((f) => new RegExp(`^${f}(?:-[A-Z0-9])?$`).test(token))) return true
+  if (/^(?:SPEC|CLAUDE|BRAND|DECISIONS|README|AGENTS|DICTIONARY|CHANGELOG|SKILL)$/.test(token)) return true
+  return shouted.has(token.toUpperCase())
+}
+
+/** Multi-word alternates have to survive a hard wrap. This repo's prose wraps around 95 chars,
+ *  so `basis\npoints` is not hypothetical — and an alternate that goes dark at a line break is
+ *  an alternate that stops being enforced by the act of editing a paragraph. */
+export const altPattern = (alt) =>
+  new RegExp(`\\b${alt.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace(/\s+/g, '\\s+')}\\b`, 'gi')
+
+export function loadDictionary(path = DICT) {
+  if (!existsSync(path)) return { entries: [], errors: [`${path} does not exist`] }
+  let raw
+  try {
+    raw = parseYaml(readFileSync(path, 'utf8'))
+  } catch (e) {
+    // Without this, malformed YAML exits through a js-yaml stack trace rather than the
+    // per-entry messages every other failure in this file produces.
+    return { entries: [], errors: [`${path} is not valid YAML — ${String(e.message).split('\n')[0]}`] }
+  }
+  const errors = []
+  if (!Array.isArray(raw)) return { entries: [], errors: [`${path} must be a list of entries`] }
+
+  const seen = new Set()
+  for (const [i, e] of raw.entries()) {
+    const at = `${path} entry ${i + 1}${e?.term ? ` (${e.term})` : ''}`
+    if (!e || typeof e !== 'object') {
+      errors.push(`${at} — is not a block of keys`)
+      continue
+    }
+    for (const k of Object.keys(e)) {
+      if (!['term', 'says', 'not'].includes(k)) errors.push(`${at} — unknown key \`${k}\`. Three keys, no others`)
+    }
+    if (!e.term) errors.push(`${at} — no \`term\``)
+    if (!e.says) errors.push(`${at} — no \`says\`. A term with no definition registers nothing`)
+    else if (e.says.length > 160) errors.push(`${at} — \`says\` is ${e.says.length} characters, the limit is 160`)
+    if (e.not !== undefined && !Array.isArray(e.not)) errors.push(`${at} — \`not\` must be a list, even an empty one`)
+    if (e.term && seen.has(e.term.toLowerCase())) errors.push(`${at} — \`${e.term}\` is registered twice`)
+    if (e.term) seen.add(e.term.toLowerCase())
+  }
+  return { entries: raw.filter((e) => e?.term), errors }
+}
+
+/**
+ * Files the gate reads, in a stable order — minus any decision record the decisions baseline has
+ * frozen.
+ *
+ * FROZEN HAS TO MEAN FROZEN TO EVERY GATE, not just the one that wrote the baseline. A record
+ * listed there is one that editing fails the build over, so `check-decisions` skips the schema,
+ * the byte cap and the lead-in rule for it — an honest consequence of a file you are not allowed
+ * to change, rather than leniency. This gate knew none of that and applied its full rule set.
+ *
+ * The cost, measured in muster: registering one term with a forbidden alternate produced 13
+ * failures, 5 of them inside DEC-041, DEC-077 and DEC-145 — all frozen, one of them a record's own
+ * title. There is no compliant action for those five short of converting three records to schema
+ * v1 to register a single word.
+ *
+ * BOTH of this gate's rules demand an edit to the file they fire on, so the exclusion is
+ * whole-file rather than rule-by-rule. That is the issue's own test — skip any rule the reader
+ * cannot act on without converting the record — landing on all of them.
+ *
+ * Not specific to the dictionary, which is why the definition moved to a shared lib: this is the
+ * shape of ANY check applied to a corpus containing frozen records, and muster froze 149 of them.
+ */
+/**
+ * GATE WHAT THE PROJECT OWNS AND WHAT STATES ITS LANGUAGE. NEVER GATE A FILE THE PROJECT CANNOT
+ * EDIT. Both halves are load-bearing, and the set got each one wrong in a different direction.
+ *
+ * `CLAUDE.md` was here and is not a project's file: it is replaced wholesale on every sync and is
+ * byte-identical in every repo. A `not:` rule firing there has NO COMPLIANT ACTION — the project
+ * may not change the file, and jig's shell cannot be asked to respect one repo's domain sense of a
+ * word. Measured in sheepdog: registering `check` with `not: [test]` fired six times in
+ * `CLAUDE.md`, on `npm test` and on the shell's own "write it, run it, watch it fail". The
+ * baseline froze the count at six, so the next jig `CLAUDE.md` adding a seventh generic "test"
+ * would have turned sheepdog red over a word jig chose. Same shape as the frozen-record problem
+ * above: a rule whose only fix is an edit the reader is not allowed to make.
+ *
+ * `.claude/CLAUDE-context.md` was missing and is exactly what this gate is for. It is the OTHER
+ * always-loaded file, it is project-owned, and it is where a project states its vocabulary —
+ * sheepdog's uses `check` 21 times, `target` 15, `layer` 8. Swapping the two there turned a pass
+ * into three actionable findings.
+ *
+ * `docs/SPEC.md` stays: in an installed project it comes from `scaffold/docs/SPEC.md` and is the
+ * project's to edit.
+ *
+ * WHAT THIS GIVES UP, stated because it is a real cost and not an oversight: jig authors
+ * `CLAUDE.md` rather than receiving it, so in THIS repo it is editable and the rule above would
+ * admit it. Dropping it is right for the other eleven repos and loses acronym coverage on the
+ * largest always-loaded file here. Nothing else fills the gap — `check-context` and `check-docs`
+ * both read `CLAUDE.md`, but neither runs the unregistered-vocabulary rule. Re-gating it only in
+ * jig means branching a shipped script on whether it is running inside jig, which is a mechanism
+ * nobody has asked for yet; if the gap ever bites, that is the shape of the fix.
+ *
+ * A NAMED LIST RATHER THAN A CLASS LOOKUP, because a project has no registry to consult —
+ * `.claude/file-classes.yaml` is in `drift.mjs`'s `NOT_TEMPLATES` and never ships. So the rule
+ * above is the only thing standing between this list and the next shipped prose file joining it:
+ * `docs/AGENTS.md`, `CHEATSHEET.md` and `VELOCITY_AND_POKER_GUIDE.md` would each fail the same way
+ * `CLAUDE.md` did.
+ *
+ * `[DECISIONS]` and not `docs/decisions/archive` — consistent with the sweep below, which has
+ * never recursed either. `check-decisions` uses `RECORD_DIRS` for the same concept and DOES read
+ * archive, so the two differ on purpose: each looks at what its own gate reads. A gate that starts
+ * reading `archive/` has to widen both, and copying this call verbatim would leak archived frozen
+ * records straight through.
+ */
+export function gatedFiles(frozen = frozenRecords([DECISIONS])) {
+  const files = ['docs/SPEC.md', '.claude/CLAUDE-context.md'].filter(existsSync)
+  if (existsSync(DECISIONS)) {
+    for (const f of readdirSync(DECISIONS).filter((f) => f.endsWith('.md')).sort()) {
+      const path = `${DECISIONS}/${f}`
+      if (!frozen.has(path)) files.push(path)
+    }
+  }
+  return files
+}
+
+/** `docs/DICTIONARY.md` as the YAML says it should be. Lives here rather than in the generator
+ *  so `check` can compare without importing it — the generator depends on this file, never the
+ *  other way round. */
+export function render(entries) {
+  const sorted = [...entries].sort((a, b) => a.term.toLowerCase().localeCompare(b.term.toLowerCase()))
+  const out = [
+    '# Dictionary',
+    '',
+    `**Generated from \`${DICT}\` by \`npm run gen:dictionary\` — do not edit this file.**`,
+    '',
+    'One name per concept. A term listed under **not** fails the build, naming its replacement.',
+    'Vocabulary already in the docs when the gate shipped is grandfathered and does not have to',
+    'be registered — but registering it is always welcome, and registering one is how its',
+    'alternates start being caught.',
+    '',
+    `${sorted.length} terms.`,
+    '',
+    '| Term | Says | Not |',
+    '|---|---|---|',
+  ]
+  for (const e of sorted) {
+    const not = (e.not ?? []).length ? (e.not ?? []).map((n) => `\`${n}\``).join(', ') : '—'
+    out.push(`| **${e.term}** | ${e.says} | ${not} |`)
+  }
+  out.push('')
+  return out.join('\n')
+}
+
+/**
+ * @param {object} [inject] test seam — a dictionary path and an explicit file list. Without it,
+ *   `check()` reads the live corpus, which is what the gate does. With it, a test can state a
+ *   behaviour that this repo's corpus happens not to exhibit: jig registers no forbidden
+ *   alternates, so "an alternate warns rather than fails" was unobservable and the test asserting
+ *   it had been quietly failing against a corpus it was never written for.
+ */
+export function check(inject) {
+  const failures = []
+  const warnings = []
+  const fail = (where, msg) => failures.push(`${where} — ${msg}`)
+
+  const { entries, errors } = loadDictionary(inject?.dict ?? DICT)
+  for (const e of errors) failures.push(e)
+
+  const families = existsSync(CONFIG) ? Object.keys(JSON.parse(readFileSync(CONFIG, 'utf8')).families ?? {}) : []
+  const frozen = inject?.frozen ?? frozenRecords([DECISIONS])
+  const files = inject?.files ?? gatedFiles(frozen)
+  // Filtered here as well as in `gatedFiles`, because an injected file list bypasses that entirely
+  // — and a test that injects a frozen path is asserting the exclusion, not the file list.
+  const gated = files.filter((f) => !frozen.has(f))
+  const texts = new Map(gated.map((f) => [f, prose(readFileSync(f, 'utf8'))]))
+
+  // Grandfathered vocabulary — what was already in these files the day this shipped. The point
+  // of the gate is NEW words, so the backlog is suppressed. Registration stays available: a
+  // grandfathered term may be registered at any time, and doing so is always welcome.
+  const lines = existsSync(BASELINE)
+    ? readFileSync(BASELINE, 'utf8')
+        .split('\n')
+        .map((l) => l.trim())
+        .filter((l) => l && !l.startsWith('#'))
+    : []
+  const baseline = new Set(lines.filter((l) => !l.includes(':')))
+  const shouted = new Set(lines.filter((l) => l.startsWith('shout:')).map((l) => l.slice(6).toUpperCase()))
+  // `alt:<alternate>@<file>=<count>` — the count is what makes grandfathering a SNAPSHOT rather
+  // than an amnesty. Warning on the bare alternate meant `not: [Stripe Elements]` never enforced
+  // again anywhere, including in a document written tomorrow, which is half the feature gone.
+  const altBaseline = new Map()
+  for (const l of lines) {
+    const m = l.match(/^alt:(.+)@(.+)=(\d+)$/)
+    if (m) altBaseline.set(`${m[1]}@${m[2]}`, Number(m[3]))
+  }
+
+  const registered = new Map(entries.map((e) => [e.term.toLowerCase(), e]))
+
+  // ── `says` bottoms out in ordinary English ──────────────────────────────────
+  // A definition may not lean on another piece of jargon unless that jargon is itself
+  // registered. This is the recursion that stops a dictionary defining one unknown with another.
+  for (const e of entries) {
+    for (const m of (e.says ?? '').matchAll(ACRONYM)) {
+      const t = m[0]
+      if (excluded(t, families, shouted)) continue
+      if (registered.has(t.toLowerCase())) continue
+      // EXACT, not substring. `"mmc".includes("mc")` forgave an unrelated `MC` inside MMC's own
+      // definition — a hole in the one guard whose job is stopping a definition leaning on jargon.
+      if (t.toLowerCase() === e.term.toLowerCase()) continue // a term may say its own name
+      fail(DICT, `\`${e.term}\`'s definition leans on \`${t}\`, which is not registered`)
+    }
+  }
+
+  for (const [file, text] of texts) {
+    // ── Rule 2: forbidden alternates ──────────────────────────────────────────
+    // Occurrences up to the baseline COUNT for this file are warned; anything beyond it fails.
+    // So the three that were already here stay a cleanup list, and the fourth — typed today,
+    // in this file or any other — is a red build.
+    for (const e of entries) {
+      for (const alt of e.not ?? []) {
+        const allowed = altBaseline.get(`${alt.toLowerCase()}@${file}`) ?? 0
+        let seen = 0
+        for (const m of text.matchAll(altPattern(alt))) {
+          seen++
+          const line = text.slice(0, m.index).split('\n').length
+          const msg = `\`${m[0].replace(/\s+/g, ' ')}\` is a forbidden alternate — the registered term is \`${e.term}\``
+          if (seen <= allowed) warnings.push(`${file}:${line} — ${msg}`)
+          else fail(`${file}:${line}`, msg)
+        }
+      }
+    }
+
+    // ── Rule 1: acronyms must be registered ───────────────────────────────────
+    for (const m of text.matchAll(ACRONYM)) {
+      const t = m[0]
+      if (excluded(t, families, shouted)) continue
+      if (registered.has(t.toLowerCase())) continue
+      if (baseline.has(t)) continue // grandfathered
+      const line = text.slice(0, m.index).split('\n').length
+      fail(`${file}:${line}`, `\`${t}\` is not registered — add it to ${DICT} or use ordinary English`)
+    }
+  }
+
+  // ── Freshness ───────────────────────────────────────────────────────────────
+  // The same posture `check:decisions` takes with its index: the generator is a manual step,
+  // and this is what makes forgetting it a red build rather than a markdown file that quietly
+  // stops describing the YAML underneath it.
+  if (!errors.length) {
+    const want = render(entries)
+    const have = existsSync(OUT) ? readFileSync(OUT, 'utf8') : null
+    if (have === null) fail(OUT, 'does not exist — run `npm run gen:dictionary`')
+    else if (have !== want) fail(OUT, 'is stale — run `npm run gen:dictionary`')
+  }
+
+  // `frozen.size` is how many frozen records EXIST, not how many this call skipped. The two are
+  // the same for every real invocation — which is the only path that reaches the ✓ line — and come
+  // apart only when a test injects `files`. Said here because the difference is invisible at the
+  // call site and a reader building on this return value would not expect it.
+  return { failures, warnings, frozen: frozen.size }
+}
+
+// `endsWith` on argv[1], matching the five sibling gates. The URL comparison this replaces
+// failed whenever the checkout path needed escaping — in a directory with a space, the script
+// printed nothing and exited 0, which `npm run verify` reads as a pass. jig installs into
+// arbitrary project checkouts, so that is a realistic path, not a hypothetical one.
+if (process.argv[1]?.endsWith('check-dictionary.mjs')) {
+  const frozenSet = frozenRecords([DECISIONS])
+  const { failures, warnings, frozen } = check({ frozen: frozenSet })
+  for (const w of warnings) console.log(`  ⚠ ${w}`)
+  if (warnings.length) {
+    console.log(`\n⚠ dictionary — ${warnings.length} grandfathered alternate${warnings.length === 1 ? '' : 's'} to clean up when convenient\n`)
+  }
+  if (failures.length) {
+    console.error(`✗ dictionary — ${failures.length} problem${failures.length === 1 ? '' : 's'}:\n`)
+    for (const f of failures) console.error(`  ${f}`)
+    console.error('')
+    process.exit(1)
+  }
+  const { entries } = loadDictionary()
+  // The frozen count is printed, never implied. A gate that silently skips files reads exactly
+  // like a gate with nothing to find, and the whole reason to skip them is that somebody decided
+  // they are unreachable — a decision worth seeing every run.
+  const fz = frozen ? `, ${frozen} frozen record${frozen === 1 ? '' : 's'} not gated` : ''
+  // `gatedFiles()` bare would re-run the whole baseline parse and directory sweep `check()` just
+  // did. Harmless in one process and pure waste at muster's 149 records.
+  console.log(`✓ dictionary — ${entries.length} terms registered, ${gatedFiles(frozenSet).length} files gated${fz}, no unregistered vocabulary`)
+}

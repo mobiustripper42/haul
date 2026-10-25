@@ -1,0 +1,21 @@
+{
+  "name": "haul",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "gen:decisions": "node scripts/gen-decisions-index.mjs",
+    "gen:dictionary": "node scripts/gen-dictionary.mjs",
+    "gen:decisions-baseline": "node scripts/gen-decisions-baseline.mjs",
+    "gen:dictionary-baseline": "node scripts/gen-dictionary-baseline.mjs",
+    "check:decisions": "node scripts/check-decisions.mjs",
+    "check:dictionary": "node scripts/check-dictionary.mjs",
+    "check:context": "node scripts/check-context.mjs",
+    "check:docs": "node scripts/check-docs.mjs",
+    "check:denied": "node scripts/check-denied.mjs",
+    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run check:denied"
+  },
+  "devDependencies": {
+    "js-yaml": "^5.4.1"
+  }
+}
