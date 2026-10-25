@@ -3,8 +3,9 @@
 **Start date:** 2026-10-24
 **Target:** Supper Club on sale mid-December 2026 (Phase 1); running unattended before the first
 January 2027 pickup (Phase 2).
-**Critical path:** Square production credentials and DNS for `members.ohiocityfarm.com` from the
-farm — both have lead time code cannot make up.
+**Critical path:** from the farm — Square production credentials, DNS for
+`members.ohiocityfarm.com`, their existing legal text, and whether a member can hold several
+subscriptions (spec open questions 13 and 17). Each has lead time code cannot make up.
 
 ---
 
@@ -49,18 +50,18 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only |
+| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only. **Blocked on spec open question 13** |
 | 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
-| 1.3 | Public signup page | 5 | Pickers generated from option types; recurring-charge wording from 1.12 |
-| 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6; consent checkbox and its record |
+| 1.3 | Public signup page | 5 | Pickers generated from option types; placeholder recurring-charge wording until 1.12 |
+| 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
 | 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
 | 1.6 | Signup confirmation email | 2 | |
 | 1.7 | Admin member list and CSV | 3 | Cards on mobile |
-| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's |
+| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18 |
 | 1.9 | Square production cutover and smoke test | 2 | Fold candidate with 1.10 |
 | 1.10 | Wix link and go-live checklist | 2 | |
-| 1.11 | Spanish translation pass: machine translation, review, missing-key check | 2 | Goal is translatable; Spanish is the one language filled in |
-| 1.12 | Consent wording; terms and privacy pages | 2 | Farm's existing legal text (spec open question 17) |
+| 1.12 | Consent wording; terms and privacy pages; legal footer in the email template | 2 | Farm's existing legal text (spec open question 17). Built before 1.11 so its strings get translated |
+| 1.11 | Spanish translation pass: machine translation, review, missing-key check in the gate | 2 | Goal is translatable; Spanish is the one language filled in. Later tasks add Spanish for their own strings |
 
 **Phase 1 total: 47 pts**
 
@@ -86,12 +87,12 @@ pickup.
 | 2.8 | Menu builder: library, duplicate, edit, assign; missing-menu email | 8 | Lenny builds on his phone |
 | 2.9 | Weekly menu email and public menu page | 5 | Unsubscribe link and the preference it sets |
 | 2.10 | Pick list, skips CSV, printable pickup list | 3 | |
-| 2.11 | Health endpoint for sheepdog | 3 | Sheepdog itself is out of this plan; includes runtime-error alerts |
+| 2.11 | Health endpoint for sheepdog | 3 | Sheepdog itself is out of this plan; includes runtime-error alerts (recipient and channel decided at spec) |
 | 2.12 | Backups and witnessed restore drill | 3 | |
 | 2.13 | Update card and retry declined weeks | 8 | |
 | 2.14 | Menu translation: port, provider, stored translations | 5 | |
 | 2.15 | Admin handbook for Lenny, with phone screenshots | 3 | Written last; linked from the admin area |
-| 2.16 | Rehearsal week in production with test members | 3 | Needs one real Monday cutoff in late December; fixes it finds are extra |
+| 2.16 | Rehearsal week in production with test members | 3 | After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
 
 **Phase 2 total: 75 pts**
 

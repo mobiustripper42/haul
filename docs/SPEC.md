@@ -31,7 +31,7 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
   unless a screen is named in a phase below. Admin screens exist only where the farm must act
   without the developer (the menu builder, closing a week, and from Phase 3 the product builder).
 - **Language-light for members who are not native English speakers.** Every UI string is
-  translated; nothing is hard-coded.
+  translatable — in translation files, never hard-coded (§7.13 says which languages are filled in).
 
 ## 3. Target
 
@@ -41,8 +41,9 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 - **CSA summer shares:** sales open ~Jan 1, season starts ~June 1. Until Phase 3 ships, the farm
   sells shares in its Square store and Phase 3 imports them; the sooner Phase 3 lands, the fewer to
   import.
-- **Critical path:** Square production credentials and DNS for `members.ohiocityfarm.com` from the
-  farm. Both have lead time the code cannot make up.
+- **Critical path:** from the farm — Square production credentials, DNS for
+  `members.ohiocityfarm.com`, their existing legal text (open question 17), and an answer to open
+  question 13. Each has lead time the code cannot make up.
 
 ## 4. Stack
 
@@ -132,8 +133,9 @@ and 4.
 - **The first week is charged at signup**, for the first pickup on or after the product's
   **first-pickup date** (a seeded setting; the Supper Club starts in January 2027) whose cutoff has
   not passed. Every later week is charged by the app's own run at cutoff, on the card on file.
-- **The ledger** is one row per member per pickup week, written before any charge, keyed unique on
-  member and week. It is the work queue for the charge run and the source of all history: paid,
+- **The ledger** is one row per subscription per pickup week, written before any charge, keyed
+  unique on subscription and week (whether a member can hold several subscriptions is open
+  question 13). It is the work queue for the charge run and the source of all history: paid,
   skipped, closed, declined.
 - Every charge carries an idempotency key derived from its ledger row, so a retried or overlapping
   run never charges twice. Money is integer cents.
@@ -187,29 +189,36 @@ client IP trusted only from Cloudflare's ranges (muster's pattern).
 A health endpoint reports database reachability, the last charge run, any week pending past its
 cutoff, and the last backup — polled by sheepdog. Backups are Crunchy's plus an independent nightly
 dump, with a restore drill run once before the unattended period. Runtime errors on member pages
-alert as well. One full rehearsal week runs in production before the first real January charge.
+alert the developer too; the recipient and channel are decided when task 2.11 is specced.
 
-Service accounts (Vercel, Crunchy, Resend, Cloudflare, the Square developer app): **proposed** that
-the farm owns and pays for all of them, so the farm can keep running without the developer. Being
-put to the farm in the proposal; not yet agreed.
+One full rehearsal week (task 2.16) runs in production after the rest of Phase 2 is done and
+before the first real January charge, on a real Monday cutoff. Which Monday depends on open
+questions 1, 2 and 5. Test members are charged real money and refunded by hand in Square.
 
-### 7.12 Consent and legal pages
-
-Signup states the recurring charge plainly next to the pay button — amount now, amount weekly at
-cutoff, until cancelled, and how to cancel — behind a required checkbox, and records what the member
-agreed to and when. Terms and privacy pages use the farm's existing legal text, are linked from
-signup and every email, and exist in both designs and both languages.
-
-### 7.13 Languages
-
-The Phase 0–2 goal is **translatable**: every string in translation files. Spanish is the one
-language filled in, by a machine pass and a review at the end of Phase 1. A check fails when a key
-is missing from a language file. Further languages are files plus a review.
+Who owns the service accounts is open question 18.
 
 ### 7.11 Exports
 
 CSV: the member list, the weekly pick list (counts by option combination), weekly skips, a printable
 pickup list by last name (until check-in in Phase 5), and from Phase 4 delivery names and addresses.
+
+### 7.12 Consent and legal pages
+
+Signup states the recurring charge plainly next to the pay button — amount now, amount weekly at
+cutoff, until cancelled, and how to cancel — behind a required checkbox, and records what the member
+agreed to and when. Terms and privacy pages use the farm's existing legal text, have desktop and
+mobile designs, and exist in English and Spanish; the farm reviews the Spanish legal text. Every
+email carries a footer linking them, built into the shared email template.
+
+Only the weekly menu email can be unsubscribed from; the preference is a field on the member.
+Sign-in codes, signup confirmation and declined-card notices always send.
+
+### 7.13 Languages
+
+The Phase 0–2 goal is **translatable**: every string in translation files. Spanish is the one
+language filled in — a machine pass and a review at task 1.11, and from then on each task adds the
+Spanish for its own new strings. A check in the gate fails when a key is missing from a language
+file, from task 1.11 onward. Further languages are files plus a review.
 
 ## 8. Phases
 
@@ -268,8 +277,13 @@ Viewable reports, scoped once the farm says what Square does not already give th
 15. Price changes: do existing subscribers keep their price, or move to the new one with notice?
     Settle before the real prices are seeded.
 16. Email sender: which farm address sends, which inbox receives replies, and who adds the email
-    authentication records (DMARC) to the farm's DNS?
-17. The farm's existing terms of service and privacy policy text, for task 1.12.
+    authentication records (SPF, DKIM, DMARC) to the farm's DNS?
+17. The farm's existing terms of service and privacy policy text, for task 1.12. Does it promise
+    members deletion or export of their data? If so, deferring deletion (Out of scope) may not
+    hold — and the audit log keeps before/after rows, so it needs an @architect pass.
+18. Service accounts (Vercel, Crunchy, Resend, Cloudflare, the Square developer app): proposed
+    that the farm owns and pays for all of them, so it can keep running without the developer.
+    Going to the farm in Eric's proposal; not yet agreed. Task 1.8 creates the accounts.
 
 ## 10. Out of scope
 
