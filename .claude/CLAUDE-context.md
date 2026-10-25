@@ -45,8 +45,8 @@ Development, lint and test commands arrive with task 0.2.
 
 | File | Purpose |
 |------|---------|
-| `docs/BRAND.md` | Brand and visual direction |
-| `docs/USER_STORIES.md` | What each role does |
+| `docs/BRAND.md` | Brand and visual direction — still the jig template, not yet written |
+| `docs/USER_STORIES.md` | What each role does — still the jig template, not yet written |
 | `docs/DEV_REFERENCE.md` | Deploy + review reference |
 | `docs/FUTURE_IDEAS.md` | Ideas caught but not planned |
 | `docs/sources/` | The requirements, Lenny's answers and the market scan, verbatim |
@@ -63,7 +63,7 @@ Development, lint and test commands arrive with task 0.2.
 | Gap | Why the default is wrong here |
 |---|---|
 | Every screen is two designs, desktop and mobile, both first class | A competent default builds responsive-from-mobile and calls desktop done. Here a screen is not specced until both designs are named; tablet uses mobile |
-| Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the spec's Philosophy section names one (DEC-007) |
+| Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the farm must act without the developer (DEC-007) |
 | Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither (`docs/SPEC.md` §7.3) |
 | Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
 

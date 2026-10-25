@@ -14,7 +14,7 @@ revisit_if: "Audit volume becomes a storage or performance problem, or a table g
 
 ## DEC-009: Every table is audited by a Postgres trigger
 
-Bolting audit onto muster's reservations afterwards was a large task, so it goes in from Phase 0.
+Bolting audit onto muster's reservations afterwards was a large task (Eric, 2026-10-25), so it goes in from Phase 0.
 Triggers rather than application code because configuration is edited with SQL (DEC-007): an
 app-level audit would never see those edits. The app sets the acting member or admin per
 transaction; a psql session records the database user. The coverage test is the mechanism — a rule

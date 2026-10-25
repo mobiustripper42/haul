@@ -48,7 +48,7 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff setting | 5 | SQL and seeds only |
+| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only |
 | 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
 | 1.3 | Public signup page | 5 | Pickers generated from option types |
 | 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6 |
@@ -124,7 +124,7 @@ One row per phase, written by `/retro` at close.
 
 ## Estimation Poker — Standing Disagreements
 
-None. Every disagreement on 2026-10-24/25 was settled by taking the higher number.
+None unresolved. Disagreements on 2026-10-24/25 were settled by taking the higher number.
 
 ---
 
@@ -143,5 +143,4 @@ At the end of every phase:
 | Task | Why it's cuttable | Move to |
 |------|------------------|---------|
 | 2.14 | Menus can go out in English with browser translation as the fallback | Phase 3 |
-| 2.13 | Lenny can chase declined cards by hand; the box is made regardless | Phase 3 |
 | 2.10 printable list | The pick-list counts are what the kitchen needs; the binder can survive a few weeks | Phase 3 |

@@ -20,5 +20,5 @@ Render and Fly would co-locate a worker with the database, which only matters if
 needs an always-on process; it does not (DEC-003). Neon was left by muster for cost and Supabase
 declined as a platform (muster's records 177 and 020, in the sibling repo).
 
-Crunchy's self-signed root is config, applied inside every connection constructor — muster learned
-that putting it on the caller misses callers.
+Crunchy's self-signed root is config, applied inside every connection constructor — muster's record 177
+found that putting it on the caller misses callers.

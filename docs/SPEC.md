@@ -82,18 +82,20 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
 ### 6.2 CSA (Phase 3)
 
-- Seasons are data (summer 20 weeks, fall 6 weeks; a winter season must fit without code). Two
+- Seasons are data (summer 20 weeks, fall 6 weeks to be confirmed; a winter season must fit
+  without code). Two
   sizes per season, sold up front as one purchase, capped per product.
 - A sales page with CSA information and photos. Account created or login required at purchase.
 - No cancellations. A share not picked up is donated to Re:Source Cleveland's Pantry Program for
   Newcomers; the app records a member's "donate this week" if they press it, and needs no
   donation report.
 - Import of the ~300 existing members and any shares sold in the Square store, matched on Square
-  customer ID. Every current member has an email on file.
+  customer ID. Lenny says every member who has bought online has an email on file.
 
 ### 6.3 Delivery (Phase 4)
 
-- A CSA add-on, charged weekly ($11.25 now, may rise), skippable, switchable with pickup.
+- A CSA add-on, charged weekly ($11.25 now, may rise), skippable, cancellable any time until
+  cutoff, switchable with pickup.
 - A delivery zone (~10 mi, being re-evaluated) enforced at checkout and on address change.
 - No routing; export names and addresses. The Supper Club is never delivered.
 
@@ -109,10 +111,15 @@ supported.
 
 ### 7.2 Calendar
 
+This section is the Supper Club's calendar. CSA and delivery windows and cutoffs are set in Phases 3
+and 4.
+
 - **Pickup window:** Sunday and Monday. Members do not choose a day; they come either day.
-- **Cutoff:** Monday at midnight, Cleveland time, for the window that follows it. One setting row,
-  changeable by SQL. All changes and the weekly charge key off it.
-- **Closed weeks:** Thanksgiving, Christmas and New Year's weeks have no pickup and no charge.
+- **Cutoff:** the end of Monday (midnight going into Tuesday), Cleveland time — Lenny orders on
+  Tuesdays. One setting row, changeable by SQL. All changes and the weekly charge key off it.
+  Which window a cutoff closes is open question 1.
+- **Closed weeks:** the weekend after Thanksgiving, Christmas and New Year's have no pickup and no
+  charge. Closed weeks are seeded by their window's date.
 - **Moved windows:** holiday weeks may move to Saturday and Sunday.
 - **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen burned
   down). Before cutoff nobody is charged; after cutoff payments are sorted out by hand.
@@ -122,8 +129,9 @@ supported.
 - Square is the processor and the customer directory. At signup a member is matched to an
   existing Square customer by email; one match links, none creates, several links the most
   recently updated and logs the rest for the farm to merge in Square.
-- **The first week is charged at signup**, for the first pickup whose cutoff has not passed. Every
-  later week is charged by the app's own run at cutoff, on the card on file.
+- **The first week is charged at signup**, for the first pickup on or after the product's
+  **first-pickup date** (a seeded setting; the Supper Club starts in January 2027) whose cutoff has
+  not passed. Every later week is charged by the app's own run at cutoff, on the card on file.
 - **The ledger** is one row per member per pickup week, written before any charge, keyed unique on
   member and week. It is the work queue for the charge run and the source of all history: paid,
   skipped, closed, declined.
@@ -143,6 +151,7 @@ Nobody is charged and then refused.
 
 - Menus are records in a library: a standard text and a vegan text. Admins find, duplicate and
   edit them, and assign one to each pickup week, as far ahead as they like — on phone or desktop.
+  (The library replaces the requirements' one-record-per-date model; Eric, 2026-10-25.)
 - Admins get an email when a week coming up soon has no menu.
 - Each week the assigned menu goes out by email to members picking up that week and appears on a
   public menu page.
@@ -219,8 +228,10 @@ Viewable reports, scoped once the farm says what Square does not already give th
 ## 9. Open questions
 
 1. Is the cutoff reading right: Monday midnight closes the following Sunday/Monday window?
-2. Does the signup charge always pay for the first pickup whose cutoff has not passed?
-3. Supper Club size names and prices (placeholders $50 / $80).
+2. Does the signup charge always pay for the first pickup on or after the first-pickup date whose
+   cutoff has not passed? And the exact first-pickup date in January 2027.
+3. Supper Club size names and prices. Working values: 2 person $50, 3–4 person $80 (Eric's
+   working sizes; the requirements said "feeds 2" and "feeds 4–5" at ~$79).
 4. The free gift: confirm it is dropped.
 5. Is the benefit week a closed week, and which weeks move to Saturday/Sunday?
 6. Which languages do members speak, ranked?
@@ -228,6 +239,10 @@ Viewable reports, scoped once the farm says what Square does not already give th
 8. Pickup location and hours for the Supper Club and the CSA.
 9. CSA share prices and size names; confirm fall is 6 weeks.
 10. Delivery zone size, and any cutoff for switching pickup↔delivery.
+11. Between going on sale (Phase 1) and the portal (Phase 2), how does a member cancel or change a
+    signup? Proposed: by emailing Lenny, applied by the developer in SQL.
+12. DNS: does the farm move `ohiocityfarm.com`'s nameservers to Cloudflare (the zone also carries
+    the Wix site and email), or is a single-subdomain setup possible on their plan?
 
 ## 10. Out of scope
 
@@ -236,7 +251,7 @@ No phase above plans these. Ideas worth keeping are in `docs/FUTURE_IDEAS.md`.
 - Refunds and store credit in the app — manual in Square
 - Square Subscriptions API — the app runs its own charge loop
 - Delivery routing — export only
-- A free signup gift
+- A free signup gift — dropped pending open question 4
 - Admin editing of public page copy
 - Multi-select options within one option type
 - SMS
