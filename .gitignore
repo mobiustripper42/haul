@@ -1,2 +1,4 @@
 .sessions-worktree/
 node_modules/
+.next/
+*.tsbuildinfo

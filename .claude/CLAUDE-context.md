@@ -22,7 +22,10 @@ Roles:
 - **Hosting/target** — Vercel behind Cloudflare's proxy, at `members.ohiocityfarm.com`
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
-- **Testing** — chosen in task 0.2
+- **Testing** — Vitest (DEC-011)
+- **Bundler** — webpack, not Turbopack (DEC-012)
+- **Dev environment** — mill-dev, over Tailscale. The app is on port 4000, because muster holds
+  3000, 3200 and 3300 on mill-dev and centerline 3500 and 3600. Open it at `http://mill-dev:4000`
 
 Why each was chosen: `docs/DECISIONS.md`.
 
@@ -34,12 +37,17 @@ Locally-pinned binaries are spelled `npm run <script>` or `./node_modules/.bin/<
 # The gate — what /kill-this runs before committing
 npm run verify
 
+npm run dev                  # next dev --webpack on port 4000
+npm run build                # next build --webpack
+npm run typecheck            # the core, under tsconfig.core.json
+npm run typecheck:app        # the app, under tsconfig.json
+npm run lint                 # app/, src/, the project's tests and configs — not jig's scripts/
+npm run test                 # vitest run; add a path to run one file
+
 # Decision records
 npm run gen:decisions        # regenerate docs/DECISIONS.md after adding a record
 npm run check:decisions
 ```
-
-Development, lint and test commands arrive with task 0.2.
 
 ## Additional Docs
 
@@ -55,8 +63,8 @@ Development, lint and test commands arrive with task 0.2.
 
 | Slot | What it answers | This project |
 |---|---|---|
-| **Proof** | What counts as a check written before the change | none yet — no test runner until task 0.2; until then the doc checks in `npm run verify` are the only checks |
-| **Proof command** | How to run the checks covering what you touched | `npm run verify` until task 0.2 names a test command |
+| **Proof** | What counts as a check written before the change | A Vitest test, colocated as `*.test.ts` beside the code (`scripts/*.test.mjs` for repo tooling), naming the acceptance criterion it covers |
+| **Proof command** | How to run the checks covering what you touched | `npm run test -- <path>` |
 
 ## Median gaps
 
@@ -69,7 +77,7 @@ Development, lint and test commands arrive with task 0.2.
 
 ## Blast-Radius Triggers
 
-None yet — no code exists. The money paths arrive with task 1.2 (the Square port), task 1.4 (the
+None yet — no money path exists. The money paths arrive with task 1.2 (the Square port), task 1.4 (the
 signup charge) and task 2.2 (the charge run), and each of those tasks adds its paths here. Until
 then `/kill-this` uses its generic triggers.
 
@@ -85,7 +93,9 @@ task 1.8.
 - **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
 - **Audit** — every table carries the audit trigger; a test enforces it (task 0.8)
 
-The rest is set in tasks 0.2 and 0.3.
+- **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
+
+The rest is set in task 0.3.
 
 ## Workflow Notes (project)
 
