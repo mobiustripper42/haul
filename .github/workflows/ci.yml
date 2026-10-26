@@ -9,9 +9,13 @@ on:
   push:
     branches: [main]
 
+permissions:
+  contents: read
+
 jobs:
   verify:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
 
     services:
       # The job's steps don't start until this passes its health check, so a Postgres that fails

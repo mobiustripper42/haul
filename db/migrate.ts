@@ -40,7 +40,8 @@ export async function migrate(url: string = DEFAULT_DATABASE_URL, dir: string = 
         await client.query("commit");
         applied.push(file);
       } catch (e) {
-        await client.query("rollback");
+        // A rollback that fails too (the connection died) must not replace the migration's error.
+        await client.query("rollback").catch(() => undefined);
         throw e;
       }
     }
@@ -50,9 +51,10 @@ export async function migrate(url: string = DEFAULT_DATABASE_URL, dir: string = 
   return applied;
 }
 
-// CLI: `tsx db/migrate.ts [url]`
+// CLI: `tsx db/migrate.ts [url]`. Deliberately not DATABASE_URL: with a production URL exported in
+// the shell, `npm run db:migrate` would migrate production unprompted. Write protection is task 1.8.
 if (process.argv[1] && fileURLToPath(import.meta.url) === process.argv[1]) {
-  migrate(process.argv[2] ?? process.env.DATABASE_URL ?? DEFAULT_DATABASE_URL)
+  migrate(process.argv[2] ?? DEFAULT_DATABASE_URL)
     .then((applied) => console.log(applied.length ? `Applied: ${applied.join(", ")}` : "Up to date."))
     .catch((e) => {
       console.error(e);

@@ -47,6 +47,16 @@ describe("AC2 — any other host gets verified TLS, and the URL cannot weaken it
     expect(config.ssl).toEqual(TRUST);
     expect(config.connectionString).not.toMatch(/sslmode|no-verify/);
   });
+
+  // pg-connection-string lets a `host` query parameter override the URL's authority host, so a
+  // local authority can still send `pg` to a remote server; any such parameter counts as non-local.
+  it.each([
+    "postgres://haul:haul@localhost:5434/haul_dev?host=db.example.com",
+    "postgres://haul:haul@127.0.0.1:5434/haul_dev?hostaddr=203.0.113.5",
+    "postgres://haul:haul@[::1]:5434/haul_dev?host=localhost",
+  ])("AC2: a local authority host with a host or hostaddr query parameter still gets verified TLS: %s", (url) => {
+    expect(pgConnectionConfig(url).ssl).toEqual(TRUST);
+  });
 });
 
 describe("AC3 — the explicit escape hatch, and failing closed", () => {

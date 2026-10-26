@@ -23,6 +23,9 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
  */
 const SSL_PARAMS = ["sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "ssl"];
 
+/** Query parameters `pg-connection-string` lets replace the URL's authority host. */
+const OVERRIDE_HOST_PARAMS = ["host", "hostaddr"];
+
 const TRUST: DbSslConfig = { ca: [...tls.rootCertificates], rejectUnauthorized: true };
 
 /**
@@ -46,13 +49,19 @@ export function pgConnectionConfig(url: string): { connectionString: string; ssl
   for (const param of SSL_PARAMS) parsed.searchParams.delete(param);
   const connectionString = parsed.toString();
 
-  const plain = LOCAL_HOSTS.has(parsed.hostname) || sslmode === "disable";
+  // `pg-connection-string` lets these override the authority host, so a URL carrying either is not local.
+  const overridesHost = OVERRIDE_HOST_PARAMS.some((param) => parsed.searchParams.has(param));
+  const plain = (LOCAL_HOSTS.has(parsed.hostname) && !overridesHost) || sslmode === "disable";
   return plain ? { connectionString } : { connectionString, ssl: TRUST };
 }
 
 /** `extra` carries options such as `connectionTimeoutMillis`, never TLS. */
 export function createPool(url: string, extra: Omit<pg.PoolConfig, "connectionString" | "ssl"> = {}): pg.Pool {
-  return new pg.Pool({ ...extra, ...pgConnectionConfig(url) });
+  const pool = new pg.Pool({ ...extra, ...pgConnectionConfig(url) });
+  // Without a listener, an idle client dropped by the server is an uncaught exception that kills the process.
+  // Log the message only: the error object can carry the connection string, and its password.
+  pool.on("error", (err) => console.error(`postgres pool: idle client error: ${err.message}`));
+  return pool;
 }
 
 export function createClient(url: string, extra: Omit<pg.ClientConfig, "connectionString" | "ssl"> = {}): pg.Client {
