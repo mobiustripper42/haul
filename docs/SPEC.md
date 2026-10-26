@@ -1,7 +1,7 @@
 # Haul — Product Specification
 
-Haul is the internal name: repo, folders, dev docs. Members and the farm see only Ohio City Farm's
-Supper Club and CSA management tool; "Haul" never appears in the product.
+Haul is the internal name: repo, folders, dev docs. Members and the farm see only the **OCF Member
+Portal**, Ohio City Farm's Supper Club and CSA tool; "Haul" never appears in the product.
 
 Sources this spec was written from, kept verbatim in `docs/sources/`:
 `2026-10-23-requirements.md` (the Oct 23 meeting, Lenny's notes, follow-up decisions),
@@ -14,7 +14,7 @@ current.
 Ohio City Farm (Cleveland) sells a weekly meal subscription (the Supper Club) and seasonal CSA
 shares. Today it runs on a paper binder at pickup and email to staff for every change. Haul is a
 thin app on top of Square: Square keeps the money, the customer directory and the in-person POS;
-Haul owns what Square cannot do — cutoff-based weekly charging, skip and switch, the member portal,
+Haul owns what Square cannot do — cutoff-based weekly charging, skip and switch, members' account pages,
 menus, pick lists and exports. It is linked from the farm's Wix site, which stays.
 
 Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
@@ -35,12 +35,14 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
 ## 3. Target
 
-- **Supper Club on sale:** mid-December 2026 (end of Phase 1).
+- **Supper Club on sale:** December 1, 2026 (end of Phase 1).
 - **Supper Club runs unattended:** before the first January 2027 pickup (end of Phase 2). The weekly
   charge, skips, menus and pick lists must work without the developer present.
 - **CSA summer shares:** sales open ~Jan 1, season starts ~June 1. Until Phase 3 ships, the farm
   sells shares in its Square store and Phase 3 imports them; the sooner Phase 3 lands, the fewer to
   import.
+- **Every CSA function:** CSA sales, delivery, pickup check-in and reports (Phases 3–6) by May 1,
+  2027.
 - **Critical path:** from the farm — Square production credentials, DNS for
   `members.ohiocityfarm.com`, their existing legal text (open question 17), and an answer to open
   question 13. Each has lead time the code cannot make up.
@@ -68,7 +70,7 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
 - **Member** — subscribes, pays, skips, switches, manages their own details and language.
 - **Admin** — Lenny (Farm Store and Kitchen Coordinator) and Michael. Sees members, builds menus,
-  closes weeks, exports lists. Stored as a role, not a flag, so more roles can come later.
+  closes weeks, exports lists, cancels for a member. Stored as a role, not a flag, so more roles can come later.
 - **Operator** — the developer, editing configuration through SQL and seeds.
 
 ## 6. Products
@@ -97,8 +99,8 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
 ### 6.3 Delivery (Phase 4)
 
-- A CSA add-on, charged weekly ($11.25 now, may rise), skippable, cancellable any time until
-  cutoff, switchable with pickup.
+- A CSA add-on, charged weekly ($11.25 now, may rise), skippable and switchable with pickup, each
+  until cutoff. Dropping delivery is switching to pickup.
 - A delivery zone (~10 mi, being re-evaluated) enforced at checkout and on address change.
 - No routing; export names and addresses. The Supper Club is never delivered.
 
@@ -124,8 +126,11 @@ and 4.
 - **Closed weeks:** the weekend after Thanksgiving, Christmas and New Year's have no pickup and no
   charge. Closed weeks are seeded by their window's date.
 - **Moved windows:** holiday weeks may move to Saturday and Sunday.
-- **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen burned
-  down). Before cutoff nobody is charged; after cutoff payments are sorted out by hand.
+- **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen flooded).
+  Before cutoff nobody is charged. After cutoff, every member charged for that week gets a **week
+  credit**: the next week they take is made and not charged. A credit is counted in boxes, not
+  dollars — a box is a box, whatever that week's price or the member's size (V1). A skipped week
+  doesn't use it; a member who cancels with a credit unused is refunded in Square by hand (DEC-005).
 
 ### 7.3 Payments and the ledger
 
@@ -142,8 +147,11 @@ and 4.
 - Every charge carries an idempotency key derived from its ledger row, so a retried or overlapping
   run never charges twice. Money is integer cents.
 - **Declined card:** the box is still made. The member gets an automatic email to update their
-  card, is flagged for the admin, and saving a new card retries the declined weeks.
-- **Refunds and store credit are manual**, done by the farm in Square. The app builds neither.
+  card, is flagged for the admin, and saving a new card retries the declined weeks. A declined
+  subscription keeps running, week after week, until the member or an admin cancels it; nothing
+  cancels it automatically.
+- **Refunds and store credit are manual**, done by the farm in Square. The app builds neither. A
+  week closed after its cutoff is made good with a week credit (§7.2), which is not store credit.
 
 ### 7.4 Cap
 
@@ -162,11 +170,11 @@ Nobody is charged and then refused.
 - Admin-written text is machine-translated once per menu per language and stored, each row marked
   machine or human. A human translation is never overwritten by a re-translation.
 
-### 7.6 Member portal
+### 7.6 Account pages
 
-Subscription, upcoming weeks with skip and switch, history from the ledger, contact details and
-language, card update, cancel. Changing email re-verifies it, since email is the login and the
-Square match key.
+A member's own pages: subscription, upcoming weeks with skip and switch, history from the ledger,
+contact details and language, card update, cancel. Changing email re-verifies it, since email is
+the login and the Square match key. An admin can run the same cancel for a member.
 
 ### 7.7 Multilingual
 
@@ -195,7 +203,10 @@ alert the developer too; the recipient and channel are decided when task 2.11 is
 
 One full rehearsal week (task 2.16) runs in production after the rest of Phase 2 is done and
 before the first real January charge, on a real Monday cutoff. Which Monday depends on open
-questions 1, 2 and 5. Test members are charged real money and refunded by hand in Square.
+questions 1, 2 and 5. Its members are real accounts — Eric, Annabel, Lenny — whose subscriptions
+start that week, signed up through the real signup page. They are charged real money, refunded by
+hand in Square, and cancel through the real cancel or stay on. No test flag: nothing in the database
+is fake, and Lenny knows not to make those boxes.
 
 Who owns the service accounts is open question 18.
 
@@ -236,13 +247,13 @@ confirmation email, the admin member list, production, Square cutover, go-live, 
 consent wording and legal pages.
 
 ### 8.2 Phase 2 — Runs without the developer
-The calendar, the charge run, cron and declines, the member portal, skip, switch, cancel, menu
+The calendar, the charge run, cron and declines, account pages, skip, switch, cancel, menu
 builder, menu email and page, menu translation, pick list, card update and retry, health endpoint,
 backups, the admin handbook, and a rehearsal week in production.
 
 ### 8.3 Phase 3 — Product builder and CSA on sale
-Admin product builder, CSA seasons and shares sold up front, sales page, pickup locations, portal
-shares and donate-a-share, season exports, Square member and order import.
+Admin product builder, CSA seasons and shares sold up front, sales page, pickup locations,
+shares and donate-a-share in the account pages, season exports, Square member and order import.
 
 ### 8.4 Phase 4 — Delivery
 Geocoding port, zone check, weekly delivery charge on the Phase 2 run, skips, pickup↔delivery
@@ -269,8 +280,8 @@ Viewable reports, scoped once the farm says what Square does not already give th
 8. Pickup location and hours for the Supper Club and the CSA.
 9. CSA share prices and size names; confirm fall is 6 weeks.
 10. Delivery zone size, and any cutoff for switching pickup↔delivery.
-11. Between going on sale (Phase 1) and the portal (Phase 2), how does a member cancel or change a
-    signup? Proposed: by emailing Lenny, applied by the developer in SQL.
+11. *Answered 2026-10-26:* between going on sale (Phase 1) and the account pages (Phase 2), a
+    member cancels or changes a signup by calling Lenny; the developer applies it in SQL.
 12. DNS: does the farm move `ohiocityfarm.com`'s nameservers to Cloudflare (the zone also carries
     the Wix site and email), or is a single-subdomain setup possible on their plan?
 13. **Blocks task 1.1.** One Supper Club subscription per member, or several (a household taking

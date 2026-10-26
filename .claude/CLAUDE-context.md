@@ -6,7 +6,7 @@ Everything specific to **this** project. The `CLAUDE.md` shell reads this file a
 
 A thin app on top of Square for Ohio City Farm (Cleveland): a weekly Supper Club meal subscription
 charged at a cutoff, then CSA shares, delivery, pickup check-in and reports. Square keeps the money
-and the customer directory; Haul owns cutoffs, skip and switch, the member portal, menus, pick lists
+and the customer directory; Haul owns cutoffs, skip and switch, members' account pages, menus, pick lists
 and exports. "Haul" is internal only — the product is Ohio City Farm's. Full scope: `docs/SPEC.md`.
 
 Roles:
@@ -80,7 +80,7 @@ npm run check:decisions
 |---|---|
 | Every screen is two designs, desktop and mobile, both first class | A competent default builds responsive-from-mobile and calls desktop done. Here a screen is not specced until both designs are named; tablet uses mobile |
 | Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the farm must act without the developer (DEC-007) |
-| Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither (`docs/SPEC.md` §7.3) |
+| Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither, and a week closed after its cutoff is a week credit, not a refund (DEC-005; `docs/SPEC.md` §7.3) |
 | Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
 
 ## Blast-Radius Triggers

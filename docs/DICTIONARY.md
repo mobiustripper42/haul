@@ -7,7 +7,7 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-20 terms.
+21 terms.
 
 | Term | Says | Not |
 |---|---|---|
@@ -22,6 +22,7 @@ alternates start being caught.
 | **DNS** | the internet's address book, which turns a name like members.ohiocityfarm.com into a server address | — |
 | **ID** | a unique identifier for one record | — |
 | **IP** | the numeric network address a request comes from | — |
+| **OCF** | Ohio City Farm, the Cleveland farm this app is built for; its public name for the app is the OCF Member Portal | — |
 | **POS** | point of sale — the farm's in-person checkout terminal and iPad | — |
 | **SDK** | a code library a vendor ships so other programs can use its service | — |
 | **SMS** | a text message to a phone | — |
