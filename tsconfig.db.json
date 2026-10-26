@@ -1,0 +1,8 @@
+{
+  // Scripts profile: the db/ scripts (the migration runner and its tools), under the core's own
+  // compiler options, inherited rather than restated so db/ cannot drift from the core it imports.
+  // Nothing else names db/: tsconfig.core.json includes src only, tsconfig.json includes app.
+  "extends": "./tsconfig.core.json",
+  "include": ["db"],
+  "exclude": ["node_modules", ".next"]
+}
