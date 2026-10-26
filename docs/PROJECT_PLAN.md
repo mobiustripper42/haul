@@ -29,14 +29,14 @@ translation, email, auth, the admin guard and audit.
 |---|------|--------|-------|
 | 0.1 | Scaffold commit, spec, context, plan, future ideas, first decision records | 3 | [#4](https://github.com/mobiustripper42/haul/issues/4) |
 | 0.2 | Next skeleton, framework-free core, the gate | 3 | [#5](https://github.com/mobiustripper42/haul/issues/5) · Muster's tsconfig split and `@core/*` alias; check whether webpack is still needed |
-| 0.3 | Local Postgres, migrations, repository port with in-memory and Postgres adapters | 5 | [#6](https://github.com/mobiustripper42/haul/issues/6) · Contract test runs both adapters; TLS inside the constructor |
+| 0.3 | Local Postgres, migrations, repository port with in-memory and Postgres adapters; CI | 8 | [#6](https://github.com/mobiustripper42/haul/issues/6) · Contract test runs both adapters; TLS inside the constructor. CI runs the gate against a Postgres service; repo goes public for the Actions minutes. Re-pointed from 5 on 2026-10-26 |
 | 0.4 | i18n: translation files, language resolution, Spanish proof page | 3 | [#7](https://github.com/mobiustripper42/haul/issues/7) · Lint rule fails on a bare string |
 | 0.5 | Email port: fake and Resend adapters, templates through i18n | 2 | [#8](https://github.com/mobiustripper42/haul/issues/8) · Fold candidate with 0.6 |
-| 0.6 | Email-code auth: 6-digit code, session, rate limit | 3 | [#9](https://github.com/mobiustripper42/haul/issues/9) · Ported from muster |
+| 0.6 | Email-code auth: 6-digit code, session, rate limit | 5 | [#9](https://github.com/mobiustripper42/haul/issues/9) · Ported from muster. Brings in Playwright, desktop and 375px projects from the start (DEC-008); the full e2e run is CI only. Re-pointed from 3 on 2026-10-26 |
 | 0.7 | Admin role and guarded admin area | 3 | [#10](https://github.com/mobiustripper42/haul/issues/10) · Tests: signed out, member, expired session |
 | 0.8 | Audit by trigger on every table | 5 | [#11](https://github.com/mobiustripper42/haul/issues/11) · **@architect pass.** Test fails if a table lacks the trigger |
 
-**Phase 0 total: 27 pts**
+**Phase 0 total: 32 pts**
 
 **Ejection point:** the environment is trustworthy. Nothing user-facing exists yet.
 
