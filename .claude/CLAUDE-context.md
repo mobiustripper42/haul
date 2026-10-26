@@ -6,7 +6,7 @@ Everything specific to **this** project. The `CLAUDE.md` shell reads this file a
 
 A thin app on top of Square for Ohio City Farm (Cleveland): a weekly Supper Club meal subscription
 charged at a cutoff, then CSA shares, delivery, pickup check-in and reports. Square keeps the money
-and the customer directory; Haul owns cutoffs, skip and switch, the member portal, menus, pick lists
+and the customer directory; Haul owns cutoffs, skip and switch, members' account pages, menus, pick lists
 and exports. "Haul" is internal only — the product is Ohio City Farm's. Full scope: `docs/SPEC.md`.
 
 Roles:

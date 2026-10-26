@@ -1,8 +1,8 @@
 # Haul — Project Plan
 
 **Start date:** 2026-10-24
-**Target:** Supper Club on sale mid-December 2026 (Phase 1); running unattended before the first
-January 2027 pickup (Phase 2).
+**Target:** Supper Club on sale December 1, 2026 (Phase 1); running unattended before the first
+January 2027 pickup (Phase 2); every CSA function by May 1, 2027 (Phases 3–6).
 **Critical path:** from the farm — Square production credentials, DNS for
 `members.ohiocityfarm.com`, their existing legal text, and whether a member can hold several
 subscriptions (spec open questions 13 and 17). Each has lead time code cannot make up.
@@ -46,7 +46,7 @@ translation, email, auth, the admin guard and audit.
 
 ## Phase 1: Supper Club on sale
 
-A member can sign up, pay for their first week and hold one of the ~50 spots. Due mid-December.
+A member can sign up, pay for their first week and hold one of the ~50 spots. Due December 1, 2026.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
@@ -77,13 +77,13 @@ pickup.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure | 8 | |
+| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | Week credit added and re-pointed from 8 on 2026-10-26 (DEC-015); split at spec |
 | 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13 |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | |
-| 2.4 | Member portal: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
+| 2.4 | Account pages: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
 | 2.5 | Skip one or more weeks | 3 | Cutoff enforced on the server |
 | 2.6 | Switch size or preference | 3 | |
-| 2.7 | Cancel | 2 | |
+| 2.7 | Cancel, by the member or by an admin for them | 4 | Admin cancel runs the member's cancel and keeps the ledger; a declined subscription is never cancelled automatically. Re-pointed from 2 on 2026-10-26 |
 | 2.8 | Menu builder: library, duplicate, edit, assign; missing-menu email | 8 | Lenny builds on his phone |
 | 2.9 | Weekly menu email and public menu page | 5 | Unsubscribe link and the preference it sets |
 | 2.10 | Pick list, skips CSV, printable pickup list | 3 | |
@@ -92,9 +92,9 @@ pickup.
 | 2.13 | Update card and retry declined weeks | 8 | |
 | 2.14 | Menu translation: port, provider, stored translations | 5 | |
 | 2.15 | Admin handbook for Lenny, with phone screenshots | 3 | Written last; linked from the admin area |
-| 2.16 | Rehearsal week in production with test members | 3 | After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
+| 2.16 | Rehearsal week in production with test members; test flag on members | 5 | The flag keeps test members off the member list, exports and reports, and marks them on the pick list (spec §7.10). Re-pointed from 3 on 2026-10-26. After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
 
-**Phase 2 total: 75 pts**
+**Phase 2 total: 84 pts**
 
 **Ejection point:** a January week runs end to end — menu out, charges in, pick list ready — with
 nobody touching it.
@@ -103,10 +103,13 @@ nobody touching it.
 
 ## Phases 3–6 (proposal level, not estimated)
 
+All four are due by May 1, 2027 — every CSA function, ahead of the ~June 1 season start.
+
 - **Phase 3 — Product builder and CSA on sale.** Admin product builder, CSA seasons, shares sold up
-  front, sales page, pickup locations, portal shares and donate-a-share, season exports, Square
-  member and order import. As soon as possible after Phase 2: summer shares go on sale ~Jan 1.
-- **Phase 4 — Delivery.** Target ~June 1, or handled by hand at first.
+  front, sales page, pickup locations, shares and donate-a-share in the account pages, season
+  exports, Square member and order import. As soon as possible after Phase 2: summer shares go on
+  sale ~Jan 1.
+- **Phase 4 — Delivery.**
 - **Phase 5 — Pickup check-in.** iPad, last-name lookup.
 - **Phase 6 — Reports.**
 

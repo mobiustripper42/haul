@@ -3,12 +3,13 @@ schema: 1
 id: DEC-005
 title: "Refunds and store credit are manual, in Square"
 topic: "Payments"
-status: "active"
+status: "superseded"
 date: "2026-10-25"
 ruling: "Haul builds no refund or store-credit flow. The farm refunds in Square's dashboard, including weeks closed after their cutoff."
 claims:
   - kind: "spec"
     target: "§7.3"
+superseded_by: DEC-015
 revisit_if: "Manual refunds become a weekly chore for the farm, or skip-to-credit is pulled out of future ideas"
 ---
 
