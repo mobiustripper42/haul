@@ -130,7 +130,7 @@ and 4.
   Before cutoff nobody is charged. After cutoff, every member charged for that week gets a **week
   credit**: the next week they take is made and not charged. A credit is counted in boxes, not
   dollars — a box is a box, whatever that week's price or the member's size (V1). A skipped week
-  doesn't use it; a member who cancels with a credit unused is refunded in Square by hand (DEC-015).
+  doesn't use it; a member who cancels with a credit unused is refunded in Square by hand (DEC-005).
 
 ### 7.3 Payments and the ledger
 

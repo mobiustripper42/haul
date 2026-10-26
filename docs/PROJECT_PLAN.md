@@ -77,7 +77,7 @@ pickup.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | Week credit added and re-pointed from 8 on 2026-10-26 (DEC-015); split at spec |
+| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | Week credit added and re-pointed from 8 on 2026-10-26 (DEC-005); split at spec |
 | 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13 |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | |
 | 2.4 | Account pages: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
