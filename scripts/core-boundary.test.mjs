@@ -24,6 +24,7 @@ describe("AC3 — lint keeps the framework out of src/", () => {
     'import { createRoot } from "react-dom/client";',
     'import Page from "../app/page";',
     'import Page from "@/app/page";',
+    'import Page from "../../app/page.js";',
   ])("fails in src/: %s", async (line) => {
     expect(await ruleIds(`${line}\nexport {};\n`, "src/boundary-probe.ts")).toContain("no-restricted-imports");
   });
@@ -33,6 +34,12 @@ describe("AC3 — lint keeps the framework out of src/", () => {
     'import { useState } from "react";',
   ])("passes in app/: %s", async (line) => {
     expect(await ruleIds(`${line}\nexport {};\n`, "app/boundary-probe.ts")).not.toContain("no-restricted-imports");
+  });
+
+  it("passes in src/ for a package whose name ends in /app", async () => {
+    expect(await ruleIds('import x from "firebase/app";\nexport { x };\n', "src/boundary-probe.ts")).not.toContain(
+      "no-restricted-imports",
+    );
   });
 });
 

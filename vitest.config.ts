@@ -1,3 +1,4 @@
+import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
@@ -5,7 +6,7 @@ export default defineConfig({
     alias: {
       // Mirrors tsconfig.json's `paths` (`@core/* → ./src/*`), so a test can import an app/ module
       // that reaches the core.
-      "@core": new URL("./src", import.meta.url).pathname,
+      "@core": fileURLToPath(new URL("./src", import.meta.url)),
     },
   },
   test: {

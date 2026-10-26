@@ -12,5 +12,6 @@ const usd = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" 
 
 /** Formats integer cents as US dollars: 1234 → "$12.34". The locale parameter arrives with i18n. */
 export function formatUsd(cents: number): string {
-  return usd.format(assertCents(cents) / 100);
+  // `+ 0` turns -0 into 0, which Intl would otherwise print as "-$0.00".
+  return usd.format((assertCents(cents) + 0) / 100);
 }

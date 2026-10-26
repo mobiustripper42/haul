@@ -21,6 +21,7 @@ describe("AC2 — formatUsd", () => {
   it.each([
     [1234, "$12.34"],
     [0, "$0.00"],
+    [-0, "$0.00"],
     [-500, "-$5.00"],
     [100000, "$1,000.00"],
   ])("formats %d cents as %s", (cents, expected) => {

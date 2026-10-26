@@ -22,7 +22,9 @@ export default tseslint.config(
               message: "The core under src/ is framework-free (DEC-001).",
             },
             {
-              group: ["**/app", "**/app/*", "@/app", "@/app/*"],
+              // Relative paths only, so a package whose name ends in /app (firebase/app) is not
+              // caught. A dynamic import() is not caught either; that gap is accepted.
+              group: ["./**/app", "./**/app/*", "../**/app", "../**/app/*", "@/app", "@/app/*"],
               message: "The core under src/ may not import the app (DEC-001).",
             },
           ],
