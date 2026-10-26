@@ -23,6 +23,8 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-002 — Cloudflare's proxy sits in front of Vercel
 - DEC-003 — Vercel Cron drives every scheduled run, and every run is idempotent
 - DEC-010 — Outside services sit behind ports with fakes; real adapters are chosen late
+- DEC-011 — Vitest and ESLint; the gate type-checks, lints, tests and builds
+- DEC-012 — Dev and build run on webpack, not Turbopack
 
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff

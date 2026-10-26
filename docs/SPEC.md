@@ -58,9 +58,11 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 - **Email** — Resend, behind an email port.
 - **Translation** — a machine-translation provider behind a translation port, chosen at task 2.14.
 - **Domain** — `members.ohiocityfarm.com`.
-- **Dev environment** — mill-dev; local Postgres.
+- **Dev environment** — mill-dev; local Postgres. The dev server is on port 4000. Lenny previews
+  through a Tailscale share of mill-dev (one user).
 - **Monitoring** — sheepdog (a separate project) polls Haul's health endpoint.
-- **Testing** — chosen in task 0.2.
+- **Testing** — Vitest; the gate is `npm run verify`.
+- **Bundler** — webpack, not Turbopack, for the core's `.js` imports.
 
 ## 5. Roles
 

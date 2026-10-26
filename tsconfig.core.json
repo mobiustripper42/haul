@@ -1,0 +1,25 @@
+{
+  // Domain-core profile: the framework-free core under src/ is strict ESM / NodeNext with .js
+  // import extensions. `npm run typecheck` uses this; the Next app has its own profile in
+  // tsconfig.json, and the two never share one — that is what keeps the core portable.
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "noEmit": true,
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+    "verbatimModuleSyntax": true
+  },
+  "include": ["src"],
+  "exclude": ["node_modules", "app", ".next"]
+}

@@ -4,6 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
+    "dev": "next dev -p 4000 --webpack",
+    "build": "next build --webpack",
+    "typecheck": "tsc -p tsconfig.core.json",
+    "typecheck:app": "tsc -p tsconfig.json",
+    "lint": "eslint app src scripts/*.test.mjs *.config.ts *.config.mjs",
+    "test": "vitest run",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
     "gen:dictionary": "node scripts/gen-dictionary.mjs",
     "gen:decisions-baseline": "node scripts/gen-decisions-baseline.mjs",
@@ -13,9 +19,22 @@
     "check:context": "node scripts/check-context.mjs",
     "check:docs": "node scripts/check-docs.mjs",
     "check:denied": "node scripts/check-denied.mjs",
-    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run check:denied"
+    "verify": "npm run check:decisions && npm run check:dictionary && npm run check:context && npm run check:docs && npm run check:denied && npm run typecheck && npm run typecheck:app && npm run lint && npm run test && npm run build"
   },
   "devDependencies": {
-    "js-yaml": "^5.4.1"
+    "@eslint/js": "^9.39.5",
+    "@types/node": "^22.20.5",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "eslint": "^9.39.5",
+    "js-yaml": "^5.4.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0",
+    "vitest": "^5.0.5"
+  },
+  "dependencies": {
+    "next": "^16.4.3",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
   }
 }
