@@ -70,7 +70,7 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 
 - **Member** — subscribes, pays, skips, switches, manages their own details and language.
 - **Admin** — Lenny (Farm Store and Kitchen Coordinator) and Michael. Sees members, builds menus,
-  closes weeks, exports lists. Stored as a role, not a flag, so more roles can come later.
+  closes weeks, exports lists, cancels for a member. Stored as a role, not a flag, so more roles can come later.
 - **Operator** — the developer, editing configuration through SQL and seeds.
 
 ## 6. Products
