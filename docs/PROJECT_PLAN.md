@@ -92,9 +92,9 @@ pickup.
 | 2.13 | Update card and retry declined weeks | 8 | |
 | 2.14 | Menu translation: port, provider, stored translations | 5 | |
 | 2.15 | Admin handbook for Lenny, with phone screenshots | 3 | Written last; linked from the admin area |
-| 2.16 | Rehearsal week in production with test members; test flag on members | 5 | The flag keeps test members off the member list, exports and reports, and marks them on the pick list (spec §7.10). Re-pointed from 3 on 2026-10-26. After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
+| 2.16 | Rehearsal week in production with real early members | 3 | Eric, Annabel, Lenny as real subscriptions starting that week — no test flag (spec §7.10). After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
 
-**Phase 2 total: 84 pts**
+**Phase 2 total: 82 pts**
 
 **Ejection point:** a January week runs end to end — menu out, charges in, pick list ready — with
 nobody touching it.

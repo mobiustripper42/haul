@@ -203,9 +203,10 @@ alert the developer too; the recipient and channel are decided when task 2.11 is
 
 One full rehearsal week (task 2.16) runs in production after the rest of Phase 2 is done and
 before the first real January charge, on a real Monday cutoff. Which Monday depends on open
-questions 1, 2 and 5. Test members are charged real money and refunded by hand in Square.
-Test members carry a test flag: it keeps them off the member list, exports and reports, and the pick
-list counts them apart, marked test, so no box is made for them.
+questions 1, 2 and 5. Its members are real accounts — Eric, Annabel, Lenny — whose subscriptions
+start that week, signed up through the real signup page. They are charged real money, refunded by
+hand in Square, and cancel through the real cancel or stay on. No test flag: nothing in the database
+is fake, and Lenny knows not to make those boxes.
 
 Who owns the service accounts is open question 18.
 
