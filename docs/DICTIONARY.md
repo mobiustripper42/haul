@@ -7,12 +7,13 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-18 terms.
+20 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **API** | the way one program asks another for data or actions over the network | — |
 | **CA** | certificate authority — whoever signs a server's certificate so browsers trust it | — |
+| **CI** | continuous integration — a server that runs the project's checks on every pull request | — |
 | **CRUD** | create, read, update and delete — the four basic screens for editing a table | — |
 | **CSA** | community supported agriculture — a season of weekly farm produce boxes, paid for up front | — |
 | **CSV** | a plain spreadsheet file, one row per line with commas between columns | — |
@@ -29,3 +30,4 @@ alternates start being caught.
 | **SSL** | the older name for the same encryption, still used in settings screens such as Cloudflare's | — |
 | **TLS** | the encryption that protects traffic between a browser and a server, shown as the padlock | — |
 | **UI** | user interface — the screens and words a person sees and touches | — |
+| **UTC** | coordinated universal time — the one clock that doesn't shift with time zones or daylight saving | — |

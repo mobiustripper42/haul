@@ -51,6 +51,14 @@
   says: a text message to a phone
   not: []
 
+- term: CI
+  says: continuous integration — a server that runs the project's checks on every pull request
+  not: []
+
+- term: UTC
+  says: coordinated universal time — the one clock that doesn't shift with time zones or daylight saving
+  not: []
+
 # ── Network ─────────────────────────────────────────────────────────────────────
 
 - term: DNS

@@ -1,0 +1,26 @@
+# Local Postgres for dev and the adapter tests (DEC-013). One server, two databases: haul_dev (the
+# app) and haul_test (the suites, freely wiped). Host port 5434, because muster holds 5432 and
+# centerline 5433 on mill-dev. Local infrastructure only — production is Crunchy Bridge (DEC-001).
+services:
+  postgres:
+    image: postgres:17
+    container_name: haul-postgres
+    environment:
+      POSTGRES_USER: haul
+      POSTGRES_PASSWORD: haul
+      POSTGRES_DB: haul_dev
+    ports:
+      # Loopback only: the dev box is on the tailnet, and nothing here connects from elsewhere.
+      - "127.0.0.1:5434:5432"
+    volumes:
+      - haul-pgdata:/var/lib/postgresql/data
+      # Runs once, on first init: creates haul_test beside haul_dev.
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U haul -d haul_dev"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  haul-pgdata:

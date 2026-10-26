@@ -1,0 +1,51 @@
+# CI runs the same gate as /kill-this (`npm run verify`), with a real Postgres reachable so the
+# repository contract runs against it on every pull request (DEC-014). Locally that suite skips
+# when there is no database; here CI is set, so a missing database fails the build instead.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    services:
+      # The job's steps don't start until this passes its health check, so a Postgres that fails
+      # to come up fails the build.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: haul
+          POSTGRES_PASSWORD: haul
+          POSTGRES_DB: haul_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U haul -d haul_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: npm run verify
+        env:
+          TEST_DATABASE_URL: postgres://haul:haul@localhost:5432/haul_test
+          # GitHub sets CI itself; stated here so the file says it and a test can check it.
+          CI: "true"

@@ -25,6 +25,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-010 — Outside services sit behind ports with fakes; real adapters are chosen late
 - DEC-011 — Vitest and ESLint; the gate type-checks, lints, tests and builds
 - DEC-012 — Dev and build run on webpack, not Turbopack
+- DEC-014 — CI runs the gate against Postgres; the Postgres suites skip locally, fail in CI
 
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff
@@ -33,6 +34,7 @@ in the sibling repo and are background, not rulings for Haul.
 ### Data model
 - DEC-006 — Product choices are option types and options, priced by sum
 - DEC-009 — Every table is audited by a Postgres trigger
+- DEC-013 — Migrations are plain SQL files, named by UTC timestamp, forward only
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens
