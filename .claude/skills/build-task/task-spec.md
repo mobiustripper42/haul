@@ -14,7 +14,8 @@ Open questions has anything in it. "None" is an answer; blank is not.
 Every line in the sections below carries its source:
   [you]  — the operator said it
   [code] — read from the repo, with the path
-  [Lead] — the Lead's own call. These are the lines the operator must read.
+  [Lead] — the Lead's own call. These are the lines the operator must read. [Lead] lines added
+           during a /build-task run are not walked through; they appear in its receipt.
 -->
 
 ## Summary
@@ -24,9 +25,12 @@ Every line in the sections below carries its source:
 <!-- One line. What changes for whom. -->
 
 ## Acceptance criteria
-<!-- Numbered. One behavior each. Tests will name these ids. -->
+<!-- Numbered. One behavior each. Tests will name these ids. Mark a criterion only a person can
+     check — on a device, by eye — with `(by hand)`: it gets no test and is checked at the
+     hand-back. -->
 - **AC1** — given …, when …, then …
 - **AC2** — …
+- **AC3** — (by hand) on the phone, …
 
 ## Interfaces
 <!-- Exact, from the code — not from memory. The test-writer builds against this list. -->
