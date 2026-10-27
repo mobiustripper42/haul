@@ -8,6 +8,7 @@
  * there, so each test starts from an empty database.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { LANGUAGES, type Language } from "../i18n.js";
 import { DuplicateEmailError } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -82,6 +83,47 @@ export function runRepositoryContract(
           await expect(repo.findMemberById(id)).resolves.toBeNull();
         },
       );
+    });
+
+    describe("member language (issue 7)", () => {
+      it('AC9 (issue 7): createMember without a language returns language "en"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com" });
+        expect(member.language).toBe("en");
+      });
+
+      it('AC9 (issue 7): createMember with language "es" returns language "es"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com", language: "es" });
+        expect(member.language).toBe("es");
+      });
+
+      it('AC9 (issue 7): createMember with language "en" returns language "en"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com", language: "en" });
+        expect(member.language).toBe("en");
+      });
+
+      // LANGUAGES and the members.language check constraint must list the same codes; this is what
+      // fails (SQLSTATE 23514 on Postgres) when a language is added to one and not the other.
+      it.each(Object.keys(LANGUAGES) as Language[])(
+        "AC9 (issue 7): createMember accepts every supported language — %j",
+        async (code) => {
+          const member = await repo.createMember({ email: "ada@example.com", language: code });
+          expect(member.language).toBe(code);
+        },
+      );
+
+      it("AC9 (issue 7): findMemberByEmail returns the stored language", async () => {
+        await repo.createMember({ email: "ada@example.com", language: "es" });
+        await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberByEmail("ada@example.com"))?.language).toBe("es");
+        expect((await repo.findMemberByEmail("grace@example.com"))?.language).toBe("en");
+      });
+
+      it("AC9 (issue 7): findMemberById returns the stored language", async () => {
+        const ada = await repo.createMember({ email: "ada@example.com", language: "es" });
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberById(ada.id))?.language).toBe("es");
+        expect((await repo.findMemberById(grace.id))?.language).toBe("en");
+      });
     });
   });
 }

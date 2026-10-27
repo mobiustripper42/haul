@@ -106,6 +106,7 @@ Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts
 - **Time** — cutoffs and pickup windows are computed in America/New_York
 - **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
 - **Audit** — every table carries the audit trigger; a test enforces it (task 0.8)
+- **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
 - **Database access** — only `src/adapters/pg-connect.ts` imports `pg`; lint fails anywhere else. It applies TLS to every connection, so a caller gets a pool or client from `createPool` / `createClient` and can't forget it (DEC-001)

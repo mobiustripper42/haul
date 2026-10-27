@@ -231,7 +231,8 @@ Sign-in codes, signup confirmation and declined-card notices always send.
 The Phase 0–2 goal is **translatable**: every string in translation files. Spanish is the one
 language filled in — a machine pass and a review at task 1.11, and from then on each task adds the
 Spanish for its own new strings. A check in the gate fails when a key is missing from a language
-file, from task 1.11 onward. Further languages are files plus a review.
+file, from task 1.11 onward. Further languages are files, a review and a one-line migration
+(DEC-015).
 
 ## 8. Phases
 
