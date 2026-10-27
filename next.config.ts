@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Off, or `next dev` writes an `AGENTS.md` at the repo root whenever an AI agent starts it, and
+  // re-creates it if deleted. Claude Code reads `CLAUDE.md`, not `AGENTS.md`.
+  agentRules: false,
   // The dev server is reached over Tailscale at `mill-dev:4000`, not localhost. Next refuses its
   // dev endpoints, the HMR socket included, for an origin not listed here, which breaks hot reload
   // and hydration. Dev only; the production build is unaffected.
