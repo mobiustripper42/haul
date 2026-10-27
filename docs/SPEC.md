@@ -298,6 +298,8 @@ Viewable reports, scoped once the farm says what Square does not already give th
 18. Service accounts (Vercel, Crunchy, Resend, Cloudflare, the Square developer app): proposed
     that the farm owns and pays for all of them, so it can keep running without the developer.
     Going to the farm in Eric's proposal; not yet agreed. Task 1.8 creates the accounts.
+19. Who reviews the Spanish machine translation at task 1.11? The farm reviews the legal text
+    (§7.12); the rest has no reviewer yet.
 
 ## 10. Out of scope
 
