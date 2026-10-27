@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DuplicateEmailError, normalizeEmail, type Member } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -6,10 +7,15 @@ import type { Repository } from "../ports/repository.js";
 export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
 
-  async createMember(input: { email: string }): Promise<Member> {
+  async createMember(input: { email: string; language?: Language }): Promise<Member> {
     const email = normalizeEmail(input.email);
     if (this.find((m) => m.email === email)) throw new DuplicateEmailError(email);
-    const member: Member = { id: randomUUID(), email, createdAt: new Date() };
+    const member: Member = {
+      id: randomUUID(),
+      email,
+      language: input.language ?? DEFAULT_LANGUAGE,
+      createdAt: new Date(),
+    };
     this.members.set(member.id, member);
     return copy(member);
   }

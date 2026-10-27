@@ -83,5 +83,36 @@ export function runRepositoryContract(
         },
       );
     });
+
+    describe("member language (issue 7)", () => {
+      it('AC9 (issue 7): createMember without a language returns language "en"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com" });
+        expect(member.language).toBe("en");
+      });
+
+      it('AC9 (issue 7): createMember with language "es" returns language "es"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com", language: "es" });
+        expect(member.language).toBe("es");
+      });
+
+      it('AC9 (issue 7): createMember with language "en" returns language "en"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com", language: "en" });
+        expect(member.language).toBe("en");
+      });
+
+      it("AC9 (issue 7): findMemberByEmail returns the stored language", async () => {
+        await repo.createMember({ email: "ada@example.com", language: "es" });
+        await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberByEmail("ada@example.com"))?.language).toBe("es");
+        expect((await repo.findMemberByEmail("grace@example.com"))?.language).toBe("en");
+      });
+
+      it("AC9 (issue 7): findMemberById returns the stored language", async () => {
+        const ada = await repo.createMember({ email: "ada@example.com", language: "es" });
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberById(ada.id))?.language).toBe("es");
+        expect((await repo.findMemberById(grace.id))?.language).toBe("en");
+      });
+    });
   });
 }

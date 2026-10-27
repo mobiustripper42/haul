@@ -1,7 +1,7 @@
 // The Repository contract against real Postgres (AC7), in a database of its own (AC9):
 // `<test db>_repository`, created if absent, migrated once, truncated before each test.
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
-import { afterAll, beforeAll, describe } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "../../db/migrate.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
@@ -38,4 +38,18 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   };
 
   runRepositoryContract("postgres", async () => repo, truncateAll);
+
+  // Postgres only: the typed port gives the in-memory adapter no way to store an unsupported code.
+  describe("AC10 (issue 7) — members.language accepts only en and es", () => {
+    const CHECK_VIOLATION = "23514";
+
+    it.each(["ES", "fr"])("AC10 (issue 7): a raw insert with language %j fails with a check violation", async (language) => {
+      await truncateAll();
+      const insert = pool.query("insert into members (email, language) values ($1, $2)", [
+        "ada@example.com",
+        language,
+      ]);
+      await expect(insert).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    });
+  });
 });
