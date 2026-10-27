@@ -8,6 +8,7 @@
  * there, so each test starts from an empty database.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import { LANGUAGES, type Language } from "../i18n.js";
 import { DuplicateEmailError } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 
@@ -99,6 +100,16 @@ export function runRepositoryContract(
         const member = await repo.createMember({ email: "ada@example.com", language: "en" });
         expect(member.language).toBe("en");
       });
+
+      // LANGUAGES and the members.language check constraint must list the same codes; this is what
+      // fails (SQLSTATE 23514 on Postgres) when a language is added to one and not the other.
+      it.each(Object.keys(LANGUAGES) as Language[])(
+        "AC9 (issue 7): createMember accepts every supported language — %j",
+        async (code) => {
+          const member = await repo.createMember({ email: "ada@example.com", language: code });
+          expect(member.language).toBe(code);
+        },
+      );
 
       it("AC9 (issue 7): findMemberByEmail returns the stored language", async () => {
         await repo.createMember({ email: "ada@example.com", language: "es" });
