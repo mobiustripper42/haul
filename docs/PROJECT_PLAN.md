@@ -51,7 +51,7 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 |---|------|--------|-------|
 | 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only. **Blocked on spec open question 13** |
 | 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
-| 1.3 | Public signup page | 5 | Pickers generated from option types; placeholder recurring-charge wording until 1.12 |
+| 1.3 | Public signup page | 5 | Pickers generated from option types; placeholder recurring-charge wording until 1.12. Signup confirms the email by code, using 0.6's flow, before the member is created |
 | 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
 | 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
 | 1.6 | Signup confirmation email | 2 | |

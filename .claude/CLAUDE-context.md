@@ -22,6 +22,7 @@ Roles:
 - **Hosting/target** — Vercel behind Cloudflare's proxy, at `members.ohiocityfarm.com`
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
+- **Env** — `.env.example` names every variable the app reads; git ignores every other `.env*` file
 - **Testing** — Vitest (DEC-011)
 - **Bundler** — webpack, not Turbopack (DEC-012)
 - **Dev environment** — mill-dev, over Tailscale. The app is on port 4000, because muster holds

@@ -25,6 +25,12 @@ const pgPatterns = [
   },
 ];
 
+// A pattern refusing every import in src/sign-in/ except the ones `regex`'s negative lookahead lets by.
+const signInBoundary = (regex) => ({
+  regex,
+  message: "src/sign-in/ may import only its own files and node: built-ins, so a shared library can replace it.",
+});
+
 // A bare string in a component fails the gate: every UI string lives in src/messages/ (DEC-015).
 // Only a literal holding a non-whitespace character counts, so {" "} and alt="" pass. What the
 // selectors cannot see (metadata, variables, ternaries inside JSX) is an accepted gap.
@@ -55,6 +61,17 @@ export default tseslint.config(
     files: ["src/**"],
     ignores: ["src/adapters/pg-connect.ts"],
     rules: { "no-restricted-imports": ["error", { patterns: [...frameworkPatterns, ...pgPatterns] }] },
+  },
+  {
+    // src/sign-in/ is built to be lifted into a shared library: it may import only its own files and
+    // node: built-ins. Anything else of haul's (members, i18n, a port, pg) would travel with it.
+    files: ["src/sign-in/**"],
+    rules: { "no-restricted-imports": ["error", { patterns: [signInBoundary("^(?!\\./|node:)")] }] },
+  },
+  {
+    // The store contract and the folder's tests also use vitest.
+    files: ["src/sign-in/store-contract.ts", "src/sign-in/**/*.test.ts"],
+    rules: { "no-restricted-imports": ["error", { patterns: [signInBoundary("^(?!\\./|node:|vitest$)")] }] },
   },
   {
     files: ["src/adapters/pg-connect.ts"],
