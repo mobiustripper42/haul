@@ -9,7 +9,7 @@ import { clientIpFrom } from "@core/sign-in/client-ip.js";
 import { issueSignInCode, randomCode, requestSignInCode, verifySignInCode } from "@core/sign-in/code.js";
 import { limitKeyFor } from "@core/sign-in/rate-limit.js";
 import { endSession, SIGN_IN_EMAIL_COOKIE, startSession } from "../session";
-import { getEmail, getRepository } from "../services";
+import { getEmail, getRepository, getSessionSecret } from "../services";
 
 const SIGN_IN_EMAIL_MAX_AGE_SECONDS = 600;
 
@@ -68,6 +68,8 @@ export async function verifyCode(formData: FormData): Promise<void> {
   const cookieStore = await cookies();
   const email = cookieStore.get(SIGN_IN_EMAIL_COOKIE)?.value;
   if (!email) redirect("/sign-in?error=expired");
+  // Read before the code is spent, so a production deploy missing its secret fails without burning one.
+  getSessionSecret();
 
   const repo = getRepository();
   const result = await verifySignInCode(
