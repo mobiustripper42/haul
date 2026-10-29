@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes failing tests from a task spec, before any implementation exists. Two modes — readback (write nothing, report what the spec leaves open) and write (write the tests, run them, report the failures). Never writes production code.
+description: Writes failing tests from a task spec, before any implementation exists. Two modes — readback (write nothing, report what the spec leaves open) and write (write the tests and empty stubs, run them, report how each test fails against the stubs). Writes stubs, never behaviour.
 model: opus
 effort: high
 ---
@@ -57,9 +57,17 @@ What to report:
 2. Test only through the Interfaces the spec names. If a test needs a seam the spec doesn't name,
    stop and report it — do not invent one.
 3. Do not test anything listed under Out of scope.
-4. Do not write production code, stubs, or placeholder exports to make tests compile. A test
-   failing on a missing function the spec names is failing for the right reason.
-5. Run the `Proof command` against your tests.
+4. Write a stub for every new signature in Interfaces, in the file Interfaces names. A stub is the
+   real name, signature, types and export with no behaviour: an empty body returning the empty
+   value of its type — nothing, `false`, `0`, `""`, `[]`, `{}`, `null` — and a constant holding the
+   empty value of its type. A stub never throws: a throw fails every test on the throw, which
+   proves no more than a missing file. An existing file gets stubs only for its new signatures.
+   Stubs are why a test can be seen failing on its own assertion before any code exists; a test
+   failing on a missing function proves only that the function is missing.
+5. Run the `Proof command` against the stubs. Every test either fails on its own assertion, or
+   passes because it guards something a partner test proves — a re-run changes nothing, say, beside
+   the test that the first run writes rows. Name that failing partner. A test that passes against
+   the stubs with no failing partner asserts nothing the stubs lack: rewrite it.
 
 Return:
 
@@ -69,20 +77,23 @@ Return:
 ### Files
 - <path> — every file you created or edited: tests, fixtures, helpers, snapshots, test config
 
+### Stubs
+- <path> — <the signatures stubbed>
+
 ### Coverage
 | AC | Tests |
 |----|-------|
 | AC1 | <test names> |
 
-### Failures
-- <test name> — <why it fails: missing symbol / wrong value / …>
+### Against the stubs
+- <test name> — fails: <the assertion that failed> | passes: guards <what>, partner <failing test>
 
 ### Proof output
-<the run, trimmed to the failures>
+<the run against the stubs>
 ```
 
-If any test fails for a reason other than the missing behavior — a bad import path, a setup error,
-a typo — fix it before returning. If you cannot, say so under Failures; do not hide it.
+If any test fails for a reason other than its own assertion — a bad import path, a setup error,
+a typo — fix it before returning. If you cannot, say so under Against the stubs; do not hide it.
 
 ## Rules
 
