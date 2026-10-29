@@ -44,6 +44,9 @@ Every line in the sections below carries its source:
 - **Existing screen and components reused:**
 - **What's on the screen, in order, with the actual wording:**
 
+## Seeds
+<!-- The data a person needs for the (by hand) criteria, made by the project's dev seeds — never by clicking through the app first. Name the seed commands each (by hand) criterion starts from, and the seed this task adds or extends to reach that state. "None" when no criterion is (by hand), or the project has no database. -->
+
 ## Out of scope
 <!-- What a reasonable builder might add that we are not adding. -->
 
