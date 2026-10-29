@@ -111,15 +111,16 @@ It returns one of:
   the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule) or the test was
   (set the implementation aside with `git stash push --include-untracked` and `git stash drop`,
   uncommit the tests with `git reset --soft "$TESTS~1"` so they stay in the tree to be revised,
-  then Step 2 with the instruction **write the tests** followed by the finding, word for word).
+  then Step 2 with the instruction **write the tests** followed by the finding, word for word; the
+  stubs went with the implementation, so Step 2 writes them again).
 
 ## Step 4 — Verify
 
 1. `git diff --quiet "$TESTS" -- $(git diff-tree --no-commit-id --name-only -r "$TESTS")` — any
    change to a file the tests commit holds fails the task. Set the implementation aside with
    `git stash push --include-untracked` (the tests come back as committed; the stubs go with the
-   implementation), then `git stash drop`, and re-run Step 3 once. A second violation: stop and
-   tell the operator.
+   implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
+   are gone and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
 
 **Two failed `@implementer` rounds on the same tests: stop and ask.** Something is wrong with the
@@ -134,7 +135,7 @@ each one:
 
 | Finding | Goes to |
 |---|---|
-| Real bug a test should have caught | `@test-writer` (new test, committed on its own; `TESTS` is that commit), then `@implementer` |
+| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit), then `@implementer` |
 | Real bug, tests are fine | fresh `@implementer`, finding as its brief |
 | One-line cleanup, naming, a constant | fix it yourself |
 | Architectural | escalate to `@architect`, as `@code-review` already says |

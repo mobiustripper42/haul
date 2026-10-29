@@ -50,6 +50,9 @@ and return a Stop report.** Do not work around it.
 ### Files outside Interfaces
 - <path> — <why> | None
 
+### Stubs left as stubs
+- <path> — <signature; why no test needed it> | None
+
 ### Proof output
 <the clean run>
 ```
