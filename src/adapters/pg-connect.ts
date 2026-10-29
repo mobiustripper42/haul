@@ -13,8 +13,8 @@ export type { Client, ClientConfig, DatabaseError, Pool, PoolConfig } from "pg";
 /** What `pg` accepts for `ssl`; the subset of node's TLS options this module sets. */
 export type DbSslConfig = { ca: string[]; rejectUnauthorized: true };
 
-/** Hosts that run a plain, TLS-less Postgres: the dev box, and nothing else. */
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
+/** Hosts that run a plain, TLS-less Postgres: the dev box, and nothing else. The dev seeds' guard reads it too. */
+export const LOCAL_HOSTS: ReadonlySet<string> = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 
 /**
  * libpq ssl parameters. They must be removed from the connection string, not merely ignored:
@@ -24,7 +24,7 @@ const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1", "[::1]"]);
 const SSL_PARAMS = ["sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword", "ssl"];
 
 /** Query parameters `pg-connection-string` lets replace the URL's authority host. */
-const OVERRIDE_HOST_PARAMS = ["host", "hostaddr"];
+export const OVERRIDE_HOST_PARAMS: readonly string[] = ["host", "hostaddr"];
 
 const TRUST: DbSslConfig = { ca: [...tls.rootCertificates], rejectUnauthorized: true };
 

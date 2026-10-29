@@ -16,7 +16,7 @@
  * `db:seed:<name>` script in package.json. The test fails naming any of the three that is missing.
  */
 import { fileURLToPath } from "node:url";
-import { createClient } from "../src/adapters/pg-connect.js";
+import { createClient, LOCAL_HOSTS, OVERRIDE_HOST_PARAMS } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 import { seed as members } from "./seeds/members.js";
@@ -25,13 +25,10 @@ export type Seed = (db: Client) => Promise<void>;
 
 export const SEEDS: Readonly<Record<string, Seed>> = { members };
 
-/** Hostnames as `URL` reports them: IPv6 keeps its brackets. */
-const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
-
-/** Query parameters `pg-connection-string` lets replace the URL's authority host. */
-const OVERRIDE_HOST_PARAMS = ["host", "hostaddr"];
-
-/** Throws unless `url` points at the local dev box. Seeds and resets are dev only. */
+/**
+ * Throws unless `url` points at the local dev box. Seeds and resets are dev only. "Local" is the
+ * connection layer's own rule (`LOCAL_HOSTS`, `OVERRIDE_HOST_PARAMS`), so the two cannot drift.
+ */
 export function assertLocalUrl(url: string): void {
   let parsed: URL;
   try {
