@@ -1,15 +1,16 @@
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
-import { DuplicateEmailError, normalizeEmail, type Member } from "../members.js";
+import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 import type { SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool } from "./pg-connect.js";
 
-type MemberRow = { id: string; email: string; language: Language; created_at: Date };
+type MemberRow = { id: string; email: string; language: Language; role: Role; created_at: Date };
 
 const toMember = (row: MemberRow): Member => ({
   id: row.id,
   email: row.email,
   language: row.language,
+  role: row.role,
   createdAt: row.created_at,
 });
 
@@ -49,12 +50,12 @@ export class PostgresRepository implements Repository {
     this.pool = createPool(url);
   }
 
-  async createMember(input: { email: string; language?: Language }): Promise<Member> {
+  async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
     try {
       const { rows } = await this.pool.query<MemberRow>(
-        "insert into members (email, language) values ($1, $2) returning id, email, language, created_at",
-        [email, input.language ?? DEFAULT_LANGUAGE],
+        "insert into members (email, language, role) values ($1, $2, $3) returning id, email, language, role, created_at",
+        [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
       );
       return toMember(rows[0] as MemberRow);
     } catch (e) {
@@ -65,7 +66,7 @@ export class PostgresRepository implements Repository {
 
   async findMemberByEmail(email: string): Promise<Member | null> {
     const { rows } = await this.pool.query<MemberRow>(
-      "select id, email, language, created_at from members where email = $1",
+      "select id, email, language, role, created_at from members where email = $1",
       [normalizeEmail(email)],
     );
     return rows[0] ? toMember(rows[0]) : null;
@@ -74,7 +75,7 @@ export class PostgresRepository implements Repository {
   async findMemberById(id: string): Promise<Member | null> {
     try {
       const { rows } = await this.pool.query<MemberRow>(
-        "select id, email, language, created_at from members where id = $1",
+        "select id, email, language, role, created_at from members where id = $1",
         [id],
       );
       return rows[0] ? toMember(rows[0]) : null;

@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { cache } from "react";
 import type { Member } from "@core/members.js";
 import { SESSION_TTL_MS, signSession, verifySession } from "@core/sign-in/session.js";
@@ -18,6 +19,17 @@ export const getSignedInMember = cache(async (): Promise<Member | null> => {
   if (!result.ok) return null;
   return getRepository().findMemberById(result.session.subjectId);
 });
+
+/**
+ * The signed-in admin. Signed out → `/sign-in`; a member whose role is not `admin` → `/`. Every admin
+ * page and admin server action calls it first; no check lives in a layout (DEC-018).
+ */
+export async function requireAdmin(): Promise<Member> {
+  const member = await getSignedInMember();
+  if (!member) redirect("/sign-in");
+  if (member.role !== "admin") redirect("/");
+  return member;
+}
 
 /** Signs the member in for 30 days. Cookies are written only in Server Functions, so call this from an action. */
 export async function startSession(memberId: string): Promise<void> {

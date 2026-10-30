@@ -115,4 +115,26 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
       await expect(insert).rejects.toMatchObject({ code: CHECK_VIOLATION });
     });
   });
+
+  // Postgres only: the typed port gives the in-memory adapter no way to store an unsupported role.
+  describe("AC2 (issue 10) — members.role defaults to member and accepts only ROLES", () => {
+    const CHECK_VIOLATION = "23514";
+
+    it("AC2 (issue 10): a raw insert that names no role reads back role member", async () => {
+      await truncateAll();
+      await pool.query("insert into members (email) values ($1)", ["ada@example.com"]);
+      // Read through to_jsonb so a missing column reads as null rather than erroring.
+      const { rows } = await pool.query<{ role: string | null }>(
+        "select to_jsonb(m) ->> 'role' as role from members m where email = $1",
+        ["ada@example.com"],
+      );
+      expect(rows).toEqual([{ role: "member" }]);
+    });
+
+    it.each(["owner", "Admin"])("AC2 (issue 10): a raw insert with role %j fails with a check violation", async (role) => {
+      await truncateAll();
+      const insert = pool.query("insert into members (email, role) values ($1, $2)", ["ada@example.com", role]);
+      await expect(insert).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    });
+  });
 });
