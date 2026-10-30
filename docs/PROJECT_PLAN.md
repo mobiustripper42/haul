@@ -56,7 +56,7 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 | 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
 | 1.6 | Signup confirmation email | 2 | |
 | 1.7 | Admin member list and CSV | 3 | Cards on mobile |
-| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`) |
+| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`). The app's database user gets no privileges on `audit_log` and no `TRUNCATE` on any table (DEC-019) |
 | 1.9 | Square production cutover and smoke test | 2 | Fold candidate with 1.10 |
 | 1.10 | Wix link and go-live checklist | 2 | |
 | 1.12 | Consent wording; terms and privacy pages; legal footer in the email template | 2 | Farm's existing legal text (spec open question 17). Built before 1.11 so its strings get translated |

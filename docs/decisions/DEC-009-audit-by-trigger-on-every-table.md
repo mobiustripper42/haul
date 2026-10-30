@@ -3,12 +3,13 @@ schema: 1
 id: DEC-009
 title: "Every table is audited by a Postgres trigger"
 topic: "Data model"
-status: "active"
+status: "superseded"
 date: "2026-10-25"
 ruling: "Every insert, update and delete on every table is written to an audit log by trigger, with who did it; a test fails the build if any table lacks the trigger."
 claims:
   - kind: "spec"
     target: "§7.8"
+superseded_by: DEC-019
 revisit_if: "Audit volume becomes a storage or performance problem, or a table genuinely needs exemption"
 ---
 
