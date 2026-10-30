@@ -97,12 +97,25 @@ describe.skipIf(!up)(`AC9–AC15 — schemaViolations against <test db>_schema${
 
   describe("AC11 — a table whose only audit_row trigger does not count", () => {
     const cases: Array<[string, string, string]> = [
+      // [how it fails to count, table, the trigger SQL run after `create table <table> (id int primary key)`]
       ["is disabled", "probe_disabled", `${auditTrigger("probe_disabled")} alter table probe_disabled disable trigger audit;`],
       ["fires once per statement", "probe_statement", auditTrigger("probe_statement", "after", undefined, "statement")],
       ["fires before the change", "probe_before", auditTrigger("probe_before", "before")],
       ["misses insert", "probe_no_insert", auditTrigger("probe_no_insert", "after", "update or delete")],
       ["misses update", "probe_no_update", auditTrigger("probe_no_update", "after", "insert or delete")],
       ["misses delete", "probe_no_delete", auditTrigger("probe_no_delete", "after", "insert or update")],
+      [
+        "carries a WHEN condition",
+        "probe_when",
+        `create trigger audit after insert or update or delete on probe_when
+           for each row when (pg_trigger_depth() < 1) execute function audit_row();`,
+      ],
+      [
+        "fires on update of only some columns",
+        "probe_update_of",
+        `alter table probe_update_of add column note text;
+         ${auditTrigger("probe_update_of", "after", "insert or update of note or delete")}`,
+      ],
     ];
 
     it.each(cases)("AC11: a table whose only audit_row trigger %s is missing-trigger", async (_how, table, trigger) => {

@@ -27,7 +27,7 @@ type AuditRow = {
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
 const skipped = up ? "" : " — skipped: no Postgres at TEST_DATABASE_URL, run `npm run db:up`";
 
-describe.skipIf(!up)(`AC1–AC8 — the audit trigger against <test db>_audit${skipped}`, () => {
+describe.skipIf(!up)(`AC1–AC8, AC16–AC18 — the audit trigger against <test db>_audit${skipped}`, () => {
   let url: string;
   let db: Client;
 
@@ -243,6 +243,104 @@ describe.skipIf(!up)(`AC1–AC8 — the audit trigger against <test db>_audit${s
       } finally {
         await c.end();
       }
+    });
+  });
+
+  it("AC16: a session's temporary audit_log does not divert its audit rows from public.audit_log", async () => {
+    const c = await connection();
+    try {
+      await c.query("create temporary table audit_log (like public.audit_log including all)");
+      // Read on the shared connection, where audit_log can only mean public.audit_log.
+      const m = await mark();
+
+      const id = await insertMember(c);
+
+      expect(await since(m)).toEqual([expect.objectContaining({ table_name: "members", operation: "insert", row_key: { id } })]);
+      expect((await c.query<{ n: number }>("select count(*)::int as n from pg_temp.audit_log")).rows).toEqual([{ n: 0 }]);
+    } finally {
+      await c.end();
+    }
+  });
+
+  it("AC17: a role that does not own audit_row() is refused attaching it to a table it owns, and no audit row is written", async () => {
+    const probe = `probe_${randomUUID().replace(/-/g, "")}`;
+    const c = await connection();
+    try {
+      await c.query("begin");
+      await c.query(`create role "${probe}"`);
+      const m = await mark(c);
+
+      await c.query(`set local session authorization "${probe}"`);
+      await c.query("create temporary table probe_attach (id int primary key, note text)");
+      let refused: unknown;
+      await c.query("savepoint attach");
+      try {
+        await c.query(
+          "create trigger audit after insert or update or delete on pg_temp.probe_attach for each row execute function public.audit_row()",
+        );
+      } catch (e) {
+        refused = e;
+        await c.query("rollback to savepoint attach");
+      }
+      await c.query("insert into pg_temp.probe_attach (id, note) values (1, 'a row of its choosing')");
+      await c.query("reset session authorization");
+
+      expect(refused).toMatchObject({ code: "42501" }); // insufficient_privilege
+      expect(await since(m, c)).toEqual([]);
+    } finally {
+      await c.query("rollback").catch(() => undefined);
+      await c.end();
+    }
+  });
+
+  describe("AC18 — a table with a json column", () => {
+    /** On its own connection, in a transaction always rolled back: a json table carrying the trigger, with one row. */
+    const withJsonTable = async (body: (c: Client) => Promise<void>): Promise<void> => {
+      const c = await connection();
+      try {
+        await c.query("begin");
+        await c.query("create table probe_json (id int primary key, body json)");
+        await c.query(
+          "create trigger audit after insert or update or delete on probe_json for each row execute function audit_row()",
+        );
+        await c.query(`insert into probe_json (id, body) values (1, '{"a": 1}')`);
+        await body(c);
+      } finally {
+        await c.query("rollback").catch(() => undefined);
+        await c.end();
+      }
+    };
+
+    it("AC18: updating the json column to a new value succeeds and writes one update row", async () => {
+      await withJsonTable(async (c) => {
+        const m = await mark(c);
+
+        await expect(c.query(`update probe_json set body = '{"a": 2}' where id = 1`)).resolves.toMatchObject({
+          rowCount: 1,
+        });
+
+        expect(await since(m, c)).toEqual([
+          expect.objectContaining({
+            table_name: "probe_json",
+            operation: "update",
+            row_key: { id: 1 },
+            before: { id: 1, body: { a: 1 } },
+            after: { id: 1, body: { a: 2 } },
+          }),
+        ]);
+      });
+    });
+
+    it("AC18: updating a row with a json column to the values it already has succeeds and writes no audit row", async () => {
+      await withJsonTable(async (c) => {
+        const m = await mark(c);
+
+        await expect(c.query("update probe_json set id = id, body = body where id = 1")).resolves.toMatchObject({
+          rowCount: 1,
+        });
+
+        expect(await since(m, c)).toEqual([]);
+      });
     });
   });
 });

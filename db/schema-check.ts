@@ -22,7 +22,10 @@ export type SchemaViolation = {
   column?: string; // set for the two time kinds only
 };
 
-/** A trigger counts when it calls audit_row, is row-level, fires after, on all three events, and is enabled. */
+/**
+ * A trigger counts when it calls audit_row, is row-level, fires after, on all three events, has no
+ * WHEN condition and no UPDATE OF column list, and is enabled.
+ */
 const TABLES_WITH_COUNTING_TRIGGER = `
   select c.relname as table_name
     from pg_class c
@@ -39,6 +42,8 @@ const TABLES_WITH_COUNTING_TRIGGER = `
           and t.tgtype & 2 = 0    -- not before
           and t.tgtype & 64 = 0   -- not instead of
           and t.tgtype & 28 = 28  -- insert, delete and update
+          and t.tgqual is null    -- no WHEN condition
+          and t.tgattr::text = '' -- no UPDATE OF column list
      )`;
 
 export async function schemaViolations(
@@ -70,8 +75,8 @@ export async function schemaViolations(
 
   // Time columns, in every table, exempt ones included (DEC-017).
   const columns = (
-    await db.query<{ table_name: string; column_name: string; type: string }>(
-      `select c.relname as table_name, a.attname as column_name, a.atttypid::regtype::text as type
+    await db.query<{ table_name: string; column_name: string; naive: boolean }>(
+      `select c.relname as table_name, a.attname as column_name, a.atttypid = 'timestamp'::regtype as naive
          from pg_attribute a
          join pg_class c on c.oid = a.attrelid
         where c.relnamespace = 'public'::regnamespace
@@ -82,9 +87,9 @@ export async function schemaViolations(
                or (a.atttypid in ('text'::regtype, 'varchar'::regtype) and a.attname ~ '(_at|_since|_until|_date|_time)$'))`,
     )
   ).rows;
-  for (const { table_name: table, column_name: column, type } of columns) {
+  for (const { table_name: table, column_name: column, naive } of columns) {
     violations.push({
-      kind: type === "timestamp without time zone" ? "timestamp-without-time-zone" : "time-as-text",
+      kind: naive ? "timestamp-without-time-zone" : "time-as-text",
       table,
       column,
     });
