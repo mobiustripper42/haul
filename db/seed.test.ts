@@ -221,6 +221,42 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
     expect(after.rows).toEqual([{ id: before.rows[0]?.id, language: "en" }]);
   });
 
+  // Issue 10. Roles are read through to_jsonb so a missing column reads as null rather than erroring.
+  const roles = async (): Promise<Array<{ email: string; role: string | null }>> =>
+    (
+      await pool.query<{ email: string; role: string | null }>(
+        "select email, to_jsonb(m) ->> 'role' as role from members m where email in ('eric@ocf.xx', 'lenny@ocf.xx') order by email",
+      )
+    ).rows;
+
+  it("AC8 (issue 10): from an emptied database, members makes lenny@ocf.xx an admin and eric@ocf.xx a member", async () => {
+    await empty();
+    await runSeed("members", url);
+    expect(await roles()).toEqual([
+      { email: "eric@ocf.xx", role: "member" },
+      { email: "lenny@ocf.xx", role: "admin" },
+    ]);
+  });
+
+  it("AC8 (issue 10): with lenny's role edited to member, members puts back admin and keeps lenny's id", async () => {
+    await empty();
+    await runSeed("members", url);
+    const lenny = async () =>
+      (
+        await pool.query<{ id: string; role: string | null }>(
+          "select id, to_jsonb(m) ->> 'role' as role from members m where email = 'lenny@ocf.xx'",
+        )
+      ).rows;
+    const before = await lenny();
+    expect(before).toEqual([{ id: expect.any(String), role: "admin" }]);
+    await pool.query("update members set role = 'member' where email = 'lenny@ocf.xx'");
+    expect(await lenny()).toEqual([{ id: before[0]?.id, role: "member" }]);
+
+    await runSeed("members", url);
+
+    expect(await lenny()).toEqual([{ id: before[0]?.id, role: "admin" }]);
+  });
+
   describe("AC3 — every seed runs alone", () => {
     it.each(names)("AC3: from an emptied database, %s succeeds and leaves a row in at least one table", async (name) => {
       await empty();

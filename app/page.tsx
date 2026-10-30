@@ -16,6 +16,11 @@ export default async function Home() {
       {member ? (
         <>
           <p>{t("home.signedInAs", { email: member.email })}</p>
+          {member.role === "admin" && (
+            <p>
+              <a href="/admin">{t("home.adminPage")}</a>
+            </p>
+          )}
           <form action={signOut}>
             <button type="submit">{t("home.signOut")}</button>
           </form>

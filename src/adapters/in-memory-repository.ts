@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
-import { DuplicateEmailError, normalizeEmail, type Member } from "../members.js";
+import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -11,13 +11,14 @@ export class InMemoryRepository implements Repository {
   // The sign-in store's five methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
 
-  async createMember(input: { email: string; language?: Language }): Promise<Member> {
+  async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
     if (this.find((m) => m.email === email)) throw new DuplicateEmailError(email);
     const member: Member = {
       id: randomUUID(),
       email,
       language: input.language ?? DEFAULT_LANGUAGE,
+      role: input.role ?? DEFAULT_ROLE,
       createdAt: new Date(),
     };
     this.members.set(member.id, member);

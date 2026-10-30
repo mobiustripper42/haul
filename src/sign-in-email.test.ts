@@ -12,6 +12,7 @@ const member = (language: Language): Member => ({
   id: "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60",
   email: "ada@example.com",
   language,
+  role: "member",
   createdAt: new Date("2026-10-01T12:00:00.000Z"),
 });
 

@@ -9,7 +9,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { LANGUAGES, type Language } from "../i18n.js";
-import { DuplicateEmailError } from "../members.js";
+import { DuplicateEmailError, ROLES, type Role } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -123,6 +123,40 @@ export function runRepositoryContract(
         const grace = await repo.createMember({ email: "grace@example.com" });
         expect((await repo.findMemberById(ada.id))?.language).toBe("es");
         expect((await repo.findMemberById(grace.id))?.language).toBe("en");
+      });
+    });
+
+    describe("member role (issue 10)", () => {
+      it('AC1 (issue 10): createMember without a role returns role "member"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com" });
+        expect(member.role).toBe("member");
+      });
+
+      it('AC1 (issue 10): createMember with role "admin" returns role "admin"', async () => {
+        const member = await repo.createMember({ email: "ada@example.com", role: "admin" });
+        expect(member.role).toBe("admin");
+      });
+
+      it("AC1 (issue 10): findMemberById returns the stored role", async () => {
+        const ada = await repo.createMember({ email: "ada@example.com", role: "admin" });
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberById(ada.id))?.role).toBe("admin");
+        expect((await repo.findMemberById(grace.id))?.role).toBe("member");
+      });
+
+      it("AC1 (issue 10): findMemberByEmail returns the stored role", async () => {
+        await repo.createMember({ email: "ada@example.com", role: "admin" });
+        await repo.createMember({ email: "grace@example.com" });
+        expect((await repo.findMemberByEmail("ada@example.com"))?.role).toBe("admin");
+        expect((await repo.findMemberByEmail("grace@example.com"))?.role).toBe("member");
+      });
+
+      // ROLES and the members.role check constraint must list the same roles; this is what fails
+      // (SQLSTATE 23514 on Postgres) when a role is added to one and not the other.
+      it.each([...ROLES])("AC2 (issue 10): createMember accepts every role in ROLES — %j", async (role: Role) => {
+        const member = await repo.createMember({ email: "ada@example.com", role });
+        expect(member.role).toBe(role);
+        expect((await repo.findMemberById(member.id))?.role).toBe(role);
       });
     });
   });

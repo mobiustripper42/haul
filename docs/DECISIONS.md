@@ -37,6 +37,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-009 — Every table is audited by a Postgres trigger
 - DEC-013 — Migrations are plain SQL files, named by UTC timestamp, forward only
 - DEC-017 — A moment is timestamptz; a Cleveland wall-clock time is date and time
+- DEC-018 — An admin is a member with the role admin, checked on each admin page
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens
