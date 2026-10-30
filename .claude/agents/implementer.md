@@ -33,7 +33,7 @@ and return a Stop report.** Do not work around it.
 - Start from the stubs. They hold the names and signatures Interfaces gives, with empty bodies, so
   the tests run. They are not locked: replace their bodies, and keep their names and signatures.
   If the stubs are gone, start from Interfaces.
-- Use what the spec lists under **Reuses**. Don't re-create an existing function or component.
+- Use what the spec lists under **Reuses**. Don't re-create an existing function, component, constant or rule.
 - Touch the files listed under **Interfaces**. If you need another file, you may — but say which
   and why in your report.
 - Build nothing the acceptance criteria don't ask for. Out of scope means out.
