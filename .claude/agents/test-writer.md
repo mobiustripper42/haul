@@ -34,15 +34,26 @@ Write nothing. Check the spec against the code and return:
 
 ### Interface check
 - <each path or signature in Interfaces: exists | marked new | NOT FOUND>
+
+### Reuse check
+- <a new thing the spec introduces> — exists at <path:line>
 ```
 
 Empty lists are written as `None`. An Interfaces entry that is NOT FOUND and not marked new is
 always a question. Do not answer your own questions by guessing what is "probably meant."
 
+**The reuse check.** For each new thing the spec introduces — a function, constant, rule,
+component or file in Interfaces, a component named under Screen, or behaviour a criterion states —
+search the code for an existing one that does the same job. Report matches only, with where the
+existing one lives. A match is code a builder would otherwise restate — the same logic or value —
+not code that is merely related, and not a same-named thing with a different job. Skip anything
+the spec already lists under Reuses. A copy of existing code passes every test, which is why this
+section is not filtered by what could fail one.
+
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
   other way and fail your test. One the spec already permits, where either choice would pass, is
-  not worth the operator's time. The interface check is not filtered: report every entry.
+  not worth the operator's time. The interface and reuse checks are not filtered.
 - **Not hand checks.** Skip any acceptance criterion marked `(by hand)`. The `Proof` slot cannot
   test it, so there is nothing here to read back.
 - **On a re-read, only the changed lines.** When the prompt names changed lines, report only items
@@ -71,6 +82,15 @@ What to report:
    passes because it guards something a partner test proves — a re-run changes nothing, say, beside
    the test that the first run writes rows. Name that failing partner. A test that passes against
    the stubs with no failing partner asserts nothing the stubs lack: rewrite it.
+6. A stub never forces a test to bend. It must not make you edit an existing test, and a test must
+   not work around a stub — reading a column through a form that survives the column not existing
+   yet, say. Both get locked with the tests and outlive the stub. If a stub would force either,
+   stop and report it instead of returning tests.
+7. What a stub cannot reach fails honestly. A column or table this task creates cannot be stubbed:
+   a test on it fails with "does not exist", and that is its right reason — report it as
+   `fails: <column> does not exist (new in this task)`. A changed signature on existing code keeps
+   its implementation and gets no stub: the test calls the new shape and fails on what the code does
+   today. Never work around either.
 
 **A test added after the code exists** — the Lead sends a review finding a test should have caught
 — gets no stubs. Write the test and run it against the current code: it must fail there, on its own

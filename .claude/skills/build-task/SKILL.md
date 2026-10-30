@@ -1,6 +1,6 @@
 ---
 name: build-task
-description: Build a specced task through @test-writer and @implementer instead of coding it in the session. For tasks of 3 points or more that change behavior, once the spec is written into the issue from this skill's task-spec.md and the branch is cut. Replaces the prove / build / run-the-proof steps and ends by running /kill-this.
+description: Build a specced task through @test-writer and @implementer instead of coding it in the session. For any task that changes behavior and has a criterion the Proof slot can check, whatever its points, once the spec is written into the issue from this skill's task-spec.md and the branch is cut. Replaces the prove / build / run-the-proof steps and ends by running /kill-this.
 ---
 
 You are the Lead. You do not write production code or tests in this skill. You check the spec, hand
@@ -17,9 +17,9 @@ to be missing.
 
 Abort with a one-line reason if any of these fail:
 
-- **Points.** The issue carries `points:3` or higher. Below that, use the normal loop.
-- **Testable.** At least one acceptance criterion is something the `Proof` slot can check —
-  behavior, data, or on-screen wording and order. A task that is only layout, spacing or styling
+- **Testable.** The line between the two loops, whatever the points. At least one acceptance
+  criterion is something the `Proof` slot can check — behavior, data, or on-screen wording and
+  order. A task that is only layout, spacing or styling
   has nothing for `@test-writer` to assert: use the normal loop, with `@ui-reviewer` and a
   screenshot at the hand-back.
 - **Branch.** You are on `task/X.Y-*`, not `main`.
@@ -39,9 +39,10 @@ conversation, not in a variable.
 
 Spawn `@test-writer` with: the issue number, and the instruction **readback only — write nothing.**
 
-It returns three sections: **Assumptions** (things it would have to decide that the spec does
-not), **Questions**, and an **Interface check**. An Interfaces entry reported NOT FOUND and not
-marked new is a question. If there are no assumptions and no questions, go to Step 2.
+It returns four sections: **Assumptions** (things it would have to decide that the spec does
+not), **Questions**, an **Interface check**, and a **Reuse check** (existing code that already
+does something the spec would build). An Interfaces entry reported NOT FOUND and not marked new is
+a question. If all but the Interface check are empty, go to Step 2.
 
 Sort each item, and write every one you accept into the section of the issue it belongs to
 (`gh issue edit <N> --body-file`). An answer that lives only in this conversation is invisible to
@@ -54,12 +55,21 @@ both agents, and comes back as the same item next round.
 - **The operator would notice it in use** — stop. Put these to the operator one at a time, each
   with your recommendation. Write each answer as a `[you]` line.
 
+**A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match into
+Screen's "Existing screen and components reused". Then the spec stops asking for the copy: the
+criterion that restated it is reworded to point at it, its "New or changed signatures" entry is
+removed, and "Files touched" gains the existing file if reuse means exporting from it. When
+reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
+`[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
+
 Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 
 **Rounds.** One round by default. Run a second only when round 1 changed what an acceptance
 criterion does — a criterion's text, or a `[code]`/`[Lead]` line that adds behaviour no criterion
-states — and name the changed lines in its prompt. **If round 2 changes behaviour again, stop and
-ask** — the spec needs rework, not a third read. An edit that only clarifies wording does not earn
+states — and name the changed lines in its prompt. A reuse match counts only when reusing changes
+what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
+or adding a Reuses path, does not. **If round 2 changes behaviour again, stop and ask** — the spec
+needs rework, not a third read. An edit that only clarifies wording does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
 **Coming back to the spec later counts against the same rule.** A question from Step 2, or a spec
@@ -70,9 +80,15 @@ it changed behaviour, and that round is the second: if one has already run, stop
 
 Spawn `@test-writer` with: the issue number, and the instruction **write the tests.**
 
-It returns either a question — the spec forced a guess; sort it as in Step 1 and write the answer
-into the issue, then re-run readback only as Step 1's Rounds rule allows — or the files it created or edited (tests, fixtures, helpers), the stubs it wrote, a map
-of acceptance criterion → test names, and how each test fares against the stubs.
+It returns one of three things:
+
+- **A question** — the spec forced a guess. Sort it as in Step 1 and write the answer into the
+  issue, then re-run readback only as Step 1's Rounds rule allows.
+- **A stub report** — a stub would force a test to bend: edit an existing test, or work around
+  what the stub cannot provide. Bring it to the operator with your recommendation; do not let
+  `@test-writer` bend the test to get past it.
+- **The tests** — the files it created or edited (tests, fixtures, helpers), the stubs it wrote, a
+  map of acceptance criterion → test names, and how each test fares against the stubs.
 
 **Why stubs.** A red test proves something only when it fails on its own assertion: that failure is
 what shows it can catch the bug it is named for. When every test fails because the module doesn't
@@ -86,10 +102,13 @@ Check, in order:
 
 1. **Coverage both ways.** Every acceptance criterion has at least one test, except one marked
    `(by hand)`, which is checked at the hand-back instead. Every test names the criterion it
-   covers. A gap either way goes back to `@test-writer`.
+   covers. A gap either way goes back to `@test-writer`. A test file that existed before this run
+   and appears in its Files list was edited: that is a stub report, not a test.
 2. **Fails for the right reason.** Run the `Proof command` yourself, against the stubs. Each test
    must fail on its own assertion — a wrong value, a missing row, a call that didn't throw — not on
-   a missing file or function, a typo, a bad import path, or broken setup. A test that passes
+   a missing file or function, a typo, a bad import path, or broken setup. The one exception is a
+   column or table this task creates, which no stub can provide: "does not exist" is its right
+   reason, when the report marks it new in this task. A test that passes
    against the stubs is accepted only beside the failing partner the report names, the test that
    proves the behaviour it guards. Anything else goes back to `@test-writer`.
 3. **Lock the tests.** Commit every file `@test-writer` created or edited, except the stubs, on its
@@ -122,6 +141,8 @@ It returns one of:
    implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
    are gone and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
+3. Read `@implementer`'s "Stubs left as stubs". Anything but `None` is an empty function that no
+   test needed and would ship as a silent no-op: remove it, or bring it to the operator.
 
 **Two failed `@implementer` rounds on the same tests: stop and ask.** Something is wrong with the
 spec, the tests, or the task's size, and a third round is spending the allowance to find out
@@ -152,6 +173,7 @@ Print it every time, before the hand-back, and append it to the pull request bod
   readback      — <rounds>, <questions asked>
   settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
   test-writer   — <tests> tests across <criteria> criteria
+  stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
   implementer   — <rounds> rounds
   test lock     — intact | violated (<file>)
   review routes — <n> to test-writer, <n> to implementer, <n> fixed by Lead
