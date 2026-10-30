@@ -71,25 +71,38 @@ it changed behaviour, and that round is the second: if one has already run, stop
 Spawn `@test-writer` with: the issue number, and the instruction **write the tests.**
 
 It returns either a question — the spec forced a guess; sort it as in Step 1 and write the answer
-into the issue, then re-run readback only as Step 1's Rounds rule allows — or the files it created or edited (tests, fixtures, helpers), a map
-of acceptance criterion → test names, and the output of running them. Check, in order:
+into the issue, then re-run readback only as Step 1's Rounds rule allows — or the files it created or edited (tests, fixtures, helpers), the stubs it wrote, a map
+of acceptance criterion → test names, and how each test fares against the stubs.
+
+**Why stubs.** A red test proves something only when it fails on its own assertion: that failure is
+what shows it can catch the bug it is named for. When every test fails because the module doesn't
+exist, the run proves only that the module is missing — a test asserting nothing fails the same
+way. So `@test-writer` also writes stubs: the names and signatures Interfaces gives, with empty
+bodies, so every test runs and is seen failing for its own reason before any code exists. This is
+not the one-test-at-a-time loop: that loop pays for a person discovering a design as they go, and
+here the spec has already settled it.
+
+Check, in order:
 
 1. **Coverage both ways.** Every acceptance criterion has at least one test, except one marked
    `(by hand)`, which is checked at the hand-back instead. Every test names the criterion it
    covers. A gap either way goes back to `@test-writer`.
-2. **Fails for the right reason.** Run the `Proof command` yourself. Each test must fail on the
-   behavior the spec names — a missing function, a wrong value — not on a typo, a bad import path,
-   or broken setup. Wrong-reason failures go back to `@test-writer`.
-3. **Lock the tests.** Commit every file `@test-writer` created or edited, on its own:
-   `git add <files>` then `git commit -m "build-task: tests (squashed at ship)"`. Record
+2. **Fails for the right reason.** Run the `Proof command` yourself, against the stubs. Each test
+   must fail on its own assertion — a wrong value, a missing row, a call that didn't throw — not on
+   a missing file or function, a typo, a bad import path, or broken setup. A test that passes
+   against the stubs is accepted only beside the failing partner the report names, the test that
+   proves the behaviour it guards. Anything else goes back to `@test-writer`.
+3. **Lock the tests.** Commit every file `@test-writer` created or edited, except the stubs, on its
+   own: `git add <files>` then `git commit -m "build-task: tests (squashed at ship)"`. Record
    `TESTS=$(git rev-parse HEAD)`. The commit is the lock: it holds the original bytes, so a
    violation can be undone, and `git diff` against it needs no working directory. Step 5 folds it
-   back into one commit before `/kill-this`, so `@code-review` still sees the tests.
+   back into one commit before `/kill-this`, so `@code-review` still sees the tests. The stubs stay
+   in the tree, uncommitted: they are production files, and `@implementer` replaces them.
 
 ## Step 3 — Implement
 
-Spawn `@implementer` with: the issue number, the test file list, and the failing output from
-Step 2.
+Spawn `@implementer` with: the issue number, the test file list, the stub list, and the failing
+output from Step 2.
 
 It returns one of:
 
@@ -98,14 +111,16 @@ It returns one of:
   the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule) or the test was
   (set the implementation aside with `git stash push --include-untracked` and `git stash drop`,
   uncommit the tests with `git reset --soft "$TESTS~1"` so they stay in the tree to be revised,
-  then Step 2 with the instruction **write the tests** followed by the finding, word for word).
+  then Step 2 with the instruction **write the tests** followed by the finding, word for word; the
+  stubs went with the implementation, so Step 2 writes them again).
 
 ## Step 4 — Verify
 
 1. `git diff --quiet "$TESTS" -- $(git diff-tree --no-commit-id --name-only -r "$TESTS")` — any
    change to a file the tests commit holds fails the task. Set the implementation aside with
-   `git stash push --include-untracked` (the tests come back as committed), then `git stash drop`,
-   and re-run Step 3 once. A second violation: stop and tell the operator.
+   `git stash push --include-untracked` (the tests come back as committed; the stubs go with the
+   implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
+   are gone and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
 
 **Two failed `@implementer` rounds on the same tests: stop and ask.** Something is wrong with the
@@ -120,7 +135,7 @@ each one:
 
 | Finding | Goes to |
 |---|---|
-| Real bug a test should have caught | `@test-writer` (new test, committed on its own; `TESTS` is that commit), then `@implementer` |
+| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit), then `@implementer` |
 | Real bug, tests are fine | fresh `@implementer`, finding as its brief |
 | One-line cleanup, naming, a constant | fix it yourself |
 | Architectural | escalate to `@architect`, as `@code-review` already says |

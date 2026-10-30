@@ -38,7 +38,7 @@ entry is an unclassified file, which is the state this workflow keeps finding de
 | `@code-review` | Sonnet | After every commit, wired into `/kill-this` | Catch issues early. Advisory — flags, does not block |
 | `@pm` | Sonnet | Session start and end, via skills | Progress, timeline risk, scope cuts |
 | `@ui-reviewer` | Sonnet | After UI work, phase boundaries | Design quality against the project's design system, read from `.claude/ui-context.md` |
-| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion. Never writes production code |
+| `@test-writer` | Opus | `/build-task`: readback, then tests | Reads the issue spec; reports what it leaves open, or writes failing tests named for each acceptance criterion, with empty stubs so each test fails on its own assertion. Writes stubs, never behaviour |
 | `@implementer` | Sonnet | `/build-task`, after the tests | The smallest change that makes the tests pass. May not edit them; stops and reports a test it believes is wrong |
 
 The three reviewers are `context` class: they arrive as install-time starting points and each
