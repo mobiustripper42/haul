@@ -15,6 +15,8 @@
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
     "db:new-migration": "tsx db/new-migration.ts",
+    "db:seed:members": "tsx db/seed.ts members",
+    "db:reset:dev": "tsx db/reset-dev.ts",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
     "gen:dictionary": "node scripts/gen-dictionary.mjs",
     "gen:decisions-baseline": "node scripts/gen-decisions-baseline.mjs",

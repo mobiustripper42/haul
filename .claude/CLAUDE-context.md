@@ -52,6 +52,8 @@ npm run db:up                # Postgres 17 in Docker on port 5434; --wait until 
 npm run db:down
 npm run db:migrate           # apply pending migrations to haul_dev (or to the URL given)
 npm run db:new-migration <name>   # scaffold db/migrations/<UTC stamp>_<name>.sql
+npm run db:seed:<name>         # load a named dev seed into haul_dev (or the URL given); re-runnable, local only
+npm run db:reset:dev           # empty every table in haul_dev but the migration ledger
 
 # Decision records
 npm run gen:decisions        # regenerate docs/DECISIONS.md after adding a record
