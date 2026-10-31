@@ -41,8 +41,9 @@ Spawn `@test-writer` with: the issue number, and the instruction **readback only
 
 It returns four sections: **Assumptions** (things it would have to decide that the spec does
 not), **Questions**, an **Interface check**, and a **Reuse check** (existing code that already
-does something the spec would build). An Interfaces entry reported NOT FOUND and not marked new is
-a question. If all but the Interface check are empty, go to Step 2.
+does something the spec would build, and anything the spec describes in more than one place
+without naming one shared home for it). An Interfaces entry reported NOT FOUND and not marked new
+is a question. If all but the Interface check are empty, go to Step 2.
 
 Sort each item, and write every one you accept into the section of the issue it belongs to
 (`gh issue edit <N> --body-file`). An answer that lives only in this conversation is invisible to
@@ -62,14 +63,22 @@ removed, and "Files touched" gains the existing file if reuse means exporting fr
 reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
 `[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
 
+**Something described twice with no shared home** gets one: a `[Lead]` line under Interfaces' "New
+or changed signatures" naming the CSS class, component, function or constant that holds it, marked
+new, with its file added to "Files touched". A CSS class is not a signature and gets no stub. Each
+place that described it is reworded to point at that home. When the places describe it differently,
+choosing one changes what a criterion does: sort it as a `[you]` item above, with your
+recommendation.
+
 Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 
 **Rounds.** One round by default. Run a second only when round 1 changed what an acceptance
 criterion does — a criterion's text, or a `[code]`/`[Lead]` line that adds behaviour no criterion
 states — and name the changed lines in its prompt. A reuse match counts only when reusing changes
 what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
-or adding a Reuses path, does not. **If round 2 changes behaviour again, stop and ask** — the spec
-needs rework, not a third read. An edit that only clarifies wording does not earn
+or adding a Reuses path, does not. Naming a shared home, and rewording the places to point at it,
+does not either. **If round 2 changes behaviour again, stop and ask** — the spec needs rework, not
+a third read. An edit that only clarifies wording does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
 **Coming back to the spec later counts against the same rule.** A question from Step 2, or a spec
