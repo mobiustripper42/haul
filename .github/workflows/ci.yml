@@ -19,7 +19,7 @@ jobs:
 
     services:
       # The job's steps don't start until this passes its health check, so a Postgres that fails
-      # to come up fails the build.
+      # to come up fails the build. Keep in step with the e2e job's service below.
       postgres:
         image: postgres:17
         env:
@@ -49,3 +49,50 @@ jobs:
           TEST_DATABASE_URL: postgres://haul:haul@localhost:5432/haul_test
           # GitHub sets CI itself; stated here so the file says it and a test can check it.
           CI: "true"
+
+  # The sign-in round trip in a real browser (DEC-021). Its own job and its own Postgres, never
+  # inside `npm run verify`: it needs Chromium and a `next dev` server, and a failure here should
+  # not hide the gate's.
+  e2e:
+    runs-on: ubuntu-latest
+    # Above DEC-021's 40 minutes, so a run that reaches them is seen finishing, not cancelled.
+    timeout-minutes: 45
+
+    services:
+      # Keep in step with the verify job's service above.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: haul
+          POSTGRES_PASSWORD: haul
+          POSTGRES_DB: haul_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U haul -d haul_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - run: ./node_modules/.bin/playwright install --with-deps chromium
+
+      - run: npm run test:e2e
+        env:
+          TEST_DATABASE_URL: postgres://haul:haul@localhost:5432/haul_test
+          CI: "true"
+
+      - uses: actions/upload-artifact@v5
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/

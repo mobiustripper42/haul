@@ -1,6 +1,9 @@
 .sessions-worktree/
 node_modules/
 .next/
+.next-e2e/
+test-results/
+playwright-report/
 *.tsbuildinfo
 next-env.d.ts
 .env*

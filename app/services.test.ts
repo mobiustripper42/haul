@@ -6,9 +6,14 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 const VARS = ["NODE_ENV", "RESEND_API_KEY", "EMAIL_FROM", "DATABASE_URL"] as const;
 type Env = Partial<Record<(typeof VARS)[number], string>>;
 
+// The dev fake outlives a module reload (issue 31, AC5), so a fresh load also drops it: after
+// `vi.resetModules()`, a fake kept from an earlier load is an instance of an earlier `FakeEmail`.
+const devEmailGlobal = globalThis as { __haulDevEmail?: unknown };
+
 async function load(env: Env) {
   for (const name of VARS) vi.stubEnv(name, env[name]);
   vi.resetModules();
+  delete devEmailGlobal.__haulDevEmail;
   return {
     services: await import("./services"),
     FakeEmail: (await import("@core/adapters/fake-email.js")).FakeEmail,
@@ -77,6 +82,40 @@ describe("AC32 (issue 9) — getEmail", () => {
     const error = errorOf(() => services.getEmail());
     expect(error.message).toContain("RESEND_API_KEY");
     expect(error.message).toContain("EMAIL_FROM");
+  });
+});
+
+describe("AC5 (issue 31) — one dev FakeEmail per process, on globalThis", () => {
+  const silenceConsole = () => vi.spyOn(console, "log").mockImplementation(() => {});
+
+  it("AC5: outside production, with Resend unconfigured, getEmail() returns devEmail()", async () => {
+    const { services } = await load({ NODE_ENV: "development" });
+    expect(services.getEmail()).toBe(services.devEmail());
+  });
+
+  it("AC5: devEmail() returns the same FakeEmail on every call, the one at globalThis.__haulDevEmail", async () => {
+    const { services, FakeEmail } = await load({ NODE_ENV: "development" });
+    const fake = services.devEmail();
+    expect(fake).toBeInstanceOf(FakeEmail);
+    expect(services.devEmail()).toBe(fake);
+    expect(devEmailGlobal.__haulDevEmail).toBe(fake);
+  });
+
+  it("AC5: a second, separately loaded copy of app/services.ts sends into the same sent list", async () => {
+    silenceConsole();
+    const { services: first } = await load({ NODE_ENV: "development" });
+    const fromFirst = { to: "eric@ocf.xx", subject: "from the first copy", text: "111111" };
+    await first.getEmail().send(fromFirst);
+
+    // As Next loads one copy for the action and another for the route: no reset of the global.
+    vi.resetModules();
+    const second = await import("./services");
+    expect(second).not.toBe(first);
+    const fromSecond = { to: "eric@ocf.xx", subject: "from the second copy", text: "222222" };
+    await second.getEmail().send(fromSecond);
+
+    expect(first.devEmail().sent).toEqual([fromFirst, fromSecond]);
+    expect(second.devEmail().sent).toEqual([fromFirst, fromSecond]);
   });
 });
 
