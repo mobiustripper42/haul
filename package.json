@@ -9,7 +9,7 @@
     "typecheck": "tsc -p tsconfig.core.json",
     "typecheck:app": "tsc -p tsconfig.json",
     "typecheck:db": "tsc -p tsconfig.db.json",
-    "lint": "eslint app src db e2e scripts/*.test.mjs *.config.ts *.config.mjs",
+    "lint": "eslint app src db e2e scripts/*.test.mjs *.config.ts *.config.mjs *.test.ts",
     "test": "vitest run",
     "test:e2e": "playwright test",
     "db:up": "docker compose up -d --wait",

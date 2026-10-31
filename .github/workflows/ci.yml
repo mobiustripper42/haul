@@ -19,7 +19,7 @@ jobs:
 
     services:
       # The job's steps don't start until this passes its health check, so a Postgres that fails
-      # to come up fails the build.
+      # to come up fails the build. Keep in step with the e2e job's service below.
       postgres:
         image: postgres:17
         env:
@@ -55,9 +55,11 @@ jobs:
   # not hide the gate's.
   e2e:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # Above DEC-021's 40 minutes, so a run that reaches them is seen finishing, not cancelled.
+    timeout-minutes: 45
 
     services:
+      # Keep in step with the verify job's service above.
       postgres:
         image: postgres:17
         env:
