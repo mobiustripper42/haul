@@ -3,6 +3,8 @@ export const en = {
   "home.title": "OCF Member Portal",
   "home.coreCheck": "Core check: {amount}",
   "language.label": "Language",
+  "brand.name": "Ohio City Farm",
+  "brand.byline": "by Re:Source Cleveland",
   "home.signIn": "Sign in",
   "home.signedInAs": "Signed in as {email}",
   "home.signOut": "Sign out",

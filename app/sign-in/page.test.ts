@@ -1,6 +1,8 @@
 // Issue 9, AC33: /sign-in, `await SignIn(props)` rendered through react-dom/server with
 // `next/headers` faked, as app/page.test.ts renders the home page. Wording and order come from the
 // markup; the form's action from the element tree the page returns.
+// Issue 19, AC7: the same screen in its card, its classes named in app/globals.css.
+import { readFileSync } from "node:fs";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { emptyRequest } from "../next-headers-fake";
@@ -100,4 +102,47 @@ describe("AC33 (issue 9) — /sign-in", () => {
     expect(forms).toHaveLength(1);
     expect(forms[0]?.props.action).toBe(requestCode);
   });
+});
+
+const classesOf = (attributes: Record<string, string> | undefined): string[] =>
+  (attributes?.class ?? "").split(/\s+/).filter(Boolean);
+
+describe("AC7 (issue 19) — /sign-in in its card", () => {
+  it.each([{}, { limited: "5", error: "expired" }])(
+    'AC7: with %j the heading, notices and form sit in one <section class="card">, the only thing in <main>',
+    async (params) => {
+      const { html } = await render(params);
+      const markup = screenMarkup(html).trim();
+      expect(markup).toMatch(/^<main\b[^>]*>\s*<section\b[^>]*>\s*<h1\b/);
+      expect(markup).toMatch(/<\/form>\s*<\/section>\s*<\/main>$/);
+      const sections = attributesOf(html, "section");
+      expect(sections).toHaveLength(1);
+      expect(classesOf(sections[0])).toContain("card");
+    },
+  );
+
+  it("AC7: the email input carries field, and the submit button btn-primary", async () => {
+    const { html } = await render({});
+    expect(classesOf(attributesOf(html, "input")[0])).toContain("field");
+    expect(classesOf(attributesOf(html, "button")[0])).toContain("btn-primary");
+  });
+
+  it("AC7: the limited notice carries notice and notice-lock, the expired notice notice and notice-clock", async () => {
+    const { html } = await render({ limited: "5", error: "expired" });
+    const notices = attributesOf(html, "p").filter((p) => p.role === "alert");
+    expect(notices).toHaveLength(2);
+    const [lock, clock] = notices.map(classesOf);
+    expect(lock).toEqual(expect.arrayContaining(["notice", "notice-lock"]));
+    expect(lock).not.toContain("notice-clock");
+    expect(clock).toEqual(expect.arrayContaining(["notice", "notice-clock"]));
+    expect(clock).not.toContain("notice-lock");
+  });
+
+  it.each(["card", "field", "btn-primary", "notice", "notice-lock", "notice-clock"])(
+    "AC7: .%s is defined in app/globals.css",
+    (cls) => {
+      const css = readFileSync(new URL("../globals.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+      expect(css).toMatch(new RegExp(`\\.${escapeRegExp(cls)}(?![\\w-])`));
+    },
+  );
 });

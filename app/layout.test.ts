@@ -12,6 +12,8 @@ vi.mock("next/headers", async () => {
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
+// Issue 19: `localFont` throws when called outside Next's compiler, so the layout's fonts are mocked.
+vi.mock("./fonts", () => ({ fontVariables: "font-variables" }));
 
 beforeEach(() => {
   request.current = emptyRequest();

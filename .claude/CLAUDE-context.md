@@ -25,6 +25,7 @@ Roles:
 - **Env** — `.env.example` names every variable the app reads; git ignores every other `.env*` file
 - **Testing** — Vitest (DEC-011)
 - **Bundler** — webpack, not Turbopack (DEC-012)
+- **Styling** — Tailwind v4 through PostCSS; its theme is rebuilt from `design/design-system/tokens.json`, and fonts are vendored in `app/fonts/` (DEC-020)
 - **Dev environment** — mill-dev, over Tailscale. The app is on port 4000, because muster holds
   3000, 3200 and 3300 on mill-dev and centerline 3500 and 3600. Open it at `http://mill-dev:4000`.
   Postgres runs in Docker on port 5434, because muster holds 5432 and centerline 5433 (`npm run db:up`)
@@ -64,7 +65,8 @@ npm run check:decisions
 
 | File | Purpose |
 |------|---------|
-| `docs/BRAND.md` | Brand and visual direction — still the jig template, not yet written |
+| `docs/BRAND.md` | Brand and visual direction, written from the design handoff |
+| `design/` | The design handoff as uploaded (`HANDOFF.md`, `design-system/`, `screens/`); `design-system/tokens.json` is the source of the theme in `app/globals.css` |
 | `docs/USER_STORIES.md` | What each role does — still the jig template, not yet written |
 | `docs/DEV_REFERENCE.md` | Deploy + review reference |
 | `docs/FUTURE_IDEAS.md` | Ideas caught but not planned |
@@ -109,6 +111,7 @@ Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts
 - **Time** — cutoffs and pickup windows are computed in America/New_York
 - **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
 - **Audit** — every table not on `AUDIT_EXEMPT` in `db/schema-check.ts` carries the audit trigger; a test enforces it (DEC-019)
+- **UI classes** — token utilities only, from `app/globals.css`; a button names its kind (`btn-primary`, `btn-secondary` or `btn-quiet`); lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`

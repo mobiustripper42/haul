@@ -1,0 +1,198 @@
+@import "tailwindcss";
+
+/*
+ * Haul's look (DEC-020). Every value below comes from design/design-system/tokens.json, and
+ * app/theme.test.ts holds this @theme to that file both ways: a token missing, changed or invented
+ * here fails the build. Edit the tokens first, then this file.
+ *
+ * Tailwind's own colour, radius, shadow, type, font and container defaults are cleared, so
+ * `bg-red-500`, `text-2xl` and a 6px `rounded-md` do not exist. Spacing keeps Tailwind's 4px step,
+ * which is what every space-N token in tokens.json already is.
+ */
+@theme {
+  --color-*: initial;
+  --radius-*: initial;
+  --shadow-*: initial;
+  --text-*: initial;
+  --font-*: initial;
+  --container-*: initial;
+
+  --spacing: 4px;
+
+  /* Colour */
+  --color-surface: #ffffff;
+  --color-surface-alt: #f7f7f7;
+  --color-sage-soft: #e3ebe8;
+  --color-sage: #c7d5d1;
+  --color-teal: #003f4c;
+  --color-teal-muted: #487878;
+  --color-ink: #1e2a2d;
+  --color-ink-muted: #55615f;
+  --color-gold: #c8b43d;
+  --color-gold-hover: #d6c55e;
+  --color-on-gold: var(--color-teal);
+  --color-border: #7a9692;
+  --color-divider: var(--color-sage);
+  --color-success: #1c4723;
+  --color-danger: #a93226;
+  --color-danger-soft: #fbeeec;
+
+  /* Radius */
+  --radius-sm: 4px;
+  --radius-md: 8px;
+  --radius-lg: 16px;
+
+  /* Shadow */
+  --shadow-card: 0 1px 3px rgba(0, 63, 76, 0.12);
+  --shadow-modal: 0 8px 24px rgba(0, 63, 76, 0.18);
+
+  /* Families: the next/font variable (app/fonts.ts), then the stack word for word */
+  --font-sans: var(--font-montserrat), "Montserrat", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-display: var(--font-oswald), "Oswald", "Arial Narrow", sans-serif;
+
+  /* Type styles */
+  --text-display: 40px;
+  --text-display--line-height: 44px;
+  --text-display--font-weight: 400;
+  --text-display--letter-spacing: 0.04em;
+  --text-heading: 28px;
+  --text-heading--line-height: 34px;
+  --text-heading--font-weight: 400;
+  --text-heading--letter-spacing: 0.03em;
+  --text-section: 20px;
+  --text-section--line-height: 26px;
+  --text-section--font-weight: 500;
+  --text-section--letter-spacing: 0.04em;
+  --text-wordmark: 22px;
+  --text-wordmark--line-height: 26px;
+  --text-wordmark--font-weight: 400;
+  --text-wordmark--letter-spacing: 0.12em;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-body--font-weight: 400;
+  --text-body-strong: 16px;
+  --text-body-strong--line-height: 24px;
+  --text-body-strong--font-weight: 600;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-small--font-weight: 400;
+  --text-label: 12px;
+  --text-label--line-height: 16px;
+  --text-label--font-weight: 600;
+  --text-label--letter-spacing: 0.08em;
+  --text-button: 15px;
+  --text-button--line-height: 20px;
+  --text-button--font-weight: 600;
+  --text-button--letter-spacing: 0.02em;
+  --text-field-label: 14px;
+  --text-field-label--line-height: 20px;
+  --text-field-label--font-weight: 500;
+  --text-code: 28px;
+  --text-code--line-height: 32px;
+  --text-code--font-weight: 500;
+  --text-code--letter-spacing: 0.4em;
+
+  /* Sizes: heights as --spacing-*, widths as --container-* */
+  --spacing-field: 48px;
+  --spacing-button: 52px;
+  --spacing-code-field: 60px;
+  --spacing-touch: 44px;
+  --container-card: 440px;
+  --container-page: 1120px;
+}
+
+/* Base: the page, the one focus ring, the pointer. Components below own their own states. */
+@layer base {
+  /* 2px teal, a 2px gap: set once for every control. */
+  :focus-visible {
+    outline: 2px solid var(--color-teal);
+    outline-offset: 2px;
+  }
+  button:not(:disabled),
+  summary,
+  select:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled,
+  input:disabled {
+    cursor: not-allowed;
+  }
+}
+
+/*
+ * FOUR LOOKS, ONE DEFINITION EACH. A component names its kind and keeps only layout utilities beside
+ * it; colour, radius, size, hover, focus and disabled live here, and lint refuses a gold fill, a
+ * raw value or a button with no kind anywhere else (eslint.config.mjs).
+ *
+ * Icons are drawn here, never in markup: a ::before mask over an inline SVG, so a screen reader
+ * meets no icon and the text a test reads is only the words. A data URI cannot read a custom
+ * property, so the stroke is black and the colour is the background the mask cuts.
+ */
+@layer components {
+  .btn-primary {
+    @apply inline-flex min-h-button items-center justify-center rounded-md bg-gold px-6 text-center text-button text-on-gold hover:bg-gold-hover disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-secondary {
+    @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-surface px-6 text-center text-button text-teal hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-quiet {
+    @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* A card on a focused screen: the page's surface, 32px by 24px inside, its children 24px apart. */
+  .card {
+    @apply flex w-full max-w-card flex-col gap-6 rounded-md bg-surface px-6 py-8 shadow-card;
+  }
+
+  /* A text field; the code field is taller, centred and set in the code style. */
+  .field {
+    @apply block h-field w-full rounded-sm border border-border bg-surface px-3 text-body text-ink;
+  }
+  .field-code {
+    @apply h-code-field text-center text-code;
+  }
+  .field[aria-invalid="true"] {
+    border: 2px solid var(--color-danger);
+  }
+
+  /* An alert: danger border, soft fill, an icon before the words. */
+  .notice {
+    @apply flex items-start gap-3 rounded-md border border-danger bg-danger-soft px-4 py-3 text-small text-ink;
+  }
+  .notice::before {
+    content: "";
+    @apply size-5 flex-none bg-danger;
+    mask: var(--notice-icon) center / contain no-repeat;
+  }
+  .notice-lock {
+    --notice-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Crect x='5' y='10.5' width='14' height='10' rx='2'/%3E%3Cpath d='M8 10.5V8a4 4 0 0 1 8 0v2.5'/%3E%3C/svg%3E");
+  }
+  .notice-clock {
+    --notice-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7v5l3 2'/%3E%3C/svg%3E");
+  }
+  .notice-alert {
+    --notice-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 7.5v5.5'/%3E%3Cpath d='M12 16.5h.01'/%3E%3C/svg%3E");
+  }
+
+  /* "Use a different email": the quiet button with the frame's back chevron before it. */
+  .back-link {
+    @apply -ml-2;
+  }
+  .back-link::before {
+    content: "";
+    @apply size-5 flex-none bg-teal;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 18l-6-6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  /* The language switcher: its options side by side, a divider rule between them. */
+  .lang-switch {
+    @apply flex min-w-0 items-center gap-1;
+  }
+  .lang-switch > button + button {
+    @apply relative;
+  }
+  .lang-switch > button + button::before {
+    content: "";
+    @apply absolute inset-y-3 -left-0.5 w-px bg-divider;
+  }
+}

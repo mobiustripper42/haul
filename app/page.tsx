@@ -1,7 +1,6 @@
-import { LANGUAGES } from "@core/i18n.js";
 import { formatUsd } from "@core/money.js";
 import { getTranslator } from "./language";
-import { setLanguage } from "./language-actions";
+import { LanguageSwitcher } from "./language-switcher";
 import { getSignedInMember } from "./session";
 import { signOut } from "./sign-in/actions";
 
@@ -22,7 +21,9 @@ export default async function Home() {
             </p>
           )}
           <form action={signOut}>
-            <button type="submit">{t("home.signOut")}</button>
+            <button type="submit" className="btn-secondary">
+              {t("home.signOut")}
+            </button>
           </form>
         </>
       ) : (
@@ -30,16 +31,7 @@ export default async function Home() {
           <a href="/sign-in">{t("home.signIn")}</a>
         </p>
       )}
-      <form action={setLanguage}>
-        <fieldset>
-          <legend>{t("language.label")}</legend>
-          {Object.entries(LANGUAGES).map(([code, { name }]) => (
-            <button key={code} type="submit" name="language" value={code}>
-              {name}
-            </button>
-          ))}
-        </fieldset>
-      </form>
+      {await LanguageSwitcher()}
     </main>
   );
 }

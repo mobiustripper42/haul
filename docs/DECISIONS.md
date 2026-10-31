@@ -46,6 +46,7 @@ in the sibling repo and are background, not rulings for Haul.
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class
 - DEC-015 — UI strings are translated in the core, without an i18n library
+- DEC-020 — Styling is Tailwind v4, its theme rebuilt from the design's tokens
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
