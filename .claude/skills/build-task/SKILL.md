@@ -64,8 +64,11 @@ reusing it would change behaviour — the existing rule differs from the spec's 
 `[you]` item above, with your recommendation. A match you reject is one `[Lead]` line saying why.
 
 **Something described twice with no shared home** gets one: a `[Lead]` line under Interfaces' "New
-or changed signatures" naming the class, component, function or constant that holds it, and each
-place that described it is reworded to point at that home.
+or changed signatures" naming the CSS class, component, function or constant that holds it, marked
+new, with its file added to "Files touched". A CSS class is not a signature and gets no stub. Each
+place that described it is reworded to point at that home. When the places describe it differently,
+choosing one changes what a criterion does: sort it as a `[you]` item above, with your
+recommendation.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 
@@ -73,8 +76,9 @@ Keep every `[code]` and `[Lead]` line, word for word, for the receipt.
 criterion does — a criterion's text, or a `[code]`/`[Lead]` line that adds behaviour no criterion
 states — and name the changed lines in its prompt. A reuse match counts only when reusing changes
 what a criterion does (the `[you]` case above); rewording a criterion to point at existing code,
-adding a Reuses path, or naming a shared home, does not. **If round 2 changes behaviour again, stop and ask** — the spec
-needs rework, not a third read. An edit that only clarifies wording does not earn
+or adding a Reuses path, does not. Naming a shared home, and rewording the places to point at it,
+does not either. **If round 2 changes behaviour again, stop and ask** — the spec needs rework, not
+a third read. An edit that only clarifies wording does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
 **Coming back to the spec later counts against the same rule.** A question from Step 2, or a spec
