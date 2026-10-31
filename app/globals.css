@@ -18,6 +18,10 @@
  * Tailwind's own colour, radius, shadow, type, font and container defaults are cleared, so
  * `bg-red-500`, `text-2xl` and a 6px `rounded-md` do not exist. Spacing keeps Tailwind's 4px step,
  * which is what every space-N token in tokens.json already is.
+ *
+ * Type, spacing and container lengths are rem (the token's px ÷ 16), so the root font size scales
+ * them: desktop with a mouse sets it to 93.75% (AC19), phones and tablets keep 100%, and a reader's
+ * browser text size applies everywhere. Radius, shadow, borders and the focus ring stay px.
  */
 @theme {
   --color-*: initial;
@@ -27,7 +31,7 @@
   --font-*: initial;
   --container-*: initial;
 
-  --spacing: 4px;
+  --spacing: 0.25rem;
 
   /* Colour */
   --color-surface: #ffffff;
@@ -61,61 +65,67 @@
   --font-display: var(--font-oswald), "Oswald", "Arial Narrow", sans-serif;
 
   /* Type styles */
-  --text-display: 40px;
-  --text-display--line-height: 44px;
+  --text-display: 2.125rem;
+  --text-display--line-height: 2.375rem;
   --text-display--font-weight: 400;
   --text-display--letter-spacing: 0.04em;
-  --text-heading: 28px;
-  --text-heading--line-height: 34px;
+  --text-heading: 1.5rem;
+  --text-heading--line-height: 1.875rem;
   --text-heading--font-weight: 400;
   --text-heading--letter-spacing: 0.03em;
-  --text-section: 20px;
-  --text-section--line-height: 26px;
+  --text-section: 1.0625rem;
+  --text-section--line-height: 1.375rem;
   --text-section--font-weight: 500;
   --text-section--letter-spacing: 0.04em;
-  --text-wordmark: 22px;
-  --text-wordmark--line-height: 26px;
+  --text-wordmark: 1.1875rem;
+  --text-wordmark--line-height: 1.375rem;
   --text-wordmark--font-weight: 400;
   --text-wordmark--letter-spacing: 0.12em;
-  --text-body: 16px;
-  --text-body--line-height: 24px;
+  --text-body: 0.875rem;
+  --text-body--line-height: 1.375rem;
   --text-body--font-weight: 400;
-  --text-body-strong: 16px;
-  --text-body-strong--line-height: 24px;
+  --text-body-strong: 0.875rem;
+  --text-body-strong--line-height: 1.375rem;
   --text-body-strong--font-weight: 600;
-  --text-small: 14px;
-  --text-small--line-height: 20px;
+  --text-small: 0.75rem;
+  --text-small--line-height: 1.125rem;
   --text-small--font-weight: 400;
-  --text-label: 12px;
-  --text-label--line-height: 16px;
+  --text-label: 0.6875rem;
+  --text-label--line-height: 1rem;
   --text-label--font-weight: 600;
   --text-label--letter-spacing: 0.08em;
-  --text-button: 15px;
-  --text-button--line-height: 20px;
+  --text-button: 0.875rem;
+  --text-button--line-height: 1.25rem;
   --text-button--font-weight: 600;
   --text-button--letter-spacing: 0.02em;
-  --text-field-label: 14px;
-  --text-field-label--line-height: 20px;
+  --text-field-label: 0.75rem;
+  --text-field-label--line-height: 1.125rem;
   --text-field-label--font-weight: 500;
-  --text-byline: 12px;
-  --text-byline--line-height: 16px;
+  --text-byline: 0.6875rem;
+  --text-byline--line-height: 0.875rem;
   --text-byline--font-weight: 400;
-  --text-code: 28px;
-  --text-code--line-height: 32px;
+  --text-code: 1.5rem;
+  --text-code--line-height: 1.75rem;
   --text-code--font-weight: 500;
   --text-code--letter-spacing: 0.4em;
 
   /* Sizes: heights as --spacing-*, widths as --container-* */
-  --spacing-field: 48px;
-  --spacing-button: 52px;
-  --spacing-code-field: 60px;
-  --spacing-touch: 44px;
-  --container-card: 440px;
-  --container-page: 1120px;
+  --spacing-field: 2.5rem;
+  --spacing-button: 2.75rem;
+  --spacing-code-field: 3.25rem;
+  --spacing-touch: 2.75rem;
+  --container-card: 23.5rem;
+  --container-page: 60rem;
 }
 
 /* Base: the page, the one focus ring, the pointer. Components below own their own states. */
 @layer base {
+  /* AC19: desktop with a mouse renders one step smaller; phones and tablets keep 100%. */
+  @media (min-width: 1024px) and (pointer: fine) {
+    html {
+      font-size: 93.75%;
+    }
+  }
   /* 2px teal, a 2px gap: set once for every control. */
   :focus-visible {
     outline: 2px solid var(--color-teal);
@@ -152,19 +162,22 @@
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
   }
 
-  /* The page a focused screen sits on: its card centred, a 16px gutter, 48px above and below. */
+  /* The page a focused screen sits on: its card centred, a 16px gutter, 40px above and below. */
   .page-narrow {
-    @apply flex justify-center px-4 py-12;
+    @apply flex justify-center px-4 py-10;
   }
 
-  /* A card on a focused screen: the page's surface, 32px by 24px inside, its children 24px apart. */
+  /* A card on a focused screen: the page's surface, 28px by 20px inside, its children 20px apart. */
   .card {
-    @apply flex w-full max-w-card flex-col gap-6 rounded-md bg-surface px-6 py-8 shadow-card;
+    @apply flex w-full max-w-card flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
   }
 
   /* A text field; the code field is taller, centred and set in the code style. */
   .field {
-    @apply block h-field w-full rounded-sm border border-border bg-surface px-3 text-body text-ink;
+    @apply block h-field w-full rounded-sm border border-border bg-surface px-3 text-ink;
+    /* 1rem stays: iOS zooms into a field set smaller (AC3's floor), so body's size does not apply here. Phones keep a 100% root (AC19), so it is 16px where that matters. */
+    font-size: 1rem;
+    line-height: 1.5rem;
   }
   .field-code {
     @apply h-code-field text-center text-code;

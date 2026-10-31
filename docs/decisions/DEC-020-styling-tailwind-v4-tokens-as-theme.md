@@ -25,12 +25,13 @@ amends_spec:
 
 ## DEC-020: Styling is Tailwind v4, its theme rebuilt from the design's tokens
 
-Muster's choice, adapted.
+Muster's choice, adapted. Plain stylesheets lost: with Tailwind's defaults cleared, an off-token value
+needs bracket syntax (`p-[13px]`), which one lint pattern catches; stylesheets would need stylelint.
+`app/theme.test.ts` holds `@theme` to `tokens.json` both ways.
 
-Plain stylesheets lost because, with Tailwind's defaults cleared, an off-token value can only be
-written in bracket syntax (`p-[13px]`), which one lint pattern catches. Stylesheets would need
-stylelint for the same, another dependency. `app/theme.test.ts` holds `@theme` to `tokens.json` in both directions, so
-the design file and the code cannot drift apart unseen.
+Type, spacing and container lengths are rem (the token's px ÷ 16). Desktop with a mouse sets the root to
+93.75%, phones and tablets keep 100% (Eric, 2026-10-31: desktop still a little big after the 85% scale);
+rem also lets a reader's browser text size apply.
 
 Fonts are vendored because `next/font/google` downloads at `next build`, and failed muster's once
 (`muster/app/layout.tsx:10-15`). Montserrat and Oswald load from `app/fonts/` with their open font licences

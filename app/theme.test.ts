@@ -1,5 +1,6 @@
-// Issue 19, AC1–AC3: app/globals.css's @theme against design/design-system/tokens.json, both ways,
-// and Tailwind's own compiler run over app/globals.css to see which utilities exist.
+// Issue 19, AC1–AC3 and AC19: app/globals.css's @theme against design/design-system/tokens.json,
+// both ways, and Tailwind's own compiler run over app/globals.css to see which utilities exist and
+// what the shipped stylesheet carries.
 import { readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -130,13 +131,30 @@ function pushDeclaration(text: string, into: Array<[string, string]>): void {
   into.push([name, normal(text.slice(colon + 1))]);
 }
 
+/**
+ * AC1 (2026-10-31): a type style's size and line height, and every size length, is written in the
+ * theme in rem (the token's px ÷ 16) so AC19's desktop root scales it; radius, shadow, letter spacing
+ * and weight are compared as written.
+ */
+function isRemLength(name: string): boolean {
+  if (name.startsWith("--spacing-") || name.startsWith("--container-")) return true;
+  if (!name.startsWith("--text-")) return false;
+  return !name.slice(2).includes("--") || name.endsWith("--line-height");
+}
+
+/** A rem length as the px it is at the 16px root; anything else is reported as written, not rem. */
+function remAsPx(value: string): string {
+  const rem = /^(\d*\.?\d+)rem$/.exec(value);
+  return rem ? `${Number(rem[1]) * 16}px` : `${value} (not rem)`;
+}
+
 /** The compared theme variables in app/globals.css, by namespace; a later declaration wins. */
 function actualTheme(): Record<string, Map<string, string>> {
   const byNamespace: Record<string, Map<string, string>> = {};
   for (const [name, value] of themeDeclarations(readFileSync(GLOBALS, "utf8"))) {
     const ns = namespaceOf(name);
     if (ns === null) continue;
-    (byNamespace[ns] ??= new Map()).set(name, value);
+    (byNamespace[ns] ??= new Map()).set(name, isRemLength(name) ? remAsPx(value) : value);
   }
   return byNamespace;
 }
@@ -144,7 +162,7 @@ function actualTheme(): Record<string, Map<string, string>> {
 const NAMESPACES = ["color", "radius", "shadow", "text", "font", "spacing", "container"] as const;
 
 describe("AC1 — app/globals.css's @theme matches tokens.json both ways", () => {
-  it.each(NAMESPACES)("AC1: every %s token is a theme variable with the same value", (ns) => {
+  it.each(NAMESPACES)("AC1: every %s token is a theme variable with the same value, lengths in rem read as px", (ns) => {
     const expected = expectedTheme()[ns] ?? new Map<string, string>();
     expect([...expected.keys()], `tokens.json yields no ${ns} theme variables`).not.toHaveLength(0);
     const actual = actualTheme()[ns] ?? new Map<string, string>();
@@ -211,10 +229,10 @@ describe("AC2 — Tailwind's defaults are cleared in the token namespaces; spaci
     expect(css).not.toMatch(/--radius-md:\s*0\.375rem/);
   });
 
-  it("AC2: --spacing is 4px, so p-4 is still generated from it", async () => {
+  it("AC2: --spacing is 0.25rem (4px at the 16px root), so p-4 is still generated from it", async () => {
     const css = await build("p-4");
     expect(declarationsOf(css, "p-4")).toMatch(/var\(--spacing\)/);
-    expect(css).toMatch(/--spacing:\s*4px\s*;/);
+    expect([...css.matchAll(/--spacing:\s*([^;]*);/g)].map((m) => (m[1] as string).trim())).toEqual(["0.25rem"]);
   });
 
   it("AC2: every space-N token in tokens.json equals N × 4px", () => {
@@ -263,6 +281,91 @@ describe("AC2 — the shipped CSS builds no utility from a test file, design/ or
 });
 
 // ---------------------------------------------------------------------------------------------
+// AC19: the shipped stylesheet's root font size. A small CSS walker: every style rule with the
+// at-rules and rules around it, so a declaration can be placed inside or outside a media query.
+
+type Block = { prelude: string; declarations: string[]; children: Block[] };
+
+function parseCss(css: string): Block {
+  const root: Block = { prelude: "", declarations: [], children: [] };
+  const stack: Block[] = [root];
+  let buffer = "";
+  let quote: string | null = null;
+  for (let i = 0; i < css.length; i++) {
+    const ch = css[i] as string;
+    if (quote) {
+      buffer += ch;
+      if (ch === quote && css[i - 1] !== "\\") quote = null;
+      continue;
+    }
+    if (ch === "/" && css[i + 1] === "*") {
+      const end = css.indexOf("*/", i + 2);
+      i = end === -1 ? css.length : end + 1;
+      continue;
+    }
+    const top = stack[stack.length - 1] as Block;
+    if (ch === '"' || ch === "'") {
+      quote = ch;
+      buffer += ch;
+    } else if (ch === "{") {
+      const block: Block = { prelude: normal(buffer), declarations: [], children: [] };
+      top.children.push(block);
+      stack.push(block);
+      buffer = "";
+    } else if (ch === "}") {
+      if (buffer.trim()) top.declarations.push(normal(buffer));
+      buffer = "";
+      if (stack.length > 1) stack.pop();
+    } else if (ch === ";") {
+      if (buffer.trim()) top.declarations.push(normal(buffer));
+      buffer = "";
+    } else {
+      buffer += ch;
+    }
+  }
+  return root;
+}
+
+/** Every `font-size` set on `html` or `:root`, with the media queries around it, whitespace removed. */
+function rootFontSizes(css: string): Array<{ media: string[]; value: string }> {
+  const found: Array<{ media: string[]; value: string }> = [];
+  const walk = (block: Block, around: string[]): void => {
+    for (const child of block.children) {
+      const isRule = !child.prelude.startsWith("@");
+      const selectors = isRule ? child.prelude.split(",").map((s) => s.trim()) : [];
+      if (selectors.includes("html") || selectors.includes(":root")) {
+        for (const declaration of child.declarations) {
+          const colon = declaration.indexOf(":");
+          if (colon !== -1 && declaration.slice(0, colon).trim().toLowerCase() === "font-size") {
+            found.push({
+              media: around.filter((p) => p.startsWith("@media")).map((p) => p.replace(/\s+/g, "")),
+              value: declaration.slice(colon + 1).trim(),
+            });
+          }
+        }
+      }
+      walk(child, [...around, child.prelude]);
+    }
+  };
+  walk(parseCss(css), []);
+  return found;
+}
+
+const DESKTOP_WITH_A_MOUSE = "@media(min-width:1024px)and(pointer:fine)";
+
+describe("AC19 — desktop with a mouse sets the root one step smaller; phones and tablets keep 100%", () => {
+  it("AC19: the shipped CSS sets html { font-size: 93.75% } inside @media (min-width: 1024px) and (pointer: fine)", async () => {
+    const { css } = await shippedBuild();
+    expect(rootFontSizes(css)).toContainEqual({ media: [DESKTOP_WITH_A_MOUSE], value: "93.75%" });
+  });
+
+  it("AC19: the shipped CSS sets the root font size nowhere else, so phones and tablets keep 100%", async () => {
+    const { css } = await shippedBuild();
+    expect(rootFontSizes(css).filter(({ media }) => media.length !== 1 || media[0] !== DESKTOP_WITH_A_MOUSE)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
 
 function typeStyle(name: string): { family: string; style: TypeStyle } | undefined {
   for (const group of tokens().type.groups) {
@@ -277,10 +380,29 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
     expect(tokens().color.tokens.find((t) => t.name === "danger-soft")?.value).toBe("#fbeeec");
   });
 
+  // AC3's 85% scale (Eric, 2026-10-31): the existing styles' size and line height, and the one weight
+  // AC3 gives. Their letter spacing is unchanged and AC1 holds it to the theme.
   it.each([
-    ["field-label", "sans", "14px", "20px", 500, undefined],
-    ["wordmark", "display", "22px", "26px", 400, "0.12em"],
-    ["code", "sans", "28px", "32px", 500, "0.4em"],
+    ["display", "34px", "38px", undefined],
+    ["heading", "24px", "30px", undefined],
+    ["section", "17px", "22px", undefined],
+    ["body", "14px", "22px", undefined],
+    ["body-strong", "14px", "22px", 600],
+    ["small", "12px", "18px", undefined],
+    ["label", "11px", "16px", undefined],
+    ["button", "14px", "20px", undefined],
+  ] as const)("AC3: type style %s is scaled to %s / %s, weight %s where AC3 gives one", (name, fontSize, lineHeight, fontWeight) => {
+    const found = typeStyle(name);
+    expect(found, `no type style ${name}`).toBeDefined();
+    expect(found?.style).toMatchObject({ fontSize, lineHeight });
+    if (fontWeight !== undefined) expect(found?.style.fontWeight).toBe(fontWeight);
+  });
+
+  it.each([
+    ["field-label", "sans", "12px", "18px", 500, undefined],
+    ["wordmark", "display", "19px", "22px", 400, "0.12em"],
+    ["byline", "sans", "11px", "14px", 400, undefined],
+    ["code", "sans", "24px", "28px", 500, "0.4em"],
   ] as const)(
     "AC3: type style %s sits in a %s group at %s / %s / %s, letter-spacing %s",
     (name, family, fontSize, lineHeight, fontWeight, letterSpacing) => {
@@ -298,15 +420,15 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
     expect(usage).not.toMatch(/field/i);
   });
 
-  it("AC3: a size group holds field 48px, button 52px, code-field 60px, touch 44px, card 440px, page 1120px, shaped as spacing is", () => {
+  it("AC3: a size group holds field 40px, button 44px, code-field 52px, touch 44px, card 376px, page 960px, shaped as spacing is", () => {
     const size = tokens().size?.tokens ?? [];
     expect(Object.fromEntries(size.map(({ name, value }) => [name, value]))).toEqual({
-      field: "48px",
-      button: "52px",
-      "code-field": "60px",
+      field: "40px",
+      button: "44px",
+      "code-field": "52px",
       touch: "44px",
-      card: "440px",
-      page: "1120px",
+      card: "376px",
+      page: "960px",
     });
     for (const token of size) expect(typeof token.usage, `${token.name} has no usage`).toBe("string");
   });

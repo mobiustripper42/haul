@@ -50,8 +50,12 @@ teal is the brand and carries headings, links and focus. gold is the one accent 
 Two faces, both already on ohiocityfarm.com. The site's third face, Adobe Caslon, is not used: it is licensed per site, and a serif body is harder to read on phones.
 
 - `display` family, Oswald (400, 500): page titles, screen titles, section headings and the farm's wordmark. Sentence case in the product, so translated text reads naturally; the wordmark is set in capitals by CSS.
-- `sans` family, Montserrat (400, 500, 600): everything else. Body is 16px minimum.
-- **Field labels are 14px, weight 500, sentence case** (`field-label`). The README set them as `label`, 12px capitals; the frames do not. `label` is for nav items.
+- `sans` family, Montserrat (400, 500, 600): everything else. Body is 14px (see the scale note below).
+- **Field labels are 12px, weight 500, sentence case** (`field-label`). The README set them as `label`, 12px capitals; the frames do not. `label` is for nav items.
+
+**The type and sizes are scaled to about 85% of the frame, phones included** (Eric, 2026-10-31: the frame and the first build were both too big; 83-85% browser zoom looked right). Body is 14px, not the README's 16px. The 16px minimum now applies to text inside a field, because iOS zooms into a field set smaller. Two other floors hold: nothing a person taps is under 40px tall, and no text is under 11px. `app/theme.test.ts` pins every value to `tokens.json`.
+
+**Desktop with a mouse renders at 93.75%; phones and tablets at 100%** (Eric, 2026-10-31: desktop was still a little big after the 85% scale). Type, spacing and container lengths are written in rem, so the root size scales them and a reader's browser text size applies; the px in `tokens.json` are what they come to at a 100% root. Radius, shadow, borders and the focus ring stay px.
 
 **Fonts load from files in the repo, not from Google.** `app/fonts/` holds the five static weights as woff2 beside each family's OFL licence, loaded through `next/font/local` in `app/fonts.ts`. The README says "Load both from Google Fonts"; `next/font/google` downloads during `next build`, which can fail a build on a network it has nothing to do with (DEC-020). Adding a weight means adding a file.
 
@@ -59,9 +63,9 @@ Two faces, both already on ohiocityfarm.com. The site's third face, Adobe Caslon
 
 Every screen has a desktop and a mobile design; tablets use mobile (DEC-008). Spacing steps are `space-1` 4px to `space-12` 48px, and Tailwind's own 4px step is kept.
 
-- **Cards have 32px by 24px padding** (32px above and below, 24px at the sides), with 24px between their children, at every width. The README gave 16px on phones.
-- **The page has a 16px gutter at every width.** The README gave 24px on desktop. Content is at most `page` (1120px) wide; a focused card is at most `card` (440px).
-- **Every control is at least 44px tall,** the language switcher included: `touch` 44px, `field` 48px, `button` 52px, `code-field` 60px. The README's 44px floor is kept; the frame's switcher did not meet it.
+- **Cards have 28px by 20px padding** (28px above and below, 20px at the sides), with 20px between their children, at every width. The README gave 16px on phones.
+- **The page has a 16px gutter at every width.** The README gave 24px on desktop. Content is at most `page` (960px) wide; a focused card is at most `card` (376px).
+- **Every control is at least 40px tall:** `field` 40px; `button`, `touch` and the language switcher 44px; `code-field` 52px. The README's 44px floor is lowered to 40px so the field stays 40 (Eric, 2026-10-31); the frame's switcher, at 40px, did not reach 44.
 
 ### Focus and accessibility
 
