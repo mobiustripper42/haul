@@ -1,8 +1,10 @@
 // Issue 19, AC1–AC3: app/globals.css's @theme against design/design-system/tokens.json, both ways,
 // and Tailwind's own compiler run over app/globals.css to see which utilities exist.
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
+import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { compile as compileForBuild } from "@tailwindcss/node";
+import { Scanner } from "@tailwindcss/oxide";
 import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
 import { escapeRegExp } from "./screen-test-helpers";
@@ -223,6 +225,40 @@ describe("AC2 — Tailwind's defaults are cleared in the token namespaces; spaci
       expect(n, `${name} is not space-N`).toBeDefined();
       expect(value, name).toBe(`${Number(n) * 4}px`);
     }
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// AC2, review fix: the shipped stylesheet. @tailwindcss/postcss compiles app/globals.css with
+// @tailwindcss/node, then scans for candidates with oxide's Scanner over the compiler's root and
+// @source entries; a null root is the whole project from the cwd, which is the repo root under Next.
+
+async function shippedBuild(): Promise<{ files: string[]; css: string }> {
+  const compiler = await compileForBuild(readFileSync(GLOBALS, "utf8"), {
+    base: dirname(GLOBALS),
+    from: GLOBALS,
+    onDependency: () => {},
+  });
+  const root =
+    compiler.root === "none" ? [] : compiler.root === null ? [{ base: ROOT, pattern: "**/*", negated: false }] : [{ ...compiler.root, negated: false }];
+  const scanner = new Scanner({ sources: [...root, ...compiler.sources] });
+  const candidates = scanner.scan();
+  return { files: scanner.files.map((file) => relative(ROOT, file)), css: compiler.build(candidates) };
+}
+
+const TEST_FILE = /\.(test|spec)\.[cm]?[jt]sx?$/;
+
+describe("AC2 — the shipped CSS builds no utility from a test file, design/ or docs/", () => {
+  it("AC2: Tailwind's scan of the repo reads no test file and nothing under design/ or docs/", async () => {
+    const { files } = await shippedBuild();
+    expect(files.length, "the scan read no files at all").toBeGreaterThan(0);
+    expect(files.filter((file) => TEST_FILE.test(file) || /^(design|docs)\//.test(file)).sort()).toEqual([]);
+  });
+
+  it("AC2: the shipped CSS has no .text-gold rule and no arbitrary -[ utility", async () => {
+    const { css } = await shippedBuild();
+    const selectors = [...css.matchAll(/(^|[\s,}])(\.[^\s{,]+)/g)].map((m) => m[2] as string);
+    expect(selectors.filter((s) => /(^\.|\\:|\\!)text-gold(?![\w-])/.test(s) || s.includes("-\\["))).toEqual([]);
   });
 });
 

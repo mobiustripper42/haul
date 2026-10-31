@@ -12,7 +12,7 @@ export default async function SignInCode({ searchParams }: { searchParams: Promi
   const [t, { error }] = await Promise.all([getTranslator(), searchParams]);
   const invalid = error === "invalid";
   return (
-    <main className="flex justify-center px-4 py-12">
+    <main className="page-narrow">
       <section className="card">
         <p>
           <a href="/sign-in" className="btn-quiet back-link">

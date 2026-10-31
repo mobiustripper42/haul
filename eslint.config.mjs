@@ -62,17 +62,20 @@ const inClassString = (regex, message) => [
 const LOW_CONTRAST = { sage: "1.51", divider: "1.51", gold: "2.09", "gold-hover": "1.75", border: "3.18" };
 const contrastSelectors = Object.entries(LOW_CONTRAST).flatMap(([token, ratio]) =>
   inClassString(
-    `(?:^|\\s)(?![^\\s]*disabled:)(?:[^\\s:]+:)*text-${token}(?![\\w-])`,
+    `(?:^|\\s)(?![^\\s]*disabled:)(?:[^\\s:]+:)*!?text-${token}(?![\\w-])`,
     `text-${token} is ${ratio}:1 as text on surface, under the 4.5:1 text needs (DEC-020). Use ink, ink-muted, teal or teal-muted; ${token} is for fills, borders and rules. Only disabled:text-${token} is allowed.`,
   ),
 );
 
 const OPT_OUT = "an eslint-disable-next-line no-restricted-syntax comment with a reason";
+// Raw values are read only inside a `className` value, so a pattern, a name or a translation key that
+// happens to look like `p-[13px]` stays clean. A class string is a literal or a template literal
+// anywhere under that attribute (a conditional's branch, a helper's argument).
+const rawValueMessage = `An arbitrary value or property in a class string (p-[13px], bg-[#fbeeec], [color:#fff]) is off the tokens in app/globals.css (DEC-020). Use a token utility; for a genuine exception, add ${OPT_OUT}.`;
+const RAW_VALUE = "(?:^|\\s)(?:[^\\s\\[]*-\\[[^\\s\\]]*\\]|(?:[^\\s:]+:)*!?\\[[a-z-]+:[^\\s\\]]+\\])";
 const rawValueSelectors = [
-  ...inClassString(
-    "(?:^|\\s)[^\\s\\[]*-\\[[^\\s\\]]*\\]",
-    `An arbitrary value in a class string (p-[13px], bg-[#fbeeec]) is off the tokens in app/globals.css (DEC-020). Use a token utility; for a genuine exception, add ${OPT_OUT}.`,
-  ),
+  { selector: `JSXAttribute[name.name='className'] Literal[value=/${RAW_VALUE}/]`, message: rawValueMessage },
+  { selector: `JSXAttribute[name.name='className'] TemplateElement[value.cooked=/${RAW_VALUE}/]`, message: rawValueMessage },
   {
     selector: "JSXAttribute[name.name='style']",
     message: `A style prop is off the tokens in app/globals.css (DEC-020). Use class names; for a genuine exception, add ${OPT_OUT}.`,
@@ -96,6 +99,8 @@ const buttonKindSelectors = [
   `${buttonClass} > JSXExpressionContainer > Literal:not([value=/${BUTTON_KIND}/])`,
   `${buttonClass} > JSXExpressionContainer > TemplateLiteral:not(:has(TemplateElement[value.raw=/${BUTTON_KIND}/]))`,
   `${buttonClass} > JSXExpressionContainer > ConditionalExpression > Literal:not([value=/${BUTTON_KIND}/])`,
+  `${buttonClass} > JSXExpressionContainer > ConditionalExpression:not([consequent.type='Literal'])`,
+  `${buttonClass} > JSXExpressionContainer > ConditionalExpression:not([alternate.type='Literal'])`,
   `${buttonClass} > JSXExpressionContainer > :matches(Identifier, MemberExpression, CallExpression)`,
   `${BUTTON}:not(:has(JSXAttribute[name.name='className']))`,
 ].map((selector) => ({ selector, message: buttonKindMessage }));

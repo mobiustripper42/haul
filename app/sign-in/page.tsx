@@ -16,7 +16,7 @@ export default async function SignIn({
   const [t, { limited, error }] = await Promise.all([getTranslator(), searchParams]);
   const minutes = limitedMinutes(limited);
   return (
-    <main className="flex justify-center px-4 py-12">
+    <main className="page-narrow">
       <section className="card">
         <h1 className="font-display text-heading text-teal">{t("signIn.title")}</h1>
         {minutes !== null && (

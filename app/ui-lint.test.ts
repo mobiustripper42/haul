@@ -89,6 +89,27 @@ describe("AC11 — lint fails on a low-contrast text colour under any variant bu
   );
 });
 
+describe("AC11 — the important modifier, prefix or suffix, does not slip a low-contrast colour past", () => {
+  const cases = Object.keys(RATIOS).flatMap((token) =>
+    written([
+      [`!text-${token}`, "literal"],
+      [`hover:!text-${token}`, "braces"],
+      [`text-${token}!`, "template"],
+    ]).map(([cls, form, jsx]) => [token, cls, form, jsx] as const),
+  );
+
+  it.each(cases)("AC11: %s — fails on %s as a %s, naming the token and its ratio on surface", async (token, _cls, _form, jsx) => {
+    const result = await lint(jsx);
+    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+    const errors = errorsWhere(result, ratioMessage);
+    expect(errors, describeMessages(result)).not.toHaveLength(0);
+    for (const { message } of errors) {
+      expect(message).toContain(token);
+      expect(message).toContain(`${RATIOS[token] as string}:1`);
+    }
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 
 const OPT_OUT = "eslint-disable-next-line";
@@ -114,6 +135,33 @@ describe("AC12 — lint fails on a raw value", () => {
     const result = await lint(jsx);
     expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
     expect(errorsWhere(result, (m) => m.includes(OPT_OUT)), describeMessages(result)).not.toHaveLength(0);
+  });
+});
+
+describe("AC12 — an arbitrary property is a raw value too; only class strings are held to it", () => {
+  const cases = written([
+    ["[color:#fff]", "literal"],
+    ["[color:#fff]", "template"],
+    ["hover:[margin:0]", "braces"],
+    ["hover:[margin:0]", "literal"],
+  ]);
+
+  it.each(cases)("AC12: fails on the arbitrary property %s as a %s, naming the eslint-disable-next-line opt-out", async (_cls, _form, jsx) => {
+    const result = await lint(jsx);
+    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+    expect(errorsWhere(result, (m) => m.includes(OPT_OUT)), describeMessages(result)).not.toHaveLength(0);
+  });
+
+  it.each([
+    ["the code input's pattern", '<input pattern="[0-9]*" />'],
+    ["a pattern shaped like an arbitrary value", '<input pattern="A-[0-9]{4}" />'],
+    ["a pattern as a template literal", "<input pattern={`A-[0-9]{4}`} />"],
+    ["a name shaped like an arbitrary value", '<input name="item-[0]" />'],
+    ["a translation key shaped like an arbitrary value", '<p>{t("p-[13px]")}</p>'],
+  ])("AC12: passes on %s, which is not a class string", async (_what, jsx) => {
+    const result = await lint(jsx);
+    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+    expect(result.errorCount, describeMessages(result)).toBe(0);
   });
 });
 
@@ -168,9 +216,29 @@ describe("AC14 — every <button> names its kind", () => {
   });
 });
 
+describe("AC14 — a conditional className names a kind in every branch, as a literal", () => {
+  it.each([
+    ["undefined", '<button className={name ? "btn-quiet" : undefined} />'],
+    ["undefined, first", '<button className={name ? undefined : "btn-primary"} />'],
+    ["a variable", '<button className={name ? "btn-quiet" : name} />'],
+    ["a member expression", '<button className={name ? "btn-quiet" : t.name} />'],
+    ["a call", '<button className={name ? "btn-quiet" : t("btn-primary")} />'],
+  ])("AC14: fails on a <button> whose conditional className has a branch that is %s, naming the three kinds", async (_what, jsx) => {
+    const result = await lint(jsx);
+    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+    expect(errorsWhere(result, kindMessage), describeMessages(result)).not.toHaveLength(0);
+  });
+
+  it("AC14: passes on a <button> whose conditional className names a kind in both branches", async () => {
+    const result = await lint('<button className={name ? "btn-quiet" : "btn-primary"} />');
+    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+    expect(result.errorCount, describeMessages(result)).toBe(0);
+  });
+});
+
 // ---------------------------------------------------------------------------------------------
 
-const bareStringMessage = (m: string) => m.includes("src/messages/");
+const bareStringMessage =(m: string) => m.includes("src/messages/");
 
 describe("AC15 — the rules compose with DEC-015's bare-string selectors", () => {
   it.each(["app/sign-in/x.tsx", "components/x.tsx"])(

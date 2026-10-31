@@ -1,6 +1,16 @@
 @import "tailwindcss";
 
 /*
+ * Tailwind scans every file git does not ignore. Test files hold the fixture strings the lint rules
+ * are tested with, design/ and docs/ hold prose and mockups, and the lint config's messages quote the
+ * banned classes; none of them may build a utility into the shipped stylesheet (app/theme.test.ts).
+ */
+@source not "../**/*.{test,spec}.{ts,tsx,mts,cts,js,jsx,mjs,cjs}";
+@source not "../design";
+@source not "../docs";
+@source not "../eslint.config.mjs";
+
+/*
  * Haul's look (DEC-020). Every value below comes from design/design-system/tokens.json, and
  * app/theme.test.ts holds this @theme to that file both ways: a token missing, changed or invented
  * here fails the build. Edit the tokens first, then this file.
@@ -87,6 +97,9 @@
   --text-field-label: 14px;
   --text-field-label--line-height: 20px;
   --text-field-label--font-weight: 500;
+  --text-byline: 12px;
+  --text-byline--line-height: 16px;
+  --text-byline--font-weight: 400;
   --text-code: 28px;
   --text-code--line-height: 32px;
   --text-code--font-weight: 500;
@@ -137,6 +150,11 @@
   }
   .btn-quiet {
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
+  }
+
+  /* The page a focused screen sits on: its card centred, a 16px gutter, 48px above and below. */
+  .page-narrow {
+    @apply flex justify-center px-4 py-12;
   }
 
   /* A card on a focused screen: the page's surface, 32px by 24px inside, its children 24px apart. */
