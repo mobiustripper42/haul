@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Supper Club signup, mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 2480px; box-sizing: border-box; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 16px; line-height: 24px; display: flex; flex-direction: column;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1; padding: 12px 16px; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+    <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+      <span style="font-family: 'Oswald', sans-serif; font-size: 20px; line-height: 24px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+      <span style="font-size: 12px; line-height: 16px; color: #55615f;">by Re:Source Cleveland</span>
+    </a>
+    <div style="display: flex; align-items: center; gap: 4px;">
+      <a href="#" lang="es" style="padding: 10px 8px; font-size: 14px; color: #487878; text-decoration: none;">Español</a>
+      <a href="#" style="padding: 10px 12px; border: 1px solid #003f4c; border-radius: 8px; font-size: 14px; font-weight: 600; color: #003f4c; text-decoration: none;">Sign in</a>
+    </div>
+  </header>
+
+  <main style="padding: 24px 16px 32px; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">SUPPER CLUB · STARTS JANUARY 2027</span>
+      <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 32px; line-height: 38px; letter-spacing: 0.03em; color: #003f4c;">Weekly meals from the farm kitchen</h1>
+    </div>
+    <p style="margin: 0;">Let the multicultural kitchen team at Ohio City Farm handle part of your week's meal prep. Global flavors, simple whole-food ingredients, and seasonal produce grown here in Ohio City.</p>
+
+    <div style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+      <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 20px; line-height: 26px; letter-spacing: 0.04em; color: #003f4c;">Every week, family style</h2>
+      <p style="margin: 0;">A main dish, a grain or bread, a vegetable side, a salad, and a soup or stew.</p>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">Two menus each week, standard and vegan. Allergens are marked on every package.</p>
+    </div>
+
+    <section aria-labelledby="m-form-title" style="background: #ffffff; border-radius: 16px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 20px 16px; display: flex; flex-direction: column; gap: 28px;">
+      <h2 id="m-form-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 26px; line-height: 32px; letter-spacing: 0.03em; color: #003f4c;">Join the Supper Club</h2>
+
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px;">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">1. HOW MANY PEOPLE?</legend>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <sc-for list="{{sizes}}" as="item" hint-placeholder-count="2">
+            <sc-if value="{{item.selected}}" hint-placeholder-val="{{true}}">
+              <button type="button" aria-pressed="true" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 56px; padding: 0 15px; border: 2px solid #003f4c; border-radius: 8px; background: #e3ebe8; color: #1e2a2d; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <span style="font-weight: 600; color: #003f4c;">{{item.label}}</span>
+                <span style="font-size: 14px; line-height: 20px;">{{item.priceText}} a week</span>
+              </button>
+            </sc-if>
+            <sc-if value="{{item.unselected}}" hint-placeholder-val="{{false}}">
+              <button type="button" aria-pressed="false" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 56px; padding: 0 16px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; display: flex; align-items: center; justify-content: space-between; gap: 12px;">
+                <span style="font-weight: 600;">{{item.label}}</span>
+                <span style="font-size: 14px; line-height: 20px; color: #55615f;">{{item.priceText}} a week</span>
+              </button>
+            </sc-if>
+          </sc-for>
+        </div>
+      </fieldset>
+
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 8px;">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">2. WHICH MENU?</legend>
+        <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px;">
+          <sc-for list="{{prefs}}" as="item" hint-placeholder-count="2">
+            <sc-if value="{{item.selected}}" hint-placeholder-val="{{true}}">
+              <button type="button" aria-pressed="true" onClick="{{item.pick}}" style="font: inherit; cursor: pointer; min-height: 56px; padding: 0 12px; border: 2px solid #003f4c; border-radius: 8px; background: #e3ebe8; color: #003f4c; font-weight: 600;">{{item.label}}</button>
+            </sc-if>
+            <sc-if value="{{item.unselected}}" hint-placeholder-val="{{false}}">
+              <button type="button" aria-pressed="false" onClick="{{item.pick}}" style="font: inherit; cursor: pointer; min-height: 56px; padding: 0 12px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; font-weight: 600;">{{item.label}}</button>
+            </sc-if>
+          </sc-for>
+        </div>
+        <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">Vegan is every dish plant-based, same price. Switch any week before the cutoff.</p>
+      </fieldset>
+
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">3. YOUR DETAILS</legend>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">First name
+          <input type="text" autocomplete="given-name" style="font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">Last name
+          <input type="text" autocomplete="family-name" style="font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">Email
+          <input type="email" autocomplete="email" style="font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          <span style="font-weight: 400; color: #55615f;">This is how you sign in. We email you a 6-digit code, no password.</span>
+        </label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">Language for emails
+          <select style="font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            <option>English</option>
+            <option lang="es">Español</option>
+          </select>
+        </label>
+      </fieldset>
+
+      <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
+        <legend style="padding: 0; margin-bottom: 8px; font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">4. PAYMENT</legend>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 14px; line-height: 20px; font-weight: 500;">Card</span>
+          <div style="height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px 4px 0 0; background: #ffffff; display: flex; align-items: center; gap: 12px; color: #55615f;">
+            <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#487878" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="M3 10h18"></path></svg>
+            <span>Card number</span>
+          </div>
+          <div style="margin-top: -9px; display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));">
+            <span style="height: 48px; box-sizing: border-box; padding: 12px; border: 1px solid #7a9692; border-radius: 0 0 0 4px; background: #ffffff; color: #55615f;">MM / YY</span>
+            <span style="height: 48px; box-sizing: border-box; padding: 12px; border: 1px solid #7a9692; border-left: 0; background: #ffffff; color: #55615f;">CVV</span>
+            <span style="height: 48px; box-sizing: border-box; padding: 12px; border: 1px solid #7a9692; border-left: 0; border-radius: 0 0 4px 0; background: #ffffff; color: #55615f;">ZIP</span>
+          </div>
+          <span style="font-size: 14px; line-height: 20px; color: #55615f;">Secure card entry by Square. Your card is saved for the weekly charge.</span>
+        </div>
+
+        <div style="background: #f7f7f7; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span>Today, first week</span>
+            <strong style="font-weight: 600;">{{priceText}}</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; gap: 12px;">
+            <span>Then every week</span>
+            <strong style="font-weight: 600;">{{priceText}}</strong>
+          </div>
+          <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">First pickup: [FIRST PICKUP DATE]. After that, your card is charged at the end of each Monday for the following week's pickup, until you cancel. Skip, switch or cancel in your account any time before then.</p>
+        </div>
+
+        <label style="display: flex; gap: 12px; align-items: flex-start; cursor: pointer;">
+          <input type="checkbox" style="flex: none; width: 20px; height: 20px; margin: 2px 0 0 0; accent-color: #003f4c;">
+          <span style="font-size: 14px; line-height: 20px;">I agree to a weekly charge of {{priceText}} until I cancel, and to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>.</span>
+        </label>
+      </fieldset>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <a href="#" style="display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Join and pay {{priceText}}</a>
+        <p style="margin: 0; text-align: center; font-size: 14px; line-height: 20px; color: #55615f;">Limited to 50 households. No sales tax.</p>
+      </div>
+    </section>
+
+    <div style="background: #e3ebe8; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+      <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">A SAMPLE WEEK</span>
+      <p style="margin: 0; font-weight: 600; color: #003f4c;">Shish tawook chicken skewers</p>
+      <p style="margin: 0; font-size: 14px; line-height: 20px;">Mujadara rice and lentils · Roasted squash · Shredded carrot and walnut salad with sumac · Butternut squash soup</p>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">Vegan: Lebanese chickpea moussaka in place of the chicken.</p>
+    </div>
+
+    <div style="display: flex; gap: 12px; align-items: flex-start;">
+      <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>
+      <p style="margin: 0;"><strong style="font-weight: 600;">Pick up Sunday or Monday</strong> at the farm store, 2304 Bridge Ave. Hours: [PICKUP HOURS].</p>
+    </div>
+  </main>
+
+  <footer style="margin-top: auto; border-top: 1px solid #c7d5d1; background: #ffffff; padding: 20px 16px; display: flex; flex-direction: column; gap: 12px; font-size: 14px; line-height: 20px; color: #55615f;">
+    <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+    <div style="display: flex; gap: 24px;">
+      <a href="#">Terms</a>
+      <a href="#">Privacy</a>
+      <a href="#">Contact</a>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":2480}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { size: 'two', pref: 'standard' };
+  }
+  renderVals() {
+    const sizeDefs = [
+      { id: 'two', label: '2 people', price: 50 },
+      { id: 'family', label: '3–4 people', price: 80 }
+    ];
+    const prefDefs = [
+      { id: 'standard', label: 'Standard' },
+      { id: 'vegan', label: 'Vegan' }
+    ];
+    const chosen = sizeDefs.find((s) => s.id === this.state.size) || sizeDefs[0];
+    return {
+      sizes: sizeDefs.map((s) => ({
+        label: s.label,
+        priceText: '$' + s.price,
+        selected: s.id === this.state.size,
+        unselected: s.id !== this.state.size,
+        pick: () => this.setState({ size: s.id })
+      })),
+      prefs: prefDefs.map((p) => ({
+        label: p.label,
+        selected: p.id === this.state.pref,
+        unselected: p.id !== this.state.pref,
+        pick: () => this.setState({ pref: p.id })
+      })),
+      priceText: '$' + chosen.price
+    };
+  }
+}
+</script>
+</body>
+</html>

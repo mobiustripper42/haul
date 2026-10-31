@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Sign in</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 16px; line-height: 24px;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 22px; line-height: 26px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 12px; line-height: 16px; color: #55615f;">by Re:Source Cleveland</span>
+      </a>
+      <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px;">
+        <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+        <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+        <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex: 1 0 auto; padding: 48px 16px; display: flex; justify-content: center; align-items: flex-start;">
+    <section style="width: 100%; max-width: 440px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 32px 24px; display: flex; flex-direction: column; gap: 24px;">
+
+      <sc-if value="{{onEmail}}" hint-placeholder-val="{{true}}">
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 28px; line-height: 34px; letter-spacing: 0.03em; color: #003f4c;">Sign in</h1>
+            <p style="margin: 0; color: #55615f;">Enter the email you signed up with. We will send you a 6-digit code. There is no password.</p>
+          </div>
+          <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">Email
+            <input type="email" autocomplete="email" placeholder="name@example.com" style="font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </label>
+          <button type="button" onClick="{{toCode}}" style="font: inherit; cursor: pointer; min-height: 52px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Email me a code</button>
+          <div style="border-top: 1px solid #c7d5d1; padding-top: 16px; font-size: 14px; line-height: 20px; color: #55615f;">Not a member yet? <a href="Main.dc.html">Join the Supper Club</a></div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{onCode}}" hint-placeholder-val="{{false}}">
+        <div style="display: flex; flex-direction: column; gap: 24px;">
+          <button type="button" onClick="{{toEmail}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+            Use a different email
+          </button>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 28px; line-height: 34px; letter-spacing: 0.03em; color: #003f4c;">Check your email</h1>
+            <p style="margin: 0; color: #55615f;">We sent a 6-digit code to <strong style="font-weight: 600; color: #1e2a2d;">{{email}}</strong>.</p>
+          </div>
+          <sc-if value="{{errWrong}}" hint-placeholder-val="{{false}}">
+            <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d; font-size: 14px; line-height: 20px;">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+              <span><strong style="font-weight: 600; color: #a93226;">That code doesn't match.</strong> Check the newest email from us and try again.</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{errExpired}}" hint-placeholder-val="{{false}}">
+            <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d; font-size: 14px; line-height: 20px;">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+              <span><strong style="font-weight: 600; color: #a93226;">That code has expired.</strong> Codes only work for a short time. Send yourself a new one below.</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{errLocked}}" hint-placeholder-val="{{false}}">
+            <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d; font-size: 14px; line-height: 20px;">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><rect x="5" y="10.5" width="14" height="10" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+              <span><strong style="font-weight: 600; color: #a93226;">Too many tries.</strong> For your safety, sign-in is paused. Wait a few minutes, then send yourself a new code.</span>
+            </div>
+          </sc-if>
+          <label style="display: flex; flex-direction: column; gap: 8px; font-size: 14px; line-height: 20px; font-weight: 500;">6-digit code
+            <sc-if value="{{codeOk}}" hint-placeholder-val="{{true}}">
+              <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="font: inherit; font-size: 28px; line-height: 32px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 60px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </sc-if>
+            <sc-if value="{{codeBad}}" hint-placeholder-val="{{false}}">
+              <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="{{badCode}}" aria-invalid="true" style="font: inherit; font-size: 28px; line-height: 32px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 60px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </sc-if>
+          </label>
+          <sc-if value="{{canSignIn}}" hint-placeholder-val="{{true}}">
+            <a href="#" style="display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Sign in</a>
+          </sc-if>
+          <sc-if value="{{needsNewCode}}" hint-placeholder-val="{{false}}">
+            <button type="button" style="font: inherit; cursor: pointer; min-height: 52px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Send a new code</button>
+          </sc-if>
+          <sc-if value="{{canSignIn}}" hint-placeholder-val="{{true}}">
+            <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">No email? Check your spam folder, or <button type="button" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">send a new code</button>.</p>
+          </sc-if>
+        </div>
+      </sc-if>
+
+    </section>
+  </main>
+
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 14px; line-height: 20px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"startStep":{"editor":"enum","options":["email","code"],"default":"email"},"error":{"editor":"enum","options":["none","wrong","expired","locked"],"default":"none"},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":800}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { step: null };
+  }
+  renderVals() {
+    const step = this.state.step ?? this.props.startStep ?? 'email';
+    const err = this.state.step ? 'none' : (this.props.error ?? 'none');
+    const needsNewCode = err === 'expired' || err === 'locked';
+    return {
+      onEmail: step === 'email',
+      onCode: step === 'code',
+      errWrong: err === 'wrong',
+      errExpired: err === 'expired',
+      errLocked: err === 'locked',
+      codeBad: err === 'wrong',
+      codeOk: err !== 'wrong',
+      badCode: '482193',
+      needsNewCode: needsNewCode,
+      canSignIn: !needsNewCode,
+      email: this.props.email ?? 'name@example.com',
+      toCode: () => this.setState({ step: 'code' }),
+      toEmail: () => this.setState({ step: 'email' })
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Confirmation email</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#e3ebe8}
+a{color:#003f4c}
+</style>
+</helmet>
+<div style="width: 640px; height: 1180px; box-sizing: border-box; background: #e3ebe8; padding: 24px 40px; font-family: 'Montserrat', Arial, sans-serif; color: #1e2a2d; font-size: 16px; line-height: 24px; display: flex; flex-direction: column; gap: 16px;">
+
+  <div style="font-size: 14px; line-height: 20px; color: #55615f; display: flex; flex-direction: column; gap: 2px;">
+    <span><strong style="font-weight: 600; color: #1e2a2d;">From:</strong> Ohio City Farm &lt;[SENDER ADDRESS]&gt;</span>
+    <span><strong style="font-weight: 600; color: #1e2a2d;">Subject:</strong> You're in the Supper Club</span>
+  </div>
+
+  <div style="background: #ffffff; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+    <div style="padding: 24px 32px; border-bottom: 1px solid #c7d5d1; display: flex; flex-direction: column;">
+      <span style="font-family: 'Oswald', Arial, sans-serif; font-size: 22px; line-height: 26px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+      <span style="font-size: 12px; line-height: 16px; color: #55615f;">by Re:Source Cleveland</span>
+    </div>
+
+    <div style="padding: 32px; display: flex; flex-direction: column; gap: 20px;">
+      <h1 style="margin: 0; font-family: 'Oswald', Arial, sans-serif; font-weight: 400; font-size: 30px; line-height: 36px; letter-spacing: 0.03em; color: #003f4c;">You're in the Supper Club, Maria</h1>
+      <p style="margin: 0;">Thank you for joining. Here is what you signed up for.</p>
+
+      <div style="background: #f7f7f7; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 8px;">
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="color: #55615f;">Box</span><strong style="font-weight: 600;">2 people · Standard</strong></div>
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="color: #55615f;">Paid today</span><strong style="font-weight: 600;">$50</strong></div>
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="color: #55615f;">Then every week</span><strong style="font-weight: 600;">$50</strong></div>
+        <div style="display: flex; justify-content: space-between; gap: 16px;"><span style="color: #55615f;">First pickup</span><strong style="font-weight: 600;">[FIRST PICKUP DATE]</strong></div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-family: 'Oswald', Arial, sans-serif; font-weight: 500; font-size: 18px; line-height: 24px; letter-spacing: 0.04em; color: #003f4c;">Pickup</h2>
+        <p style="margin: 0;">Sunday or Monday at the farm store, 2304 Bridge Ave, Cleveland. Hours: [PICKUP HOURS]. Give your name at the counter.</p>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-family: 'Oswald', Arial, sans-serif; font-weight: 500; font-size: 18px; line-height: 24px; letter-spacing: 0.04em; color: #003f4c;">Each week</h2>
+        <p style="margin: 0;">We email you the menu. Your card is charged $50 at the end of each Monday for the following week's pickup. To skip a week, change your box or cancel, sign in before the end of Monday.</p>
+      </div>
+
+      <a href="#" style="align-self: flex-start; display: flex; align-items: center; justify-content: center; min-height: 48px; padding: 0 28px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Go to your account</a>
+      <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">You sign in with your email. We send you a 6-digit code each time, no password.</p>
+      <p style="margin: 0;">Questions? Reply to this email.</p>
+    </div>
+  </div>
+
+  <div style="padding: 0 8px; font-size: 13px; line-height: 20px; color: #55615f; display: flex; flex-direction: column; gap: 4px;">
+    <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+    <span>You are getting this email because you joined the Supper Club. <a href="#">Terms</a> · <a href="#">Privacy</a></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":1180}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
