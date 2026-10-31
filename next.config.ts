@@ -1,6 +1,9 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // The e2e server builds into its own directory, so it holds its own dev lock and starts beside
+  // `npm run dev` on 4000 (DEC-021). Unset otherwise: Next's default is `.next`.
+  ...(process.env.E2E === "1" ? { distDir: ".next-e2e" } : {}),
   // Off, or `next dev` writes an `AGENTS.md` at the repo root whenever an AI agent starts it, and
   // re-creates it if deleted. Claude Code reads `CLAUDE.md`, not `AGENTS.md`.
   agentRules: false,

@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient } from "./pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
+import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL, testDatabaseUrl } from "./test-database.js";
 
 // Port 1 on loopback refuses at once; 192.0.2.1 (TEST-NET-1, RFC 5737) never answers, so only
 // the 2 s connect timeout ends the attempt.
@@ -44,6 +44,20 @@ describe("AC8 — TEST_DATABASE_URL, the one value every Postgres-backed suite u
     vi.stubEnv("TEST_DATABASE_URL", "postgres://haul:haul@localhost:5432/haul_test");
     vi.resetModules();
     expect(await fresh()).toBe("postgres://haul:haul@localhost:5432/haul_test");
+  });
+});
+
+describe("AC4 (issue 31) — testDatabaseUrl, the naming ensureTestDatabase uses", () => {
+  it("AC4: appends _<suffix> to the database name in the path", () => {
+    expect(testDatabaseUrl("postgres://haul:haul@localhost:5434/haul_test", "e2e")).toBe(
+      "postgres://haul:haul@localhost:5434/haul_test_e2e",
+    );
+  });
+
+  it("AC4: keeps the query string", () => {
+    expect(testDatabaseUrl("postgres://haul:haul@localhost:5432/haul_test?sslmode=disable", "e2e")).toBe(
+      "postgres://haul:haul@localhost:5432/haul_test_e2e?sslmode=disable",
+    );
   });
 });
 
@@ -98,6 +112,10 @@ describe.skipIf(!up)(`AC9 — ensureTestDatabase${skipped}`, () => {
       c.query<{ tablename: string }>("select tablename from pg_tables where schemaname = 'public'"),
     );
     expect(rows).toEqual([]);
+  });
+
+  it("AC4 (issue 31): returns the URL testDatabaseUrl names for the same base and suffix", async () => {
+    await expect(ensureTestDatabase(TEST_DATABASE_URL, "ensure")).resolves.toBe(testDatabaseUrl(TEST_DATABASE_URL, "ensure"));
   });
 
   it("AC9: a second call, with the database already there, returns the same URL without throwing", async () => {

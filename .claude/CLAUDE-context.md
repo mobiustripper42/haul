@@ -23,7 +23,7 @@ Roles:
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
 - **Env** — `.env.example` names every variable the app reads; git ignores every other `.env*` file
-- **Testing** — Vitest (DEC-011)
+- **Testing** — Vitest (DEC-011); Playwright for browser e2e, CI only (DEC-021)
 - **Bundler** — webpack, not Turbopack (DEC-012)
 - **Styling** — Tailwind v4 through PostCSS; its theme is rebuilt from `design/design-system/tokens.json`, and fonts are vendored in `app/fonts/` (DEC-020)
 - **Dev environment** — mill-dev, over Tailscale. The app is on port 4000, because muster holds
@@ -47,6 +47,7 @@ npm run typecheck:app        # the app, under tsconfig.json
 npm run typecheck:db         # the db/ scripts, under the core's compiler options (tsconfig.db.json)
 npm run lint                 # app/, src/, db/, the project's tests and configs — not jig's scripts/
 npm run test                 # vitest run; add a path to run one file. The Postgres suites skip without a database
+npm run test:e2e             # playwright test: desktop and mobile on a next dev server on port 4100, over haul_test_e2e. Needs `npm run db:up`; not in verify
 
 # Database (docker-compose.yml)
 npm run db:up                # Postgres 17 in Docker on port 5434; --wait until healthy

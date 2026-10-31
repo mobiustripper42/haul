@@ -29,6 +29,13 @@ export async function requireTestDatabase(url: string, opts: { ci: boolean }): P
   return true;
 }
 
+/** `baseUrl` with `_<suffix>` appended to its database name, the query string kept. */
+export function testDatabaseUrl(baseUrl: string, suffix: string): string {
+  const url = new URL(baseUrl);
+  url.pathname = `${url.pathname}_${suffix}`;
+  return url.toString();
+}
+
 /**
  * `<base>_<suffix>`, created if absent. Returns its URL. It only creates the database: the suite
  * calls `migrate` itself.
@@ -39,8 +46,8 @@ export async function requireTestDatabase(url: string, opts: { ci: boolean }): P
  * violation in the catalog) when both are in flight. Anything else is a real failure.
  */
 export async function ensureTestDatabase(baseUrl: string, suffix: string): Promise<string> {
-  const url = new URL(baseUrl);
-  const name = `${url.pathname.replace(/^\//, "")}_${suffix}`;
+  const url = new URL(testDatabaseUrl(baseUrl, suffix));
+  const name = url.pathname.replace(/^\//, "");
 
   const admin = new URL(baseUrl);
   admin.pathname = "/postgres";
@@ -57,6 +64,5 @@ export async function ensureTestDatabase(baseUrl: string, suffix: string): Promi
     await client.end();
   }
 
-  url.pathname = `/${name}`;
   return url.toString();
 }
