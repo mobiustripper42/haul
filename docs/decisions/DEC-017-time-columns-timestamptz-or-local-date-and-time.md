@@ -3,7 +3,7 @@ schema: 1
 id: DEC-017
 title: "A moment is timestamptz; a Cleveland wall-clock time is date and time"
 topic: "Data model"
-status: "draft"
+status: "active"
 date: "2026-10-28"
 ruling: "A column holding a moment is timestamptz. A Cleveland wall-clock time, such as a pickup date or the cutoff, is date and time, read in America/New_York. Neither is ever text or timestamp without time zone."
 claims:
@@ -29,4 +29,4 @@ declined to change for the migration it would take. Code ported from muster brin
 why this is written down. Pickup windows and the cutoff are Cleveland wall-clock times, not
 instants, and stay `date` and `time` (`docs/SPEC.md` §7.2).
 
-Draft until task 0.8 (issue #11) adds the schema check that enforces it.
+Enforced by the schema check in `db/schema-check.ts`, added by task 0.8 (issue #11).

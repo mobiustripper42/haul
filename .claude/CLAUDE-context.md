@@ -108,7 +108,7 @@ Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts
 - **Money** — integer cents everywhere, never floats
 - **Time** — cutoffs and pickup windows are computed in America/New_York
 - **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
-- **Audit** — every table carries the audit trigger; a test enforces it (task 0.8)
+- **Audit** — every table not on `AUDIT_EXEMPT` in `db/schema-check.ts` carries the audit trigger; a test enforces it (DEC-019)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
