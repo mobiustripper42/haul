@@ -37,7 +37,12 @@ Every line in the sections below carries its source:
 - **AC3** — (by hand) on the phone, …
 
 ## Interfaces
-<!-- Exact, from the code — not from memory. The test-writer builds against this list. -->
+<!-- Exact, from the code — not from memory. The test-writer builds against this list.
+     One shared home: anything the Screen section or the criteria describe in more than one place —
+     a style, a piece of markup, a rule, a value — is built once, as a class, component, function
+     or constant named under New or changed signatures (under Reuses, if it exists already), and
+     each place points at it. Two descriptions with no home named get built twice, and no search of
+     the code finds that copy, because it does not exist yet. -->
 - **Files touched:** `path/to/file.ts`, …
 - **New or changed signatures:** `functionName(arg: Type): ReturnType`, route `POST /api/…`, …
 - **Data shapes:** table/column, type, or JSON shape the tests will assert on

@@ -37,6 +37,7 @@ Write nothing. Check the spec against the code and return:
 
 ### Reuse check
 - <a new thing the spec introduces> — exists at <path:line>
+- <a thing the spec describes twice> — described at <place>, <place>; no shared home named
 ```
 
 Empty lists are written as `None`. An Interfaces entry that is NOT FOUND and not marked new is
@@ -49,6 +50,12 @@ existing one lives. A match is code a builder would otherwise restate — the sa
 not code that is merely related, and not a same-named thing with a different job. Skip anything
 the spec already lists under Reuses. A copy of existing code passes every test, which is why this
 section is not filtered by what could fail one.
+
+The reuse check has a second kind of finding: anything the spec describes in more than one place —
+two criteria, a criterion and the Screen section, two screens — with no one shared home named for it
+in Interfaces (a class, component, function or constant). A search of the code cannot find this
+copy, because it does not exist yet: the builder writes it twice, and every test passes. Report each
+one with the places that describe it. Skip one whose places already point at a single named home.
 
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
