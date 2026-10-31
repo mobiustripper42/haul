@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Members, admin</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-table{display:block}
+.ocf-cards{display:none}
+@media (max-width: 720px){.ocf-table{display:none}.ocf-cards{display:flex}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 16px; line-height: 24px;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 1200px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 24px;">
+      <div style="display: flex; align-items: baseline; gap: 12px;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 22px; line-height: 26px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">ADMIN</span>
+      </div>
+      <nav aria-label="Admin" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 14px; line-height: 20px;">
+        <a href="#" aria-current="page" style="padding: 10px 12px; border-radius: 4px; background: #e3ebe8; font-weight: 600; color: #003f4c; text-decoration: none;">Members</a>
+        <a href="#" style="padding: 10px 12px; color: #487878; text-decoration: none;">Menus</a>
+        <a href="#" style="padding: 10px 12px; color: #487878; text-decoration: none;">Weekly lists</a>
+        <a href="#" style="padding: 10px 12px; color: #487878; text-decoration: none;">Sign out</a>
+      </nav>
+    </div>
+  </header>
+
+  <main style="flex: 1 0 auto; width: 100%; max-width: 1200px; box-sizing: border-box; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 24px;">
+    <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+      <div style="display: flex; flex-direction: column; gap: 4px;">
+        <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 28px; line-height: 34px; letter-spacing: 0.03em; color: #003f4c;">Supper Club members</h1>
+        <p style="margin: 0; font-size: 14px; line-height: 20px; color: #55615f;">{{spotsText}}</p>
+      </div>
+      <a href="#" style="display: flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 20px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; text-decoration: none;">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11"></path><path d="M7.5 10.5L12 15l4.5-4.5"></path><path d="M5 19.5h14"></path></svg>
+        Download spreadsheet
+      </a>
+    </div>
+
+    <label style="display: flex; flex-direction: column; gap: 8px; max-width: 420px; font-size: 14px; line-height: 20px; font-weight: 500;">Search
+      <span style="position: relative; display: flex; align-items: center;">
+        <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#487878" stroke-width="1.75" stroke-linecap="round" style="position: absolute; left: 12px;"><circle cx="11" cy="11" r="6.5"></circle><path d="M16 16l4 4"></path></svg>
+        <input type="search" value="{{q}}" onChange="{{onSearch}}" placeholder="Name, email or phone" style="flex: 1 1 auto; font: inherit; font-size: 16px; font-weight: 400; height: 48px; box-sizing: border-box; padding: 0 12px 0 40px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+      </span>
+    </label>
+
+    <div class="ocf-table" style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse; font-size: 14px; line-height: 20px;">
+        <thead>
+          <tr style="background: #f7f7f7; border-bottom: 1px solid #c7d5d1;">
+            <th scope="col" aria-sort="{{nameSort}}" style="text-align: left; padding: 0;"><button type="button" onClick="{{byName}}" style="font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c; cursor: pointer; width: 100%; min-height: 44px; padding: 0 16px; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 6px;">NAME <span aria-hidden="true">{{nameArrow}}</span></button></th>
+            <th scope="col" style="text-align: left; padding: 0 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">EMAIL</th>
+            <th scope="col" style="text-align: left; padding: 0 16px; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">PHONE</th>
+            <th scope="col" aria-sort="{{boxSort}}" style="text-align: left; padding: 0;"><button type="button" onClick="{{byBox}}" style="font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c; cursor: pointer; width: 100%; min-height: 44px; padding: 0 16px; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 6px;">BOX <span aria-hidden="true">{{boxArrow}}</span></button></th>
+            <th scope="col" aria-sort="{{joinedSort}}" style="text-align: left; padding: 0;"><button type="button" onClick="{{byJoined}}" style="font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c; cursor: pointer; width: 100%; min-height: 44px; padding: 0 16px; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 6px;">JOINED <span aria-hidden="true">{{joinedArrow}}</span></button></th>
+            <th scope="col" aria-sort="{{statusSort}}" style="text-align: left; padding: 0;"><button type="button" onClick="{{byStatus}}" style="font: inherit; font-size: 12px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c; cursor: pointer; width: 100%; min-height: 44px; padding: 0 16px; border: 0; background: transparent; text-align: left; display: flex; align-items: center; gap: 6px;">STATUS <span aria-hidden="true">{{statusArrow}}</span></button></th>
+          </tr>
+        </thead>
+        <tbody>
+          <sc-for list="{{rows}}" as="m" hint-placeholder-count="8">
+            <tr style="border-bottom: 1px solid #e3ebe8;">
+              <td style="padding: 14px 16px; font-weight: 600; white-space: nowrap;"><a href="#" style="text-decoration: none; color: #003f4c;">{{m.name}}</a></td>
+              <td style="padding: 14px 16px; color: #1e2a2d;">{{m.email}}</td>
+              <td style="padding: 14px 16px; white-space: nowrap;">{{m.phone}}</td>
+              <td style="padding: 14px 16px; white-space: nowrap;">{{m.box}}</td>
+              <td style="padding: 14px 16px; white-space: nowrap;">{{m.joinedText}}</td>
+              <td style="padding: 14px 16px; white-space: nowrap;">
+                <sc-if value="{{m.isActive}}" hint-placeholder-val="{{true}}"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; background: #e3ebe8; color: #1c4723; font-size: 13px; font-weight: 600;">Active</span></sc-if>
+                <sc-if value="{{m.isDeclined}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 2px 10px; border-radius: 999px; background: #fbeeec; color: #a93226; font-size: 13px; font-weight: 600;">Card declined</span></sc-if>
+                <sc-if value="{{m.isCancelled}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 1px 9px; border: 1px solid #c7d5d1; border-radius: 999px; background: #f7f7f7; color: #55615f; font-size: 13px; font-weight: 600;">Cancelled</span></sc-if>
+              </td>
+            </tr>
+          </sc-for>
+        </tbody>
+      </table>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 0; padding: 24px 16px; color: #55615f;">No members match "{{q}}".</p>
+      </sc-if>
+    </div>
+
+    <div class="ocf-cards" style="flex-direction: column; gap: 12px;">
+      <label style="display: flex; align-items: center; gap: 12px; font-size: 14px; line-height: 20px; font-weight: 500;">Sort by
+        <select onChange="{{onSortSelect}}" style="flex: 1 1 auto; font: inherit; font-size: 16px; font-weight: 400; height: 44px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          <option value="name">Name</option>
+          <option value="joined">Joined, newest first</option>
+          <option value="box">Box</option>
+          <option value="status">Status</option>
+        </select>
+      </label>
+      <sc-for list="{{rows}}" as="m" hint-placeholder-count="4">
+        <a href="#" style="display: flex; flex-direction: column; gap: 6px; padding: 16px; border-radius: 8px; background: #ffffff; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); color: #1e2a2d; text-decoration: none;">
+          <span style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px;">
+            <strong style="font-weight: 600; color: #003f4c;">{{m.name}}</strong>
+            <sc-if value="{{m.isActive}}" hint-placeholder-val="{{true}}"><span style="flex: none; padding: 2px 10px; border-radius: 999px; background: #e3ebe8; color: #1c4723; font-size: 13px; line-height: 20px; font-weight: 600;">Active</span></sc-if>
+            <sc-if value="{{m.isDeclined}}" hint-placeholder-val="{{false}}"><span style="flex: none; padding: 2px 10px; border-radius: 999px; background: #fbeeec; color: #a93226; font-size: 13px; line-height: 20px; font-weight: 600;">Card declined</span></sc-if>
+            <sc-if value="{{m.isCancelled}}" hint-placeholder-val="{{false}}"><span style="flex: none; padding: 1px 9px; border: 1px solid #c7d5d1; border-radius: 999px; background: #f7f7f7; color: #55615f; font-size: 13px; line-height: 20px; font-weight: 600;">Cancelled</span></sc-if>
+          </span>
+          <span style="font-size: 14px; line-height: 20px;">{{m.box}} · joined {{m.joinedText}}</span>
+          <span style="font-size: 14px; line-height: 20px; color: #55615f;">{{m.email}} · {{m.phone}}</span>
+        </a>
+      </sc-for>
+      <sc-if value="{{empty}}" hint-placeholder-val="{{false}}">
+        <p style="margin: 0; color: #55615f;">No members match "{{q}}".</p>
+      </sc-if>
+    </div>
+  </main>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { q: '', key: 'name', dir: 'asc' };
+  }
+  sortBy(key) {
+    if (this.state.key === key) {
+      this.setState({ dir: this.state.dir === 'asc' ? 'desc' : 'asc' });
+    } else {
+      this.setState({ key: key, dir: key === 'joined' ? 'desc' : 'asc' });
+    }
+  }
+  renderVals() {
+    const data = [
+      ['Abara', 'Chidi', 'chidi.abara@example.com', '(216) 555-0142', '3–4 people · Standard', '2026-12-01', 'active'],
+      ['Bennett', 'Rosa', 'rosa.bennett@example.com', '(216) 555-0187', '2 people · Vegan', '2026-12-01', 'active'],
+      ['Castillo', 'Marco', 'marco.castillo@example.com', '(440) 555-0123', '3–4 people · Standard', '2026-12-02', 'declined'],
+      ['Dang', 'Linh', 'linh.dang@example.com', '(216) 555-0166', '2 people · Standard', '2026-12-02', 'active'],
+      ['Ellison', 'Grace', 'grace.ellison@example.com', '(216) 555-0119', '2 people · Vegan', '2026-12-03', 'cancelled'],
+      ['Farah', 'Yusuf', 'yusuf.farah@example.com', '(216) 555-0158', '3–4 people · Standard', '2026-12-04', 'active'],
+      ['Gutierrez', 'Ana', 'ana.gutierrez@example.com', '(440) 555-0171', '3–4 people · Vegan', '2026-12-05', 'active'],
+      ['Haddad', 'Rami', 'rami.haddad@example.com', '(216) 555-0134', '2 people · Standard', '2026-12-07', 'active'],
+      ['Kowalski', 'Ben', 'ben.kowalski@example.com', '(216) 555-0149', '2 people · Standard', '2026-12-08', 'active'],
+      ['Mbeki', 'Thandi', 'thandi.mbeki@example.com', '(216) 555-0195', '3–4 people · Standard', '2026-12-09', 'active'],
+      ['Nguyen', 'Tam', 'tam.nguyen@example.com', '(216) 555-0110', '2 people · Vegan', '2026-12-11', 'active'],
+      ['Okafor', 'Ada', 'ada.okafor@example.com', '(440) 555-0182', '3–4 people · Standard', '2026-12-12', 'active']
+    ];
+    const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+    const statusRank = { declined: 0, active: 1, cancelled: 2 };
+    const all = data.map((r) => ({
+      name: r[0] + ', ' + r[1],
+      email: r[2],
+      phone: r[3],
+      box: r[4],
+      joined: r[5],
+      joinedText: months[Number(r[5].slice(5, 7)) - 1] + ' ' + Number(r[5].slice(8, 10)),
+      status: r[6],
+      isActive: r[6] === 'active',
+      isDeclined: r[6] === 'declined',
+      isCancelled: r[6] === 'cancelled'
+    }));
+    const q = this.state.q.trim().toLowerCase();
+    const digits = q.replace(/\D/g, '');
+    let rows = all.filter((m) => !q
+      || m.name.toLowerCase().includes(q)
+      || m.email.toLowerCase().includes(q)
+      || (digits.length > 0 && m.phone.replace(/\D/g, '').includes(digits)));
+    const key = this.state.key;
+    const sign = this.state.dir === 'asc' ? 1 : -1;
+    rows = rows.slice().sort((a, b) => {
+      let x = a[key], y = b[key];
+      if (key === 'status') { x = statusRank[a.status]; y = statusRank[b.status]; }
+      if (x < y) return -1 * sign;
+      if (x > y) return 1 * sign;
+      return a.name < b.name ? -1 : 1;
+    });
+    const taken = all.filter((m) => m.status !== 'cancelled').length;
+    const arrow = (k) => (key === k ? (this.state.dir === 'asc' ? '↑' : '↓') : '');
+    const aria = (k) => (key === k ? (this.state.dir === 'asc' ? 'ascending' : 'descending') : 'none');
+    return {
+      q: this.state.q,
+      rows: rows,
+      empty: rows.length === 0,
+      spotsText: taken + ' of 50 spots taken · ' + all.length + ' members, including cancelled',
+      onSearch: (e) => this.setState({ q: e.target.value }),
+      onSortSelect: (e) => this.setState({ key: e.target.value, dir: e.target.value === 'joined' ? 'desc' : 'asc' }),
+      byName: () => this.sortBy('name'),
+      byBox: () => this.sortBy('box'),
+      byJoined: () => this.sortBy('joined'),
+      byStatus: () => this.sortBy('status'),
+      nameArrow: arrow('name'), boxArrow: arrow('box'), joinedArrow: arrow('joined'), statusArrow: arrow('status'),
+      nameSort: aria('name'), boxSort: aria('box'), joinedSort: aria('joined'), statusSort: aria('status')
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>You're in the Supper Club</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 16px; line-height: 24px;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 22px; line-height: 26px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 12px; line-height: 16px; color: #55615f;">by Re:Source Cleveland</span>
+      </a>
+      <a href="#" style="padding: 10px 12px; font-size: 14px; font-weight: 600; color: #003f4c; text-decoration: none;">Your account</a>
+    </div>
+  </header>
+
+  <main style="flex: 1 0 auto; padding: 48px 16px; display: flex; justify-content: center; align-items: flex-start;">
+    <div style="width: 100%; max-width: 600px; display: flex; flex-direction: column; gap: 24px;">
+
+      <div style="display: flex; flex-direction: column; align-items: flex-start; gap: 12px;">
+        <svg role="img" aria-label="Done" width="48" height="48" viewBox="0 0 48 48" fill="none"><circle cx="24" cy="24" r="22" fill="#e3ebe8"></circle><path d="M15 24.5l6 6 12-13" stroke="#1c4723" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path></svg>
+        <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 36px; line-height: 42px; letter-spacing: 0.03em; color: #003f4c;">You're in the Supper Club</h1>
+        <p style="margin: 0; color: #55615f;">Thank you, {{firstName}}. We emailed a confirmation to <strong style="font-weight: 600; color: #1e2a2d;">{{email}}</strong>.</p>
+      </div>
+
+      <section aria-labelledby="box-title" style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 24px; display: flex; flex-direction: column; gap: 16px;">
+        <h2 id="box-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 20px; line-height: 26px; letter-spacing: 0.04em; color: #003f4c;">Your box</h2>
+        <dl style="margin: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 24px;">
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <dt style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">SIZE</dt>
+            <dd style="margin: 0; font-weight: 600;">{{size}}</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <dt style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">MENU</dt>
+            <dd style="margin: 0; font-weight: 600;">{{menu}}</dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <dt style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">PAID TODAY</dt>
+            <dd style="margin: 0; font-weight: 600;">{{price}} <span style="font-weight: 400; color: #55615f;">for your first week</span></dd>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 2px;">
+            <dt style="font-size: 12px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">THEN</dt>
+            <dd style="margin: 0; font-weight: 600;">{{price}} <span style="font-weight: 400; color: #55615f;">every week</span></dd>
+          </div>
+        </dl>
+        <div style="border-top: 1px solid #c7d5d1; padding-top: 16px; display: flex; gap: 12px; align-items: flex-start;">
+          <svg aria-hidden="true" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none; margin-top: 2px;"><rect x="3.5" y="5" width="17" height="15" rx="2"></rect><path d="M3.5 9.5h17M8 3v4M16 3v4"></path></svg>
+          <p style="margin: 0;"><strong style="font-weight: 600;">First pickup: [FIRST PICKUP DATE]</strong><br>Sunday or Monday at the farm store, 2304 Bridge Ave. Hours: [PICKUP HOURS]. Give your name at the counter.</p>
+        </div>
+      </section>
+
+      <section aria-labelledby="next-title" style="display: flex; flex-direction: column; gap: 12px;">
+        <h2 id="next-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 20px; line-height: 26px; letter-spacing: 0.04em; color: #003f4c;">What happens next</h2>
+        <ol style="margin: 0; padding-left: 24px; display: flex; flex-direction: column; gap: 8px;">
+          <li>Each week we email you the menu.</li>
+          <li>Your card is charged {{price}} at the end of each Monday for the following week's pickup.</li>
+          <li>To skip a week, change your box or cancel, sign in to your account before the end of Monday.</li>
+        </ol>
+      </section>
+
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 16px 24px;">
+        <a href="SignIn.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 52px; padding: 0 28px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 15px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Go to your account</a>
+        <a href="#" style="padding: 12px 0; font-size: 15px; line-height: 20px;">Back to ohiocityfarm.com</a>
+      </div>
+    </div>
+  </main>
+
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 1120px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; font-size: 14px; line-height: 20px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  renderVals() {
+    return {
+      firstName: 'Maria',
+      email: 'name@example.com',
+      size: '2 people',
+      menu: 'Standard',
+      price: '$50'
+    };
+  }
+}
+</script>
+</body>
+</html>
