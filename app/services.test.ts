@@ -142,6 +142,19 @@ describe("AC17 (issue 22) — getSiteUrl", () => {
     const { services } = await load({ NODE_ENV: "production", SITE_URL });
     expect(errorOf(() => services.getSiteUrl()).message).toContain("SITE_URL");
   });
+
+  it.each([
+    ["http://", "http://members.ohiocityfarm.com"],
+    ["no scheme", "members.ohiocityfarm.com"],
+  ])("AC17: in production, with a SITE_URL that does not start with https:// (%s), throws an error naming SITE_URL", async (_what, SITE_URL) => {
+    const { services } = await load({ NODE_ENV: "production", SITE_URL });
+    expect(errorOf(() => services.getSiteUrl()).message).toContain("SITE_URL");
+  });
+
+  it("AC17: outside production, an http:// SITE_URL is returned as set", async () => {
+    const { services } = await load({ NODE_ENV: "development", SITE_URL: "http://localhost:4100" });
+    expect(services.getSiteUrl()).toBe("http://localhost:4100");
+  });
 });
 
 describe("AC32 (issue 9) — getRepository", () => {
