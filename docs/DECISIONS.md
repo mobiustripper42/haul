@@ -28,6 +28,8 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-014 — CI runs the gate against Postgres; the Postgres suites skip locally, fail in CI
 - DEC-016 — Members sign in by an emailed 6-digit code into a 30-day signed cookie
 - DEC-021 — e2e is Playwright on one next dev server, in CI only, with a dev outbox
+- DEC-022 — Five wrong codes lock sign-in by code; an emailed link signs the member in
+- DEC-023 — e2e is Playwright on one next dev server; its dev outbox answers only there
 
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff

@@ -57,3 +57,27 @@ export async function waitForSignInCode(
   if (!code) throw new Error(`the message to ${email} holds no 6-digit code: ${message?.text}`);
   return code;
 }
+
+/**
+ * As `waitForSignInCode`, for the link email: polls until a message to `email` past `previousCount`
+ * arrives and returns the sign-in link in it.
+ */
+export async function waitForSignInLink(
+  request: APIRequestContext,
+  email: string,
+  previousCount: number,
+): Promise<string> {
+  let message: OutboxMessage | undefined;
+  await expect
+    .poll(
+      async () => {
+        message = (await outbox(request, email))[previousCount];
+        return message !== undefined;
+      },
+      { message: `no sign-in message to ${email} past ${previousCount} in the outbox` },
+    )
+    .toBe(true);
+  const link = /https?:\/\/\S+\/sign-in\/link\?token=[A-Za-z0-9_-]+/.exec(message?.text ?? "")?.[0];
+  if (!link) throw new Error(`the message to ${email} holds no sign-in link: ${message?.text}`);
+  return link;
+}

@@ -5,7 +5,7 @@ import { FakeEmail } from "./adapters/fake-email.js";
 import { renderEmail } from "./email-templates.js";
 import type { Language } from "./i18n.js";
 import type { Member } from "./members.js";
-import { deliverSignInCode } from "./sign-in-email.js";
+import { deliverSignInCode, deliverSignInLink, signInLinkUrl } from "./sign-in-email.js";
 import { hashCode } from "./sign-in/code.js";
 
 const member = (language: Language): Member => ({
@@ -34,4 +34,26 @@ describe("AC10 (issue 9) — deliverSignInCode", () => {
     await deliverSignInCode(email, { subject: member("en"), code: "000731", codeHash: hashCode("000731") });
     expect(email.last()?.text).toBe(renderEmail("signInCode", "en", { code: "000731", minutes: 10 }).text);
   });
+});
+
+describe("AC16 (issue 22) — deliverSignInLink and signInLinkUrl", () => {
+  const URL_A = "https://members.ohiocityfarm.com/sign-in/link?token=AbC_-123";
+
+  it.each(["en", "es"] as const)(
+    "AC16: sends one message to the member, rendered as signInLink in their language (%s) with the url and 10 minutes",
+    async (language) => {
+      const email = new FakeEmail();
+      await deliverSignInLink(email, member(language), URL_A);
+
+      const rendered = renderEmail("signInLink", language, { link: URL_A, minutes: 10 });
+      expect(email.sent).toEqual([{ to: "ada@example.com", subject: rendered.subject, text: rendered.text }]);
+    },
+  );
+
+  it.each(["https://members.ohiocityfarm.com", "https://members.ohiocityfarm.com/"])(
+    "AC16: signInLinkUrl(%j, token) is <siteUrl>/sign-in/link?token=<token>",
+    (siteUrl) => {
+      expect(signInLinkUrl(siteUrl, "AbC_-123")).toBe("https://members.ohiocityfarm.com/sign-in/link?token=AbC_-123");
+    },
+  );
 });

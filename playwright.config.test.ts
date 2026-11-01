@@ -145,6 +145,13 @@ describe("AC2 — one next dev server on 4100, pointed at the e2e database", () 
     expect(second).toBe(first);
   });
 
+  it("AC28 (issue 22): its environment sets SITE_URL to the config's baseURL, http://localhost:4100", async () => {
+    const config = await load();
+    const [server] = webServersOf(config);
+    expect(server?.env?.SITE_URL).toBe(config.use?.baseURL);
+    expect(server?.env?.SITE_URL).toBe("http://localhost:4100");
+  });
+
   it("AC2: every project's baseURL is http://localhost:4100", async () => {
     const config = await load();
     expect(projectsOf(config)).not.toHaveLength(0);

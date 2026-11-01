@@ -1,19 +1,29 @@
-// Issue 9, AC6–AC9 and AC11–AC15: the sign-in code flow, against MemorySignInStore (the folder
-// may not import haul's repository, AC39). Subjects are plain { id, email }; findSubject looks
-// them up the way haul's findMemberByEmail does, in any case and ignoring surrounding spaces.
+// Issue 9, AC6–AC8, AC11–AC13 and AC15, and issue 22, AC1, AC4, AC5 and AC7–AC13: the sign-in code
+// and link flow, against MemorySignInStore (the folder may not import haul's repository, issue 9
+// AC39). Subjects are plain { id, email }; findSubject looks them up the way haul's
+// findMemberByEmail does, in any case and ignoring surrounding spaces.
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   CODE_TTL_MS,
+  FAILURE_WINDOW_MS,
   hashCode,
+  isLocked,
   issueSignInCode,
+  issueSignInLink,
+  LINK_TTL_MS,
+  MAX_FAILURES_PER_WINDOW,
+  randomLinkToken,
+  redeemSignInLink,
   requestSignInCode,
+  RESEND_COOLDOWN_MS,
   SIGN_IN_REQUEST_LIMIT,
   verifySignInCode,
   type FindSubject,
+  type IssueOutcome,
   type PendingSignInCode,
 } from "./code.js";
 import { MemorySignInStore } from "./memory-store.js";
-import type { RateLimitStore, SignInStore, SignInSubject } from "./store.js";
+import type { RateLimitStore, SignInCode, SignInStore, SignInSubject } from "./store.js";
 
 const SECOND = 1000;
 const MINUTE = 60 * SECOND;
@@ -23,6 +33,7 @@ const DAY = 24 * HOUR;
 // 14:25:30 UTC: 34 min 30 s left in the clock hour.
 const T0 = new Date("2026-10-28T14:25:30.000Z");
 const at = (ms: number): Date => new Date(T0.getTime() + ms);
+const plus = (date: Date, ms: number): Date => new Date(date.getTime() + ms);
 
 type Member = SignInSubject & { language: string };
 const ADA: Member = { id: "subject-ada", email: "ada@example.com", language: "es" };
@@ -43,15 +54,45 @@ const pendingFor = (subject: SignInSubject, code: string): PendingSignInCode<Sig
   codeHash: hashCode(code),
 });
 
-const issue = (code: string, now: Date) => issueSignInCode(store, pendingFor(ADA, code), { now });
+const NO_LINK = () => "link-token-never-expected";
+
+const issue = (code: string, now: Date, mintLinkToken: () => string = NO_LINK): Promise<IssueOutcome> =>
+  issueSignInCode(store, pendingFor(ADA, code), { now, mintLinkToken });
 const verify = (code: string, now: Date, email = ADA.email) =>
   verifySignInCode(store, findSubject, { email, code }, { now });
+
+/** Saves a code for Ada straight through the store, with no hold: setup that the code under test never decides. */
+const plant = (code: string, createdAt: Date) =>
+  store.saveSignInCode({
+    subjectId: ADA.id,
+    codeHash: hashCode(code),
+    createdAt,
+    expiresAt: plus(createdAt, CODE_TTL_MS),
+  });
 
 const stored = async () => {
   const code = await store.getSignInCode(ADA.id);
   if (!code) throw new Error("no code stored");
   return code;
 };
+
+/** The window's first wrong guess, and the guess that brings it to five. */
+const WINDOW_START = at(SECOND);
+const LAST_CODE_AT = at(10 * MINUTE);
+const LOCKED_AT = at(10 * MINUTE + 2 * SECOND);
+
+/**
+ * Locks Ada with five wrong guesses spread across two codes: "100000" planted at T0 takes three,
+ * "100001" planted at LAST_CODE_AT takes two, the last at LOCKED_AT. "100001" is left live, with
+ * two of its attempts spent. Nothing here is asserted, so a test fails on its own expectation.
+ */
+async function lock(): Promise<void> {
+  await plant("100000", T0);
+  for (let g = 1; g <= 3; g++) await verify("999999", at(g * SECOND));
+  await plant("100001", LAST_CODE_AT);
+  await verify("999999", at(10 * MINUTE + SECOND));
+  await verify("999999", LOCKED_AT);
+}
 
 describe("AC6 (issue 9) — requestSignInCode for a known email", () => {
   it("AC6: returns { outcome: 'issue', pending } with the subject findSubject returned, the minted code and its hash", async () => {
@@ -97,6 +138,8 @@ function recorded() {
     saveSignInCode: (...args) => (calls.push({ name: "saveSignInCode", args }), inner.saveSignInCode(...args)),
     claimSignInAttempt: (...args) => (calls.push({ name: "claimSignInAttempt", args }), inner.claimSignInAttempt(...args)),
     consumeSignInCode: (...args) => (calls.push({ name: "consumeSignInCode", args }), inner.consumeSignInCode(...args)),
+    saveSignInLink: (...args) => (calls.push({ name: "saveSignInLink", args }), inner.saveSignInLink(...args)),
+    redeemSignInLink: (...args) => (calls.push({ name: "redeemSignInLink", args }), inner.redeemSignInLink(...args)),
     incrementRateLimit: (...args) => (calls.push({ name: "incrementRateLimit", args }), inner.incrementRateLimit(...args)),
   };
   const lookup: FindSubject<Member> = (email) => (calls.push({ name: "findSubject", args: [email] }), findSubject(email));
@@ -175,9 +218,37 @@ describe("AC8 (issue 9) — requestSignInCode is limited per client key, before 
   });
 });
 
-describe("AC9 (issue 9) — issueSignInCode", () => {
-  it("AC9: stores the code — createdAt now, expiresAt now + 10 minutes, 0 attempts, unconsumed — and returns 'deliver'", async () => {
-    expect(await issue("042517", T0)).toBe("deliver");
+describe("AC1 — five wrong guesses in a fixed 24-hour window", () => {
+  it("AC1: MAX_FAILURES_PER_WINDOW is 5 and FAILURE_WINDOW_MS is 24 hours", () => {
+    expect(MAX_FAILURES_PER_WINDOW).toBe(5);
+    expect(FAILURE_WINDOW_MS).toBe(DAY);
+  });
+
+  it("AC1: the window is fixed from its first wrong guess — once it holds 5, a wrong guess just before its end is refused, and 5 more just after it all count", async () => {
+    await plant("100000", T0);
+    await verify("999999", WINDOW_START);
+    // Four more in the window's last minute, on a fresh code: the window now holds five.
+    const lateCode = plus(WINDOW_START, DAY - MINUTE);
+    await plant("100001", lateCode);
+    for (let g = 1; g <= 4; g++) await verify("999999", plus(lateCode, g * SECOND));
+    const full = await stored();
+    expect(full).toMatchObject({ attempts: 4, failedSince: WINDOW_START, failedInWindow: 5 });
+
+    // A millisecond before the window ends, it is still full: refused, not even an attempt spent.
+    expect(await verify("999999", plus(WINDOW_START, DAY - 1))).toEqual(INVALID);
+    expect(await store.getSignInCode(ADA.id)).toEqual(full);
+
+    // From the window's end a new one opens: five more wrong guesses within seconds each claim.
+    const nextWindow = plus(WINDOW_START, DAY);
+    await plant("100002", nextWindow);
+    for (let g = 0; g < 5; g++) await verify("999999", plus(nextWindow, g * SECOND));
+    expect(await stored()).toMatchObject({ attempts: 5, failedSince: nextWindow, failedInWindow: 5 });
+  });
+});
+
+describe("AC9 — issueSignInCode, not locked and outside the wait, stores the code", () => {
+  it("AC9: stores the code — createdAt now, expiresAt now + 10 minutes, 0 attempts, unconsumed — and returns { send: 'code' }", async () => {
+    expect(await issue("042517", T0)).toEqual({ send: "code" });
     expect(await stored()).toMatchObject({
       subjectId: ADA.id,
       codeHash: hashCode("042517"),
@@ -194,32 +265,284 @@ describe("AC9 (issue 9) — issueSignInCode", () => {
     expect(await verify("042517", at(MINUTE))).toEqual({ ok: true, subjectId: ADA.id });
   });
 
-  it("AC9: a later code replaces the one before, which no longer verifies", async () => {
+  it("AC9: a later code, outside the wait, replaces the one before, which no longer verifies", async () => {
     await issue("111111", T0);
-    expect(await issue("222222", at(61 * SECOND))).toBe("deliver");
-    expect(await verify("111111", at(62 * SECOND))).toEqual(INVALID);
-    expect(await verify("222222", at(63 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
+    expect(await issue("222222", at(10 * MINUTE))).toEqual({ send: "code" });
+    expect(await verify("111111", at(10 * MINUTE + SECOND))).toEqual(INVALID);
+    expect(await verify("222222", at(10 * MINUTE + 2 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
   });
 
-  it("AC9: within 60 seconds of an unconsumed, unexpired code it stores nothing and returns 'skip', and the existing code still verifies", async () => {
+  it("AC9: a member with wrong guesses in the window but fewer than five still gets a code", async () => {
+    await plant("100000", T0);
+    for (let g = 1; g <= 4; g++) await verify("999999", at(g * SECOND));
+    expect(await issue("424242", at(10 * MINUTE))).toEqual({ send: "code" });
+    expect((await stored()).codeHash).toBe(hashCode("424242"));
+  });
+});
+
+describe("AC7 — one sign-in email per member per 10 minutes, held in the store's save", () => {
+  it("AC7: RESEND_COOLDOWN_MS is CODE_TTL_MS, 10 minutes", () => {
+    expect(RESEND_COOLDOWN_MS).toBe(CODE_TTL_MS);
+    expect(RESEND_COOLDOWN_MS).toBe(10 * MINUTE);
+  });
+
+  it("AC7: within 10 minutes of an unused code it stores nothing and returns { send: 'nothing' }, and the existing code still verifies", async () => {
     await issue("111111", T0);
     const before = await stored();
-    expect(await issue("222222", at(59 * SECOND))).toBe("skip");
+    expect(await issue("222222", at(10 * MINUTE - 1))).toEqual({ send: "nothing" });
     expect(await store.getSignInCode(ADA.id)).toEqual(before);
-    expect(await verify("111111", at(59 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
+    expect(await verify("111111", at(10 * MINUTE - 1))).toEqual({ ok: true, subjectId: ADA.id });
   });
 
-  it("AC9: at exactly 60 seconds the existing code is no longer within the cooldown — the new one is stored", async () => {
+  it("AC7: at exactly 10 minutes it sends again — the new code is stored", async () => {
     await issue("111111", T0);
-    expect(await issue("222222", at(60 * SECOND))).toBe("deliver");
+    expect(await issue("222222", at(10 * MINUTE))).toEqual({ send: "code" });
     expect((await stored()).codeHash).toBe(hashCode("222222"));
   });
 
-  it("AC9: a consumed code does not hold off a new one, even within 60 seconds", async () => {
+  it("AC7: a consumed code does not hold off a new one, even within 10 minutes", async () => {
     await issue("111111", T0);
     expect(await verify("111111", at(10 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
-    expect(await issue("222222", at(20 * SECOND))).toBe("deliver");
+    expect(await issue("222222", at(20 * SECOND))).toEqual({ send: "code" });
     expect(await verify("222222", at(30 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
+  });
+
+  it("AC7: an unused code holds however many of its attempts are spent — every one claimed and none consumed", async () => {
+    await issue("111111", T0);
+    const right = { presentedHash: hashCode("111111"), maxAttempts: 5, windowMs: DAY, maxFailures: 5 };
+    for (let g = 1; g <= 5; g++) await store.claimSignInAttempt(ADA.id, { ...right, now: at(g * SECOND) });
+    const before = await stored();
+    expect(before).toMatchObject({ attempts: 5, consumedAt: null });
+    expect(await issue("222222", at(9 * MINUTE))).toEqual({ send: "nothing" });
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
+  });
+
+  it("AC7: a locked member inside the wait gets nothing — no code, no link", async () => {
+    await lock();
+    const before = await stored();
+    expect(await issue("424242", at(15 * MINUTE), () => "tok-held")).toEqual({ send: "nothing" });
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
+  });
+
+  it("AC7: the outcome follows the store's save — a save that holds gives { send: 'nothing' }, whatever a read before it showed", async () => {
+    const inner = new MemorySignInStore();
+    const holding: SignInStore = {
+      getSignInCode: async () => null,
+      saveSignInCode: async () => false,
+      claimSignInAttempt: (...args) => inner.claimSignInAttempt(...args),
+      consumeSignInCode: (...args) => inner.consumeSignInCode(...args),
+      saveSignInLink: async () => false,
+      redeemSignInLink: (...args) => inner.redeemSignInLink(...args),
+    };
+    expect(await issueSignInCode(holding, pendingFor(ADA, "042517"), { now: T0, mintLinkToken: NO_LINK })).toEqual({
+      send: "nothing",
+    });
+  });
+
+  it("AC7: 10 requests that arrive together store one code and return { send: 'code' } exactly once", async () => {
+    const codes = Array.from({ length: 10 }, (_, i) => String(300000 + i));
+    const outcomes = await Promise.all(codes.map((code) => issue(code, T0)));
+    const sent = outcomes.flatMap((outcome, i) => (outcome.send === "code" ? [codes[i]] : []));
+    expect(sent).toHaveLength(1);
+    expect(outcomes.filter((outcome) => outcome.send === "nothing")).toHaveLength(9);
+    expect((await stored()).codeHash).toBe(hashCode(sent[0] ?? "none sent"));
+  });
+});
+
+describe("AC8 — while locked and outside the wait, issueSignInCode sends a link instead", () => {
+  const code = (over: Partial<SignInCode>): SignInCode => ({
+    subjectId: ADA.id,
+    codeHash: hashCode("100000"),
+    createdAt: T0,
+    expiresAt: at(10 * MINUTE),
+    attempts: 0,
+    consumedAt: null,
+    failedSince: null,
+    failedInWindow: 0,
+    linkHash: null,
+    linkCreatedAt: null,
+    linkExpiresAt: null,
+    ...over,
+  });
+  const rule = (now: Date) => ({ now, windowMs: DAY, maxFailures: 5 });
+
+  it("AC8: isLocked is true while the window is live and failedInWindow is at or past maxFailures", () => {
+    expect(isLocked(code({ failedSince: T0, failedInWindow: 5 }), rule(at(HOUR)))).toBe(true);
+    expect(isLocked(code({ failedSince: T0, failedInWindow: 6 }), rule(at(HOUR)))).toBe(true);
+    expect(isLocked(code({ failedSince: T0, failedInWindow: 5 }), rule(at(DAY - 1)))).toBe(true);
+  });
+
+  it("AC8: isLocked is false below maxFailures, with no window, and from failedSince + windowMs on", () => {
+    expect(isLocked(code({ failedSince: T0, failedInWindow: 4 }), rule(at(HOUR)))).toBe(false);
+    expect(isLocked(code({ failedSince: null, failedInWindow: 5 }), rule(at(HOUR)))).toBe(false);
+    expect(isLocked(code({ failedSince: T0, failedInWindow: 5 }), rule(at(DAY)))).toBe(false);
+  });
+
+  it("AC8: returns { send: 'link', token } with the minted token, stores no code, and saves the link's hash for 10 minutes", async () => {
+    await lock();
+    const before = await stored();
+    const now = at(20 * MINUTE);
+    expect(await issue("424242", now, () => "tok-locked")).toEqual({ send: "link", token: "tok-locked" });
+    expect(await store.getSignInCode(ADA.id)).toEqual({
+      ...before,
+      linkHash: hashCode("tok-locked"),
+      linkCreatedAt: now,
+      linkExpiresAt: plus(now, 10 * MINUTE),
+    });
+  });
+
+  it("AC8: the code it did not store does not verify, and the link it sent redeems", async () => {
+    await lock();
+    await issue("424242", at(20 * MINUTE), () => "tok-locked");
+    expect(await verify("424242", at(21 * MINUTE))).toEqual(INVALID);
+    expect(await redeemSignInLink(store, "tok-locked", { now: at(21 * MINUTE) })).toEqual({ ok: true, subjectId: ADA.id });
+  });
+});
+
+describe("AC10 — the locking guess's link is not held by the wait, and starts it", () => {
+  it("AC10: issueSignInLink with no hold saves a link 2 seconds after a code went", async () => {
+    await lock();
+    expect(await issueSignInLink(store, ADA, { now: LOCKED_AT, mintLinkToken: () => "tok-lock", hold: false })).toBe(
+      "tok-lock",
+    );
+    expect(await stored()).toMatchObject({ linkHash: hashCode("tok-lock"), linkCreatedAt: LOCKED_AT });
+  });
+
+  it("AC10: that link starts the wait — a request a millisecond short of 10 minutes after it gets nothing, one at 10 minutes a fresh link", async () => {
+    await lock();
+    await issueSignInLink(store, ADA, { now: LOCKED_AT, mintLinkToken: () => "tok-lock", hold: false });
+    // By now the last code is more than 10 minutes old; only the link holds.
+    expect(await issue("424242", plus(LOCKED_AT, 10 * MINUTE - 1), () => "tok-early")).toEqual({ send: "nothing" });
+    expect((await stored()).linkHash).toBe(hashCode("tok-lock"));
+    expect(await issue("424242", plus(LOCKED_AT, 10 * MINUTE), () => "tok-next")).toEqual({
+      send: "link",
+      token: "tok-next",
+    });
+  });
+});
+
+describe("AC11 — issueSignInLink mints, hashes and stores a 10-minute link", () => {
+  it("AC11: LINK_TTL_MS is CODE_TTL_MS", () => {
+    expect(LINK_TTL_MS).toBe(CODE_TTL_MS);
+  });
+
+  it("AC11: returns the minted token and stores its hash, with createdAt now and expiresAt now + 10 minutes, leaving the code as it was", async () => {
+    await plant("100000", T0);
+    const before = await stored();
+    const now = at(MINUTE);
+    expect(await issueSignInLink(store, ADA, { now, mintLinkToken: () => "tok-1", hold: false })).toBe("tok-1");
+    expect(await store.getSignInCode(ADA.id)).toEqual({
+      ...before,
+      linkHash: hashCode("tok-1"),
+      linkCreatedAt: now,
+      linkExpiresAt: plus(now, 10 * MINUTE),
+    });
+  });
+
+  it("AC11: a new link replaces the earlier one", async () => {
+    await plant("100000", T0);
+    await issueSignInLink(store, ADA, { now: at(MINUTE), mintLinkToken: () => "tok-1", hold: false });
+    await issueSignInLink(store, ADA, { now: at(2 * MINUTE), mintLinkToken: () => "tok-2", hold: false });
+    expect(await stored()).toMatchObject({ linkHash: hashCode("tok-2"), linkCreatedAt: at(2 * MINUTE) });
+  });
+
+  it("AC11: with the hold, outside the wait, it saves", async () => {
+    await plant("100000", T0);
+    expect(await issueSignInLink(store, ADA, { now: at(10 * MINUTE), mintLinkToken: () => "tok-1", hold: true })).toBe(
+      "tok-1",
+    );
+    expect((await stored()).linkHash).toBe(hashCode("tok-1"));
+  });
+
+  it("AC11: held by the wait, it returns null and stores nothing", async () => {
+    await plant("100000", T0);
+    const before = await stored();
+    expect(await issueSignInLink(store, ADA, { now: at(MINUTE), mintLinkToken: () => "tok-1", hold: true })).toBeNull();
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
+  });
+
+  it("AC11: for a subject with no sign-in row it returns null and stores nothing", async () => {
+    expect(await issueSignInLink(store, ADA, { now: T0, mintLinkToken: () => "tok-1", hold: false })).toBeNull();
+    expect(await store.getSignInCode(ADA.id)).toBeNull();
+  });
+
+  it("AC11: randomLinkToken() is 32 random bytes in base64url — 43 characters, no padding, a new one each call", () => {
+    const tokens = Array.from({ length: 20 }, () => randomLinkToken());
+    for (const token of tokens) {
+      expect(token).toMatch(/^[A-Za-z0-9_-]{43}$/);
+      expect(Buffer.from(token, "base64url")).toHaveLength(32);
+    }
+    expect(new Set(tokens).size).toBe(tokens.length);
+  });
+});
+
+describe("AC12 — redeemSignInLink is single use and lasts 10 minutes", () => {
+  /** Ada's code planted at T0 and a link for "tok-1" saved at T0, expiring at T0 + 10 minutes. */
+  const withLink = async () => {
+    await plant("100000", T0);
+    await issueSignInLink(store, ADA, { now: T0, mintLinkToken: () => "tok-1", hold: false });
+  };
+
+  it("AC12: the live link's token returns { ok: true, subjectId } once; a second redeem returns { ok: false } and changes nothing", async () => {
+    await withLink();
+    expect(await redeemSignInLink(store, "tok-1", { now: at(MINUTE) })).toEqual({ ok: true, subjectId: ADA.id });
+    const after = await stored();
+    expect(await redeemSignInLink(store, "tok-1", { now: at(2 * MINUTE) })).toEqual({ ok: false });
+    expect(await store.getSignInCode(ADA.id)).toEqual(after);
+  });
+
+  it("AC12: a millisecond before expiresAt it still redeems", async () => {
+    await withLink();
+    expect(await redeemSignInLink(store, "tok-1", { now: at(10 * MINUTE - 1) })).toEqual({ ok: true, subjectId: ADA.id });
+  });
+
+  it.each([
+    ["at expiresAt", "tok-1", 10 * MINUTE],
+    ["after expiresAt", "tok-1", 11 * MINUTE],
+    ["an unknown token", "tok-unknown", MINUTE],
+    ["an empty token", "", MINUTE],
+  ])("AC12: %s returns { ok: false } and changes nothing", async (_what, token, ms) => {
+    await withLink();
+    const before = await stored();
+    expect(await redeemSignInLink(store, token, { now: at(ms) })).toEqual({ ok: false });
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
+  });
+
+  it("AC12: a replaced link's token returns { ok: false } and changes nothing; the new one redeems", async () => {
+    await withLink();
+    await issueSignInLink(store, ADA, { now: at(MINUTE), mintLinkToken: () => "tok-2", hold: false });
+    const before = await stored();
+    expect(await redeemSignInLink(store, "tok-1", { now: at(2 * MINUTE) })).toEqual({ ok: false });
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
+    expect(await redeemSignInLink(store, "tok-2", { now: at(2 * MINUTE) })).toEqual({ ok: true, subjectId: ADA.id });
+  });
+});
+
+describe("AC13 — a redeemed link clears the lock and consumes the code", () => {
+  it("AC13: after the redeem the window is clear, the code consumed and the link gone", async () => {
+    await lock();
+    await issue("424242", at(20 * MINUTE), () => "tok-locked");
+    expect(await redeemSignInLink(store, "tok-locked", { now: at(21 * MINUTE) })).toEqual({ ok: true, subjectId: ADA.id });
+    expect(await stored()).toMatchObject({
+      failedSince: null,
+      failedInWindow: 0,
+      consumedAt: at(21 * MINUTE),
+      linkHash: null,
+      linkCreatedAt: null,
+      linkExpiresAt: null,
+    });
+  });
+
+  it("AC13: the code still live at the redeem no longer verifies, and the member's next code does", async () => {
+    await lock();
+    await issueSignInLink(store, ADA, { now: LOCKED_AT, mintLinkToken: () => "tok-lock", hold: false });
+    const redeemedAt = plus(LOCKED_AT, MINUTE);
+    expect(await redeemSignInLink(store, "tok-lock", { now: redeemedAt })).toEqual({ ok: true, subjectId: ADA.id });
+    // "100001" lives until LAST_CODE_AT + 10 minutes with attempts to spare; with the window cleared,
+    // only its consumption stops it.
+    expect(await verify("100001", plus(redeemedAt, SECOND))).toEqual(INVALID);
+    expect(await issue("777777", plus(redeemedAt, 2 * SECOND))).toEqual({ send: "code" });
+    expect(await verify("777777", plus(redeemedAt, 3 * SECOND))).toEqual({ ok: true, subjectId: ADA.id });
   });
 });
 
@@ -240,18 +563,6 @@ describe("AC11 (issue 9) — verifySignInCode succeeds once", () => {
     expect(await verify("042517", at(2 * MINUTE))).toEqual(INVALID);
   });
 });
-
-/** 50 wrong guesses across ten codes, five each, all inside one window opened at T0 + 1 s. */
-async function burnWindow(): Promise<void> {
-  for (let n = 0; n < 10; n++) {
-    const issuedAt = at(n * 2 * MINUTE);
-    expect(await issue(String(100000 + n), issuedAt)).toBe("deliver");
-    for (let g = 0; g < 5; g++) {
-      expect(await verify("999999", new Date(issuedAt.getTime() + (g + 1) * SECOND))).toEqual(INVALID);
-    }
-  }
-  expect(await stored()).toMatchObject({ failedSince: at(SECOND), failedInWindow: 50 });
-}
 
 describe("AC12 (issue 9) — every failure is the one value { ok: false, reason: 'invalid' }", () => {
   it("AC12: a wrong code", async () => {
@@ -286,9 +597,8 @@ describe("AC12 (issue 9) — every failure is the one value { ok: false, reason:
   });
 
   it("AC12: a wrong guess at the failure-window cap", async () => {
-    await burnWindow();
-    await issue("424242", at(30 * MINUTE));
-    expect(await verify("999999", at(31 * MINUTE))).toEqual(INVALID);
+    await lock();
+    expect(await verify("999999", at(10 * MINUTE + 3 * SECOND))).toEqual(INVALID);
   });
 
   it("AC12: an email with no member", async () => {
@@ -306,7 +616,9 @@ describe("AC13 (issue 9) — five guesses per code", () => {
 
   it("AC13: after 5 wrong guesses the right code returns invalid", async () => {
     await issue("042517", T0);
-    for (let g = 0; g < 5; g++) expect(await verify("999999", at((g + 1) * SECOND))).toEqual(INVALID);
+    for (let g = 0; g < 4; g++) expect(await verify("999999", at((g + 1) * SECOND))).toEqual(INVALID);
+    // The fifth is also the window's fifth, so it carries lockedNow; AC5 (issue 22) proves that.
+    expect(await verify("999999", at(5 * SECOND))).toMatchObject(INVALID);
     expect(await verify("042517", at(10 * SECOND))).toEqual(INVALID);
   });
 
@@ -319,45 +631,91 @@ describe("AC13 (issue 9) — five guesses per code", () => {
   });
 });
 
-describe("AC14 (issue 9) — fifty wrong guesses a day per member", () => {
-  it("AC14: the 50th wrong guess within 24 hours counts; a further wrong guess returns invalid and changes nothing, not even the code's attempts", async () => {
-    await burnWindow();
-    await issue("424242", at(30 * MINUTE));
+// Replaces issue 9's AC14 (fifty a day, the right code still let through at the cap).
+describe("AC4 — five wrong guesses in a window lock code sign-in, the right code included", () => {
+  it("AC4: after 5 wrong guesses across two codes, the right code of the live one returns invalid", async () => {
+    await lock();
+    expect(await verify("100001", at(10 * MINUTE + 3 * SECOND))).toEqual(INVALID);
+  });
+
+  it("AC4: after 5 wrong guesses on one code, a fresh code with every attempt left is refused for its right code, and nothing changes", async () => {
+    await plant("100000", T0);
+    for (let g = 1; g <= 5; g++) await verify("999999", at(g * SECOND));
+    await plant("424242", at(MINUTE));
     const before = await stored();
-    expect(before).toMatchObject({ attempts: 0, failedInWindow: 50 });
-    expect(await verify("999999", at(31 * MINUTE))).toEqual(INVALID);
+    expect(before).toMatchObject({ attempts: 0, failedInWindow: 5 });
+    expect(await verify("424242", at(MINUTE + SECOND))).toEqual(INVALID);
     expect(await store.getSignInCode(ADA.id)).toEqual(before);
   });
 
-  it("AC14: the right code still succeeds at the cap, and does not add to the window", async () => {
-    await burnWindow();
-    await issue("424242", at(30 * MINUTE));
-    expect(await verify("424242", at(31 * MINUTE))).toEqual({ ok: true, subjectId: ADA.id });
-    expect(await stored()).toMatchObject({ failedSince: at(SECOND), failedInWindow: 50 });
+  it("AC4: a further wrong guess returns invalid and changes nothing, not even the code's attempts", async () => {
+    await lock();
+    const before = await stored();
+    expect(before).toMatchObject({ attempts: 2, failedInWindow: 5 });
+    expect(await verify("999999", at(10 * MINUTE + 3 * SECOND))).toEqual(INVALID);
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
   });
 
-  it("AC14: a new code does not reset the window", async () => {
-    await burnWindow();
-    expect(await issue("424242", at(30 * MINUTE))).toBe("deliver");
-    expect(await stored()).toMatchObject({ failedSince: at(SECOND), failedInWindow: 50 });
-    expect(await verify("999999", at(31 * MINUTE))).toEqual(INVALID);
-    expect((await stored()).attempts).toBe(0);
-  });
-
-  it("AC14: a wrong guess a millisecond before 24 hours from the window's first is still refused at the cap", async () => {
-    await burnWindow();
-    const justBefore = at(SECOND + DAY - 1);
-    await issue("424242", new Date(justBefore.getTime() - MINUTE));
+  it("AC4: a millisecond before 24 hours from the window's first wrong guess, a fresh code is still refused, right or wrong", async () => {
+    await lock();
+    const justBefore = plus(WINDOW_START, DAY - 1);
+    await plant("424242", plus(justBefore, -MINUTE));
+    const before = await stored();
+    expect(await verify("424242", justBefore)).toEqual(INVALID);
     expect(await verify("999999", justBefore)).toEqual(INVALID);
-    expect(await stored()).toMatchObject({ attempts: 0, failedSince: at(SECOND), failedInWindow: 50 });
+    expect(await store.getSignInCode(ADA.id)).toEqual(before);
   });
 
-  it("AC14: the first wrong guess 24 hours or more after the window's first starts a new window at 1", async () => {
-    await burnWindow();
-    const dayLater = at(SECOND + DAY);
-    await issue("424242", new Date(dayLater.getTime() - MINUTE));
+  it("AC4: at 24 hours from the window's first wrong guess the lock is over — a fresh code is sent, and it verifies", async () => {
+    await lock();
+    const dayLater = plus(WINDOW_START, DAY);
+    expect(await issue("424242", dayLater)).toEqual({ send: "code" });
+    expect(await verify("424242", plus(dayLater, SECOND))).toEqual({ ok: true, subjectId: ADA.id });
+  });
+
+  it("AC4: the first wrong guess 24 hours or more after the window's first opens a new window at 1", async () => {
+    await lock();
+    const dayLater = plus(WINDOW_START, DAY);
+    await plant("424242", plus(dayLater, -MINUTE));
     expect(await verify("999999", dayLater)).toEqual(INVALID);
     expect(await stored()).toMatchObject({ attempts: 1, failedSince: dayLater, failedInWindow: 1 });
+  });
+});
+
+describe("AC5 — the guess that locks, and only it, reports lockedNow", () => {
+  const LOCKED_NOW = { ok: false, reason: "invalid", lockedNow: ADA };
+
+  it("AC5: the 5th wrong guess in the window, across two codes, returns lockedNow: the subject findSubject found; the four before it don't", async () => {
+    await plant("100000", T0);
+    for (let g = 1; g <= 3; g++) expect(await verify("999999", at(g * SECOND))).toEqual(INVALID);
+    await plant("100001", LAST_CODE_AT);
+    expect(await verify("999999", at(10 * MINUTE + SECOND))).toEqual(INVALID);
+    expect(await verify("999999", LOCKED_AT)).toEqual(LOCKED_NOW);
+  });
+
+  it("AC5: the locking wrong guess on an expired code still carries it — decided before the expiry check", async () => {
+    await plant("100000", T0);
+    for (let g = 1; g <= 4; g++) expect(await verify("999999", at(g * SECOND))).toEqual(INVALID);
+    expect(await verify("999999", at(11 * MINUTE))).toEqual(LOCKED_NOW);
+  });
+
+  it("AC5: the refused guesses after the lock, wrong or right, carry none", async () => {
+    await lock();
+    expect(await verify("999999", at(10 * MINUTE + 3 * SECOND))).toEqual(INVALID);
+    expect(await verify("100001", at(10 * MINUTE + 4 * SECOND))).toEqual(INVALID);
+  });
+
+  it("AC5: a right but expired code in a lapsed window whose count still reads 5 carries none", async () => {
+    await lock();
+    const later = plus(WINDOW_START, DAY + MINUTE);
+    await plant("424242", later);
+    expect(await verify("424242", plus(later, 11 * MINUTE))).toEqual(INVALID);
+    expect((await stored()).failedInWindow).toBe(5);
+  });
+
+  it("AC5: a stranger's five wrong guesses carry none", async () => {
+    await plant("100000", T0);
+    for (let g = 1; g <= 5; g++) expect(await verify("999999", at(g * SECOND), STRANGER)).toEqual(INVALID);
   });
 });
 
@@ -367,7 +725,7 @@ describe("AC15 (issue 9) — verify makes the same calls for a member and a stra
     ["a member with no code", false],
   ])("AC15: %s and a stranger both call findSubject, then claimSignInAttempt — nothing else", async (_who, withCode) => {
     const member = recorded();
-    if (withCode) await issueSignInCode(member.inner, pendingFor(ADA, "042517"), { now: T0 });
+    if (withCode) await issueSignInCode(member.inner, pendingFor(ADA, "042517"), { now: T0, mintLinkToken: NO_LINK });
     await verifySignInCode(member.store, member.findSubject, { email: ADA.email, code: "999999" }, { now: at(MINUTE) });
     const stranger = recorded();
     await verifySignInCode(stranger.store, stranger.findSubject, { email: STRANGER, code: "999999" }, { now: at(MINUTE) });
@@ -378,7 +736,7 @@ describe("AC15 (issue 9) — verify makes the same calls for a member and a stra
 
   it("AC15: a stranger's claim passes null as the subject id, and changes nothing", async () => {
     const r = recorded();
-    await issueSignInCode(r.inner, pendingFor(ADA, "042517"), { now: T0 });
+    await issueSignInCode(r.inner, pendingFor(ADA, "042517"), { now: T0, mintLinkToken: NO_LINK });
     const before = await r.inner.getSignInCode(ADA.id);
     await verifySignInCode(r.store, r.findSubject, { email: STRANGER, code: "042517" }, { now: at(MINUTE) });
     const claim = r.calls.find((c) => c.name === "claimSignInAttempt");

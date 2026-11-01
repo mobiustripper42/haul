@@ -3,7 +3,7 @@
 // environment, so it holds whether the module reads the environment per call or at load.
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-const VARS = ["NODE_ENV", "RESEND_API_KEY", "EMAIL_FROM", "DATABASE_URL"] as const;
+const VARS = ["NODE_ENV", "RESEND_API_KEY", "EMAIL_FROM", "DATABASE_URL", "SITE_URL"] as const;
 type Env = Partial<Record<(typeof VARS)[number], string>>;
 
 // The dev fake outlives a module reload (issue 31, AC5), so a fresh load also drops it: after
@@ -116,6 +116,44 @@ describe("AC5 (issue 31) — one dev FakeEmail per process, on globalThis", () =
 
     expect(first.devEmail().sent).toEqual([fromFirst, fromSecond]);
     expect(second.devEmail().sent).toEqual([fromFirst, fromSecond]);
+  });
+});
+
+describe("AC17 (issue 22) — getSiteUrl", () => {
+  const SITE = "https://members.ohiocityfarm.com";
+
+  it.each(["development", "production"])("AC17: with SITE_URL set, NODE_ENV %s, returns SITE_URL", async (NODE_ENV) => {
+    const { services } = await load({ NODE_ENV, SITE_URL: SITE });
+    expect(services.getSiteUrl()).toBe(SITE);
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("AC17: outside production, with SITE_URL %s, returns http://localhost:4000", async (_what, SITE_URL) => {
+    const { services } = await load({ NODE_ENV: "development", SITE_URL });
+    expect(services.getSiteUrl()).toBe("http://localhost:4000");
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("AC17: in production, with SITE_URL %s, throws an error naming SITE_URL", async (_what, SITE_URL) => {
+    const { services } = await load({ NODE_ENV: "production", SITE_URL });
+    expect(errorOf(() => services.getSiteUrl()).message).toContain("SITE_URL");
+  });
+
+  it.each([
+    ["http://", "http://members.ohiocityfarm.com"],
+    ["no scheme", "members.ohiocityfarm.com"],
+  ])("AC17: in production, with a SITE_URL that does not start with https:// (%s), throws an error naming SITE_URL", async (_what, SITE_URL) => {
+    const { services } = await load({ NODE_ENV: "production", SITE_URL });
+    expect(errorOf(() => services.getSiteUrl()).message).toContain("SITE_URL");
+  });
+
+  it("AC17: outside production, an http:// SITE_URL is returned as set", async () => {
+    const { services } = await load({ NODE_ENV: "development", SITE_URL: "http://localhost:4100" });
+    expect(services.getSiteUrl()).toBe("http://localhost:4100");
   });
 });
 

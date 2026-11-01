@@ -50,12 +50,12 @@ jobs:
           # GitHub sets CI itself; stated here so the file says it and a test can check it.
           CI: "true"
 
-  # The sign-in round trip in a real browser (DEC-021). Its own job and its own Postgres, never
+  # The sign-in round trip in a real browser (DEC-023). Its own job and its own Postgres, never
   # inside `npm run verify`: it needs Chromium and a `next dev` server, and a failure here should
   # not hide the gate's.
   e2e:
     runs-on: ubuntu-latest
-    # Above DEC-021's 40 minutes, so a run that reaches them is seen finishing, not cancelled.
+    # Above DEC-023's 40 minutes, so a run that reaches them is seen finishing, not cancelled.
     timeout-minutes: 45
 
     services:

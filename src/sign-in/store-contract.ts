@@ -1,5 +1,5 @@
 /**
- * The sign-in store contract (issue 9, AC16–AC19). One behavioural suite, run against
+ * The sign-in store contract (issue 9, AC16–AC19; issue 22, AC2, AC3 and AC14). One behavioural suite, run against
  * `MemorySignInStore` and against haul's two Repository adapters: if all three pass it, the
  * memory store the code-flow tests lean on behaves as the real ones do (DEC-010).
  *
@@ -16,6 +16,7 @@ import type { RateLimitStore, SignInStore } from "./store.js";
 type Store = SignInStore & RateLimitStore;
 
 const T0 = new Date("2026-10-28T14:00:00.000Z");
+const SECOND = 1000;
 const MINUTE = 60_000;
 const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
@@ -24,6 +25,9 @@ const at = (ms: number): Date => new Date(T0.getTime() + ms);
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
 const WRONG = "f".repeat(64);
+const LINK_A = "c".repeat(64);
+const LINK_B = "d".repeat(64);
+const NO_LINK = { linkHash: null, linkCreatedAt: null, linkExpiresAt: null };
 
 /** A claim with roomy caps, overridden per case. */
 const claim = (
@@ -71,6 +75,7 @@ export function runSignInStoreContract(
           consumedAt: null,
           failedSince: null,
           failedInWindow: 0,
+          ...NO_LINK,
         });
       });
 
@@ -93,6 +98,7 @@ export function runSignInStoreContract(
           consumedAt: null,
           failedSince: at(1 * MINUTE),
           failedInWindow: 2,
+          ...NO_LINK,
         });
       });
 
@@ -170,13 +176,97 @@ export function runSignInStoreContract(
         expect(await store.getSignInCode(subjectId)).toEqual(before);
       });
 
-      it("AC18 (issue 9): rule 2 does not stop the right hash — at the window cap it claims, adds an attempt and leaves the window alone", async () => {
+      // Inverted from issue 9's "rule 2 does not stop the right hash".
+      it("AC2: rule 2 stops the right hash too — in a live window at maxFailures the right hash returns null and nothing changes", async () => {
         const subjectId = await subjectWithCode();
         await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { maxFailures: 2 }));
         await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE), { maxFailures: 2 }));
-        const result = await store.claimSignInAttempt(subjectId, claim(HASH_A, at(3 * MINUTE), { maxFailures: 2 }));
+        const before = await read(subjectId);
+        expect(before).toMatchObject({ attempts: 2, failedSince: at(1 * MINUTE), failedInWindow: 2 });
+        expect(await store.claimSignInAttempt(subjectId, claim(HASH_A, at(3 * MINUTE), { maxFailures: 2 }))).toBeNull();
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+      });
+
+      it("AC2: rule 2 stops the right hash of a fresh code saved at the cap, attempts untouched", async () => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { maxFailures: 2 }));
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE), { maxFailures: 2 }));
+        await store.saveSignInCode({ subjectId, codeHash: HASH_B, createdAt: at(3 * MINUTE), expiresAt: at(13 * MINUTE) });
+        const before = await read(subjectId);
+        expect(before).toMatchObject({ attempts: 0, failedInWindow: 2 });
+        expect(await store.claimSignInAttempt(subjectId, claim(HASH_B, at(4 * MINUTE), { maxFailures: 2 }))).toBeNull();
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+      });
+
+      it("AC2: below maxFailures in a live window, the right hash still claims and leaves the window alone", async () => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { maxFailures: 2 }));
+        const result = await store.claimSignInAttempt(subjectId, claim(HASH_A, at(2 * MINUTE), { maxFailures: 2 }));
         expect(result).toMatchObject({ codeHash: HASH_A, expiresAt: at(10 * MINUTE) });
-        expect(await read(subjectId)).toMatchObject({ attempts: 3, failedSince: at(1 * MINUTE), failedInWindow: 2 });
+        expect(await read(subjectId)).toMatchObject({ attempts: 2, failedSince: at(1 * MINUTE), failedInWindow: 1 });
+      });
+
+      it("AC2: a window at maxFailures that is no longer live does not stop the right hash", async () => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { windowMs: HOUR, maxFailures: 2 }));
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE), { windowMs: HOUR, maxFailures: 2 }));
+        const result = await store.claimSignInAttempt(subjectId, claim(HASH_A, at(1 * MINUTE + HOUR), { windowMs: HOUR, maxFailures: 2 }));
+        expect(result).toMatchObject({ codeHash: HASH_A, expiresAt: at(10 * MINUTE) });
+      });
+
+      describe("AC3 — the claim returns failedInWindow as it stands after the claim", () => {
+        it("AC3: the right hash with no window returns 0", async () => {
+          const subjectId = await subjectWithCode();
+          expect(await store.claimSignInAttempt(subjectId, claim(HASH_A, at(1 * MINUTE)))).toEqual({
+            codeHash: HASH_A,
+            expiresAt: at(10 * MINUTE),
+            failedInWindow: 0,
+          });
+        });
+
+        it("AC3: a wrong hash with no window returns 1, and the next wrong hash in the window 2", async () => {
+          const subjectId = await subjectWithCode();
+          expect(await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE)))).toEqual({
+            codeHash: HASH_A,
+            expiresAt: at(10 * MINUTE),
+            failedInWindow: 1,
+          });
+          expect(await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE)))).toEqual({
+            codeHash: HASH_A,
+            expiresAt: at(10 * MINUTE),
+            failedInWindow: 2,
+          });
+        });
+
+        it("AC3: the right hash in a live window returns the count unchanged", async () => {
+          const subjectId = await subjectWithCode();
+          await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE)));
+          expect(await store.claimSignInAttempt(subjectId, claim(HASH_A, at(2 * MINUTE)))).toEqual({
+            codeHash: HASH_A,
+            expiresAt: at(10 * MINUTE),
+            failedInWindow: 1,
+          });
+        });
+
+        it("AC3: a wrong hash once the window is no longer live returns 1, the new window's first", async () => {
+          const subjectId = await subjectWithCode();
+          await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { windowMs: HOUR }));
+          await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE), { windowMs: HOUR }));
+          expect(await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE + HOUR), { windowMs: HOUR }))).toEqual({
+            codeHash: HASH_A,
+            expiresAt: at(10 * MINUTE),
+            failedInWindow: 1,
+          });
+        });
+
+        it("AC3: the right hash in a window no longer live, its count still at maxFailures, returns that count", async () => {
+          const subjectId = await subjectWithCode();
+          await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE), { windowMs: HOUR, maxFailures: 2 }));
+          await store.claimSignInAttempt(subjectId, claim(WRONG, at(2 * MINUTE), { windowMs: HOUR, maxFailures: 2 }));
+          expect(
+            await store.claimSignInAttempt(subjectId, claim(HASH_A, at(1 * MINUTE + HOUR), { windowMs: HOUR, maxFailures: 2 })),
+          ).toEqual({ codeHash: HASH_A, expiresAt: at(10 * MINUTE), failedInWindow: 2 });
+        });
       });
 
       it("AC18 (issue 9): rule 3 — the right hash adds an attempt, returns { codeHash, expiresAt } and starts no window", async () => {
@@ -247,6 +337,230 @@ export function runSignInStoreContract(
         const grace = await subjectWithCode("grace@example.com");
         const before = await read(grace);
         await store.claimSignInAttempt(ada, claim(WRONG, at(1 * MINUTE)));
+        expect(await store.getSignInCode(grace)).toEqual(before);
+      });
+    });
+
+    /** A link saved for the subject with no hold: `hash`, created at `createdAt`, expiring ten minutes on. */
+    const saveLink = (subjectId: string, hash: string, createdAt: Date) =>
+      store.saveSignInLink({ subjectId, linkHash: hash, createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+
+    const hold = (now: Date) => ({ now, waitMs: 10 * MINUTE });
+    const codeAt = (subjectId: string, hash: string, createdAt: Date) => ({
+      subjectId,
+      codeHash: hash,
+      createdAt,
+      expiresAt: new Date(createdAt.getTime() + 10 * MINUTE),
+    });
+
+    describe("AC14 — saveSignInCode returns whether it saved, holds when given a hold, and keeps the link", () => {
+      it("AC14: without a hold it saves and returns true, the first time and when replacing", async () => {
+        const subjectId = await makeSubject("ada@example.com");
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_A, T0))).toBe(true);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, at(1 * MINUTE)))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_B);
+      });
+
+      it("AC14: with a hold and no row yet it saves and returns true", async () => {
+        const subjectId = await makeSubject("ada@example.com");
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_A, T0), hold(T0))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_A);
+      });
+
+      it("AC14: with a hold, an unused code created less than waitMs before now holds it — false, and nothing changes", async () => {
+        const subjectId = await subjectWithCode();
+        const before = await read(subjectId);
+        const now = at(10 * MINUTE - 1);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+      });
+
+      it("AC14: with a hold, at exactly waitMs after the code it saves", async () => {
+        const subjectId = await subjectWithCode();
+        const now = at(10 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_B);
+      });
+
+      it("AC14: with a hold, a consumed code does not hold", async () => {
+        const subjectId = await subjectWithCode();
+        await store.consumeSignInCode(subjectId, at(1 * MINUTE));
+        const now = at(2 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_B);
+      });
+
+      it("AC14: with a hold, an unused code holds with every attempt spent", async () => {
+        const subjectId = await subjectWithCode();
+        for (let g = 1; g <= 2; g++) await store.claimSignInAttempt(subjectId, claim(WRONG, at(g * SECOND), { maxAttempts: 2 }));
+        const before = await read(subjectId);
+        expect(before).toMatchObject({ attempts: 2, consumedAt: null });
+        const now = at(5 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+      });
+
+      it("AC14: with a hold, an unused link created less than waitMs before now holds it; at waitMs it saves", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(20 * MINUTE));
+        const before = await read(subjectId);
+        const early = at(30 * MINUTE - 1);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, early), hold(early))).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+        const now = at(30 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_B);
+      });
+
+      it("AC14: with a hold, a redeemed link does not hold", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(1 * MINUTE));
+        await store.redeemSignInLink(LINK_A, at(2 * MINUTE));
+        const now = at(3 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(subjectId, HASH_B, now), hold(now))).toBe(true);
+        expect((await read(subjectId)).codeHash).toBe(HASH_B);
+      });
+
+      it("AC14: one subject's recent code does not hold another's save", async () => {
+        await subjectWithCode("ada@example.com");
+        const grace = await makeSubject("grace@example.com");
+        const now = at(1 * MINUTE);
+        expect(await store.saveSignInCode(codeAt(grace, HASH_B, now), hold(now))).toBe(true);
+      });
+
+      it("AC14: saveSignInCode keeps the link fields as they are", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(1 * MINUTE));
+        await store.saveSignInCode(codeAt(subjectId, HASH_B, at(2 * MINUTE)));
+        expect(await read(subjectId)).toMatchObject({
+          codeHash: HASH_B,
+          linkHash: LINK_A,
+          linkCreatedAt: at(1 * MINUTE),
+          linkExpiresAt: at(11 * MINUTE),
+        });
+      });
+    });
+
+    describe("AC14 — saveSignInLink", () => {
+      it("AC14: sets the three link fields, returns true, and leaves every other field as it was", async () => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE)));
+        const before = await read(subjectId);
+        expect(await saveLink(subjectId, LINK_A, at(2 * MINUTE))).toBe(true);
+        expect(await store.getSignInCode(subjectId)).toEqual({
+          ...before,
+          linkHash: LINK_A,
+          linkCreatedAt: at(2 * MINUTE),
+          linkExpiresAt: at(12 * MINUTE),
+        });
+      });
+
+      it("AC14: a second link replaces the first", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(1 * MINUTE));
+        expect(await saveLink(subjectId, LINK_B, at(2 * MINUTE))).toBe(true);
+        expect(await read(subjectId)).toMatchObject({ linkHash: LINK_B, linkCreatedAt: at(2 * MINUTE), linkExpiresAt: at(12 * MINUTE) });
+      });
+
+      it("AC14: returns false for a subject with no sign-in row, and stores nothing", async () => {
+        const subjectId = await makeSubject("ada@example.com");
+        expect(await saveLink(subjectId, LINK_A, T0)).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toBeNull();
+      });
+
+      it("AC14: with a hold, an unused code created less than waitMs before now holds it — false, nothing changes; at waitMs it saves", async () => {
+        const subjectId = await subjectWithCode();
+        const before = await read(subjectId);
+        const link = (createdAt: Date) => ({ subjectId, linkHash: LINK_A, createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+        const early = at(10 * MINUTE - 1);
+        expect(await store.saveSignInLink(link(early), hold(early))).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+        const now = at(10 * MINUTE);
+        expect(await store.saveSignInLink(link(now), hold(now))).toBe(true);
+        expect((await read(subjectId)).linkHash).toBe(LINK_A);
+      });
+
+      it("AC14: with a hold, an unused link created less than waitMs before now holds it; at waitMs it saves", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(20 * MINUTE));
+        const before = await read(subjectId);
+        const link = (createdAt: Date) => ({ subjectId, linkHash: LINK_B, createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+        const early = at(30 * MINUTE - 1);
+        expect(await store.saveSignInLink(link(early), hold(early))).toBe(false);
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+        const now = at(30 * MINUTE);
+        expect(await store.saveSignInLink(link(now), hold(now))).toBe(true);
+        expect((await read(subjectId)).linkHash).toBe(LINK_B);
+      });
+
+      it("AC14: without a hold it saves however recently the code went", async () => {
+        const subjectId = await subjectWithCode();
+        expect(await saveLink(subjectId, LINK_A, at(1 * SECOND))).toBe(true);
+        expect((await read(subjectId)).linkHash).toBe(LINK_A);
+      });
+
+      it("AC14: links are per subject — saving one subject's leaves another's alone", async () => {
+        const ada = await subjectWithCode("ada@example.com");
+        const grace = await subjectWithCode("grace@example.com");
+        const before = await read(grace);
+        await saveLink(ada, LINK_A, at(1 * MINUTE));
+        expect(await store.getSignInCode(grace)).toEqual(before);
+      });
+    });
+
+    describe("AC14 — redeemSignInLink", () => {
+      it("AC14: a matching hash before linkExpiresAt clears the link and the window, consumes the code, and returns the subject id", async () => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(1 * MINUTE)));
+        await saveLink(subjectId, LINK_A, at(2 * MINUTE));
+        const before = await read(subjectId);
+        expect(await store.redeemSignInLink(LINK_A, at(12 * MINUTE - 1))).toBe(subjectId);
+        expect(await store.getSignInCode(subjectId)).toEqual({
+          ...before,
+          consumedAt: at(12 * MINUTE - 1),
+          failedSince: null,
+          failedInWindow: 0,
+          ...NO_LINK,
+        });
+      });
+
+      it("AC14: a code already consumed keeps its consumedAt", async () => {
+        const subjectId = await subjectWithCode();
+        await store.consumeSignInCode(subjectId, at(1 * MINUTE));
+        await saveLink(subjectId, LINK_A, at(2 * MINUTE));
+        expect(await store.redeemSignInLink(LINK_A, at(3 * MINUTE))).toBe(subjectId);
+        expect((await read(subjectId)).consumedAt).toEqual(at(1 * MINUTE));
+      });
+
+      it("AC14: a second redeem of the same hash returns null and changes nothing", async () => {
+        const subjectId = await subjectWithCode();
+        await saveLink(subjectId, LINK_A, at(1 * MINUTE));
+        await store.redeemSignInLink(LINK_A, at(2 * MINUTE));
+        const after = await read(subjectId);
+        expect(await store.redeemSignInLink(LINK_A, at(3 * MINUTE))).toBeNull();
+        expect(await store.getSignInCode(subjectId)).toEqual(after);
+      });
+
+      it.each([
+        ["at linkExpiresAt", LINK_A, 11 * MINUTE],
+        ["after linkExpiresAt", LINK_A, 20 * MINUTE],
+        ["for a hash no link has", LINK_B, 2 * MINUTE],
+      ])("AC14: %s it returns null and changes nothing", async (_when, hash, ms) => {
+        const subjectId = await subjectWithCode();
+        await store.claimSignInAttempt(subjectId, claim(WRONG, at(30 * SECOND)));
+        await saveLink(subjectId, LINK_A, at(1 * MINUTE));
+        const before = await read(subjectId);
+        expect(await store.redeemSignInLink(hash, at(ms))).toBeNull();
+        expect(await store.getSignInCode(subjectId)).toEqual(before);
+      });
+
+      it("AC14: redeeming one subject's link leaves another's row alone", async () => {
+        const ada = await subjectWithCode("ada@example.com");
+        const grace = await subjectWithCode("grace@example.com");
+        await saveLink(grace, LINK_B, at(1 * MINUTE));
+        await saveLink(ada, LINK_A, at(1 * MINUTE));
+        const before = await read(grace);
+        expect(await store.redeemSignInLink(LINK_A, at(2 * MINUTE))).toBe(ada);
         expect(await store.getSignInCode(grace)).toEqual(before);
       });
     });

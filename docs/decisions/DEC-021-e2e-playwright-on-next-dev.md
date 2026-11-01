@@ -3,7 +3,7 @@ schema: 1
 id: DEC-021
 title: "e2e is Playwright on one next dev server, in CI only, with a dev outbox"
 topic: "Stack & hosting"
-status: "active"
+status: "superseded"
 date: "2026-10-31"
 ruling: "Browser tests are Playwright, on desktop and a 375px phone, against one next dev server on port 4100. They run as their own CI job, never in npm run verify, and read the emailed sign-in code from a dev-only outbox route."
 claims:
@@ -17,12 +17,13 @@ claims:
     target: ".github/workflows/ci.yml"
   - kind: "test"
     target: "playwright.config.test.ts"
+superseded_by: DEC-023
 revisit_if: "The e2e CI job reaches 40 minutes, or a bug ships that only a production build renders"
 ---
 
 ## DEC-021: e2e is Playwright on one next dev server, in CI only, with a dev outbox
 
-Muster's harness, adapted (`muster/playwright.config.ts`, its pull request #1173). DEC-011's
+Muster's harness, adapted. DEC-011's
 `revisit_if` ("a test needs a browser") fires here; its ruling stands, Vitest and what `npm run verify`
 runs, so this is a **see also**, not a supersede.
 

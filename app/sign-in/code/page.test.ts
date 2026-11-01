@@ -42,8 +42,10 @@ async function render(searchParams: { error?: string }) {
   return { element, html: renderToStaticMarkup(element) };
 }
 
-const SENT = `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes.`;
-const INVALID = "That code didn't match, or it has expired. Check it and try again, or ask for a new one.";
+// Issue 22, AC24 and AC23, reword these two.
+const SENT = `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes, and a new one can be sent after that.`;
+const INVALID =
+  "That code didn't match, or it has expired. Check it and try again, or ask for a new one. After 5 wrong tries, check your email for a sign-in link.";
 // Issue 19, AC8: "Use a different email" moves to the top of the card, above the heading.
 const TEXTS = ["Use a different email", "Enter your code", SENT, "6-digit code", "Sign in", "Send a new code"];
 
@@ -172,6 +174,40 @@ describe("AC8 (issue 19) — /sign-in/code in its card", () => {
       expect(globalsCss()).toMatch(new RegExp(`\\.${escapeRegExp(cls)}(?![\\w-])`));
     },
   );
+});
+
+describe("AC23–AC25 (issue 22) — the code page's wording, back link and resend", () => {
+  it("AC24: the line under the heading names the email and says a new code can be sent once this one expires", async () => {
+    const { html } = await render({});
+    expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Enter your code</h1>\\s*${p(SENT)}`));
+  });
+
+  it("AC23: the wrong-code notice tells the member to check their email after 5 wrong tries", async () => {
+    const { html } = await render({ error: "invalid" });
+    expect(screenMarkup(html)).toMatch(new RegExp(alert(INVALID)));
+  });
+
+  it("AC25: the back link carries btn-quiet, back-link and btn-flush", async () => {
+    const { html } = await render({});
+    expect(classesOf(attributesOf(html, "a")[0])).toEqual(expect.arrayContaining(["btn-quiet", "back-link", "btn-flush"]));
+  });
+
+  it('AC25: "Send a new code" carries btn-quiet and btn-flush, and not w-full', async () => {
+    const { html } = await render({});
+    const resend = classesOf(attributesAround(html, "button", "Send a new code"));
+    expect(resend).toEqual(expect.arrayContaining(["btn-quiet", "btn-flush"]));
+    expect(resend).not.toContain("w-full");
+  });
+
+  it("AC25: app/globals.css defines .btn-flush as -ml-2 -my-3, the one home of that offset — .back-link no longer carries -ml-2", () => {
+    const css = globalsCss();
+    const flush = /\.btn-flush\s*\{([^}]*)\}/.exec(css)?.[1];
+    expect(flush, ".btn-flush is not in app/globals.css").toBeDefined();
+    expect(flush).toMatch(/(?<![\w-])-ml-2(?![\w-])/);
+    expect(flush).toMatch(/(?<![\w-])-my-3(?![\w-])/);
+    const backLink = /\.back-link\s*\{([^}]*)\}/.exec(css)?.[1] ?? "";
+    expect(backLink).not.toMatch(/(?<![\w-])-ml-2(?![\w-])/);
+  });
 });
 
 describe("AC9 (issue 19) — the code input", () => {

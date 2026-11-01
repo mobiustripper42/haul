@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { e2eDatabaseUrl } from "./e2e/database";
 
-// e2e runs on one `next dev` server, not a prebuilt `next start` (DEC-021). Port 4100, so it starts
+// e2e runs on one `next dev` server, not a prebuilt `next start` (DEC-023). Port 4100, so it starts
 // beside `npm run dev` on 4000; next.config.ts gives it its own build directory when E2E is set.
 const PORT = 4100;
 const baseURL = `http://localhost:${PORT}`;
@@ -29,6 +29,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       E2E: "1",
+      // The origin the emailed sign-in link points at, which is the server this config starts.
+      SITE_URL: baseURL,
       DATABASE_URL: e2eDatabaseUrl(),
       // Empty, so the app picks the dev fake and its outbox.
       RESEND_API_KEY: "",

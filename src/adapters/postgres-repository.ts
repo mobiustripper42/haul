@@ -1,7 +1,7 @@
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Repository } from "../ports/repository.js";
-import type { SignInCode } from "../sign-in/store.js";
+import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool } from "./pg-connect.js";
 
 type MemberRow = { id: string; email: string; language: Language; role: Role; created_at: Date };
@@ -23,6 +23,9 @@ type SignInCodeRow = {
   consumed_at: Date | null;
   failed_since: Date | null;
   failed_in_window: number;
+  link_hash: string | null;
+  link_created_at: Date | null;
+  link_expires_at: Date | null;
 };
 
 const toSignInCode = (row: SignInCodeRow): SignInCode => ({
@@ -34,6 +37,9 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
   consumedAt: row.consumed_at,
   failedSince: row.failed_since,
   failedInWindow: row.failed_in_window,
+  linkHash: row.link_hash,
+  linkCreatedAt: row.link_created_at,
+  linkExpiresAt: row.link_expires_at,
 });
 
 // SQLSTATEs: a unique violation, and a value that isn't a valid uuid.
@@ -41,6 +47,21 @@ const UNIQUE_VIOLATION = "23505";
 const INVALID_UUID = "22P02";
 
 const sqlState = (e: unknown): string | undefined => (e as { code?: string }).code;
+
+/**
+ * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the
+ * row holds an unused code, or an unused link, created less than `waitMs` before `now`. Empty
+ * without a hold. `sign_in_codes.` is spelled out because an upsert's `where` also sees `excluded`.
+ */
+function holdWhere(hold: SaveHold | undefined, params: unknown[], keyword: "where" | "and" = "where"): string {
+  if (!hold) return "";
+  params.push(hold.now, hold.waitMs);
+  const now = `$${params.length - 1}::timestamptz`;
+  const wait = `$${params.length}::double precision * interval '1 millisecond'`;
+  return `${keyword} not (
+    (sign_in_codes.consumed_at is null and ${now} < sign_in_codes.created_at + ${wait})
+    or (sign_in_codes.link_created_at is not null and ${now} < sign_in_codes.link_created_at + ${wait}))`;
+}
 
 export class PostgresRepository implements Repository {
   private readonly pool: Pool;
@@ -87,16 +108,23 @@ export class PostgresRepository implements Repository {
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {
     const { rows } = await this.pool.query<SignInCodeRow>(
-      `select member_id, code_hash, created_at, expires_at, attempts, consumed_at, failed_since, failed_in_window
+      `select member_id, code_hash, created_at, expires_at, attempts, consumed_at, failed_since, failed_in_window,
+              link_hash, link_created_at, link_expires_at
          from sign_in_codes where member_id = $1`,
       [subjectId],
     );
     return rows[0] ? toSignInCode(rows[0]) : null;
   }
 
-  async saveSignInCode(code: { subjectId: string; codeHash: string; createdAt: Date; expiresAt: Date }): Promise<void> {
-    // The failure window (failed_since, failed_in_window) is left alone: a new code does not reset it.
-    await this.pool.query(
+  async saveSignInCode(
+    code: { subjectId: string; codeHash: string; createdAt: Date; expiresAt: Date },
+    hold?: SaveHold,
+  ): Promise<boolean> {
+    // The failure window and the link fields are left alone: a new code resets neither. A hold is
+    // part of the statement's `where`, so it is decided in the same atomic step as the write: a
+    // concurrent upsert waits on the row, then re-checks the hold against what the first one wrote.
+    const params: unknown[] = [code.subjectId, code.codeHash, code.createdAt, code.expiresAt];
+    const { rowCount } = await this.pool.query(
       `insert into sign_in_codes (member_id, code_hash, created_at, expires_at)
        values ($1, $2, $3, $4)
        on conflict (member_id) do update
@@ -104,9 +132,40 @@ export class PostgresRepository implements Repository {
              created_at = excluded.created_at,
              expires_at = excluded.expires_at,
              attempts = 0,
-             consumed_at = null`,
-      [code.subjectId, code.codeHash, code.createdAt, code.expiresAt],
+             consumed_at = null
+         ${holdWhere(hold, params)}`,
+      params,
     );
+    return rowCount === 1;
+  }
+
+  async saveSignInLink(
+    link: { subjectId: string; linkHash: string; createdAt: Date; expiresAt: Date },
+    hold?: SaveHold,
+  ): Promise<boolean> {
+    const params: unknown[] = [link.subjectId, link.linkHash, link.createdAt, link.expiresAt];
+    const { rowCount } = await this.pool.query(
+      `update sign_in_codes
+          set link_hash = $2, link_created_at = $3, link_expires_at = $4
+        where member_id = $1
+          ${holdWhere(hold, params, "and")}`,
+      params,
+    );
+    return rowCount === 1;
+  }
+
+  /** One statement: concurrent redeems of a token queue on the row, and the later finds the link gone. */
+  async redeemSignInLink(linkHash: string, now: Date): Promise<string | null> {
+    const { rows } = await this.pool.query<{ member_id: string }>(
+      `update sign_in_codes
+          set link_hash = null, link_created_at = null, link_expires_at = null,
+              failed_since = null, failed_in_window = 0,
+              consumed_at = coalesce(consumed_at, $2::timestamptz)
+        where link_hash = $1 and $2::timestamptz < link_expires_at
+        returning member_id`,
+      [linkHash, now],
+    );
+    return rows[0]?.member_id ?? null;
   }
 
   /**
@@ -117,10 +176,10 @@ export class PostgresRepository implements Repository {
   async claimSignInAttempt(
     subjectId: string | null,
     claim: { presentedHash: string; maxAttempts: number; now: Date; windowMs: number; maxFailures: number },
-  ): Promise<{ codeHash: string; expiresAt: Date } | null> {
+  ): Promise<{ codeHash: string; expiresAt: Date; failedInWindow: number } | null> {
     // "Live": failed_since is set and now < failed_since + windowMs.
     const live = "(failed_since is not null and $3::timestamptz < failed_since + $4::double precision * interval '1 millisecond')";
-    const { rows } = await this.pool.query<{ code_hash: string; expires_at: Date }>(
+    const { rows } = await this.pool.query<{ code_hash: string; expires_at: Date; failed_in_window: number }>(
       `update sign_in_codes
           set attempts = attempts + 1,
               failed_since = case when code_hash = $2 or ${live} then failed_since else $3::timestamptz end,
@@ -130,11 +189,13 @@ export class PostgresRepository implements Repository {
         where member_id = $1
           and consumed_at is null
           and attempts < $5
-          and (code_hash = $2 or not (${live} and failed_in_window >= $6))
-        returning code_hash, expires_at`,
+          and not (${live} and failed_in_window >= $6)
+        returning code_hash, expires_at, failed_in_window`,
       [subjectId, claim.presentedHash, claim.now, claim.windowMs, claim.maxAttempts, claim.maxFailures],
     );
-    return rows[0] ? { codeHash: rows[0].code_hash, expiresAt: rows[0].expires_at } : null;
+    return rows[0]
+      ? { codeHash: rows[0].code_hash, expiresAt: rows[0].expires_at, failedInWindow: rows[0].failed_in_window }
+      : null;
   }
 
   async consumeSignInCode(subjectId: string, now: Date): Promise<boolean> {
