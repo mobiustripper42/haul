@@ -23,7 +23,7 @@ Roles:
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
 - **Env** — `env.example` names every variable the app reads; git ignores every `.env*` file
-- **Testing** — Vitest (DEC-011); Playwright for browser e2e, CI only (DEC-021)
+- **Testing** — Vitest (DEC-011); Playwright for browser e2e, CI only (DEC-023)
 - **Bundler** — webpack, not Turbopack (DEC-012)
 - **Styling** — Tailwind v4 through PostCSS; its theme is rebuilt from `design/design-system/tokens.json`, and fonts are vendored in `app/fonts/` (DEC-020)
 - **Dev environment** — mill-dev, over Tailscale. The app is on port 4000, because muster holds

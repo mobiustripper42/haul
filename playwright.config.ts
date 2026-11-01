@@ -1,7 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { e2eDatabaseUrl } from "./e2e/database";
 
-// e2e runs on one `next dev` server, not a prebuilt `next start` (DEC-021). Port 4100, so it starts
+// e2e runs on one `next dev` server, not a prebuilt `next start` (DEC-023). Port 4100, so it starts
 // beside `npm run dev` on 4000; next.config.ts gives it its own build directory when E2E is set.
 const PORT = 4100;
 const baseURL = `http://localhost:${PORT}`;

@@ -24,7 +24,7 @@ revisit_if: "The e2e CI job reaches 40 minutes, or a bug ships that only a produ
 
 ## DEC-023: e2e is Playwright on one next dev server; its dev outbox answers only there
 
-Muster's harness, adapted. DEC-011's `revisit_if` ("a test needs a browser") fires here; its ruling
+Muster's harness, adapted (`muster/playwright.config.ts`, its pull request #1173). DEC-011's `revisit_if` ("a test needs a browser") fires here; its ruling
 stands, so this is a **see also**, not a supersede.
 
 The server is `next dev --webpack` on 4100 with `E2E=1`, so its own `distDir` (`.next-e2e`) and dev
