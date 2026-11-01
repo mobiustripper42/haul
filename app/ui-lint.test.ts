@@ -1,5 +1,6 @@
 // Issue 19, AC11–AC17: the UI rules in eslint.config.mjs's one `**/*.tsx` no-restricted-syntax block,
 // run through the repo's own config with `lintText`, as app/bare-string-lint.test.ts runs DEC-015's.
+// Issue 38, AC13–AC19: the component rules, which replace issue 19's AC14 (every <button> names its kind).
 import { fileURLToPath } from "node:url";
 import { ESLint } from "eslint";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -153,10 +154,10 @@ describe("AC12 — an arbitrary property is a raw value too; only class strings 
   });
 
   it.each([
-    ["the code input's pattern", '<input pattern="[0-9]*" />'],
-    ["a pattern shaped like an arbitrary value", '<input pattern="A-[0-9]{4}" />'],
-    ["a pattern as a template literal", "<input pattern={`A-[0-9]{4}`} />"],
-    ["a name shaped like an arbitrary value", '<input name="item-[0]" />'],
+    ["the code input's pattern", '<Input pattern="[0-9]*" />'],
+    ["a pattern shaped like an arbitrary value", '<Input pattern="A-[0-9]{4}" />'],
+    ["a pattern as a template literal", "<Input pattern={`A-[0-9]{4}`} />"],
+    ["a name shaped like an arbitrary value", '<Input name="item-[0]" />'],
     ["a translation key shaped like an arbitrary value", '<p>{t("p-[13px]")}</p>'],
   ])("AC12: passes on %s, which is not a class string", async (_what, jsx) => {
     const result = await lint(jsx);
@@ -184,55 +185,257 @@ describe("AC13 — lint fails on a gold fill outside btn-primary", () => {
 
 // ---------------------------------------------------------------------------------------------
 
-const KINDS = ["btn-primary", "btn-secondary", "btn-quiet"];
-const kindMessage = (m: string) => KINDS.every((kind) => m.includes(kind));
+// Issue 38, AC13–AC19: one component per look. Outside components/ui/, lint refuses a raw element or a
+// component's class and names the component that owns it; inside, the folder builds them, and only
+// DEC-015's and DEC-020's lists apply.
 
-describe("AC14 — every <button> names its kind", () => {
-  it.each([
-    ["no className", "<button />"],
-    ["no className, other attributes", '<button type="submit" name="language" value="en" />'],
-    ["a className naming no kind", '<button className="w-full" />'],
-    ["a className in braces naming no kind", '<button className={"w-full"} />'],
-    ["a template-literal className naming no kind", "<button className={`w-full ${name}`} />"],
-    ["a kind haul does not have", '<button className="btn-danger" />'],
-    ["a className passed through a variable", "<button className={name} />"],
-    ["a className passed through a member expression", "<button className={t.name} />"],
-    ["a className passed through a call", '<button className={t("btn-primary")} />'],
-  ])("AC14: fails on a <button> with %s, naming the three kinds", async (_what, jsx) => {
-    const result = await lint(jsx);
-    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
-    expect(errorsWhere(result, kindMessage), describeMessages(result)).not.toHaveLength(0);
+type Component = "Button" | "Input" | "Field" | "Heading" | "Shell" | "Card" | "Notice";
+const names = (component: Component) => (m: string) => new RegExp(`(?<![\\w-])${component}(?![\\w-])`).test(m);
+
+const OUTSIDE = ["app/x.tsx", "app/sign-in/x.tsx", "components/x.tsx"];
+const INSIDE = ["components/ui/x.tsx", "components/ui/button.tsx"];
+
+/** Lints `jsx` in `filePath` and expects a no-restricted-syntax error naming `component`. */
+async function expectNamed(jsx: string, filePath: string, component: Component): Promise<void> {
+  const result = await lint(jsx, filePath);
+  expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+  expect(errorsWhere(result, names(component)), describeMessages(result)).not.toHaveLength(0);
+}
+
+/** Lints `jsx` in `filePath` and expects no error at all. */
+async function expectClean(jsx: string, filePath: string): Promise<void> {
+  const result = await lint(jsx, filePath);
+  expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+  expect(result.errorCount, describeMessages(result)).toBe(0);
+}
+
+const RAW_BUTTONS: Array<[string, string]> = [
+  ["a bare <button>", "<button />"],
+  ["a submit <button>", '<button type="submit" name="language" value="en" />'],
+  ["a <button> with a layout class", '<button type="submit" className="w-full" />'],
+  ["a <button> with a className from a variable", "<button className={name} />"],
+];
+
+describe("AC13 (issue 38) — a raw <button> fails outside components/ui/, naming Button", () => {
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(RAW_BUTTONS)("AC13: fails on %s, naming Button", async (_what, jsx) => {
+      await expectNamed(jsx, filePath, "Button");
+    });
   });
 
-  it.each([
-    ["btn-primary", '<button className="btn-primary" />'],
-    ["btn-secondary", '<button className="btn-secondary" />'],
-    ["btn-quiet in braces", '<button className={"btn-quiet"} />'],
-    ["a template literal containing a kind", "<button className={`btn-primary ${name}`} />"],
-  ])("AC14: passes on a <button> with %s", async (_what, jsx) => {
-    const result = await lint(jsx);
-    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
-    expect(result.errorCount, describeMessages(result)).toBe(0);
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(RAW_BUTTONS)("AC13: passes on %s", async (_what, jsx) => {
+      await expectClean(jsx, filePath);
+    });
   });
 });
 
-describe("AC14 — a conditional className names a kind in every branch, as a literal", () => {
-  it.each([
-    ["undefined", '<button className={name ? "btn-quiet" : undefined} />'],
-    ["undefined, first", '<button className={name ? undefined : "btn-primary"} />'],
-    ["a variable", '<button className={name ? "btn-quiet" : name} />'],
-    ["a member expression", '<button className={name ? "btn-quiet" : t.name} />'],
-    ["a call", '<button className={name ? "btn-quiet" : t("btn-primary")} />'],
-  ])("AC14: fails on a <button> whose conditional className has a branch that is %s, naming the three kinds", async (_what, jsx) => {
-    const result = await lint(jsx);
-    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
-    expect(errorsWhere(result, kindMessage), describeMessages(result)).not.toHaveLength(0);
+describe("AC14 (issue 38) — a raw <input> fails outside components/ui/, naming Input, except type=\"hidden\"", () => {
+  const raw: Array<[string, string]> = [
+    ["a bare <input>", "<input />"],
+    ["an email <input>", '<input id="email" name="email" type="email" required />'],
+    ["a text <input>", '<input type="text" />'],
+  ];
+
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC14: fails on %s, naming Input", async (_what, jsx) => {
+      await expectNamed(jsx, filePath, "Input");
+    });
+
+    it('AC14: passes on <input type="hidden">', async () => {
+      await expectClean('<input type="hidden" name="email" value={name} />', filePath);
+    });
+
+    it('AC14: fails on an <input> whose attribute holds a hidden <input> — the exemption is its own type, not a descendant\'s', async () => {
+      await expectNamed('<input data-x={<input type="hidden" />} />', filePath, "Input");
+    });
   });
 
-  it("AC14: passes on a <button> whose conditional className names a kind in both branches", async () => {
-    const result = await lint('<button className={name ? "btn-quiet" : "btn-primary"} />');
-    expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
-    expect(result.errorCount, describeMessages(result)).toBe(0);
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each([...raw, ["an <input> with a className from a variable", "<input className={name} />"]])(
+      "AC14: passes on %s",
+      async (_what, jsx) => {
+        await expectClean(jsx, filePath);
+      },
+    );
+  });
+});
+
+describe("AC15 (issue 38) — a raw <label> fails outside components/ui/, naming Field", () => {
+  const raw: Array<[string, string]> = [
+    ["a bare <label>", "<label />"],
+    ["a <label> for a field", '<label htmlFor="email">{t("signIn.emailLabel")}</label>'],
+  ];
+
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC15: fails on %s, naming Field", async (_what, jsx) => {
+      await expectNamed(jsx, filePath, "Field");
+    });
+  });
+
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC15: passes on %s", async (_what, jsx) => {
+      await expectClean(jsx, filePath);
+    });
+  });
+});
+
+describe("AC16 (issue 38) — a raw <h1> to <h6> fails outside components/ui/, naming Heading", () => {
+  const raw = ["h1", "h2", "h3", "h4", "h5", "h6"].map((h): [string, string] => [h, `<${h}>{t("home.title")}</${h}>`]);
+
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC16: fails on a raw <%s>, naming Heading", async (_h, jsx) => {
+      await expectNamed(jsx, filePath, "Heading");
+    });
+  });
+
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC16: passes on a raw <%s>", async (_h, jsx) => {
+      await expectClean(jsx, filePath);
+    });
+  });
+});
+
+describe("AC17 (issue 38) — a raw <main> fails outside components/ui/, naming Shell", () => {
+  const raw: Array<[string, string]> = [
+    ["a bare <main>", "<main />"],
+    ["a <main> holding a paragraph", '<main>\n  <p>{t("a")}</p>\n</main>'],
+  ];
+
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC17: fails on %s, naming Shell", async (_what, jsx) => {
+      await expectNamed(jsx, filePath, "Shell");
+    });
+  });
+
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(raw)("AC17: passes on %s", async (_what, jsx) => {
+      await expectClean(jsx, filePath);
+    });
+  });
+});
+
+// Each class a component owns, with the component lint must name for it.
+const OWNED: Array<[string, Component]> = [
+  ["page-narrow", "Shell"],
+  ["card", "Card"],
+  ["field", "Input"],
+  ["field-code", "Input"],
+  ["notice", "Notice"],
+  ["notice-lock", "Notice"],
+  ["notice-clock", "Notice"],
+  ["notice-alert", "Notice"],
+  ["notice-info", "Notice"],
+  ["btn-primary", "Button"],
+  ["btn-secondary", "Button"],
+  ["btn-quiet", "Button"],
+  ["btn-flush", "Button"],
+  ["btn-danger", "Button"],
+  ["back-link", "Button"],
+];
+
+describe("AC18 (issue 38) — a component's class in a class string fails outside components/ui/, naming its component", () => {
+  const cases = OWNED.flatMap(([cls, component]) =>
+    (["literal", "braces", "template"] as const).map((form) => [cls, form, component, FORMS[form](cls)] as const),
+  );
+
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(cases)("AC18: fails on %s as a %s, naming %s", async (_cls, _form, component, jsx) => {
+      await expectNamed(jsx, filePath, component);
+    });
+  });
+
+  it.each([
+    ["beside other classes", '<div className="flex card gap-2" />', "Card"],
+    ["last of several", '<div className="flex gap-2 notice-lock" />', "Notice"],
+    ["in a conditional's branch", '<div className={name ? "p-4" : "btn-quiet"} />', "Button"],
+    ["in a template literal after an expression", "<div className={`${name} page-narrow`} />", "Shell"],
+  ] as const)("AC18: fails on a class %s, naming its component", async (_what, jsx, component) => {
+    await expectNamed(jsx, "app/x.tsx", component);
+  });
+
+  it.each([
+    ["Button", "<button />", '<div className="btn-primary" />'],
+    ["Input", "<input />", '<div className="field" />'],
+    ["Shell", "<main />", '<div className="page-narrow" />'],
+  ] as const)("AC18: the %s message for a class is the one its raw element gets", async (component, rawElement, classString) => {
+    const fromElement = errorsWhere(await lint(rawElement), names(component)).map((m) => m.message);
+    const fromClass = errorsWhere(await lint(classString), names(component)).map((m) => m.message);
+    expect(fromElement).not.toHaveLength(0);
+    expect(new Set(fromClass)).toEqual(new Set(fromElement));
+  });
+
+  it.each(
+    written([
+      ["h-field", "literal"],
+      ["max-w-card", "braces"],
+      ["shadow-card", "template"],
+      ["text-field-label", "literal"],
+      ["min-h-button", "template"],
+      ["shadow-card", "literal"],
+      ["text-field-label", "braces"],
+    ]),
+  )("AC18: passes on the token utility %s as a %s — whole class tokens only", async (_cls, _form, jsx) => {
+    await expectClean(jsx, "app/x.tsx");
+  });
+
+  it.each([
+    ["an id", '<div id="card" />'],
+    ["a data attribute", '<div data-kind="btn-primary" />'],
+    ["an href", '<a href="/notice" />'],
+    ["a translation key", '<p>{t("card")}</p>'],
+    ["a name", '<span id={name} data-x="field" />'],
+  ])("AC18: passes on a component's class in %s, which is not a class string", async (_what, jsx) => {
+    await expectClean(jsx, "app/x.tsx");
+  });
+
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(cases)("AC18: passes on %s as a %s", async (_cls, _form, _component, jsx) => {
+      await expectClean(jsx, filePath);
+    });
+  });
+});
+
+describe("AC19 (issue 38) — inside components/ui/, the contrast, raw-value, gold-fill and bare-string rules still fail", () => {
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(written([
+      ["text-gold", "literal"],
+      ["hover:text-border", "template"],
+    ]))("AC19: the contrast rule fails on %s as a %s", async (_cls, _form, jsx) => {
+      const result = await lint(jsx, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(errorsWhere(result, ratioMessage), describeMessages(result)).not.toHaveLength(0);
+    });
+
+    it.each([
+      ["an arbitrary value as a literal", '<div className="p-[13px]" />'],
+      ["an arbitrary value as a template", "<div className={`bg-[#fbeeec] ${name}`} />"],
+      ["an arbitrary property", '<div className={"[color:#fff]"} />'],
+      ["a style prop", "<div style={{ margin: 0 }} />"],
+    ])("AC19: the raw-value rule fails on %s", async (_what, jsx) => {
+      const result = await lint(jsx, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(errorsWhere(result, (m) => m.includes(OPT_OUT)), describeMessages(result)).not.toHaveLength(0);
+    });
+
+    it.each(written([
+      ["bg-gold", "literal"],
+      ["hover:bg-gold-hover", "template"],
+    ]))("AC19: the gold-fill rule fails on %s as a %s, naming btn-primary", async (_cls, _form, jsx) => {
+      const result = await lint(jsx, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(errorsWhere(result, (m) => m.includes("btn-primary")), describeMessages(result)).not.toHaveLength(0);
+    });
+
+    it.each([
+      ["JSX text", "<p>Hi</p>"],
+      ["a string literal child", '<p>{"Hi"}</p>'],
+      ["a bare aria-label", '<button aria-label="Close" />'],
+    ])("AC19: DEC-015's bare-string rule fails on %s", async (_what, jsx) => {
+      const result = await lint(jsx, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(errorsWhere(result, (m) => m.includes("src/messages/")), describeMessages(result)).not.toHaveLength(0);
+    });
   });
 });
 
@@ -252,12 +455,12 @@ describe("AC15 — the rules compose with DEC-015's bare-string selectors", () =
   );
 
   it.each(["components/x.tsx", "app/sign-in/x.tsx"])(
-    "AC15: a <button> with no kind and a contrast class are both reported beside a bare string, in %s",
+    "AC15: a raw <button> and a contrast class are both reported beside a bare string, in %s",
     async (filePath) => {
       const result = await lint('<button className="hover:text-gold">Hi</button>', filePath);
       expect(errorsWhere(result, bareStringMessage), describeMessages(result)).not.toHaveLength(0);
       expect(errorsWhere(result, ratioMessage), describeMessages(result)).not.toHaveLength(0);
-      expect(errorsWhere(result, kindMessage), describeMessages(result)).not.toHaveLength(0);
+      expect(errorsWhere(result, names("Button")), describeMessages(result)).not.toHaveLength(0);
     },
   );
 
@@ -293,8 +496,8 @@ describe("AC16 — each rule's clean counterpart passes", () => {
   ];
   const cases: Array<[string, string]> = [
     ...written(classes).map(([cls, form, jsx]) => [`${cls} as a ${form}`, jsx] as [string, string]),
-    ['className="btn-primary w-full" on a <button>', '<button className="btn-primary w-full" />'],
-    ["a <button> with btn-quiet", '<button className="btn-quiet" />'],
+    ['<Button kind="primary" full>', '<Button kind="primary" full />'],
+    ['<Button kind="quiet">', '<Button kind="quiet" />'],
   ];
 
   it.each(cases)("AC16: passes on %s", async (_what, jsx) => {

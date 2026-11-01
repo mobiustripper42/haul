@@ -1,3 +1,10 @@
+import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
+import { Field } from "../../components/ui/field";
+import { Heading } from "../../components/ui/heading";
+import { Input } from "../../components/ui/input";
+import { Notice } from "../../components/ui/notice";
+import { Shell } from "../../components/ui/shell";
 import { getTranslator } from "../language";
 import { requestCode } from "./actions";
 
@@ -17,31 +24,20 @@ export default async function SignIn({
   const minutes = limitedMinutes(limited);
   const noticeKey = error === "expired" ? "signIn.stepExpired" : error === "link" ? "signIn.linkFailed" : null;
   return (
-    <main className="page-narrow">
-      <section className="card">
-        <h1 className="font-display text-heading text-teal">{t("signIn.title")}</h1>
-        {minutes !== null && (
-          <p role="alert" className="notice notice-lock">
-            {t("signIn.limited", { minutes })}
-          </p>
-        )}
-        {noticeKey && (
-          <p role="alert" className="notice notice-clock">
-            {t(noticeKey)}
-          </p>
-        )}
+    <Shell>
+      <Card>
+        <Heading>{t("signIn.title")}</Heading>
+        {minutes !== null && <Notice icon="lock">{t("signIn.limited", { minutes })}</Notice>}
+        {noticeKey && <Notice icon="clock">{t(noticeKey)}</Notice>}
         <form action={requestCode} className="flex flex-col gap-6">
-          <p>
-            <label htmlFor="email" className="mb-2 block text-field-label">
-              {t("signIn.emailLabel")}
-            </label>
-            <input id="email" name="email" type="email" autoComplete="email" required className="field" />
-          </p>
-          <button type="submit" className="btn-primary w-full">
+          <Field label={t("signIn.emailLabel")} htmlFor="email">
+            <Input id="email" name="email" type="email" autoComplete="email" required />
+          </Field>
+          <Button kind="primary" full type="submit">
             {t("signIn.sendCode")}
-          </button>
+          </Button>
         </form>
-      </section>
-    </main>
+      </Card>
+    </Shell>
   );
 }

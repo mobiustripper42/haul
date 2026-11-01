@@ -1,4 +1,5 @@
 import { LANGUAGES } from "@core/i18n.js";
+import { Button } from "../components/ui/button";
 import { getLanguage, getTranslator } from "./language";
 import { setLanguage } from "./language-actions";
 
@@ -14,17 +15,17 @@ export async function LanguageSwitcher() {
       <fieldset className="lang-switch">
         <legend className="sr-only">{t("language.label")}</legend>
         {Object.entries(LANGUAGES).map(([code, { name }]) => (
-          <button
+          <Button
             key={code}
+            kind="quiet"
             type="submit"
             name="language"
             value={code}
             lang={code}
             aria-current={code === current ? "true" : undefined}
-            className={`btn-quiet ${code === current ? "font-semibold" : "text-teal-muted"}`}
           >
             {name}
-          </button>
+          </Button>
         ))}
       </fieldset>
     </form>

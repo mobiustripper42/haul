@@ -221,6 +221,12 @@
   .lang-switch {
     @apply flex min-w-0 items-center gap-1;
   }
+  .lang-switch > button[aria-current="true"] {
+    @apply font-semibold;
+  }
+  .lang-switch > button:not([aria-current="true"]) {
+    @apply text-teal-muted;
+  }
   .lang-switch > button + button {
     @apply relative;
   }

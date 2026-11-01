@@ -1,8 +1,9 @@
 // AC11, AC12 and AC14's wiring: `await Home()` rendered through react-dom/server with
 // `next/headers` faked (no DOM library is installed), asserting on the markup.
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { Button } from "../components/ui/button";
 import { setLanguage } from "./language-actions";
 import { emptyRequest } from "./next-headers-fake";
 import Home from "./page";
@@ -59,8 +60,8 @@ describe("AC12 — the page in English", () => {
   });
 });
 
-// The element tree `Home` returns: the form sits directly in it (no components exist).
-function findAll(node: ReactNode, type: string): ReactElement<Record<string, unknown>>[] {
+// The element tree `Home` returns, searched for a tag name or a component.
+function findAll(node: ReactNode, type: string | ComponentType<never>): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap((child) => findAll(child as ReactNode, type));
   if (!isValidElement<Record<string, unknown>>(node)) return [];
   const here = node.type === type ? [node] : [];
@@ -76,7 +77,7 @@ describe("AC14 — the switcher is wired to setLanguage", () => {
 
   it('AC14: each button submits name="language" with its language code', async () => {
     const [form] = findAll(await Home(), "form");
-    const buttons = findAll(form?.props.children as ReactNode, "button").map((b) => ({
+    const buttons = findAll(form?.props.children as ReactNode, Button).map((b) => ({
       name: b.props.name,
       value: b.props.value,
     }));
