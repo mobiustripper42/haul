@@ -32,8 +32,19 @@ The issue body is the spec. Agents are pointed at it by number. Never paraphrase
 The one exception is a second readback round, whose prompt names the lines that changed.
 
 When the gate passes, run `date -u +%Y-%m-%dT%H:%M:%SZ` and keep the time it prints: it is where
-Step 6's cost starts counting. Shell variables do not survive between calls, so keep it in the
-conversation, not in a variable.
+Step 6's cost starts counting.
+
+Shell variables do not survive between calls. Every value this skill names — the time, `START`,
+`TESTS`, `REF` and the test files — is kept in the conversation, and a command written with `$NAME`
+takes the value as printed.
+
+Keep what `git rev-parse HEAD` prints as `START`. Then, if `git status --porcelain` lists anything —
+work already in the tree before this run, such as a staged rename or an edit the operator made —
+commit it on its own: `git add -A`, name in one line the files `git diff --cached --name-only`
+lists, then `git commit -m "build-task: work already in the tree (squashed at ship)"`. It ships with
+the task but is not the build. Committed, it is out of reach of the test lock and of every stash
+below, which would otherwise take it with the build and delete it. Step 5 folds it back in; a run
+abandoned before then leaves it as a commit on the branch.
 
 ## Step 1 — Readback
 
@@ -122,7 +133,8 @@ Check, in order:
    proves the behaviour it guards. Anything else goes back to `@test-writer`.
 3. **Lock the tests.** Commit every file `@test-writer` created or edited, except the stubs, on its
    own: `git add <files>` then `git commit -m "build-task: tests (squashed at ship)"`. Record
-   `TESTS=$(git rev-parse HEAD)`. The commit is the lock: it holds the original bytes, so a
+   `TESTS=$(git rev-parse HEAD)`, and keep the test files: every file a `@test-writer` report in
+   this run lists under Files. The commit is the lock: it holds the original bytes, so a
    violation can be undone, and `git diff` against it needs no working directory. Step 5 folds it
    back into one commit before `/kill-this`, so `@code-review` still sees the tests. The stubs stay
    in the tree, uncommitted: they are production files, and `@implementer` replaces them.
@@ -135,20 +147,25 @@ output from Step 2.
 It returns one of:
 
 - **Done** — a summary of what changed. Go to Step 4.
-- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Bring it to
-  the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule) or the test was
-  (set the implementation aside with `git stash push --include-untracked` and `git stash drop`,
-  uncommit the tests with `git reset --soft "$TESTS~1"` so they stay in the tree to be revised,
-  then Step 2 with the instruction **write the tests** followed by the finding, word for word; the
-  stubs went with the implementation, so Step 2 writes them again).
+- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Set the
+  build aside and keep it: `git stash push --include-untracked -m "build-task <N>: build"`. Find it
+  by its message, which prints its ref, `REF` (nothing printed means the build changed nothing):
+  `git stash list --format='%gd %s' | grep -F ': build-task <N>: build' | cut -d' ' -f1`. Then
+  write `git stash show -p --binary --include-untracked "$REF"` into a patch file in the scratchpad,
+  as a backup. Never show, apply or drop a bare `git stash`: `stash@{0}` may be the operator's.
+  Then stop, and bring the Stop to the operator with the stash's ref and the patch's path. They
+  decide whether the spec or the test was wrong, how it is fixed, and whether the build comes back.
+  A Stop is not a failed round.
 
 ## Step 4 — Verify
 
-1. `git diff --quiet "$TESTS" -- $(git diff-tree --no-commit-id --name-only -r "$TESTS")` — any
-   change to a file the tests commit holds fails the task. Set the implementation aside with
-   `git stash push --include-untracked` (the tests come back as committed; the stubs go with the
-   implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
-   are gone and giving no stub list. A second violation: stop and tell the operator.
+1. `git diff --quiet "$TESTS" -- <the test files>` — any change to a test file fails the task.
+   The list is kept, not read from the `TESTS` commit, because after Step 5's fold a review
+   route's `TESTS` commit holds only its own new test. Set the implementation aside with
+   `git stash push --include-untracked -m "build-task <N>: violation"` (the tests come back as
+   committed; the stubs go with the implementation), find its `REF` by that message as Step 3 does, then
+   `git stash drop "$REF"`, and re-run Step 3 once, telling `@implementer` the stubs are gone
+   and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
 3. Read `@implementer`'s "Stubs left as stubs". Anything but `None` is an empty function that no
    test needed and would ship as a silent no-op: remove it, or bring it to the operator.
@@ -159,13 +176,13 @@ which.
 
 ## Step 5 — Ship
 
-First `git reset --soft "$TESTS~1"`, so tests and code ship as one commit and `/kill-this`'s
-`git diff HEAD~1` shows both. Then run `/kill-this`. When it reaches code-review findings, route
-each one:
+First `git reset --soft "$START"`, so the work already in the tree, the tests and the code ship as
+one commit and `/kill-this`'s `git diff HEAD~1` shows all three. Then run `/kill-this`. When it
+reaches code-review findings, route each one:
 
 | Finding | Goes to |
 |---|---|
-| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit), then `@implementer` |
+| Real bug a test should have caught | `@test-writer` (new test, no stubs — it must fail against the current code on its own assertion; committed on its own; `TESTS` is that commit, and its file joins the test files), then `@implementer` |
 | Real bug, tests are fine | fresh `@implementer`, finding as its brief |
 | One-line cleanup, naming, a constant | fix it yourself |
 | Architectural | escalate to `@architect`, as `@code-review` already says |
@@ -183,7 +200,7 @@ Print it every time, before the hand-back, and append it to the pull request bod
   settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
   test-writer   — <tests> tests across <criteria> criteria
   stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
-  implementer   — <rounds> rounds
+  implementer   — <rounds> rounds, <stops> stops
   test lock     — intact | violated (<file>)
   review routes — <n> to test-writer, <n> to implementer, <n> fixed by Lead
   cost          — <first line of cost.mjs>
