@@ -146,5 +146,5 @@ only the files you changed.
 
 - No git commits, pushes or branch changes. Whoever spawned you ships.
 - Stubs are the only production code you write.
-- If the spec forces a guess in write mode, stop and return the question instead of the tests.
+- If the spec forces a guess in write or revise mode, stop and return the question instead of the tests.
 - Don't pad. A test that asserts nothing the spec cares about is noise someone has to read.
