@@ -35,8 +35,8 @@ When the gate passes, run `date -u +%Y-%m-%dT%H:%M:%SZ` and keep the time it pri
 Step 6's cost starts counting.
 
 Shell variables do not survive between calls. Every value this skill names — the time, `START`,
-`TESTS`, `OLD_TESTS`, `REF` and the test files — is kept in the conversation, and a command written
-with `$NAME` takes the value as printed.
+`TESTS`, `REF` and the test files — is kept in the conversation, and a command written with `$NAME`
+takes the value as printed.
 
 Keep what `git rev-parse HEAD` prints as `START`. Then, if `git status --porcelain` lists anything —
 work already in the tree before this run, such as a staged rename or an edit the operator made —
@@ -147,36 +147,15 @@ output from Step 2.
 It returns one of:
 
 - **Done** — a summary of what changed. Go to Step 4.
-- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Bring it to
-  the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule; a
-  readback round it earns runs before step 2 below) or the test was. Either way the build is kept,
-  and a Stop is not a failed round:
-  1. **Set the build aside and keep it.**
-     `git stash push --include-untracked -m "build-task <N>: build"`, then find it by its message:
-     `git stash list --format='%gd %s' | grep -F ': build-task <N>: build' | cut -d' ' -f1` prints
-     its ref, `REF`. Nothing printed means the build changed nothing, so there is nothing to keep:
-     skip the backup and step 3's apply. Otherwise write
-     `git stash show -p --binary --include-untracked "$REF"` into a patch file in the scratchpad,
-     as a backup. Never show, apply or drop a bare `git stash`: with nothing pushed, `stash@{0}` is
-     the operator's. Keep `TESTS` as `OLD_TESTS`, and uncommit the tests with
-     `git reset --soft "$TESTS~1"`, so they stay in the tree to be revised.
-  2. **Revise the tests.** Spawn `@test-writer` with the issue number and the instruction **revise
-     the tests**, followed by the finding word for word, or the spec lines that changed. It changes
-     only what that names, and writes the stubs again, since they went with the build. Check and
-     lock as Step 2 says, with two differences. A file from the last lock is this run's own, not an
-     existing test. And the coverage check runs on every test in the lock, not only the changed
-     files: `git add` the changed files and commit, and the unchanged tests, still staged, go in
-     with them. `TESTS` is the new commit. `git diff --stat "$OLD_TESTS" "$TESTS"` shows only the
-     files the finding or the changed lines name, or it goes back to `@test-writer`.
-  3. **Bring the build back.** Put each stub file back as it is at `HEAD` and delete the new ones,
-     then `git stash apply "$REF"`. If it does not apply cleanly, stop and tell the operator; the
-     patch is the fallback. Once it applies, `git stash drop "$REF"`. Then Step 4, not Step 3: a
-     revised test the restored build fails goes to Step 3 with its output and no stub list, and
-     that is a failed round under the two-round rule below.
-
-  Rebuilding from nothing spends a whole round on code that already passed every other test. The
-  tests stay independent of it: they are revised against fresh stubs and seen failing before the
-  build comes back.
+- **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Set the
+  build aside and keep it: `git stash push --include-untracked -m "build-task <N>: build"`. Find it
+  by its message, which prints its ref, `REF` (nothing printed means the build changed nothing):
+  `git stash list --format='%gd %s' | grep -F ': build-task <N>: build' | cut -d' ' -f1`. Then
+  write `git stash show -p --binary --include-untracked "$REF"` into a patch file in the scratchpad,
+  as a backup. Never show, apply or drop a bare `git stash`: `stash@{0}` may be the operator's.
+  Then stop, and bring the Stop to the operator with the stash's ref and the patch's path. They
+  decide whether the spec or the test was wrong, how it is fixed, and whether the build comes back.
+  A Stop is not a failed round.
 
 ## Step 4 — Verify
 
@@ -184,7 +163,7 @@ It returns one of:
    The list is kept, not read from the `TESTS` commit, because after Step 5's fold a review
    route's `TESTS` commit holds only its own new test. Set the implementation aside with
    `git stash push --include-untracked -m "build-task <N>: violation"` (the tests come back as
-   committed; the stubs go with the implementation), find its `REF` as Step 3 does, then
+   committed; the stubs go with the implementation), find its `REF` by that message as Step 3 does, then
    `git stash drop "$REF"`, and re-run Step 3 once, telling `@implementer` the stubs are gone
    and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.

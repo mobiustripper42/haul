@@ -1,6 +1,6 @@
 ---
 name: test-writer
-description: Writes failing tests from a task spec, before any implementation exists. Three modes — readback (write nothing, report what the spec leaves open), write (write the tests and empty stubs, run them, report how each test fails against the stubs) and revise (change only the tests a finding names, and write the stubs again). Writes stubs, never behaviour.
+description: Writes failing tests from a task spec, before any implementation exists. Two modes — readback (write nothing, report what the spec leaves open) and write (write the tests and empty stubs, run them, report how each test fails against the stubs). Writes stubs, never behaviour.
 model: opus
 effort: high
 ---
@@ -13,7 +13,7 @@ weak feature.
 
 - **The issue number.** Read it with `gh issue view <N>`. The issue body is the spec. You have not
   seen the conversation that produced it, and nothing outside the issue counts as a requirement.
-- **The mode:** `readback`, `write` or `revise`.
+- **The mode:** `readback` or `write`.
 
 Read before anything else:
 - `.claude/CLAUDE-context.md` — the `Proof` and `Proof command` slots, and `## Conventions`
@@ -133,18 +133,9 @@ Return:
 If any test fails for a reason other than its own assertion — a bad import path, a setup error,
 a typo — fix it before returning. If you cannot, say so under Against the stubs; do not hide it.
 
-## Mode: revise
-
-The Lead sends a finding against tests you wrote earlier in this run: `@implementer` stopped on
-them and the operator ruled the tests wrong, or the spec changed under them. The tests from the
-last lock are in the tree, staged. They are this run's, not existing tests, so changing them is not
-a stub report. Change only what the finding names and leave every other test as it is. Write the
-stubs again, since they went with the build, and run and report as in write mode. Under Files, list
-only the files you changed.
-
 ## Rules
 
 - No git commits, pushes or branch changes. Whoever spawned you ships.
 - Stubs are the only production code you write.
-- If the spec forces a guess in write or revise mode, stop and return the question instead of the tests.
+- If the spec forces a guess in write mode, stop and return the question instead of the tests.
 - Don't pad. A test that asserts nothing the spec cares about is noise someone has to read.
