@@ -28,9 +28,10 @@ file discards your work.
 If you believe a test is wrong — it contradicts the spec, or asserts something impossible — **stop
 and return a Stop report.** Do not work around it.
 
-A production change made only to get past a test's own fault — an import the test makes, a mock, a
-race in its waits — is working around it too. Leave the code as the spec wants it, and name the
-fault in a Stop report.
+A production change made only to get past a test's own mistake — an import, a mock or a wait the
+test gets wrong — is working around it too. A change Interfaces asks for is not. Leave the code as
+the spec wants it, and name the mistake in a Stop report. If you made such a change before you saw
+the mistake, undo it before you return, and list it under Reverted.
 
 ## How to build
 
@@ -72,6 +73,9 @@ fault in a Stop report.
 
 ### What I did not do
 <the workaround you were tempted by, so it's visible that it was declined>
+
+### Reverted
+<a change you made to get past the test and then undid> | None
 ```
 
 ## Rules

@@ -35,10 +35,13 @@ When the gate passes, run `date -u +%Y-%m-%dT%H:%M:%SZ` and keep the time it pri
 Step 6's cost starts counting. Shell variables do not survive between calls, so keep it in the
 conversation, not in a variable.
 
-Run `git status --porcelain` too, and keep the paths it lists, both sides of a rename: work already
-in the tree before this run, such as a staged rename or an edit the operator made, which ships with
-the task but is not the implementation. Every `git stash` below leaves them out by pathspec —
-`-- . ':(exclude)<path>' …` — or the `git stash drop` after it deletes them.
+Keep what `git rev-parse HEAD` prints the same way, as `BASE`. Then, if `git status --porcelain` lists anything —
+work already in the tree before this run, such as a staged rename or an edit the operator made —
+commit it on its own: `git add -A`, then
+`git commit -m "build-task: work already in the tree (squashed at ship)"`. It ships with the task
+but is not the build. Committed, it is out of reach of the test lock and of every
+`git stash` + `git stash drop` below, which would otherwise take it with the build and delete it.
+Step 5 folds it back in.
 
 ## Step 1 — Readback
 
@@ -142,20 +145,23 @@ It returns one of:
 - **Done** — a summary of what changed. Go to Step 4.
 - **Stop** — a test it believes is wrong, and why. Do not let it work around the test. Bring it to
   the operator: either the spec was wrong (fix the issue body under Step 1's Rounds rule) or the
-  test was. A wrong test keeps the build:
-  1. **Set the build aside and keep it.** Stash it with Step 0's exclusions:
-     `git stash push --include-untracked -m "build-task <N>: implementation"`. Then write
-     `git stash show -p --include-untracked` into a patch file in the scratchpad, as a backup.
-     Uncommit the tests with `git reset --soft "$TESTS~1"`, so they stay in the tree to be revised.
-  2. **Revise the tests.** Step 2 with the instruction **write the tests** followed by the finding,
-     word for word: `@test-writer` revises only the tests the finding names, and writes the stubs
-     again, since they went with the build. Check and lock as Step 2 says; `TESTS` is the new commit.
-  3. **Bring the build back.** Put each stub file back as it is at `HEAD`, delete the new ones, then
-     `git stash apply`, and `git stash drop` once it applies cleanly. Revert any production change
-     the Stop report says was made only to get past the faulty test — yourself if it is a line or
-     two, otherwise a fresh `@implementer` with the finding as its brief. Then Step 4, not Step 3: a
-     revised test the restored build fails goes to Step 3 with its output, and counts as a round
-     under the two-round rule below.
+  test was. Either way the build is kept, and a Stop is not a failed round:
+  1. **Set the build aside and keep it.**
+     `git stash push --include-untracked -m "build-task <N>: build"`, then write
+     `git stash show -p --binary --include-untracked` into a patch file in the scratchpad, as a
+     backup. Keep `TESTS` as `OLD_TESTS`, and uncommit the tests with `git reset --soft "$TESTS~1"`,
+     so they stay in the tree to be revised.
+  2. **Revise the tests.** Spawn `@test-writer` with the issue number and the instruction **revise
+     the tests**, followed by the finding word for word, or the spec lines that changed. It changes
+     only what that names, and writes the stubs again, since they went with the build. Check and
+     lock as Step 2 says, except that a file from the last lock is this run's own, not an existing
+     test; `TESTS` is the new commit. `git diff --stat "$OLD_TESTS" "$TESTS"` shows
+     only the files the finding or the changed lines name, or it goes back to `@test-writer`.
+  3. **Bring the build back.** Put each stub file back as it is at `HEAD` and delete the new ones,
+     then `git stash apply`. If it does not apply cleanly, stop and tell the operator; the patch is
+     the fallback. Run `git stash drop` only once `git stash list` shows this run's message at the
+     top. Then Step 4, not Step 3: a revised test the restored build fails goes to Step 3 with its
+     output, and that is a failed round under the two-round rule below.
 
   Rebuilding from nothing spends a whole round on code that already passed every other test. The
   tests stay independent of it: they are revised against fresh stubs and seen failing before the
@@ -165,9 +171,10 @@ It returns one of:
 
 1. `git diff --quiet "$TESTS" -- $(git diff-tree --no-commit-id --name-only -r "$TESTS")` — any
    change to a file the tests commit holds fails the task. Set the implementation aside with
-   `git stash push --include-untracked` and Step 0's exclusions (the tests come back as committed;
-   the stubs go with the implementation), then `git stash drop`, and re-run Step 3 once, telling `@implementer` the stubs
-   are gone and giving no stub list. A second violation: stop and tell the operator.
+   `git stash push --include-untracked -m "build-task <N>: violation"` (the tests come back as
+   committed; the stubs go with the implementation), then `git stash drop` once `git stash list`
+   shows that message at the top, and re-run Step 3 once, telling `@implementer` the stubs are gone
+   and giving no stub list. A second violation: stop and tell the operator.
 2. Run the `Proof command` yourself. Green, or back to Step 3 with the failure output.
 3. Read `@implementer`'s "Stubs left as stubs". Anything but `None` is an empty function that no
    test needed and would ship as a silent no-op: remove it, or bring it to the operator.
@@ -178,8 +185,8 @@ which.
 
 ## Step 5 — Ship
 
-First `git reset --soft "$TESTS~1"`, so tests and code ship as one commit and `/kill-this`'s
-`git diff HEAD~1` shows both. Then run `/kill-this`. When it reaches code-review findings, route
+First `git reset --soft "$BASE"`, so the work already in the tree, the tests and the code ship as
+one commit and `/kill-this`'s `git diff HEAD~1` shows all three. Then run `/kill-this`. When it reaches code-review findings, route
 each one:
 
 | Finding | Goes to |
