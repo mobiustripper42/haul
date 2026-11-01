@@ -29,6 +29,8 @@ export default defineConfig({
     timeout: 120_000,
     env: {
       E2E: "1",
+      // The origin the emailed sign-in link points at, which is the server this config starts.
+      SITE_URL: baseURL,
       DATABASE_URL: e2eDatabaseUrl(),
       // Empty, so the app picks the dev fake and its outbox.
       RESEND_API_KEY: "",

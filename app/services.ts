@@ -57,3 +57,12 @@ export function getEmail(): EmailPort {
 export function getSessionSecret(): string {
   return sessionSecret(process.env);
 }
+
+const DEV_SITE_URL = "http://localhost:4000";
+
+/** The site's address, for the links in emails. An empty `SITE_URL` counts as unset. */
+export function getSiteUrl(): string {
+  const url = process.env.SITE_URL || (isProduction() ? undefined : DEV_SITE_URL);
+  if (!url) throw new Error("SITE_URL must be set in production");
+  return url;
+}

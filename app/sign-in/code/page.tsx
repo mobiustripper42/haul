@@ -15,7 +15,7 @@ export default async function SignInCode({ searchParams }: { searchParams: Promi
     <main className="page-narrow">
       <section className="card">
         <p>
-          <a href="/sign-in" className="btn-quiet back-link">
+          <a href="/sign-in" className="btn-quiet back-link btn-flush">
             {t("signIn.differentEmail")}
           </a>
         </p>
@@ -50,7 +50,7 @@ export default async function SignInCode({ searchParams }: { searchParams: Promi
         </form>
         <form action={requestCode}>
           <input type="hidden" name="email" value={email} />
-          <button type="submit" className="btn-quiet w-full">
+          <button type="submit" className="btn-quiet btn-flush">
             {t("signIn.resend")}
           </button>
         </form>

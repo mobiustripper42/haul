@@ -8,7 +8,7 @@ import type { SignInCode } from "../sign-in/store.js";
 /** The permanent fake (DEC-010): same behaviour as `PostgresRepository`, proved by one contract. */
 export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
-  // The sign-in store's five methods are the folder's own fake, which the sign-in contract proves.
+  // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
@@ -39,8 +39,11 @@ export class InMemoryRepository implements Repository {
     return this.signIn.getSignInCode(subjectId);
   }
 
-  saveSignInCode(code: Parameters<Repository["saveSignInCode"]>[0]): Promise<void> {
-    return this.signIn.saveSignInCode(code);
+  saveSignInCode(
+    code: Parameters<Repository["saveSignInCode"]>[0],
+    hold?: Parameters<Repository["saveSignInCode"]>[1],
+  ): Promise<boolean> {
+    return this.signIn.saveSignInCode(code, hold);
   }
 
   claimSignInAttempt(
@@ -52,6 +55,17 @@ export class InMemoryRepository implements Repository {
 
   consumeSignInCode(subjectId: string, now: Date): Promise<boolean> {
     return this.signIn.consumeSignInCode(subjectId, now);
+  }
+
+  saveSignInLink(
+    link: Parameters<Repository["saveSignInLink"]>[0],
+    hold?: Parameters<Repository["saveSignInLink"]>[1],
+  ): Promise<boolean> {
+    return this.signIn.saveSignInLink(link, hold);
+  }
+
+  redeemSignInLink(linkHash: string, now: Date): Promise<string | null> {
+    return this.signIn.redeemSignInLink(linkHash, now);
   }
 
   incrementRateLimit(bucket: string, key: string, windowStart: Date, expiresAt: Date, now: Date): Promise<number> {

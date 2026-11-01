@@ -3,10 +3,11 @@ import { devEmail, isProduction } from "../../services";
 
 /**
  * Dev only: what the dev `FakeEmail` has sent to an address, oldest first. It is how an e2e test
- * reads back the emailed sign-in code. In production it is a 404 that touches no email adapter.
+ * reads back the emailed sign-in code and link. It answers only on the e2e server (`E2E=1`); in
+ * production and on any other server it is a 404 that touches no email adapter.
  */
 export function GET(request: Request): Response {
-  if (isProduction()) return new Response(null, { status: 404 });
+  if (isProduction() || process.env.E2E !== "1") return new Response(null, { status: 404 });
 
   const to = new URL(request.url).searchParams.get("to");
   if (!to || !normalizeEmail(to)) return new Response(null, { status: 400 });

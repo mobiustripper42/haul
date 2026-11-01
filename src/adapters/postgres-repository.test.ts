@@ -3,6 +3,7 @@
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { migrate } from "../../db/migrate.js";
+import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
@@ -99,6 +100,98 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
         ),
       );
       expect([...counts].sort((a, b) => a - b)).toEqual(Array.from({ length: 25 }, (_, i) => i + 1));
+    });
+  });
+
+  // Issue 22: Postgres only. The lock, the hold and the redeem are each decided in one atomic
+  // statement, so callers that arrive together cannot pass them together.
+  describe("issue 22 — the lock, the hold and the link under concurrency", () => {
+    const T0 = new Date("2026-10-28T14:00:00.000Z");
+    const MINUTE = 60_000;
+    const DAY = 24 * 60 * MINUTE;
+    const RIGHT = "a".repeat(64);
+    const WRONG = "f".repeat(64);
+    const LINK = "c".repeat(64);
+
+    const member = async () => repo.createMember({ email: "ada@example.com" });
+    const saveCode = (subjectId: string, createdAt: Date) =>
+      repo.saveSignInCode({ subjectId, codeHash: RIGHT, createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+
+    it("AC6: 10 concurrent wrong-guess claims with maxAttempts 10 and maxFailures 5 return exactly 5 non-null results, one of them carrying failedInWindow 5, and leave failedInWindow 5", async () => {
+      await truncateAll();
+      const { id } = await member();
+      await saveCode(id, T0);
+      const now = new Date(T0.getTime() + MINUTE);
+      const results = await Promise.all(
+        Array.from({ length: 10 }, () =>
+          repo.claimSignInAttempt(id, { presentedHash: WRONG, maxAttempts: 10, now, windowMs: DAY, maxFailures: 5 }),
+        ),
+      );
+      const claimed = results.filter((r) => r !== null);
+      expect(claimed).toHaveLength(5);
+      expect(claimed.filter((r) => r.failedInWindow === 5)).toHaveLength(1);
+      expect(await repo.getSignInCode(id)).toMatchObject({ failedInWindow: 5 });
+    });
+
+    it("AC33: 10 concurrent issueSignInCode calls outside the wait store exactly one code and return { send: 'code' } exactly once", async () => {
+      await truncateAll();
+      const subject = await member();
+      const codes = Array.from({ length: 10 }, (_, i) => String(300000 + i));
+      const outcomes = await Promise.all(
+        codes.map((code) =>
+          issueSignInCode(repo, { subject, code, codeHash: hashCode(code) }, { now: T0, mintLinkToken: () => "tok-never" }),
+        ),
+      );
+      const sent = codes.filter((_, i) => outcomes[i]?.send === "code");
+      expect(sent).toHaveLength(1);
+      expect(outcomes.filter((o) => o.send === "nothing")).toHaveLength(9);
+      expect((await repo.getSignInCode(subject.id))?.codeHash).toBe(hashCode(sent[0] ?? "none sent"));
+    });
+
+    it("AC33: for a locked member, 10 concurrent issueSignInCode calls save exactly one link and return { send: 'link' } exactly once", async () => {
+      await truncateAll();
+      const subject = await member();
+      await saveCode(subject.id, T0);
+      for (let g = 1; g <= 5; g++) {
+        await repo.claimSignInAttempt(subject.id, {
+          presentedHash: WRONG,
+          maxAttempts: 5,
+          now: new Date(T0.getTime() + g * 1000),
+          windowMs: DAY,
+          maxFailures: 5,
+        });
+      }
+      const before = await repo.getSignInCode(subject.id);
+      expect(before).toMatchObject({ codeHash: RIGHT, failedInWindow: 5 });
+
+      const now = new Date(T0.getTime() + 10 * MINUTE);
+      const outcomes = await Promise.all(
+        Array.from({ length: 10 }, (_, i) =>
+          issueSignInCode(
+            repo,
+            { subject, code: String(300000 + i), codeHash: hashCode(String(300000 + i)) },
+            { now, mintLinkToken: () => `tok-${i}` },
+          ),
+        ),
+      );
+      const links = outcomes.flatMap((o) => (o.send === "link" ? [o.token] : []));
+      expect(links).toHaveLength(1);
+      expect(outcomes.filter((o) => o.send === "nothing")).toHaveLength(9);
+      expect(await repo.getSignInCode(subject.id)).toMatchObject({
+        codeHash: RIGHT,
+        linkHash: hashCode(links[0] ?? "none sent"),
+        linkCreatedAt: now,
+      });
+    });
+
+    it("AC14: two concurrent redeemSignInLink calls for one link return the subject id exactly once", async () => {
+      await truncateAll();
+      const { id } = await member();
+      await saveCode(id, T0);
+      await repo.saveSignInLink({ subjectId: id, linkHash: LINK, createdAt: T0, expiresAt: new Date(T0.getTime() + 10 * MINUTE) });
+      const now = new Date(T0.getTime() + MINUTE);
+      const results = await Promise.all([repo.redeemSignInLink(LINK, now), repo.redeemSignInLink(LINK, now)]);
+      expect(results.filter((r) => r !== null)).toEqual([id]);
     });
   });
 

@@ -42,6 +42,8 @@ async function render(searchParams: { limited?: string; error?: string }) {
 
 const limited = (minutes: string) => `Too many sign-in requests from this network. Try again in ${minutes} min.`;
 const EXPIRED = "That sign-in step expired. Enter your email to get a new code.";
+const LINK_FAILED =
+  "That sign-in link didn't work. It may have expired or been used already. Enter your email to try again.";
 const alert = (text: string) => `<p\\b(?=[^>]*\\brole="alert")[^>]*>${escapeRegExp(text)}</p>`;
 const FORM =
   "<form\\b[^>]*>\\s*<p\\b[^>]*>\\s*<label\\b[^>]*>Email</label>\\s*<input\\b[^>]*/>\\s*</p>\\s*" +
@@ -94,6 +96,20 @@ describe("AC33 (issue 9) — /sign-in", () => {
   it.each(["invalid", "Expired", ""])("AC33: error=%j shows no expired notice", async (error) => {
     const { html } = await render({ error });
     expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code"]);
+  });
+
+  it("AC22 (issue 22): error=link shows the link notice, a <p role=\"alert\">, between the heading and the form", async () => {
+    const { html } = await render({ error: "link" });
+    expect(textsOf(html)).toEqual(["Sign in", LINK_FAILED, "Email", "Email me a code"]);
+    expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${alert(LINK_FAILED)}\\s*${FORM}`));
+  });
+
+  it("AC22 (issue 22): the link notice is the one alert, and carries notice and notice-clock, as the expired notice does", async () => {
+    const { html } = await render({ error: "link" });
+    const notices = attributesOf(html, "p").filter((p) => p.role === "alert");
+    expect(notices).toHaveLength(1);
+    expect(classesOf(notices[0])).toEqual(expect.arrayContaining(["notice", "notice-clock"]));
+    expect(classesOf(notices[0])).not.toContain("notice-lock");
   });
 
   it("AC33: the form's action is requestCode", async () => {

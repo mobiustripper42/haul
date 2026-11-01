@@ -1,13 +1,15 @@
-// Issue 9, AC26–AC29: the sign-in server actions. `next/headers` is faked, `redirect` throws as
-// the real one does, `after` collects its callback for the test to run, and the composition root
-// (`app/services.ts`) hands out an InMemoryRepository and a FakeEmail. Each test loads the actions
-// afresh after stubbing NODE_ENV, so a cookie's `secure` holds whether it is read per call or at load.
+// Issue 9, AC26–AC29, and issue 22, AC18–AC20: the sign-in server actions. `next/headers` is
+// faked, `redirect` throws as the real one does, `after` collects its callback for the test to run,
+// and the composition root (`app/services.ts`) hands out an InMemoryRepository and a FakeEmail. Each
+// test loads the actions afresh after stubbing NODE_ENV, so a cookie's `secure` holds whether it is
+// read per call or at load.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import { renderEmail } from "@core/email-templates.js";
 import type { Member } from "@core/members.js";
 import type { EmailMessage } from "@core/ports/email.js";
-import { hashCode, issueSignInCode, verifySignInCode } from "@core/sign-in/code.js";
+import { hashCode, issueSignInCode, issueSignInLink, redeemSignInLink, verifySignInCode } from "@core/sign-in/code.js";
 import { SESSION_TTL_MS, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
 import { loggedText, redirectOf } from "../screen-test-helpers";
@@ -17,6 +19,9 @@ const services = vi.hoisted(() => ({
   repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
   email: undefined as unknown as import("@core/ports/email.js").EmailPort,
   secret: "test-session-secret-that-is-long-enough-0123456789",
+  secretError: undefined as Error | undefined,
+  siteUrl: "https://members.example.test",
+  siteUrlError: undefined as Error | undefined,
 }));
 const scheduled = vi.hoisted(() => ({ tasks: [] as unknown[] }));
 
@@ -36,7 +41,14 @@ vi.mock("next/server", () => ({
 vi.mock("../services", () => ({
   getRepository: () => services.repo,
   getEmail: () => services.email,
-  getSessionSecret: () => services.secret,
+  getSessionSecret: () => {
+    if (services.secretError) throw services.secretError;
+    return services.secret;
+  },
+  getSiteUrl: () => {
+    if (services.siteUrlError) throw services.siteUrlError;
+    return services.siteUrl;
+  },
 }));
 
 // 14:25:30 UTC: 34 min 30 s left in the clock hour the request limit counts in.
@@ -58,6 +70,8 @@ beforeEach(async () => {
   email = new FakeEmail();
   services.repo = repo;
   services.email = email;
+  services.secretError = undefined;
+  services.siteUrlError = undefined;
   ada = await repo.createMember({ email: "ada@example.com" });
 });
 
@@ -261,7 +275,7 @@ describe("AC27 (issue 9) — requestCode issues and sends after the response", (
 
 describe("AC28 (issue 9) — verifyCode", () => {
   const issueCode = (code: string) =>
-    issueSignInCode(repo, { subject: ada, code, codeHash: hashCode(code) }, { now: new Date() });
+    issueSignInCode(repo, { subject: ada, code, codeHash: hashCode(code) }, { now: new Date(), mintLinkToken: () => "tok-never" });
 
   it("AC28: with no ocf_sign_in_email cookie it redirects to /sign-in?error=expired", async () => {
     await issueCode("123456");
@@ -318,5 +332,308 @@ describe("AC29 (issue 9) — signOut", () => {
     const { signOut } = await load();
     expect(await redirectOf(signOut())).toBe("/");
     expect(cookieGone(SESSION)).toBe(true);
+  });
+});
+
+// Issue 22 from here on.
+const MINUTE = 60_000;
+const RIGHT_CODE = "123456";
+const WRONG_CODE = "654321";
+const LINK_IN_TEXT = /\/sign-in\/link\?token=([A-Za-z0-9_-]+)/;
+const tokenIn = (text: string | undefined): string | undefined => LINK_IN_TEXT.exec(text ?? "")?.[1];
+
+/** The link email Ada should get for `token`, rendered as the template renders it. */
+const linkEmailFor = (token: string) => ({
+  to: "ada@example.com",
+  ...renderEmail("signInLink", "en", { link: `${services.siteUrl}/sign-in/link?token=${token}`, minutes: 10 }),
+});
+
+/** Ada's code, saved straight through the store at the current time, with no hold. */
+const plantCode = () => {
+  const createdAt = new Date();
+  return repo.saveSignInCode({
+    subjectId: ada.id,
+    codeHash: hashCode(RIGHT_CODE),
+    createdAt,
+    expiresAt: new Date(createdAt.getTime() + 10 * MINUTE),
+  });
+};
+
+/** Locks Ada through the core alone: her code, then five wrong guesses on it. No link is sent. */
+async function lockAda(): Promise<void> {
+  await plantCode();
+  for (let g = 0; g < 5; g++) {
+    await verifySignInCode(repo, (e) => repo.findMemberByEmail(e), { email: ada.email, code: WRONG_CODE }, { now: new Date() });
+  }
+}
+
+describe("AC18 (issue 22) — verifyCode emails the link after the guess that locks", () => {
+  it("AC18: the guess that locks schedules one after() callback; before it runs nothing is stored or sent, then Ada gets the link email for <site>/sign-in/link?token=…, and the token redeems", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 4; g++) {
+      expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+      expect(scheduled.tasks).toEqual([]);
+    }
+    expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+    expect(scheduled.tasks).toHaveLength(1);
+    expect((await repo.getSignInCode(ada.id))?.linkHash ?? null).toBeNull();
+    expect(email.sent).toEqual([]);
+
+    // The code went this same instant: a link saved with the hold would be refused.
+    await runScheduled();
+    expect(email.sent).toHaveLength(1);
+    const token = tokenIn(email.last()?.text) ?? "no link in the message";
+    expect(email.last()).toEqual(linkEmailFor(token));
+    expect(await redeemSignInLink(repo, token, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
+  });
+
+  it("AC18: the locking guess answers as any wrong guess does — the same redirect, ocf_sign_in_email kept, no cookie set", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 4; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    const cookiesBefore = { ...request.current.cookies };
+    expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+    expect(request.current.cookies).toEqual(cookiesBefore);
+    expect(request.current.sets).toEqual([]);
+  });
+
+  it("AC18: a stranger's fifth wrong guess schedules nothing", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: STRANGER };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) {
+      expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+    }
+    expect(scheduled.tasks).toEqual([]);
+  });
+
+  it("AC18: a failed send is caught and logged as \"sign-in email not delivered\" with the member id, the error's name and its status — never the token, the URL or the error's message", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    // The class as the reloaded actions module sees it, as AC27 (issue 9) takes it.
+    const { EmailSendError } = await import("@core/ports/email.js");
+    let captured: EmailMessage | undefined;
+    services.email = {
+      send: async (message) => {
+        captured = message;
+        throw new EmailSendError("Resend", 422, '{"message":"resend-reply-body: the to field is invalid"}');
+      },
+    };
+    const errors = silenceErrors();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    const logged = loggedText(errors);
+    expect(logged).toContain("sign-in email not delivered");
+    expect(logged).toContain(ada.id);
+    expect(logged).toContain("EmailSendError");
+    expect(logged).toContain("422");
+    expect(logged).not.toContain("resend-reply-body");
+    const token = tokenIn(captured?.text);
+    expect(token, "the callback never tried to send the link").toBeDefined();
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain("/sign-in/link");
+    expect(logged).not.toContain(services.siteUrl);
+  });
+
+  it("AC18: an error while saving the link is caught and logged with the member id and the error's name — never its message — and nothing is sent", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const failure = Object.assign(new Error("could not reach postgres://haul:hunter2@db/haul"), { name: "StoreDownError" });
+    vi.spyOn(repo, "saveSignInLink").mockRejectedValue(failure);
+    const errors = silenceErrors();
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).toContain("StoreDownError");
+    expect(logged).not.toContain("hunter2");
+    expect(email.sent).toEqual([]);
+  });
+
+  it.each([
+    ["a member's wrong guess", "ada@example.com", WRONG_CODE],
+    ["a member's right code", "ada@example.com", RIGHT_CODE],
+    ["a stranger's guess", STRANGER, RIGHT_CODE],
+  ])("AC18: verifyCode reads getSiteUrl() before the guess — when it throws, %s fails with that error, spends nothing and starts no session", async (_what, cookieEmail, code) => {
+    await plantCode();
+    const before = await repo.getSignInCode(ada.id);
+    request.current.cookies = { [SIGN_IN_EMAIL]: cookieEmail };
+    const failure = new Error("SITE_URL must be set in production");
+    services.siteUrlError = failure;
+    const { verifyCode } = await load();
+    await expect(verifyCode(form({ code }))).rejects.toBe(failure);
+    expect(await repo.getSignInCode(ada.id)).toEqual(before);
+    expect(setsNamed(SESSION)).toEqual([]);
+  });
+});
+
+describe("AC19 (issue 22) — requestCode reads the site's address first, then sends what issueSignInCode says", () => {
+  it("AC19: when getSiteUrl() throws, a member's request and a stranger's fail with that error, set no cookie, and none of them counts against the address", async () => {
+    const failure = new Error("SITE_URL must be set in production");
+    services.siteUrlError = failure;
+    const { requestCode } = await load();
+    for (let i = 0; i < 25; i++) {
+      await expect(requestCode(form({ email: i % 2 ? STRANGER : "ada@example.com" }))).rejects.toBe(failure);
+    }
+    expect(request.current.sets).toEqual([]);
+    expect(scheduled.tasks).toEqual([]);
+    services.siteUrlError = undefined;
+    for (let i = 0; i < 20; i++) expect(await redirectOf(requestCode(form({ email: STRANGER })))).toBe("/sign-in/code");
+  });
+
+  it("AC19: a request the limit would refuse fails with getSiteUrl()'s error too", async () => {
+    const { requestCode } = await load();
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    const failure = new Error("SITE_URL must be set in production");
+    services.siteUrlError = failure;
+    await expect(requestCode(form({ email: STRANGER }))).rejects.toBe(failure);
+  });
+
+  it("AC19: a locked member's request outside the wait emails the link after the response, and its token redeems", async () => {
+    await lockAda();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    const { requestCode } = await load();
+    expect(await redirectOf(requestCode(form({ email: "ada@example.com" })))).toBe("/sign-in/code");
+    expect(email.sent).toEqual([]);
+    await runScheduled();
+    expect(email.sent).toHaveLength(1);
+    const token = tokenIn(email.last()?.text) ?? "no link in the message";
+    expect(email.last()).toEqual(linkEmailFor(token));
+    expect(await redeemSignInLink(repo, token, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
+  });
+
+  it("AC19: { send: 'nothing' } sends nothing — a locked member's second request 5 minutes after the link gets no second email", async () => {
+    await lockAda();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    const { requestCode } = await load();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await runScheduled();
+    vi.setSystemTime(new Date(T0.getTime() + 15 * MINUTE));
+    expect(await redirectOf(requestCode(form({ email: "ada@example.com" })))).toBe("/sign-in/code");
+    await runScheduled();
+    expect(email.sent).toHaveLength(1);
+  });
+
+  it("AC19: the response is the same whether it sends nothing, a link or a code — the same redirect and the same cookie", async () => {
+    await lockAda();
+    const { requestCode } = await load();
+    const respond = async (minutes: number) => {
+      vi.setSystemTime(new Date(T0.getTime() + minutes * MINUTE));
+      request.current.sets = [];
+      const to = await redirectOf(requestCode(form({ email: "ada@example.com" })));
+      await runScheduled();
+      return { to, sets: request.current.sets, sent: email.sent.length };
+    };
+    const nothing = await respond(5);
+    const link = await respond(10);
+    const token = tokenIn(email.last()?.text) ?? "no link in the message";
+    await redeemSignInLink(repo, token, { now: new Date() });
+    const code = await respond(11);
+
+    // Each response really was the outcome it is named for: nothing, then the link, then a code.
+    expect([nothing.sent, link.sent, code.sent]).toEqual([0, 1, 2]);
+    expect(/\b\d{6}\b/.test(email.last()?.text ?? "")).toBe(true);
+    expect({ to: link.to, sets: link.sets }).toEqual({ to: nothing.to, sets: nothing.sets });
+    expect({ to: code.to, sets: code.sets }).toEqual({ to: nothing.to, sets: nothing.sets });
+  });
+
+  it("AC19: a link email that fails to send is logged as a code's is — member id, name, status — never the token or the URL", async () => {
+    await lockAda();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    const { requestCode } = await load();
+    // The class as the reloaded actions module sees it, as AC27 (issue 9) takes it.
+    const { EmailSendError } = await import("@core/ports/email.js");
+    let captured: EmailMessage | undefined;
+    services.email = {
+      send: async (message) => {
+        captured = message;
+        throw new EmailSendError("Resend", 422, '{"message":"resend-reply-body: the to field is invalid"}');
+      },
+    };
+    const errors = silenceErrors();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    const token = tokenIn(captured?.text);
+    expect(token, "the callback never tried to send a link").toBeDefined();
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).toContain("EmailSendError");
+    expect(logged).toContain("422");
+    expect(logged).not.toContain("resend-reply-body");
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain("/sign-in/link");
+    expect(logged).not.toContain(services.siteUrl);
+  });
+});
+
+describe("AC20 (issue 22) — signInWithLink", () => {
+  const TOKEN = "Lk3vQ9_xR2-mN8pT4wY6zA1bC5dE7fG0hJ2kL4nP6qS";
+
+  /** Ada's code and, straight after it with no hold, a live link for TOKEN. */
+  const linkForAda = async () => {
+    await plantCode();
+    await issueSignInLink(repo, ada, { now: new Date(), mintLinkToken: () => TOKEN, hold: false });
+  };
+
+  it("AC20: a token that redeems, trimmed, sets ocf_session for the member expiring 30 days on, deletes ocf_sign_in_email and redirects to /", async () => {
+    await linkForAda();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { signInWithLink } = await load("development");
+    await expect(redirectOf(signInWithLink(form({ token: `  ${TOKEN} ` })))).resolves.toBe("/");
+
+    const sessions = setsNamed(SESSION);
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).toMatchObject({ maxAge: 2_592_000, httpOnly: true, sameSite: "lax", path: "/" });
+    expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toEqual({
+      ok: true,
+      session: { subjectId: ada.id, expiresAt: new Date(T0.getTime() + SESSION_TTL_MS).toISOString() },
+    });
+    expect(cookieGone(SIGN_IN_EMAIL)).toBe(true);
+  });
+
+  it("AC20: the token works once — a second press starts no session and redirects to /sign-in?error=link", async () => {
+    await linkForAda();
+    const { signInWithLink } = await load();
+    await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/");
+    request.current.sets = [];
+    await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/sign-in?error=link");
+    expect(setsNamed(SESSION)).toEqual([]);
+  });
+
+  it.each([
+    ["an unknown token", { token: "not-the-live-token" }],
+    ["an empty token", { token: "" }],
+    ["a blank token", { token: "   " }],
+    ["no token field", {}],
+  ])("AC20: %s starts no session and redirects to /sign-in?error=link", async (_what, fields: Record<string, string>) => {
+    await linkForAda();
+    const { signInWithLink } = await load();
+    await expect(redirectOf(signInWithLink(form(fields)))).resolves.toBe("/sign-in?error=link");
+    expect(setsNamed(SESSION)).toEqual([]);
+  });
+
+  it("AC20: an expired link's token starts no session and redirects to /sign-in?error=link", async () => {
+    await linkForAda();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    const { signInWithLink } = await load();
+    await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/sign-in?error=link");
+    expect(setsNamed(SESSION)).toEqual([]);
+  });
+
+  it("AC20: it reads the session secret first — when that throws, it fails with that error and the link still redeems", async () => {
+    await linkForAda();
+    const failure = new Error("SESSION_SECRET must be set in production");
+    services.secretError = failure;
+    const { signInWithLink } = await load();
+    await expect(signInWithLink(form({ token: TOKEN }))).rejects.toBe(failure);
+    expect(await redeemSignInLink(repo, TOKEN, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
   });
 });

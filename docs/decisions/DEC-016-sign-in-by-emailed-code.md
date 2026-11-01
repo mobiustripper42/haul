@@ -3,7 +3,7 @@ schema: 1
 id: DEC-016
 title: "Members sign in by an emailed 6-digit code into a 30-day signed cookie"
 topic: "Stack & hosting"
-status: "active"
+status: "superseded"
 date: "2026-10-28"
 ruling: "Sign-in is muster's emailed 6-digit code: 10 minutes, 5 guesses a code, 50 wrong a day per member, 20 requests an hour per address. The session is a signed 30-day cookie that neither slides nor revokes."
 claims:
@@ -15,6 +15,7 @@ claims:
     target: "src/sign-in/session.ts"
   - kind: "file"
     target: "eslint.config.mjs"
+superseded_by: DEC-022
 revisit_if: "A member can do something a stolen session must be cut off from, or sailbook's sign-in turns src/sign-in/ into a shared library"
 ---
 

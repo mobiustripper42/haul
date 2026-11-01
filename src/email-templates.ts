@@ -1,10 +1,14 @@
 import { createTranslator, type Language, type MessageKey } from "./i18n.js";
 
 /** Each template's values. The words live in `src/messages/` (DEC-015), never here. */
-export type EmailTemplates = { signInCode: { code: string; minutes: number } };
+export type EmailTemplates = {
+  signInCode: { code: string; minutes: number };
+  signInLink: { link: string; minutes: number };
+};
 
 const KEYS = {
   signInCode: { subject: "email.signInCode.subject", body: "email.signInCode.body" },
+  signInLink: { subject: "email.signInLink.subject", body: "email.signInLink.body" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey }>;
 
 /** The subject, and the body, a blank line, then the sign-off every email shares. */

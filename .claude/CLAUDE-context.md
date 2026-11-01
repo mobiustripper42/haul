@@ -22,7 +22,7 @@ Roles:
 - **Hosting/target** — Vercel behind Cloudflare's proxy, at `members.ohiocityfarm.com`
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
-- **Env** — `.env.example` names every variable the app reads; git ignores every other `.env*` file
+- **Env** — `env.example` names every variable the app reads; git ignores every `.env*` file
 - **Testing** — Vitest (DEC-011); Playwright for browser e2e, CI only (DEC-021)
 - **Bundler** — webpack, not Turbopack (DEC-012)
 - **Styling** — Tailwind v4 through PostCSS; its theme is rebuilt from `design/design-system/tokens.json`, and fonts are vendored in `app/fonts/` (DEC-020)
@@ -77,8 +77,8 @@ npm run check:decisions
 
 | Slot | What it answers | This project |
 |---|---|---|
-| **Proof** | What counts as a check written before the change | A Vitest test, colocated as `*.test.ts` beside the code (`scripts/*.test.mjs` for repo tooling), naming the acceptance criterion it covers |
-| **Proof command** | How to run the checks covering what you touched | `npm run test -- <path>` |
+| **Proof** | What counts as a check written before the change | A Vitest test, colocated as `*.test.ts` beside the code (`scripts/*.test.mjs` for repo tooling), naming the acceptance criterion it covers; or, for a criterion only a browser can show (a flow across pages, cookies through redirects), a Playwright spec in `e2e/`, named the same way |
+| **Proof command** | How to run the checks covering what you touched | `npm run test -- <path>`; an e2e spec with `npm run test:e2e -- <path>`, after `npm run db:up` |
 
 ## Median gaps
 

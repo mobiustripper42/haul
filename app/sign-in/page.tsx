@@ -15,6 +15,7 @@ export default async function SignIn({
 }) {
   const [t, { limited, error }] = await Promise.all([getTranslator(), searchParams]);
   const minutes = limitedMinutes(limited);
+  const noticeKey = error === "expired" ? "signIn.stepExpired" : error === "link" ? "signIn.linkFailed" : null;
   return (
     <main className="page-narrow">
       <section className="card">
@@ -24,9 +25,9 @@ export default async function SignIn({
             {t("signIn.limited", { minutes })}
           </p>
         )}
-        {error === "expired" && (
+        {noticeKey && (
           <p role="alert" className="notice notice-clock">
-            {t("signIn.stepExpired")}
+            {t(noticeKey)}
           </p>
         )}
         <form action={requestCode} className="flex flex-col gap-6">
