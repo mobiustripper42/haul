@@ -28,6 +28,10 @@ file discards your work.
 If you believe a test is wrong — it contradicts the spec, or asserts something impossible — **stop
 and return a Stop report.** Do not work around it.
 
+A production change made only to get past a test's own fault — an import the test makes, a mock, a
+race in its waits — is working around it too. Leave the code as the spec wants it, and name the
+fault in a Stop report.
+
 ## How to build
 
 - Start from the stubs. They hold the names and signatures Interfaces gives, with empty bodies, so
