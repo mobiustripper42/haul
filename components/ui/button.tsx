@@ -9,9 +9,8 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: boolean; c
 
 /** A button, or with `href` a link in the same look. It adds no attribute it is not given (issue 38, AC7, AC8). */
 export function Button(props: ButtonProps) {
-  const { kind, full, flush, children } = props;
-  if (props.href !== undefined) {
-    const { href, back } = props;
+  const { kind, full, flush, children, href, back, ...rest } = props;
+  if (href !== undefined) {
     const className = [`btn-${kind}`, back && "back-link", full && "w-full", flush && "btn-flush"].filter(Boolean).join(" ");
     return (
       <a href={href} className={className}>
@@ -19,8 +18,6 @@ export function Button(props: ButtonProps) {
       </a>
     );
   }
-  const { kind: _kind, full: _full, flush: _flush, href: _href, back: _back, children: _children, ...rest } = props;
-  void [_kind, _full, _flush, _href, _back, _children];
   const className = [`btn-${kind}`, full && "w-full", flush && "btn-flush"].filter(Boolean).join(" ");
   return (
     <button {...rest} className={className}>

@@ -29,6 +29,10 @@ component to use. Inside the folder only DEC-015's and DEC-020's lists apply. A 
 required `kind` (`primary`, `secondary` or `quiet`) and no `className`, so a missing or unknown kind
 fails `npm run typecheck:app` instead of a lint selector reading a class string.
 
+A known gap: a card or a notice is a `<section>` or a `<p>`, so lint refuses its class but not a copy
+of its look written in token utilities. Muster's class-string `surface` rule
+(`/home/eric/muster/eslint.config.mjs:321-378`) is the model if one appears.
+
 The search: `grep -rli --exclude-dir=archive "component" docs/decisions/` returned DEC-015, which is
 about bare strings in a component, not this; `"button"` returned DEC-022, the sign-in link page's one
 button, not this. New id. See also DEC-020, DEC-015.

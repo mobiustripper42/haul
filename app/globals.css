@@ -144,8 +144,9 @@
 
 /*
  * FOUR LOOKS, ONE DEFINITION EACH. A component names its kind and keeps only layout utilities beside
- * it; colour, radius, size, hover, focus and disabled live here, and lint refuses a gold fill, a
- * raw value or a button with no kind anywhere else (eslint.config.mjs).
+ * it; colour, radius, size, hover, focus and disabled live here. Lint refuses a gold fill or a raw
+ * value anywhere else, and a raw <button> or a btn-* class outside components/ui/ (eslint.config.mjs);
+ * a button's kind is a required prop of Button (DEC-024).
  *
  * Icons are drawn here, never in markup: a ::before mask over an inline SVG, so a screen reader
  * meets no icon and the text a test reads is only the words. A data URI cannot read a custom
