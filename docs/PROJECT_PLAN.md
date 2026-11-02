@@ -58,18 +58,18 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 | # | Task | Points | Notes |
 |---|------|--------|-------|
 | 1.0 | Migrations editable until merged: a checksum in `_migrations`, a refusal on a changed file, test databases rebuilt from empty | 3 | [#30](https://github.com/mobiustripper42/haul/issues/30) · Reopened at the Phase 0 retro: `/build-task` makes an edited migration common (task 0.13). Before 1.1, the first migration task |
-| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only. **Blocked on spec open question 13** |
-| 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
-| 1.3 | Public signup page | 5 | Pickers generated from option types; placeholder recurring-charge wording until 1.12. Signup confirms the email by code, using 0.6's flow, before the member is created. Signup needs its own wrong-guess limit: 0.6's is kept per member, and no member exists yet at signup (issue #22) |
-| 1.4 | Card on file and first-week charge; ledger table | 8 | Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
-| 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
-| 1.6 | Signup confirmation email | 2 | |
-| 1.7 | Admin member list and CSV | 3 | Cards on mobile. The first second admin surface, so it adds a test that every page, route and server action under `app/admin/` calls `requireAdmin` first — the CSV route included (DEC-018) |
-| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`). The app's database user gets no privileges on `audit_log` and no `TRUNCATE` on any table (DEC-019), and EXECUTE on `audit_event()` (DEC-025) |
-| 1.9 | Square production cutover and smoke test | 2 | Fold candidate with 1.10 |
-| 1.10 | Wix link and go-live checklist | 2 | |
-| 1.12 | Consent wording; terms and privacy pages; legal footer in the email template | 2 | Farm's existing legal text (spec open question 17). Built before 1.11 so its strings get translated |
-| 1.11 | Spanish translation pass: machine translation, review, missing-key check in the gate | 2 | Goal is translatable; Spanish is the one language filled in. Later tasks add Spanish for their own strings. Decides, alongside Spanish, whether `/retro`'s `@ui-reviewer` pass covers every language (Eric, 2026-11-02) |
+| 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | [#53](https://github.com/mobiustripper42/haul/issues/53) · SQL and seeds only. **Blocked on spec open question 13** |
+| 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | [#54](https://github.com/mobiustripper42/haul/issues/54) · Template: muster's `fake-payment.ts` discipline |
+| 1.3 | Public signup page | 5 | [#55](https://github.com/mobiustripper42/haul/issues/55) · Pickers generated from option types; placeholder recurring-charge wording until 1.12. Signup confirms the email by code, using 0.6's flow, before the member is created. Signup needs its own wrong-guess limit: 0.6's is kept per member, and no member exists yet at signup (issue #22) |
+| 1.4 | Card on file and first-week charge; ledger table | 8 | [#56](https://github.com/mobiustripper42/haul/issues/56) · Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
+| 1.5 | Cap: reserve, charge, confirm or release | 3 | [#57](https://github.com/mobiustripper42/haul/issues/57) · Muster's guarded write |
+| 1.6 | Signup confirmation email | 2 | [#58](https://github.com/mobiustripper42/haul/issues/58) |
+| 1.7 | Admin member list and CSV | 3 | [#59](https://github.com/mobiustripper42/haul/issues/59) · Cards on mobile. The first second admin surface, so it adds a test that every page, route and server action under `app/admin/` calls `requireAdmin` first — the CSV route included (DEC-018) |
+| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | [#60](https://github.com/mobiustripper42/haul/issues/60) · Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`). The app's database user gets no privileges on `audit_log` and no `TRUNCATE` on any table (DEC-019), and EXECUTE on `audit_event()` (DEC-025) |
+| 1.9 | Square production cutover and smoke test | 2 | [#61](https://github.com/mobiustripper42/haul/issues/61) · Fold candidate with 1.10 |
+| 1.10 | Wix link and go-live checklist | 2 | [#62](https://github.com/mobiustripper42/haul/issues/62) |
+| 1.12 | Consent wording; terms and privacy pages; legal footer in the email template | 2 | [#63](https://github.com/mobiustripper42/haul/issues/63) · Farm's existing legal text (spec open question 17). Built before 1.11 so its strings get translated |
+| 1.11 | Spanish translation pass: machine translation, review, missing-key check in the gate | 2 | [#64](https://github.com/mobiustripper42/haul/issues/64) · Goal is translatable; Spanish is the one language filled in. Later tasks add Spanish for their own strings. Decides, alongside Spanish, whether `/retro`'s `@ui-reviewer` pass covers every language (Eric, 2026-11-02) |
 
 **Phase 1 total: 50 pts**
 
