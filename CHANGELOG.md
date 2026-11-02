@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.18] - 2026-11-01
+- PR #36: Task 0.11: a five-guess lock and an emailed sign-in link
+
 ## [0.0.17] - 2026-10-31
 - PR #35: build-task: one shared home for anything a spec describes twice
 
