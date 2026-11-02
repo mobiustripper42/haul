@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.11] - 2026-10-30
+- PR #26: Task 0.7: admin role and guarded admin page
+
 ## [0.0.10] - 2026-10-30
 - PR #25: build-task: @test-writer writes empty stubs so each test fails on its own assertion
 
