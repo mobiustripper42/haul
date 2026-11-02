@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.21] - 2026-11-02
+- PR #41: Task 0.15: UI consistency, workflow half — @ui-reviewer per task and per phase
+
 ## [0.0.20] - 2026-11-02
 - PR #39: Task 0.14: one component per look, and lint refuses a hand-built copy
 
