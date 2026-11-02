@@ -84,7 +84,7 @@ npm run check:decisions
 
 | Gap | Why the default is wrong here |
 |---|---|
-| Every screen is two designs, desktop and mobile, both first class | A competent default builds responsive-from-mobile and calls desktop done. Here a screen is not specced until both designs are named; tablet uses mobile |
+| Every screen is two designs, desktop and mobile, both first class | A competent default builds responsive-from-mobile and calls desktop done. Here a new screen is not specced until both designs are named, and a change says where it goes at both widths; tablet uses mobile |
 | Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the farm must act without the developer (DEC-007) |
 | Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither, and a week closed after its cutoff is a week credit, not a refund (DEC-005; `docs/SPEC.md` §7.3) |
 | Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
