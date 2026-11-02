@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.7] - 2026-10-27
+- PR #18: @architect: a draft decision is rewritten, an active one superseded
+
 ## [0.0.6] - 2026-10-27
 - PR #17: jig sync 2026-10-27: jig 497cdc2
 
