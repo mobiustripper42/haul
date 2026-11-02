@@ -35,15 +35,15 @@ For each open issue, ask the user: "Move to next phase, leave open, or close as 
 
 ## Step 1.5 — UI review over every screen
 
-Run only when `.claude/ui-context.md` exists; read it with the Read tool. It comes before Step 2 because a fix lands as a phase-N pull request and changes the numbers. Step 2's pull request list doesn't exist yet, so find the phase's merged pull requests from the earliest `createdAt` in Step 1's list:
+Run only when `.claude/ui-context.md` exists; read it with the Read tool. It comes before Step 2 because a fix lands as a phase-N pull request and changes the numbers. Step 2's pull request list doesn't exist yet, so find the phase's merged pull requests from the earliest `createdAt` among Step 1's closed issues — the start Step 2 uses, so an open issue carried in from an earlier phase doesn't widen the window:
 
 ```
-gh pr list --state merged --search "merged:>=<earliest createdAt>" --json number,files --limit 100
+gh pr list --state merged --search "merged:>=<earliest closed createdAt>" --json number,files --limit 100
 ```
 
 **No changed file is a screen file or a strings file**, as `ui-context.md` defines them: skip this step; the retro has no UI review line. **Otherwise** invoke `@ui-reviewer` on every route `ui-context.md`'s route rule lists, in every language it names, at both its viewports. Give it the open issues an earlier run filed (`gh issue list --state open --search '"UI review" in:title'`), so it does not report them again.
 
-Show the findings, then ask once for each: **"Fix before close, or file for Phase N+1?"** Every finding becomes an issue titled `UI review: <finding>`, with the finding as its body:
+Show the findings, then ask once for each: **"Fix before close, or file for Phase N+1?"** Every finding becomes an issue titled `UI review (Phase <N> retro): <finding>`, with the finding as its body. The phase in the title is what keeps an earlier retro's filed findings, which arrive labelled `phase:<N>`, out of this retro's count:
 - **Fix:** labelled `phase:<N>`, pointed and built as a task the normal way. When every finding has its answer and any is a fix, stop the retro. Re-run `/retro` once the fixes merge; the re-run reviews again.
 - **File:** labelled `phase:<N+1>`.
 
@@ -141,7 +141,7 @@ Read `docs/RETROSPECTIVES.md` first (Edit requires a prior Read). If it doesn't 
 
 Add `**Unpointed:** #<N>, #<N>` only when Step 2 found closed issues with no `points:` label.
 
-Add `**UI review:** <F> fixed before close, <I> filed for Phase <N+1> (#<N>, #<N>)` only when Step 1.5 ran: `F` counts the closed `phase:<N>` issues titled `UI review:`, `I` the `phase:<N+1>` ones. A run with no findings writes `**UI review:** clean`.
+Add `**UI review:** <F> fixed before close, <I> filed for Phase <N+1> (#<N>, #<N>)` only when Step 1.5 ran: `F` counts the closed `phase:<N>` issues titled `UI review (Phase <N> retro):`, from every run of this retro; `I` the `phase:<N+1>` ones. A run with no findings writes `**UI review:** clean`.
 
 ## Step 8 — Commit (sessions branch updates are read-only here)
 

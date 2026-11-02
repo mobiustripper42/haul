@@ -22,6 +22,8 @@ If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it
 3. Take Playwright screenshots at the viewports listed in `ui-context.md` (default: 375px and 1440px).
 4. Work through the project-specific checklist in `ui-context.md` against the source and screenshots.
 
+Review the routes, languages and viewports you were given; given none, every route and language `ui-context.md` names. A route you could not reach goes under **Not reached** — never reviewed from source and called clean.
+
 ---
 
 ## Output Format
@@ -39,6 +41,9 @@ Score: X/10
 | Medium | ... | ... | ... |
 | Low | ... | ... | ... |
 
+### Not reached
+[Routes you could not reach, and why — or "none"]
+
 ### Notes
 [Broader observations — patterns to watch, things that are right and should be preserved, etc.]
 ```
@@ -49,8 +54,6 @@ Score: X/10
 - **Low** — minor polish; address at a polish phase unless trivial to fix now
 
 Score rubric: start at 10, subtract 1 per High, 0.5 per Medium, 0.25 per Low (round to nearest 0.5).
-
-If there are no findings, say so explicitly — "No issues found" is a valid result.
 
 ## Behavior
 
