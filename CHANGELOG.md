@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.22] - 2026-11-02
+- PR #42: Task 0.13: sign-in events in the audit log, and a sign-in log that names the failing stage
+
 ## [0.0.21] - 2026-11-02
 - PR #41: Task 0.15: UI consistency, workflow half — @ui-reviewer per task and per phase
 
