@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { Repository } from "../ports/repository.js";
+import type { AuditEvent, Repository } from "../ports/repository.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
 
@@ -10,6 +10,7 @@ export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
+  private readonly recorded: AuditEvent[] = [];
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
@@ -72,6 +73,15 @@ export class InMemoryRepository implements Repository {
     return this.signIn.incrementRateLimit(bucket, key, windowStart, expiresAt, now);
   }
 
+  async recordEvent(event: AuditEvent): Promise<void> {
+    this.recorded.push(copyEvent(event));
+  }
+
+  /** The events recorded, in order; for tests. */
+  events(): AuditEvent[] {
+    return this.recorded.map(copyEvent);
+  }
+
   private find(match: (member: Member) => boolean): Member | null {
     for (const member of this.members.values()) if (match(member)) return copy(member);
     return null;
@@ -80,3 +90,7 @@ export class InMemoryRepository implements Repository {
 
 // Callers get their own object, as they would from a database row, so mutating one can't edit the store.
 const copy = (member: Member): Member => ({ ...member, createdAt: new Date(member.createdAt) });
+
+// The same for an event, its refusal's window start included.
+const copyEvent = (event: AuditEvent): AuditEvent =>
+  event.kind === "rate_limit_refusal" ? { ...event, windowStart: new Date(event.windowStart) } : { ...event };

@@ -9,7 +9,16 @@ export interface RateLimitPolicy {
   failOpen: boolean;
 }
 
-export type RateLimitDecision = { allowed: true } | { allowed: false; retryAfterMs: number };
+/**
+ * A refusal says which window it fell in and whether it is that window's first (the call that takes
+ * the count to `limit + 1`), so a caller can record one event per window, not one per refused call.
+ */
+export type RateLimitDecision =
+  | { allowed: true }
+  | { allowed: false; retryAfterMs: number; first: boolean; windowStart: Date };
+
+/** A refusal: the bucket, the client's limiter key and the start of the window it was refused in. */
+export type RateLimitRefusal = { bucket: string; key: string; windowStart: Date };
 
 /**
  * Counts this call against `key` in the clock window it falls in (windows aligned to
@@ -28,19 +37,24 @@ export async function takeRateLimit(
   const nowMs = deps.now.getTime();
   const startMs = Math.floor(nowMs / policy.windowMs) * policy.windowMs;
   const endMs = startMs + policy.windowMs;
+  const windowStart = new Date(startMs);
 
   let hits: number;
   try {
-    hits = await deps.store.incrementRateLimit(policy.bucket, key, new Date(startMs), new Date(endMs), deps.now);
+    hits = await deps.store.incrementRateLimit(policy.bucket, key, windowStart, new Date(endMs), deps.now);
   } catch (e) {
     deps.onFailure?.(
       `rate limit "${policy.bucket}" could not count — ${policy.failOpen ? "allowed" : "refused"}: ${
         e instanceof Error ? e.message : String(e)
       }`,
     );
-    return policy.failOpen ? { allowed: true } : { allowed: false, retryAfterMs: policy.windowMs };
+    return policy.failOpen
+      ? { allowed: true }
+      : { allowed: false, retryAfterMs: policy.windowMs, first: false, windowStart };
   }
-  return hits <= policy.limit ? { allowed: true } : { allowed: false, retryAfterMs: endMs - nowMs };
+  return hits <= policy.limit
+    ? { allowed: true }
+    : { allowed: false, retryAfterMs: endMs - nowMs, first: hits === policy.limit + 1, windowStart };
 }
 
 /**

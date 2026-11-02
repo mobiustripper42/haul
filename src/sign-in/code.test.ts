@@ -198,7 +198,27 @@ describe("AC8 (issue 9) — requestSignInCode is limited per client key, before 
     for (let i = 0; i < 20; i++) {
       expect((await request(i % 2 === 0 ? ADA.email : STRANGER, "203.0.113.7")).outcome).not.toBe("limited");
     }
-    expect(await request(email, "203.0.113.7")).toEqual({ outcome: "limited", retryAfterMs: 34 * MINUTE + 30 * SECOND });
+    expect(await request(email, "203.0.113.7")).toEqual({
+      outcome: "limited",
+      retryAfterMs: 34 * MINUTE + 30 * SECOND,
+      refusal: { bucket: "sign-in-request", key: "203.0.113.7", windowStart: new Date("2026-10-28T14:00:00.000Z") },
+    });
+  });
+
+  it("AC4: the 22nd and 23rd requests in the window are limited with refusal null; the next window's first refusal carries that window", async () => {
+    for (let i = 0; i < 21; i++) await request(STRANGER, "203.0.113.7");
+    expect(await request(STRANGER, "203.0.113.7")).toEqual({ outcome: "limited", retryAfterMs: 34 * MINUTE + 30 * SECOND, refusal: null });
+    expect(await request(ADA.email, "203.0.113.7")).toEqual({ outcome: "limited", retryAfterMs: 34 * MINUTE + 30 * SECOND, refusal: null });
+
+    const next = new Date("2026-10-28T15:05:00.000Z");
+    const later = (email: string) =>
+      requestSignInCode(store, findSubject, { email, clientKey: "203.0.113.7" }, { now: next, mintCode: () => "042517" });
+    for (let i = 0; i < 20; i++) await later(STRANGER);
+    expect(await later(STRANGER)).toEqual({
+      outcome: "limited",
+      retryAfterMs: 55 * MINUTE,
+      refusal: { bucket: "sign-in-request", key: "203.0.113.7", windowStart: new Date("2026-10-28T15:00:00.000Z") },
+    });
   });
 
   it("AC8: a limited request does not reach findSubject and stores no code", async () => {
