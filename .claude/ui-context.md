@@ -19,6 +19,10 @@ Every look a screen uses is one component in `components/ui/` (DEC-024): `ls com
 
 375px and 1440px. Tablets use the mobile design (BRAND.md:64).
 
+## Languages
+
+English. The Spanish pass waits for task 1.11.
+
 ## Screen files and routes
 
 - **Screen file:** a `.tsx` under `app/` or `components/`, tests excluded, and `app/globals.css`.

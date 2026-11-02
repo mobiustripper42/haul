@@ -54,7 +54,7 @@ Every line in the sections below carries its source:
      Components are the ones `.claude/ui-context.md` points to. -->
 - **Design:** a new screen names its desktop mockup and its mobile mockup. A change to a built screen names that screen as its design and says where the change goes at desktop width and at mobile width; it gets a new mockup only if the operator asks for one.
 - **What's on the screen, in order:** one line per element — its component, or for a button its kind, then its actual wording.
-- **New:** an element no component covers is marked new, with one line on why none fits. The task adds it as a component with its lint rule, named under Interfaces like any other shared home.
+- **New:** an element no component covers is marked new, with one line on why none fits. The task adds it as a component, with any rule the project enforces for components, named under Interfaces like any other shared home.
 
 ## Seeds
 <!-- The data a person needs for the (by hand) criteria, made by the project's dev seeds — never by clicking through the app first. Name the seed commands each (by hand) criterion starts from, and the seed this task adds or extends to reach that state. A seed this task adds or extends is listed under Interfaces' Files touched. "None" when no criterion is (by hand), or the project has no database or no seed command. -->

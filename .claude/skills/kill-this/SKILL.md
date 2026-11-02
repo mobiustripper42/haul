@@ -67,7 +67,7 @@ Do Step 3.4's screen check and Step 3.5's trigger check **first**: each is a pro
 
 - `@code-review` against `git diff HEAD~1`, always.
 - On a trigger hit, a `general-purpose` agent whose whole task is: *invoke `/security-review` with the Skill tool on this branch and return its report verbatim.*
-- On a screen in the diff, `@ui-reviewer` with the routes Step 3.4 listed and this scope: *English only, at 375px and 1440px, only these routes. Name any route you could not reach as not reached; never review it from source and call it clean.*
+- On a screen in the diff, `@ui-reviewer` with the routes Step 3.4 listed and this scope: *in the languages and at the viewports `.claude/ui-context.md` names, only these routes. Name any route you could not reach as not reached; never review it from source and call it clean.*
 
 **Why `/security-review` runs inside its own agent.** Its closing instruction is that the final reply contains the markdown report and nothing else. Run in this turn, that instruction ended `/kill-this` there: from 2026-10-05 to 2026-10-09 every centerline run stopped after it and waited for the operator to type "please continue", and a sentence in this file telling the model to carry on past it changed nothing. Muster appeared not to stop only because its `@code-review` was still running in the background, and that agent's notification started the next turn. Inside an agent, the instruction governs the agent's reply, which is exactly where the report should go.
 
@@ -83,7 +83,7 @@ When addressing review findings before opening the PR: Read every file before ed
 
 Get the project's UI rules from `.claude/ui-context.md` **with the Read tool**. **Absent:** no UI review; Step 3.6's row says why. Otherwise match its definition of a screen file against the branch diff (`git diff $(git merge-base HEAD main)...HEAD --name-only`). **No match:** no UI review. **A match:** list the routes the changed files reach, by its route rule, and start `@ui-reviewer` on them in Step 3.
 
-The scope is the screens this task touched, in English. Every screen is `/retro`'s pass at phase end.
+The scope is the screens this task touched, in the languages `ui-context.md` names for review (the project's default language when it names none). Every screen is `/retro`'s pass at phase end.
 
 ### Step 3.5 — High-blast-radius check (does this PR want `/security-review`?)
 
