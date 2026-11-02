@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.13] - 2026-10-30
+- PR #28: jig sync 2026-10-30: jig 555d932
+
 ## [0.0.12] - 2026-10-30
 - PR #27: jig sync: the five held /build-task files
 
