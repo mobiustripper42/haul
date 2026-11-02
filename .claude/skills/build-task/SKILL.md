@@ -67,8 +67,8 @@ both agents, and comes back as the same item next round.
 - **The operator would notice it in use** — stop. Put these to the operator one at a time, each
   with your recommendation. Write each answer as a `[you]` line.
 
-**A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match into
-Screen's "Existing screen and components reused". Then the spec stops asking for the copy: the
+**A reuse match** goes into Reuses as a `[code]` line with the existing path — a Screen match onto that
+element's line in Screen, as its component. Then the spec stops asking for the copy: the
 criterion that restated it is reworded to point at it, its "New or changed signatures" entry is
 removed, and "Files touched" gains the existing file if reuse means exporting from it. When
 reusing it would change behaviour — the existing rule differs from the spec's — sort it as a
@@ -92,9 +92,10 @@ does not either. **If round 2 changes behaviour again, stop and ask** — the sp
 a third read. An edit that only clarifies wording does not earn
 another round; `@test-writer` can still stop in Step 2 and return a question.
 
-**Coming back to the spec later counts against the same rule.** A question from Step 2, or a spec
-fix from Step 3, is sorted as above and written into the issue. It earns a readback round only if
-it changed behaviour, and that round is the second: if one has already run, stop and ask.
+**Coming back to the spec later counts against the same rule.** A question from Step 2 is sorted
+as above and written into the issue. It earns a readback round only if it changed behaviour, and
+that round is the second: if one has already run, stop and ask. A Stop from Step 3 ends the run
+instead; what comes back after it is the operator's call.
 
 ## Step 2 — Tests
 
@@ -153,9 +154,10 @@ It returns one of:
   `git stash list --format='%gd %s' | grep -F ': build-task <N>: build' | cut -d' ' -f1`. Then
   write `git stash show -p --binary --include-untracked "$REF"` into a patch file in the scratchpad,
   as a backup. Never show, apply or drop a bare `git stash`: `stash@{0}` may be the operator's.
-  Then stop, and bring the Stop to the operator with the stash's ref and the patch's path. They
-  decide whether the spec or the test was wrong, how it is fixed, and whether the build comes back.
-  A Stop is not a failed round.
+  Then stop, and bring the Stop to the operator with the stash's ref, the patch's path and
+  `START`. They decide whether the spec or the test was wrong, how it is fixed, and whether the
+  build comes back. A Stop is not a failed round. A run started again after it keeps this run's
+  `START`, so Step 5 still folds the earlier commits in.
 
 ## Step 4 — Verify
 
@@ -200,7 +202,7 @@ Print it every time, before the hand-back, and append it to the pull request bod
   settled       — none | each [code] and [Lead] line added during the run, word for word, one per line
   test-writer   — <tests> tests across <criteria> criteria
   stubs         — <n> written, <n> left as stubs, <n> tests passing beside a partner
-  implementer   — <rounds> rounds, <stops> stops
+  implementer   — <rounds> rounds, <stops> stops (a run started again after a Stop counts it)
   test lock     — intact | violated (<file>)
   review routes — <n> to test-writer, <n> to implementer, <n> fixed by Lead
   cost          — <first line of cost.mjs>
