@@ -32,4 +32,5 @@ A migration may be edited until the pull request that adds it merges, and never 
 applied file has changed, has no checksum on record or is gone, and never reruns it. A local
 database is rebuilt from empty with `npm run db:rebuild:dev` (`db/rebuild.ts`, local hosts only);
 test databases rebuild themselves on that refusal. After a merge a mistake is fixed by the next
-file. Rewritten in place rather than superseded, a knowing break of DEC-J020 (issue 30).
+file. Rewritten in place on 2026-11-02 rather than superseded, a knowing break of DEC-J020
+(issue 30).

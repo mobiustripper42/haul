@@ -99,7 +99,8 @@ then `/kill-this` uses its generic triggers.
 ## Migration Protocol (project)
 
 Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts` and recorded in
-`_migrations` with each file's checksum (DEC-013). Forward only after a merge: a mistake in a merged migration is fixed by the next file.
+`_migrations` with each file's checksum (DEC-013). Forward only after a merge: a mistake in a
+merged migration is fixed by the next file.
 
 - **Create one with `npm run db:new-migration <name>`**, never by hand — the UTC stamp keeps filename order chronological
 - **A migration is editable until its pull request merges, never after.** `migrate` refuses an applied file that changed (or is gone) and applies nothing; rebuild a local database with `npm run db:rebuild:dev`, then reseed. Test databases rebuild themselves
