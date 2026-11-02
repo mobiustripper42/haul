@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.9] - 2026-10-30
+- PR #24: Task 0.10: dev seeds — named, re-runnable seed commands and a dev reset
+
 ## [0.0.8] - 2026-10-29
 - PR #23: Task 0.6: email port and email-code sign-in
 
