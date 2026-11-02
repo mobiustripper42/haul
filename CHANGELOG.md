@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.14] - 2026-10-31
+- PR #29: Task 0.8: audit by trigger, with an exempt list
+
 ## [0.0.13] - 2026-10-30
 - PR #28: jig sync 2026-10-30: jig 555d932
 
