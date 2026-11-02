@@ -42,6 +42,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-017 — A moment is timestamptz; a Cleveland wall-clock time is date and time
 - DEC-018 — An admin is a member with the role admin, checked on each admin page
 - DEC-019 — Audit by trigger, with an exempt list
+- DEC-025 — Sign-in events go in the audit log through audit_event()
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens

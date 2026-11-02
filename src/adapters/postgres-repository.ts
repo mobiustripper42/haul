@@ -1,6 +1,6 @@
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { Repository } from "../ports/repository.js";
+import type { AuditEvent, Repository } from "../ports/repository.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool } from "./pg-connect.js";
 
@@ -218,6 +218,23 @@ export class PostgresRepository implements Repository {
       [bucket, key, windowStart, expiresAt],
     );
     return (rows[0] as { hits: number }).hits;
+  }
+
+  /** Writes the event's `audit_log` row through `audit_event()`, which writes event rows and nothing else. */
+  async recordEvent(event: AuditEvent): Promise<void> {
+    if (event.kind === "rate_limit_refusal") {
+      // The row_key is the counter row's primary key, built in SQL from typed parameters.
+      await this.pool.query(
+        `select public.audit_event($1, 'rate_limit_hits',
+           jsonb_build_object('bucket', $2::text, 'key', $3::text, 'window_start', $4::timestamptz))`,
+        [event.kind, event.bucket, event.key, event.windowStart],
+      );
+      return;
+    }
+    await this.pool.query("select public.audit_event($1, 'members', jsonb_build_object('id', $2::text))", [
+      event.kind,
+      event.memberId,
+    ]);
   }
 
   close(): Promise<void> {

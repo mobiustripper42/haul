@@ -637,3 +637,366 @@ describe("AC20 (issue 22) — signInWithLink", () => {
     expect(await redeemSignInLink(repo, TOKEN, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
   });
 });
+
+// Issue 34 from here on: sign-in events in the audit log, and the sign-in email log's stage. The
+// fake repository's events() is its record of what recordEvent was given, in order.
+const ADDRESS = "203.0.113.7";
+const HOUR_START = new Date("2026-10-28T14:00:00.000Z");
+const LINK_TOKEN = "Lk3vQ9_xR2-mN8pT4wY6zA1bC5dE7fG0hJ2kL4nP6qS";
+
+/** Ada's code and, straight after it with no hold, a live link for LINK_TOKEN. */
+const plantLink = async () => {
+  await plantCode();
+  await issueSignInLink(repo, ada, { now: new Date(), mintLinkToken: () => LINK_TOKEN, hold: false });
+};
+
+/** The second argument of each console.error call whose first is `message`: the fields logged with it. */
+const fieldsLoggedWith = (spy: { mock: { calls: unknown[][] } }, message: string): unknown[] =>
+  spy.mock.calls.filter((args) => args[0] === message).map((args) => args[1]);
+
+/** A failure as `pg` raises one: named "error", its code a SQLSTATE, its message carrying what a log must not. */
+const pgError = (code: string): Error =>
+  Object.assign(new Error("could not reach postgres://haul:hunter2@db/haul"), { name: "error", code });
+
+describe("AC1 — a sign-in by code records one sign_in_by_code event", () => {
+  it("AC1: the right code records one sign_in_by_code event for the member by the time it redirects to /, with nothing left to run after the response", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: ada.id }]);
+    expect(scheduled.tasks).toEqual([]);
+  });
+});
+
+describe("AC2 — a sign-in by link records one sign_in_by_link event", () => {
+  it("AC2: pressing the link page's button with a live token records one sign_in_by_link event for the member by the time it redirects to /, with nothing left to run after the response", async () => {
+    await plantLink();
+    const { signInWithLink } = await load();
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    expect(repo.events()).toEqual([{ kind: "sign_in_by_link", memberId: ada.id }]);
+    expect(scheduled.tasks).toEqual([]);
+  });
+});
+
+describe("AC3 — the guess that locks records one lock event, after the response", () => {
+  it("AC3: the fifth wrong guess records nothing before the scheduled work runs, then one lock event for the member", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    expect(repo.events()).toEqual([]);
+    await runScheduled();
+    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id }]);
+  });
+
+  it("AC3: the four wrong guesses before it record nothing, and guesses while locked — wrong or right — record nothing more", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 4; g++) {
+      await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+      await runScheduled();
+      expect(repo.events()).toEqual([]);
+    }
+    await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await runScheduled();
+    expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/sign-in/code?error=invalid");
+    await runScheduled();
+    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id }]);
+  });
+});
+
+describe("AC4 — an address's first rate-limit refusal in a window records one rate_limit_refusal event", () => {
+  const refusal = (windowStart: Date, key = ADDRESS) => ({ kind: "rate_limit_refusal", bucket: "sign-in-request", key, windowStart });
+
+  it("AC4: the 21st request in the clock hour records one rate_limit_refusal event with the bucket, the address's limiter key and the window's start; the 20 within the limit record nothing", async () => {
+    const { requestCode } = await load();
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: i % 2 ? STRANGER : "ada@example.com" })));
+    expect(repo.events()).toEqual([]);
+    expect(await redirectOf(requestCode(form({ email: STRANGER })))).toBe("/sign-in?limited=35");
+    expect(repo.events()).toEqual([refusal(HOUR_START)]);
+  });
+
+  it("AC4: the 22nd and later in that window record nothing; the first refusal in the next window records one", async () => {
+    const { requestCode } = await load();
+    for (let i = 0; i < 23; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(repo.events()).toEqual([refusal(HOUR_START)]);
+
+    vi.setSystemTime(new Date("2026-10-28T15:05:00.000Z"));
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(repo.events()).toEqual([refusal(HOUR_START)]);
+    expect(await redirectOf(requestCode(form({ email: STRANGER })))).toBe("/sign-in?limited=55");
+    await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(repo.events()).toEqual([refusal(HOUR_START), refusal(new Date("2026-10-28T15:00:00.000Z"))]);
+  });
+
+  it("AC4: the key carried is the limiter key, not the raw address — an IPv6 client's /64", async () => {
+    request.current.headers = { "x-forwarded-for": "2001:db8:0:2::1" };
+    const { requestCode } = await load();
+    for (let i = 0; i < 21; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(repo.events()).toEqual([refusal(HOUR_START, "2001:db8:0:2::/64")]);
+  });
+
+  it("AC4: with no usable client address (a null key), 25 requests record nothing", async () => {
+    request.current.headers = {};
+    const { requestCode } = await load();
+    for (let i = 0; i < 25; i++) expect(await redirectOf(requestCode(form({ email: STRANGER })))).toBe("/sign-in/code");
+    await runScheduled();
+    expect(repo.events()).toEqual([]);
+  });
+});
+
+describe("AC5 — what happens more than once records no event", () => {
+  type Actions = Awaited<ReturnType<typeof load>>;
+
+  it.each<[string, (actions: Actions) => Promise<void>]>([
+    [
+      "a wrong code",
+      async ({ verifyCode }) => {
+        await plantCode();
+        request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+        expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+      },
+    ],
+    [
+      "an expired code",
+      async ({ verifyCode }) => {
+        await plantCode();
+        vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+        request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+        expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/sign-in/code?error=invalid");
+      },
+    ],
+    [
+      "a consumed code",
+      async ({ verifyCode }) => {
+        await plantCode();
+        await repo.consumeSignInCode(ada.id, new Date());
+        request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+        expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/sign-in/code?error=invalid");
+      },
+    ],
+    [
+      "an unknown link token",
+      async ({ signInWithLink }) => {
+        await plantLink();
+        expect(await redirectOf(signInWithLink(form({ token: "not-the-live-token" })))).toBe("/sign-in?error=link");
+      },
+    ],
+    [
+      "an expired link",
+      async ({ signInWithLink }) => {
+        await plantLink();
+        vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+        expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/sign-in?error=link");
+      },
+    ],
+    [
+      "a link already used",
+      async ({ signInWithLink }) => {
+        await plantLink();
+        await redeemSignInLink(repo, LINK_TOKEN, { now: new Date() });
+        expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/sign-in?error=link");
+      },
+    ],
+    [
+      "a stranger's email at every step — the request, five guesses and the right code",
+      async ({ requestCode, verifyCode }) => {
+        await plantCode();
+        await redirectOf(requestCode(form({ email: STRANGER })));
+        request.current.cookies = { [SIGN_IN_EMAIL]: STRANGER };
+        for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+        expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/sign-in/code?error=invalid");
+      },
+    ],
+    [
+      "a member's code request and the code email it sends",
+      async ({ requestCode }) => {
+        await redirectOf(requestCode(form({ email: "ada@example.com" })));
+        await runScheduled();
+        expect(email.sent).toHaveLength(1);
+      },
+    ],
+    [
+      "a locked member's request and the link email it sends",
+      async ({ requestCode }) => {
+        await lockAda();
+        vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+        await redirectOf(requestCode(form({ email: "ada@example.com" })));
+        await runScheduled();
+        expect(tokenIn(email.last()?.text)).toBeDefined();
+      },
+    ],
+  ])("AC5: %s records no event", async (_what, act) => {
+    const actions = await load();
+    await act(actions);
+    await runScheduled();
+    expect(repo.events()).toEqual([]);
+  });
+});
+
+describe("AC10 — an event that fails to record is logged and changes nothing the member sees", () => {
+  const EVENT_NOT_RECORDED = "sign-in event not recorded";
+
+  it("AC10: when sign_in_by_code fails to record, the sign-in still completes, and console.error gets the message with the event, the member id, the error's name and its code — never its message", async () => {
+    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    const errors = silenceErrors();
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    const sessions = setsNamed(SESSION);
+    expect(sessions).toHaveLength(1);
+    expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
+    expect(cookieGone(SIGN_IN_EMAIL)).toBe(true);
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "57P01" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("sign_in_by_code");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+  });
+
+  it("AC10: when sign_in_by_link fails to record, the sign-in still completes, and the failure is logged with the event, the member id, the error's name and its code — never its message", async () => {
+    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    const errors = silenceErrors();
+    await plantLink();
+    const { signInWithLink } = await load();
+
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    const sessions = setsNamed(SESSION);
+    expect(sessions).toHaveLength(1);
+    expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "57P01" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("sign_in_by_link");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+  });
+
+  it("AC10: when the lock fails to record, the lock's link is still stored and sent, and the failure is logged with the event, the member id, the error's name and its code — never its message", async () => {
+    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    const errors = silenceErrors();
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+    expect(email.sent).toHaveLength(1);
+    const token = tokenIn(email.last()?.text) ?? "no link in the message";
+    expect(email.last()).toEqual(linkEmailFor(token));
+    expect(await redeemSignInLink(repo, token, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "57P01" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("lock");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+    expect(logged).not.toContain(token);
+  });
+
+  it("AC10: when a refusal fails to record, the request still redirects to /sign-in?limited=<minutes>, and the failure is logged with the event, the error's name and its code — never the client address or its message", async () => {
+    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    const errors = silenceErrors();
+    const { requestCode } = await load();
+
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(await redirectOf(requestCode(form({ email: STRANGER })))).toBe("/sign-in?limited=35");
+    expect(request.current.sets.filter((c) => c.name === SIGN_IN_EMAIL)).toHaveLength(20);
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "57P01" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("rate_limit_refusal");
+    expect(logged).not.toContain(ADDRESS);
+    expect(logged).not.toContain("hunter2");
+  });
+});
+
+describe("AC11 — the sign-in email log says which stage failed", () => {
+  const NOT_DELIVERED = "sign-in email not delivered";
+
+  it("AC11: a Postgres error storing a code is logged with stage store, the member id, the error's name and its SQLSTATE — never its message — and nothing is sent", async () => {
+    vi.spyOn(repo, "saveSignInCode").mockRejectedValue(pgError("53300"));
+    const errors = silenceErrors();
+    const { requestCode } = await load();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "store", error: "error", code: "53300" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+    expect(email.sent).toEqual([]);
+  });
+
+  it("AC11: a Postgres error storing the lock's link is logged with stage store, the member id, the error's name and its SQLSTATE — never its message — and nothing is sent", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    vi.spyOn(repo, "saveSignInLink").mockRejectedValue(pgError("53300"));
+    const errors = silenceErrors();
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "store", error: "error", code: "53300" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+    expect(email.sent).toEqual([]);
+  });
+
+  it("AC11: a code email that fails to send is logged with stage send, the member id, the error's name and its status — never the code or the error's message", async () => {
+    const { requestCode } = await load();
+    const { EmailSendError } = await import("@core/ports/email.js");
+    let captured: EmailMessage | undefined;
+    services.email = {
+      send: async (message) => {
+        captured = message;
+        throw new EmailSendError("Resend", 422, '{"message":"resend-reply-body: the to field is invalid"}');
+      },
+    };
+    const errors = silenceErrors();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "send", error: "EmailSendError", status: 422 })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("resend-reply-body");
+    const code = /\b(\d{6})\b/.exec(captured?.text ?? "")?.[1];
+    expect(code, "the callback never tried to send a code").toBeDefined();
+    expect(logged.replaceAll(ada.id, "")).not.toContain(code);
+  });
+
+  it("AC11: the lock's link email that fails to send is logged with stage send, the member id, the error's name and its status — never the token, the URL or the error's message", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    const { EmailSendError } = await import("@core/ports/email.js");
+    let captured: EmailMessage | undefined;
+    services.email = {
+      send: async (message) => {
+        captured = message;
+        throw new EmailSendError("Resend", 422, '{"message":"resend-reply-body: the to field is invalid"}');
+      },
+    };
+    const errors = silenceErrors();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+
+    expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "send", error: "EmailSendError", status: 422 })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("resend-reply-body");
+    const token = tokenIn(captured?.text);
+    expect(token, "the callback never tried to send the link").toBeDefined();
+    expect(logged).not.toContain(token);
+    expect(logged).not.toContain("/sign-in/link");
+    expect(logged).not.toContain(services.siteUrl);
+  });
+});

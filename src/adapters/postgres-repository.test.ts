@@ -195,6 +195,98 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     });
   });
 
+  // Issue 34: recordEvent writes one audit_log event row through audit_event().
+  describe("issue 34 — recordEvent writes an event row to audit_log", () => {
+    type EventRow = {
+      table_name: string;
+      operation: string;
+      event: string | null;
+      row_key: Record<string, unknown>;
+      before: unknown;
+      after: unknown;
+      actor: string | null;
+      db_user: string;
+    };
+
+    const eventRows = async (): Promise<EventRow[]> =>
+      (
+        await pool.query<EventRow>(
+          `select table_name, operation, event, row_key, before, after, actor, db_user
+             from audit_log where operation = 'event' order by id`,
+        )
+      ).rows;
+
+    const sessionUser = async (): Promise<string> =>
+      (await pool.query<{ u: string }>("select session_user::text as u")).rows[0]?.u ?? "no session user";
+
+    it.each(["sign_in_by_code", "sign_in_by_link", "lock"] as const)(
+      "AC6: a member's %s event is one row — operation 'event', that event, table members, row_key { id }, no before or after, actor null, db_user the session user",
+      async (kind) => {
+        await truncateAll();
+        const { id } = await repo.createMember({ email: "ada@example.com" });
+        await repo.recordEvent({ kind, memberId: id });
+        expect(await eventRows()).toEqual([
+          {
+            table_name: "members",
+            operation: "event",
+            event: kind,
+            row_key: { id },
+            before: null,
+            after: null,
+            actor: null,
+            db_user: await sessionUser(),
+          },
+        ]);
+      },
+    );
+
+    it("AC6: a rate_limit_refusal event is one row on rate_limit_hits whose row_key is the counter's primary key — bucket, key, window_start", async () => {
+      await truncateAll();
+      const windowStart = new Date("2026-10-28T14:00:00.000Z");
+      await repo.recordEvent({ kind: "rate_limit_refusal", bucket: "sign-in-request", key: "203.0.113.7", windowStart });
+
+      const rows = await eventRows();
+      expect(rows).toEqual([
+        expect.objectContaining({
+          table_name: "rate_limit_hits",
+          operation: "event",
+          event: "rate_limit_refusal",
+          before: null,
+          after: null,
+          actor: null,
+          db_user: await sessionUser(),
+        }),
+      ]);
+      const pk = await pool.query<{ attname: string }>(
+        `select a.attname from pg_index i join pg_attribute a on a.attrelid = i.indrelid and a.attnum = any (i.indkey)
+          where i.indrelid = 'public.rate_limit_hits'::regclass and i.indisprimary order by a.attname`,
+      );
+      expect(Object.keys(rows[0]?.row_key ?? {}).sort()).toEqual(pk.rows.map((r) => r.attname));
+      expect(rows[0]?.row_key).toMatchObject({ bucket: "sign-in-request", key: "203.0.113.7" });
+      const { rows: instant } = await pool.query<{ window_start: Date }>(
+        "select (row_key->>'window_start')::timestamptz as window_start from audit_log where operation = 'event'",
+      );
+      expect(instant).toEqual([{ window_start: windowStart }]);
+    });
+
+    it("AC7: a member created, then signed in by code, then given a new language reads back, by table and row_key in id order, as the insert, the sign_in_by_code event and the update", async () => {
+      await truncateAll();
+      const { id } = await repo.createMember({ email: "ada@example.com" });
+      await repo.recordEvent({ kind: "sign_in_by_code", memberId: id });
+      await pool.query("update members set language = 'es' where id = $1", [id]);
+
+      const { rows } = await pool.query<{ operation: string; event: string | null }>(
+        "select operation, event from audit_log where table_name = 'members' and row_key = $1::jsonb order by id",
+        [JSON.stringify({ id })],
+      );
+      expect(rows).toEqual([
+        { operation: "insert", event: null },
+        { operation: "event", event: "sign_in_by_code" },
+        { operation: "update", event: null },
+      ]);
+    });
+  });
+
   // Postgres only: the typed port gives the in-memory adapter no way to store an unsupported code.
   describe("AC10 (issue 7) — members.language accepts only en and es", () => {
     const CHECK_VIOLATION = "23514";

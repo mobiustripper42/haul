@@ -39,6 +39,8 @@ describe("AC20 (issue 9) — takeRateLimit", () => {
     expect(await takeRateLimit({ store, now }, POLICY, "203.0.113.7")).toEqual({
       allowed: false,
       retryAfterMs: HOUR_END.getTime() - now.getTime(),
+      first: true,
+      windowStart: HOUR_START,
     });
   });
 
@@ -60,6 +62,8 @@ describe("AC20 (issue 9) — takeRateLimit", () => {
     expect(await takeRateLimit({ store, now }, policy, "203.0.113.7")).toEqual({
       allowed: false,
       retryAfterMs: windowEnd - now.getTime(),
+      first: true,
+      windowStart: new Date(windowEnd - policy.windowMs),
     });
   });
 
@@ -111,7 +115,13 @@ describe("AC21 (issue 9) — takeRateLimit when the counter throws", () => {
       { bucket: "closed-bucket", limit: 20, windowMs: 15 * MINUTE, failOpen: false },
       "203.0.113.7",
     );
-    expect(decision).toEqual({ allowed: false, retryAfterMs: 15 * MINUTE });
+    // 14:25:30 falls in the 15-minute window that starts at 14:15:00.
+    expect(decision).toEqual({
+      allowed: false,
+      retryAfterMs: 15 * MINUTE,
+      first: false,
+      windowStart: new Date("2026-10-28T14:15:00.000Z"),
+    });
     expect(failures).toHaveLength(1);
     expect(failures[0]).toContain("closed-bucket");
   });
@@ -120,6 +130,37 @@ describe("AC21 (issue 9) — takeRateLimit when the counter throws", () => {
     const { store } = recording(new Error("connection refused"));
     const decision = await takeRateLimit({ store, now: T0 }, { ...POLICY, failOpen }, "203.0.113.7");
     expect(decision.allowed).toBe(failOpen);
+  });
+});
+
+// Issue 34, AC4: a refusal says whether it is the window's first, and which window it fell in.
+describe("AC4 — a refusal names the window's first, and the window", () => {
+  it("AC4: only the call that takes the count to limit + 1 is first; the 22nd and 23rd are refused with first false and the same aligned windowStart", async () => {
+    const store = new MemorySignInStore();
+    for (let i = 0; i < 20; i++) await takeRateLimit({ store, now: T0 }, POLICY, "203.0.113.7");
+    const refusals = [];
+    for (let i = 0; i < 3; i++) {
+      const now = new Date(T0.getTime() + i * MINUTE);
+      refusals.push(await takeRateLimit({ store, now }, POLICY, "203.0.113.7"));
+    }
+    expect(refusals.map((r) => (r.allowed ? "allowed" : { first: r.first, windowStart: r.windowStart }))).toEqual([
+      { first: true, windowStart: HOUR_START },
+      { first: false, windowStart: HOUR_START },
+      { first: false, windowStart: HOUR_START },
+    ]);
+  });
+
+  it("AC4: the first refusal in the next window is first again, with that window's start", async () => {
+    const store = new MemorySignInStore();
+    for (let i = 0; i < 22; i++) await takeRateLimit({ store, now: T0 }, POLICY, "203.0.113.7");
+    const next = new Date(HOUR_END.getTime() + 5 * MINUTE);
+    for (let i = 0; i < 20; i++) await takeRateLimit({ store, now: next }, POLICY, "203.0.113.7");
+    expect(await takeRateLimit({ store, now: next }, POLICY, "203.0.113.7")).toEqual({
+      allowed: false,
+      retryAfterMs: 55 * MINUTE,
+      first: true,
+      windowStart: HOUR_END,
+    });
   });
 });
 

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
-import { takeRateLimit, type RateLimitPolicy } from "./rate-limit.js";
+import { takeRateLimit, type RateLimitPolicy, type RateLimitRefusal } from "./rate-limit.js";
 import type { RateLimitStore, SignInCode, SignInStore, SignInSubject } from "./store.js";
 
 export const CODE_TTL_MS = 10 * 60_000;
@@ -50,7 +50,7 @@ export type PendingSignInCode<S extends SignInSubject> = { subject: S; code: str
 export type RequestResult<S extends SignInSubject> =
   | { outcome: "issue"; pending: PendingSignInCode<S> }
   | { outcome: "skip" }
-  | { outcome: "limited"; retryAfterMs: number };
+  | { outcome: "limited"; retryAfterMs: number; refusal: RateLimitRefusal | null };
 
 /**
  * Step one, in the request: limited per client key, then the lookup, then a code minted and hashed
@@ -71,7 +71,14 @@ export async function requestSignInCode<S extends SignInSubject>(
     SIGN_IN_REQUEST_LIMIT,
     params.clientKey,
   );
-  if (!limit.allowed) return { outcome: "limited", retryAfterMs: limit.retryAfterMs };
+  if (!limit.allowed) {
+    // A refusal to report is the window's first, and only a counted request has a key.
+    const refusal =
+      limit.first && params.clientKey !== null
+        ? { bucket: SIGN_IN_REQUEST_LIMIT.bucket, key: params.clientKey, windowStart: limit.windowStart }
+        : null;
+    return { outcome: "limited", retryAfterMs: limit.retryAfterMs, refusal };
+  }
 
   const subject = await findSubject(params.email);
   const code = deps.mintCode();

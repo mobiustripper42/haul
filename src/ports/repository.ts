@@ -1,6 +1,15 @@
 import type { Language } from "../i18n.js";
 import type { Member, Role } from "../members.js";
+import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
 import type { RateLimitStore, SignInStore } from "../sign-in/store.js";
+
+/** The events `audit_log` records beside row changes; the SQL check on `audit_log.event` lists the same. */
+export const AUDIT_EVENT_KINDS = ["sign_in_by_code", "sign_in_by_link", "lock", "rate_limit_refusal"] as const;
+export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
+
+export type AuditEvent =
+  | { kind: Exclude<AuditEventKind, "rate_limit_refusal">; memberId: string }
+  | ({ kind: "rate_limit_refusal" } & RateLimitRefusal);
 
 /**
  * The core's view of stored data (DEC-010). `InMemoryRepository` is the permanent fake and the
@@ -17,4 +26,5 @@ export interface Repository extends SignInStore, RateLimitStore {
   findMemberByEmail(email: string): Promise<Member | null>;
   /** Null for an unknown id and for a string that isn't a UUID. */
   findMemberById(id: string): Promise<Member | null>;
+  recordEvent(event: AuditEvent): Promise<void>;
 }
