@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.10] - 2026-10-30
+- PR #25: build-task: @test-writer writes empty stubs so each test fails on its own assertion
+
 ## [0.0.9] - 2026-10-30
 - PR #24: Task 0.10: dev seeds — named, re-runnable seed commands and a dev reset
 
