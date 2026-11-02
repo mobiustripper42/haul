@@ -8,9 +8,8 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
 import { AUDIT_EVENT_KINDS } from "../src/ports/repository.js";
-import { migrate } from "./migrate.js";
 
 type EventRow = {
   table_name: string;
@@ -34,8 +33,7 @@ describe.skipIf(!up)(`issue 34 — audit_event() against <test db>_audit_events$
   let db: Client;
 
   beforeAll(async () => {
-    url = await ensureTestDatabase(TEST_DATABASE_URL, "audit_events");
-    await migrate(url);
+    url = await migrateTestDatabase(TEST_DATABASE_URL, "audit_events");
     db = createClient(url);
     await db.connect();
   });

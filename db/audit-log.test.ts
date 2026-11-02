@@ -8,8 +8,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
-import { migrate } from "./migrate.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
 
 type AuditRow = {
   id: string;
@@ -32,8 +31,7 @@ describe.skipIf(!up)(`AC1–AC8, AC16–AC18 — the audit trigger against <test
   let db: Client;
 
   beforeAll(async () => {
-    url = await ensureTestDatabase(TEST_DATABASE_URL, "audit");
-    await migrate(url);
+    url = await migrateTestDatabase(TEST_DATABASE_URL, "audit");
     db = createClient(url);
     await db.connect();
   });

@@ -56,6 +56,7 @@ npm run db:migrate           # apply pending migrations to haul_dev (or to the U
 npm run db:new-migration <name>   # scaffold db/migrations/<UTC stamp>_<name>.sql
 npm run db:seed:<name>         # load a named dev seed into haul_dev (or the URL given); re-runnable, local only
 npm run db:reset:dev           # empty every table in haul_dev but the migration ledger
+npm run db:rebuild:dev         # drop and recreate haul_dev (or the URL given) empty, apply every migration; local only, does not seed
 
 # Decision records
 npm run gen:decisions        # regenerate docs/DECISIONS.md after adding a record
@@ -98,10 +99,10 @@ then `/kill-this` uses its generic triggers.
 ## Migration Protocol (project)
 
 Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts` and recorded in
-`_migrations` (DEC-013). Forward only: a mistake is fixed by the next file.
+`_migrations` with each file's checksum (DEC-013). Forward only after a merge: a mistake in a merged migration is fixed by the next file.
 
 - **Create one with `npm run db:new-migration <name>`**, never by hand — the UTC stamp keeps filename order chronological
-- **Never edit an applied migration.** Add a new file
+- **A migration is editable until its pull request merges, never after.** `migrate` refuses an applied file that changed (or is gone) and applies nothing; rebuild a local database with `npm run db:rebuild:dev`, then reseed. Test databases rebuild themselves
 - **Before creating one**, `gh pr list` for open pull requests touching the same table (the shell's rule)
 - **Tests never add files to `db/migrations/`** — `migrate` takes a directory, and its tests use a temporary one
 - Production write protection is written in task 1.8

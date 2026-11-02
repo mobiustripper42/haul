@@ -2,6 +2,8 @@
  * Test-database helpers shared by every Postgres-backed suite (the contract, `migrate`,
  * `ensureTestDatabase`). Test-only: nothing that ships imports this.
  */
+import { ChangedMigrationError, migrate } from "../../db/migrate.js";
+import { rebuildDatabase } from "../../db/rebuild.js";
 import { createClient } from "./pg-connect.js";
 
 /** The one database URL every Postgres-backed suite starts from. */
@@ -65,4 +67,20 @@ export async function ensureTestDatabase(baseUrl: string, suffix: string): Promi
   }
 
   return url.toString();
+}
+
+/**
+ * `ensureTestDatabase`, then `migrate`. A `ChangedMigrationError` — a migration edited since this
+ * database applied it — rebuilds the database from empty; any other failure is thrown as is.
+ * Returns the database's URL.
+ */
+export async function migrateTestDatabase(baseUrl: string, suffix: string, dir?: string): Promise<string> {
+  const url = await ensureTestDatabase(baseUrl, suffix);
+  try {
+    await migrate(url, dir);
+  } catch (e) {
+    if (!(e instanceof ChangedMigrationError)) throw e;
+    await rebuildDatabase(url, dir);
+  }
+  return url;
 }

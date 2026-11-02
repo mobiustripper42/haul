@@ -1,6 +1,17 @@
+import { createHash } from "node:crypto";
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { ChangedMigrationError, migrate } from "../../db/migrate.js";
 import { createClient } from "./pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL, testDatabaseUrl } from "./test-database.js";
+import {
+  ensureTestDatabase,
+  migrateTestDatabase,
+  requireTestDatabase,
+  TEST_DATABASE_URL,
+  testDatabaseUrl,
+} from "./test-database.js";
 
 // Port 1 on loopback refuses at once; 192.0.2.1 (TEST-NET-1, RFC 5737) never answers, so only
 // the 2 s connect timeout ends the attempt.
@@ -121,5 +132,104 @@ describe.skipIf(!up)(`AC9 — ensureTestDatabase${skipped}`, () => {
   it("AC9: a second call, with the database already there, returns the same URL without throwing", async () => {
     const first = await ensureTestDatabase(TEST_DATABASE_URL, "ensure");
     await expect(ensureTestDatabase(TEST_DATABASE_URL, "ensure")).resolves.toBe(first);
+  });
+});
+
+describe.skipIf(!up)(`AC9 — migrateTestDatabase${skipped}`, () => {
+  const base = new URL(TEST_DATABASE_URL).pathname.replace(/^\//, "");
+  const name = `${base}_migrated`;
+  let dir: string;
+
+  const query = async <R extends Record<string, unknown>>(url: string, sql: string): Promise<R[]> => {
+    const client = createClient(url);
+    await client.connect();
+    try {
+      return (await client.query<R>(sql)).rows;
+    } finally {
+      await client.end();
+    }
+  };
+
+  const adminUrl = () => {
+    const url = new URL(TEST_DATABASE_URL);
+    url.pathname = "/postgres";
+    return url.toString();
+  };
+
+  const tables = async (url: string) =>
+    (
+      await query<{ tablename: string }>(
+        url,
+        "select tablename from pg_tables where schemaname = 'public' and tablename <> '_migrations' order by tablename",
+      )
+    ).map((r) => r.tablename);
+
+  const ledger = async (url: string) =>
+    (await query<{ filename: string }>(url, "select filename from _migrations order by filename")).map((r) => r.filename);
+
+  const write = (filename: string, sql: string) => writeFileSync(join(dir, filename), sql);
+
+  beforeEach(async () => {
+    await query(adminUrl(), `drop database if exists "${name}" with (force)`);
+    dir = mkdtempSync(join(tmpdir(), "haul-migrate-test-db-"));
+  });
+
+  afterEach(() => {
+    rmSync(dir, { recursive: true, force: true });
+  });
+
+  it("AC9: given no database, creates and migrates it and returns its URL", async () => {
+    write("20260101000000_parent.sql", "create table parent (id int primary key);");
+
+    const url = await migrateTestDatabase(TEST_DATABASE_URL, "migrated", dir);
+
+    expect(url).toBe(testDatabaseUrl(TEST_DATABASE_URL, "migrated"));
+    expect(await ledger(url)).toEqual(["20260101000000_parent.sql"]);
+    expect(await tables(url)).toEqual(["parent"]);
+  });
+
+  it("AC9: given a database with a changed applied file, rebuilds it from empty and returns the same URL", async () => {
+    const url = await ensureTestDatabase(TEST_DATABASE_URL, "migrated");
+    write("20260101000000_parent.sql", "create table parent (id int primary key);");
+    await migrate(url, dir);
+    write("20260101000000_parent.sql", "create table parent (id int primary key, name text);");
+    await query(url, "create table extra (id int)");
+
+    await expect(migrateTestDatabase(TEST_DATABASE_URL, "migrated", dir)).resolves.toBe(url);
+
+    expect(await tables(url)).toEqual(["parent"]);
+    expect(
+      (
+        await query<{ column_name: string }>(
+          url,
+          "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'parent' order by column_name",
+        )
+      ).map((r) => r.column_name),
+    ).toEqual(["id", "name"]);
+    expect(await query(url, "select filename, checksum from _migrations")).toEqual([
+      {
+        filename: "20260101000000_parent.sql",
+        checksum: createHash("sha256").update(readFileSync(join(dir, "20260101000000_parent.sql"))).digest("hex"),
+      },
+    ]);
+  });
+
+  it("AC9: given a migration that fails for any other reason, throws that error and rebuilds nothing", async () => {
+    const url = await ensureTestDatabase(TEST_DATABASE_URL, "migrated");
+    write("20260101000000_good.sql", "create table good (id int);");
+    await migrate(url, dir);
+    await query(url, "create table keep (id int)");
+    write("20260102000000_bad.sql", "select 1 / 0;");
+
+    const err = await migrateTestDatabase(TEST_DATABASE_URL, "migrated", dir).then(
+      () => "resolved",
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(Error);
+    expect((err as Error).message).toMatch(/division by zero/);
+    expect(err).not.toBeInstanceOf(ChangedMigrationError);
+    expect(await tables(url)).toEqual(["good", "keep"]);
+    expect(await ledger(url)).toEqual(["20260101000000_good.sql"]);
   });
 });

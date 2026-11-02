@@ -9,8 +9,7 @@ import { fileURLToPath } from "node:url";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, createPool } from "../src/adapters/pg-connect.js";
 import type * as PgConnect from "../src/adapters/pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
-import { migrate } from "./migrate.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
 import { assertLocalUrl, runSeed, SEEDS } from "./seed.js";
 
 vi.mock("../src/adapters/pg-connect.js", async (importOriginal) => {
@@ -153,8 +152,7 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
   let pool: ReturnType<typeof createPool>;
 
   beforeAll(async () => {
-    url = await ensureTestDatabase(TEST_DATABASE_URL, "seed");
-    await migrate(url);
+    url = await migrateTestDatabase(TEST_DATABASE_URL, "seed");
     pool = actual.createPool(url);
   });
 
