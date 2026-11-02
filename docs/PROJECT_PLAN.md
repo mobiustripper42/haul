@@ -27,13 +27,20 @@ translation, email, auth, the admin guard and audit.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 0.1 | Scaffold commit, spec, context, plan, future ideas, first decision records | 3 | [#4](https://github.com/mobiustripper42/haul/issues/4) |
-| 0.2 | Next skeleton, framework-free core, the gate | 3 | [#5](https://github.com/mobiustripper42/haul/issues/5) · Muster's tsconfig split and `@core/*` alias; check whether webpack is still needed |
-| 0.3 | Local Postgres, migrations, repository port with in-memory and Postgres adapters; CI | 8 | [#6](https://github.com/mobiustripper42/haul/issues/6) · Contract test runs both adapters; TLS inside the constructor. CI runs the gate against a Postgres service; repo goes public for the Actions minutes. Re-pointed from 5 on 2026-10-26 |
-| 0.4 | i18n: translation files, language resolution, Spanish proof page | 3 | [#7](https://github.com/mobiustripper42/haul/issues/7) · Lint rule fails on a bare string |
-| 0.6 | Email port (fake and Resend adapters, templates through i18n) and email-code auth: 6-digit code, session, rate limit | 8 | [#9](https://github.com/mobiustripper42/haul/issues/9) · Ported from muster. Brings in Playwright, desktop and 375px projects from the start (DEC-008); the full e2e run is CI only. Re-pointed from 3 on 2026-10-26. 0.5 (2, [#8](https://github.com/mobiustripper42/haul/issues/8)) folded in on 2026-10-27 |
-| 0.7 | Admin role and guarded admin area | 3 | [#10](https://github.com/mobiustripper42/haul/issues/10) · Tests: signed out, member, expired session |
-| 0.8 | Audit by trigger on every table | 5 | [#11](https://github.com/mobiustripper42/haul/issues/11) · **@architect pass.** Test fails if a table lacks the trigger |
+| 0.1 | Scaffold commit, spec, context, plan, future ideas, first decision records | 3 | [x] [#4](https://github.com/mobiustripper42/haul/issues/4) |
+| 0.2 | Next skeleton, framework-free core, the gate | 3 | [x] [#5](https://github.com/mobiustripper42/haul/issues/5) · Muster's tsconfig split and `@core/*` alias; check whether webpack is still needed |
+| 0.3 | Local Postgres, migrations, repository port with in-memory and Postgres adapters; CI | 8 | [x] [#6](https://github.com/mobiustripper42/haul/issues/6) · Contract test runs both adapters; TLS inside the constructor. CI runs the gate against a Postgres service; repo goes public for the Actions minutes. Re-pointed from 5 on 2026-10-26 |
+| 0.4 | i18n: translation files, language resolution, Spanish proof page | 3 | [x] [#7](https://github.com/mobiustripper42/haul/issues/7) · Lint rule fails on a bare string |
+| 0.6 | Email port (fake and Resend adapters, templates through i18n) and email-code auth: 6-digit code, session, rate limit | 8 | [x] [#9](https://github.com/mobiustripper42/haul/issues/9) · Ported from muster. Brings in Playwright, desktop and 375px projects from the start (DEC-008); the full e2e run is CI only. Re-pointed from 3 on 2026-10-26. 0.5 (2, [#8](https://github.com/mobiustripper42/haul/issues/8)) folded in on 2026-10-27 |
+| 0.7 | Admin role and guarded admin area | 3 | [x] [#10](https://github.com/mobiustripper42/haul/issues/10) · Tests: signed out, member, expired session |
+| 0.8 | Audit by trigger on every table | 5 | [x] [#11](https://github.com/mobiustripper42/haul/issues/11) · **@architect pass.** Test fails if a table lacks the trigger |
+| 0.9 | Sign-in screens to the settled design, desktop and mobile | 5 | [x] [#19](https://github.com/mobiustripper42/haul/issues/19) · Added during P0 retro |
+| 0.10 | Dev seeds: named, re-runnable seed commands for by-hand checks, and a dev reset | 3 | [x] [#21](https://github.com/mobiustripper42/haul/issues/21) · Added during P0 retro |
+| 0.11 | Sign-in: a five-guess lock and an emailed sign-in link | 8 | [x] [#22](https://github.com/mobiustripper42/haul/issues/22) · Added during P0 retro |
+| 0.12 | Playwright harness and the sign-in round trip in e2e | 5 | [x] [#31](https://github.com/mobiustripper42/haul/issues/31) · Added during P0 retro |
+| 0.13 | Sign-in events in the audit log: sign-ins, locks and rate-limit refusals | 5 | [x] [#34](https://github.com/mobiustripper42/haul/issues/34) · Added during P0 retro |
+| 0.14 | UI consistency, app half: one component per look, and lint refuses a hand-built copy | 5 | [x] [#38](https://github.com/mobiustripper42/haul/issues/38) · Added during P0 retro |
+| 0.15 | UI consistency, workflow half: @ui-reviewer per task and per phase | 3 | [x] [#40](https://github.com/mobiustripper42/haul/issues/40) · Added during P0 retro |
 
 **Phase 0 total: 33 pts**
 
@@ -49,6 +56,7 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
+| 1.0 | Migrations editable until merged: a checksum in `_migrations`, a refusal on a changed file, test databases rebuilt from empty | 3 | [#30](https://github.com/mobiustripper42/haul/issues/30) · Reopened at the Phase 0 retro: `/build-task` makes an edited migration common (task 0.13). Before 1.1, the first migration task |
 | 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | SQL and seeds only. **Blocked on spec open question 13** |
 | 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | Template: muster's `fake-payment.ts` discipline |
 | 1.3 | Public signup page | 5 | Pickers generated from option types; placeholder recurring-charge wording until 1.12. Signup confirms the email by code, using 0.6's flow, before the member is created. Signup needs its own wrong-guess limit: 0.6's is kept per member, and no member exists yet at signup (issue #22) |
@@ -56,13 +64,15 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 | 1.5 | Cap: reserve, charge, confirm or release | 3 | Muster's guarded write |
 | 1.6 | Signup confirmation email | 2 | |
 | 1.7 | Admin member list and CSV | 3 | Cards on mobile. The first second admin surface, so it adds a test that every page, route and server action under `app/admin/` calls `requireAdmin` first — the CSV route included (DEC-018) |
-| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`). The app's database user gets no privileges on `audit_log` and no `TRUNCATE` on any table (DEC-019) |
+| 1.8 | Production: Vercel, Crunchy, Cloudflare, DNS, Resend, runbook | 5 | Optimistic — DNS is the farm's. Account ownership: spec open question 18. Add haul's Crunchy CA to `src/adapters/pg-connect.ts` (`TRUST`'s `ca`). The app's database user gets no privileges on `audit_log` and no `TRUNCATE` on any table (DEC-019), and EXECUTE on `audit_event()` (DEC-025) |
 | 1.9 | Square production cutover and smoke test | 2 | Fold candidate with 1.10 |
 | 1.10 | Wix link and go-live checklist | 2 | |
 | 1.12 | Consent wording; terms and privacy pages; legal footer in the email template | 2 | Farm's existing legal text (spec open question 17). Built before 1.11 so its strings get translated |
-| 1.11 | Spanish translation pass: machine translation, review, missing-key check in the gate | 2 | Goal is translatable; Spanish is the one language filled in. Later tasks add Spanish for their own strings |
+| 1.11 | Spanish translation pass: machine translation, review, missing-key check in the gate | 2 | Goal is translatable; Spanish is the one language filled in. Later tasks add Spanish for their own strings. Decides, alongside Spanish, whether `/retro`'s `@ui-reviewer` pass covers every language (Eric, 2026-11-02) |
 
-**Phase 1 total: 47 pts**
+**Phase 1 total: 50 pts**
+
+Also labelled `phase:1`, unpointed: the Phase 0 retro's UI review findings, issues #43–#51.
 
 **Ejection point:** the Supper Club is on sale at `members.ohiocityfarm.com` and Lenny can see who
 signed up.
@@ -122,7 +132,7 @@ One row per phase, written by `/retro` at close.
 
 | Phase | Closed | Points | Days | Re-estimated | Net drift |
 |-------|--------|--------|------|--------------|-----------|
-| 0 | — | — | — | — | — |
+| 0 | 2026-11-02 | 67 / 27 | 7.6 | 3 | +8 |
 | 1 | — | — | — | — | — |
 | 2 | — | — | — | — | — |
 
