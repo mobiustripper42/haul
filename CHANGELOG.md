@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.5] - 2026-10-27
+- PR #16: Task 0.4 — i18n: translation files, language resolution, Spanish proof page
+
 ## [0.0.4] - 2026-10-26
 - PR #15: Spec and plan: farm answers — Dec 1 on sale, CSA by May 1, account pages, admin cancel, week credit, test flag
 
