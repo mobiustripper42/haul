@@ -41,7 +41,7 @@ Run only when `.claude/ui-context.md` exists; read it with the Read tool. It com
 gh pr list --state merged --search "merged:>=<earliest closed createdAt>" --json number,files --limit 100
 ```
 
-**No changed file is a screen file or a strings file**, as `ui-context.md` defines them: skip this step; the retro has no UI review line. **Otherwise** invoke `@ui-reviewer` on every route `ui-context.md`'s route rule lists, in every language it names, at both its viewports. Give it the open issues an earlier run filed (`gh issue list --state open --search '"UI review" in:title'`), so it does not report them again.
+**No changed file is a screen file or a strings file**, as `ui-context.md` defines them: skip this step; the retro has no UI review line. **Otherwise** invoke `@ui-reviewer` on every route `ui-context.md`'s route rule lists, in English, at both its viewports. Give it the open issues an earlier run filed (`gh issue list --state open --search '"UI review" in:title'`), so it does not report them again.
 
 Show the findings, then ask once for each: **"Fix before close, or file for Phase N+1?"** Every finding becomes an issue titled `UI review (Phase <N> retro): <finding>`, with the finding as its body. The phase in the title is what keeps an earlier retro's filed findings, which arrive labelled `phase:<N>`, out of this retro's count:
 - **Fix:** labelled `phase:<N>`, pointed and built as a task the normal way. When every finding has its answer and any is a fix, stop the retro. Re-run `/retro` once the fixes merge; the re-run reviews again.

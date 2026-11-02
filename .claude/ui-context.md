@@ -24,10 +24,6 @@ Every look a screen uses is one component in `components/ui/` (DEC-024): `ls com
 - **Strings file:** anything in `src/messages/`.
 - **Route:** a `page.tsx` is the screen at its folder's route — `app/sign-in/code/page.tsx` is `/sign-in/code`; `find app -name page.tsx` lists them all. A change to a `layout.tsx`, or to a file under `components/` or `app/globals.css`, reaches every route whose page or layout uses it, directly or through another component.
 
-## Languages
-
-One file per language in `src/messages/` (`ls src/messages/`). Switch with the language switcher on the screen; a signed-in member's own language wins over the cookie (`app/language.ts:7`). A string a language lacks falls back to English (`src/messages/es.ts:3`), and that is not a finding: no translation is promised.
-
 ## Reaching a screen
 
 `npm run db:up`, `npm run db:seed:members`, then `npm run dev` if nothing answers on port 4000. Sign in as `eric@ocf.xx` (member) or `lenny@ocf.xx` (admin) (`db/seeds/members.ts:10`); the code is at `/dev/outbox?to=<email>` (`app/dev/outbox/route.ts`). A screen still out of reach is named in the report as not reached — never reviewed from source and called clean.

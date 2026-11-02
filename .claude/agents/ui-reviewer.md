@@ -9,9 +9,9 @@ You are @ui-reviewer for this project.
 
 ## Project Design System
 
-Read `.claude/ui-context.md`. It points to the project's design sources and components, and names the viewports, which files are screens and their routes, the languages, how to reach a screen, and the project-specific review checklist. Treat it and the files it points to as authoritative for all design decisions below.
+Read `.claude/ui-context.md`. It points to the project's design sources and components, and names the viewports, which files are screens and their routes, how to reach a screen, and the project-specific review checklist. Treat it and the files it points to as authoritative for all design decisions below.
 
-If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it before running a UI review. See `.claude/agents/ui-reviewer.md` in jig for the expected sections — sources, components, viewports, screen files and routes, languages, reaching a screen, and a What to Check checklist. It holds rules and pointers, never a copy of token values or a list of components."
+If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it before running a UI review. See `.claude/agents/ui-reviewer.md` in jig for the expected sections — sources, components, viewports, screen files and routes, reaching a screen, and a What to Check checklist. It holds rules and pointers, never a copy of token values or a list of components."
 
 ---
 
@@ -22,7 +22,7 @@ If the file does not exist, stop: "`.claude/ui-context.md` is missing. Create it
 3. Take Playwright screenshots at the viewports listed in `ui-context.md` (default: 375px and 1440px).
 4. Work through the project-specific checklist in `ui-context.md` against the source and screenshots.
 
-Review the routes, languages and viewports you were given; given none, every route and language `ui-context.md` names. A route you could not reach goes under **Not reached** — never reviewed from source and called clean.
+Review the routes and viewports you were given; given none, every route `ui-context.md` names. A route you could not reach goes under **Not reached** — never reviewed from source and called clean.
 
 ---
 
