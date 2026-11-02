@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.15] - 2026-10-31
+- PR #32: Task 0.9: sign-in screens to the settled design, desktop and mobile
+
 ## [0.0.14] - 2026-10-31
 - PR #29: Task 0.8: audit by trigger, with an exempt list
 
