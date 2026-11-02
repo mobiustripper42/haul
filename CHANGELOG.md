@@ -1,5 +1,9 @@
 # Changelog
 
+## [0.1.0] - 2026-11-02 — Phase 0
+- 67 pts shipped across 22 PRs
+- See `docs/RETROSPECTIVES.md` for the retro
+
 ## [0.0.22] - 2026-11-02
 - PR #42: Task 0.13: sign-in events in the audit log, and a sign-in log that names the failing stage
 
