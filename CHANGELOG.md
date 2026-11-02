@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.16] - 2026-10-31
+- PR #33: Task 0.12: Playwright harness and the sign-in round trip in e2e
+
 ## [0.0.15] - 2026-10-31
 - PR #32: Task 0.9: sign-in screens to the settled design, desktop and mobile
 
