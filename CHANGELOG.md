@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.12] - 2026-10-30
+- PR #27: jig sync: the five held /build-task files
+
 ## [0.0.11] - 2026-10-30
 - PR #26: Task 0.7: admin role and guarded admin page
 
