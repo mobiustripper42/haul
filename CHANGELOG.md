@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.19] - 2026-11-01
+- PR #37: build-task: a Stop sets the build aside and stops; stashes leave the operator's work alone
+
 ## [0.0.18] - 2026-11-01
 - PR #36: Task 0.11: a five-guess lock and an emailed sign-in link
 
