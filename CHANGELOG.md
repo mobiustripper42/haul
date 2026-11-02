@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.17] - 2026-10-31
+- PR #35: build-task: one shared home for anything a spec describes twice
+
 ## [0.0.16] - 2026-10-31
 - PR #33: Task 0.12: Playwright harness and the sign-in round trip in e2e
 
