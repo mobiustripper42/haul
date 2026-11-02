@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.6] - 2026-10-27
+- PR #17: jig sync 2026-10-27: jig 497cdc2
+
 ## [0.0.5] - 2026-10-27
 - PR #16: Task 0.4 — i18n: translation files, language resolution, Spanish proof page
 
