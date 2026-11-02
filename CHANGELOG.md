@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.8] - 2026-10-29
+- PR #23: Task 0.6: email port and email-code sign-in
+
 ## [0.0.7] - 2026-10-27
 - PR #18: @architect: a draft decision is rewritten, an active one superseded
 
