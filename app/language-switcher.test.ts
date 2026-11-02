@@ -4,6 +4,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES } from "@core/i18n.js";
+import { Button } from "../components/ui/button";
 import { setLanguage } from "./language-actions";
 import { LanguageSwitcher } from "./language-switcher";
 import { emptyRequest } from "./next-headers-fake";
@@ -67,7 +68,7 @@ describe("AC6 — LanguageSwitcher", () => {
 
   it('AC6: each button submits name="language" with its LANGUAGES code as value', async () => {
     const { element } = await render();
-    const buttons = findAll(element, "button").map((b) => ({ name: b.props.name, value: b.props.value }));
+    const buttons = findAll(element, Button).map((b) => ({ name: b.props.name, value: b.props.value }));
     expect(buttons).toEqual(Object.keys(LANGUAGES).map((code) => ({ name: "language", value: code })));
   });
 

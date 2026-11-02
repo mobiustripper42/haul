@@ -26,6 +26,7 @@
   "include": [
     "next-env.d.ts",
     "app",
+    "components",
     "e2e",
     "next.config.ts",
     "playwright.config.ts",

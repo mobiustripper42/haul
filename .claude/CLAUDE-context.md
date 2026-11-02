@@ -112,7 +112,8 @@ Plain SQL files in `db/migrations/`, applied in filename order by `db/migrate.ts
 - **Time** — cutoffs and pickup windows are computed in America/New_York
 - **Ports** — every outside service sits behind a port with a permanent fake adapter; the fake is the test substrate
 - **Audit** — every table not on `AUDIT_EXEMPT` in `db/schema-check.ts` carries the audit trigger; a test enforces it (DEC-019)
-- **UI classes** — token utilities only, from `app/globals.css`; a button names its kind (`btn-primary`, `btn-secondary` or `btn-quiet`); lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
+- **UI components** — every look a screen uses is one component in `components/ui/` (`ls components/ui/*.tsx`); a button's kind is a TypeScript prop, not a class; lint fails a raw `<button>`, `<input>`, `<label>`, `<h1>`–`<h6>` or `<main>`, and a component's class in a class string, outside that folder (DEC-024)
+- **UI classes** — token utilities only, from `app/globals.css`; lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`

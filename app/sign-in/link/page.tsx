@@ -1,4 +1,8 @@
 import { redirect } from "next/navigation";
+import { Button } from "../../../components/ui/button";
+import { Card } from "../../../components/ui/card";
+import { Heading } from "../../../components/ui/heading";
+import { Shell } from "../../../components/ui/shell";
 import { getTranslator } from "../../language";
 import { signInWithLink } from "../actions";
 
@@ -12,17 +16,17 @@ export default async function SignInLink({ searchParams }: { searchParams: Promi
 
   const t = await getTranslator();
   return (
-    <main className="page-narrow">
-      <section className="card">
-        <h1 className="font-display text-heading text-teal">{t("signIn.title")}</h1>
+    <Shell>
+      <Card>
+        <Heading>{t("signIn.title")}</Heading>
         <p className="text-ink-muted">{t("signIn.linkPrompt")}</p>
         <form action={signInWithLink}>
           <input type="hidden" name="token" value={token} />
-          <button type="submit" className="btn-primary w-full">
+          <Button kind="primary" full type="submit">
             {t("signIn.submitCode")}
-          </button>
+          </Button>
         </form>
-      </section>
-    </main>
+      </Card>
+    </Shell>
   );
 }

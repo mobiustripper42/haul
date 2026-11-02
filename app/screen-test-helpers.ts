@@ -1,7 +1,7 @@
 // Test-only: reading a screen rendered through react-dom/server (no DOM library is installed),
 // catching a mocked `redirect`, and reading what was logged. Nothing that ships imports this.
 import { inspect } from "node:util";
-import { isValidElement, type ReactElement, type ReactNode } from "react";
+import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
 
 const decode = (s: string): string =>
   s
@@ -40,8 +40,30 @@ export function attributesOf(html: string, tag: string): Array<Record<string, st
   return found;
 }
 
-/** Every host element of `type` in the tree a page returns, in document order. */
-export function findAll(node: ReactNode, type: string): ReactElement<Record<string, unknown>>[] {
+/**
+ * The markup with React's script and comments removed and each tag's attributes sorted by name, so
+ * two renderings compare equal whatever order React wrote the attributes in. Values are kept as
+ * written (entities and all). `drop` names attributes to leave out of a tag, given its name and
+ * attributes.
+ */
+export function normalMarkup(
+  html: string,
+  drop: (tag: string, attributes: Record<string, string>) => string[] = () => [],
+): string {
+  return withoutScripts(html).replace(/<([a-zA-Z][\w-]*)\b([^>]*?)(\/?)>/g, (_whole, tag: string, rest: string, close: string) => {
+    const attributes: Record<string, string> = {};
+    for (const attr of rest.matchAll(/([^\s=/]+)(?:="([^"]*)")?/g)) attributes[attr[1] ?? ""] = attr[2] ?? "";
+    const dropped = new Set(drop(tag, attributes));
+    const kept = Object.keys(attributes)
+      .filter((name) => !dropped.has(name))
+      .sort()
+      .map((name) => ` ${name}="${attributes[name] ?? ""}"`);
+    return `<${tag}${kept.join("")}${close}>`;
+  });
+}
+
+/** Every element of `type` — a tag name or a component — in the tree a page returns, in document order. */
+export function findAll(node: ReactNode, type: string | ComponentType<never>): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap((child) => findAll(child as ReactNode, type));
   if (!isValidElement<Record<string, unknown>>(node)) return [];
   const here = node.type === type ? [node] : [];
