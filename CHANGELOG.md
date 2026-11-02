@@ -1,5 +1,8 @@
 # Changelog
 
+## [0.0.20] - 2026-11-02
+- PR #39: Task 0.14: one component per look, and lint refuses a hand-built copy
+
 ## [0.0.19] - 2026-11-01
 - PR #37: build-task: a Stop sets the build aside and stops; stashes leave the operator's work alone
 
