@@ -17,6 +17,7 @@ higher number won.
 Tests are baked into every task estimate — no separate testing tasks.
 Every screen is two designs, desktop and mobile, and the points include both.
 Hours for pricing, and how they were derived: `docs/ESTIMATE-2026-10-25.md` (a dated snapshot).
+The delivery forecast from Phase 0's measured pace: `docs/ESTIMATE-2026-11-02.md` (a dated snapshot).
 
 ---
 
