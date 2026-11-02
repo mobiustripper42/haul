@@ -27,13 +27,13 @@ Every look a screen uses is one component in `components/ui/` (DEC-024): `ls com
 
 ## Reaching a screen
 
-`npm run db:up`, then start a review server of your own on port 4100, with the env `playwright.config.ts:30-37` sets:
+`npm run db:up`, then start a review server of your own on port 4100, with the env `playwright.config.ts:30-39` sets:
 
 ```
-E2E=1 SITE_URL=http://localhost:4100 DATABASE_URL=postgres://haul:haul@localhost:5434/haul_test_e2e RESEND_API_KEY= EMAIL_FROM= ./node_modules/.bin/next dev --webpack --port 4100
+E2E=1 SITE_URL=http://localhost:4100 DATABASE_URL=postgres://haul:haul@localhost:5434/haul_test_e2e RESEND_API_KEY= EMAIL_FROM= SESSION_SECRET=e2e-session-secret-not-for-use-0123456789 ./node_modules/.bin/next dev --webpack --port 4100
 ```
 
-Prepare its database with `npm run db:migrate <that url>` and `npm run db:seed:members <that url>`. Sign in as `eric@ocf.xx` (member) or `lenny@ocf.xx` (admin) (`db/seeds/members.ts:10`); the code is at `http://localhost:4100/dev/outbox?to=<email>`, which answers only on a server started with `E2E=1` (`app/dev/outbox/route.ts:10`). Never use the server on port 4000: its outbox answers 404 and its codes print in a terminal you can't read. When done, stop your server and empty its database with `npm run db:reset:dev <that url>`.
+The port and the database are the e2e suite's: never run the review while `npm run test:e2e` runs, which reuses a server left on 4100 and empties that database on every test. The database exists only once something has made it — on a fresh Docker volume, `docker compose exec -T postgres createdb -U haul haul_test_e2e` first. Prepare it with `npm run db:migrate <that url>` and `npm run db:seed:members <that url>`. Sign in as `eric@ocf.xx` (member) or `lenny@ocf.xx` (admin) (`db/seeds/members.ts:10`); the code is at `http://localhost:4100/dev/outbox?to=<email>`, which answers only on a server started with `E2E=1` (`app/dev/outbox/route.ts:10`). Never use the server on port 4000: its outbox answers 404 and its codes print in a terminal you can't read. When done, stop your server and empty its database with `npm run db:reset:dev <that url>`.
 
 A screen still out of reach is named in the report as not reached — never reviewed from source and called clean.
 
