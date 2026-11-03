@@ -1,0 +1,377 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Supper Club signup</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 11px; line-height: 14px; color: #55615f;">by Re:Source Cleveland</span>
+      </a>
+      <nav aria-label="Account and language" style="display: flex; align-items: center; gap: 16px;">
+        <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div>
+        <a href="SignIn.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; color: #003f4c; text-decoration: none;">Sign in</a>
+      </nav>
+    </div>
+  </header>
+
+  <main style="flex: 1 0 auto; width: 100%; max-width: 960px; box-sizing: border-box; margin: 0 auto; padding: 48px 16px; display: flex; flex-wrap: wrap; gap: 32px; align-items: flex-start; justify-content: center;">
+
+    <sc-if value="{{marketing}}" hint-placeholder-val="{{true}}">
+      <section aria-labelledby="sc-title" style="flex: 1 1 320px; min-width: 0; display: flex; flex-direction: column; gap: 20px;">
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">SUPPER CLUB · STARTS JANUARY 2027</span>
+          <h1 id="sc-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 34px; line-height: 38px; letter-spacing: 0.04em; color: #003f4c;">Weekly meals from the farm kitchen</h1>
+        </div>
+        <p style="margin: 0;">Let the multicultural kitchen team at Ohio City Farm handle a piece of your busy week's meal prep. Global flavors, simple whole-food ingredients, and seasonal, local produce grown here in Ohio City.</p>
+        <p style="margin: 0; color: #55615f;">Our kitchen team comes from the Democratic Republic of Congo, Lebanon, Louisiana, Thailand and Pakistan.</p>
+
+        <div style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+          <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Every week, a family-style portion of each</h2>
+          <ul style="margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px;">
+            <li>Protein main, standard or vegan</li>
+            <li>Grain or bread</li>
+            <li>Veggie side</li>
+            <li>Salad</li>
+            <li>Soup or stew</li>
+          </ul>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">Two menus each week, standard and vegan. Allergens are marked on the packaging. Some dishes come with one or two quick steps to finish at home, so they stay fresh.</p>
+        </div>
+
+        <div style="background: #e3ebe8; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 8px;">
+          <span style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #003f4c;">A SAMPLE WEEK</span>
+          <p style="margin: 0; font-weight: 600; color: #003f4c;">Shish tawook chicken skewers</p>
+          <p style="margin: 0;">Mujadara rice and lentils with onions · Roasted squash · Shredded carrot and walnut salad with sumac · Butternut squash soup</p>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">Vegan: Lebanese chickpea moussaka in place of the chicken.</p>
+        </div>
+
+        <div style="display: flex; gap: 12px; align-items: flex-start;">
+          <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="M12 21s-7-6.2-7-11.5A7 7 0 0 1 19 9.5C19 14.8 12 21 12 21z"></path><circle cx="12" cy="9.5" r="2.5"></circle></svg>
+          <p style="margin: 0;"><strong style="font-weight: 600;">Pick up Sunday or Monday</strong> at the farm store, 2304 Bridge Ave. Hours: [PICKUP HOURS].</p>
+        </div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onDetails}}" hint-placeholder-val="{{true}}">
+      <section aria-labelledby="form-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <h2 id="form-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Join the Supper Club</h2>
+
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 12px;">
+          <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">1. How many people?</legend>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <sc-for list="{{sizes}}" as="item" hint-placeholder-count="2">
+              <sc-if value="{{item.selected}}" hint-placeholder-val="{{true}}">
+                <button type="button" aria-pressed="true" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 64px; box-sizing: border-box; padding: 11px 15px; border: 2px solid #003f4c; border-radius: 8px; background: #e3ebe8; color: #1e2a2d; display: flex; flex-direction: column; gap: 0;">
+                  <span style="font-weight: 600; color: #003f4c;">{{item.label}}</span>
+                  <span style="font-size: 12px; line-height: 18px;">{{item.priceText}} a week</span>
+                </button>
+              </sc-if>
+              <sc-if value="{{item.unselected}}" hint-placeholder-val="{{false}}">
+                <button type="button" aria-pressed="false" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 64px; box-sizing: border-box; padding: 12px 16px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; display: flex; flex-direction: column; gap: 0;">
+                  <span style="font-weight: 600;">{{item.label}}</span>
+                  <span style="font-size: 12px; line-height: 18px; color: #55615f;">{{item.priceText}} a week</span>
+                </button>
+              </sc-if>
+            </sc-for>
+          </div>
+        </fieldset>
+
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 12px;">
+          <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">2. Which menu?</legend>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px;">
+            <sc-for list="{{prefs}}" as="item" hint-placeholder-count="2">
+              <sc-if value="{{item.selected}}" hint-placeholder-val="{{true}}">
+                <button type="button" aria-pressed="true" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 64px; box-sizing: border-box; padding: 11px 15px; border: 2px solid #003f4c; border-radius: 8px; background: #e3ebe8; color: #1e2a2d; display: flex; flex-direction: column; gap: 0;">
+                  <span style="font-weight: 600; color: #003f4c;">{{item.label}}</span>
+                  <span style="font-size: 12px; line-height: 18px;">{{item.sub}}</span>
+                </button>
+              </sc-if>
+              <sc-if value="{{item.unselected}}" hint-placeholder-val="{{false}}">
+                <button type="button" aria-pressed="false" onClick="{{item.pick}}" style="font: inherit; text-align: left; cursor: pointer; min-height: 64px; box-sizing: border-box; padding: 12px 16px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; display: flex; flex-direction: column; gap: 0;">
+                  <span style="font-weight: 600;">{{item.label}}</span>
+                  <span style="font-size: 12px; line-height: 18px; color: #55615f;">{{item.sub}}</span>
+                </button>
+              </sc-if>
+            </sc-for>
+          </div>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">You can switch size or menu any week before the cutoff.</p>
+        </fieldset>
+
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
+          <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">3. Your details</legend>
+          <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px;">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">First name
+              <input type="text" autocomplete="given-name" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Last name
+              <input type="text" autocomplete="family-name" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </label>
+          </div>
+
+          <sc-if value="{{fieldsOk}}" hint-placeholder-val="{{true}}">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Email
+              <input type="email" autocomplete="email" placeholder="name@example.com" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span style="font-weight: 400; color: #55615f;">This is how you sign in: we email you a 6-digit code, no password. We confirm it before you pay.</span>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Phone
+              <input type="tel" autocomplete="tel" placeholder="(216) 555-0134" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span style="font-weight: 400; color: #55615f;">So the farm can reach you about your box.</span>
+            </label>
+          </sc-if>
+          <sc-if value="{{fieldsBad}}" hint-placeholder-val="{{false}}">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Email
+              <input type="email" autocomplete="email" value="maria@example" aria-invalid="true" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span role="alert" style="font-weight: 500; color: #a93226;">Enter a full email address, like name@example.com.</span>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Phone
+              <input type="tel" autocomplete="tel" aria-invalid="true" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span role="alert" style="font-weight: 500; color: #a93226;">Enter your phone number.</span>
+            </label>
+          </sc-if>
+
+          <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Language for emails
+            <select style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <option>English</option>
+              <option lang="es">Español</option>
+            </select>
+          </label>
+        </fieldset>
+
+        <button type="button" onClick="{{toCode}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Email me a code</button>
+        <p style="margin: -8px 0 0 0; text-align: center; font-size: 12px; line-height: 18px; color: #55615f;">Next we confirm your email. Then you add a card and pay for your first week.</p>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onCode}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="code-title" style="width: 100%; max-width: 376px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <button type="button" onClick="{{toDetails}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          Use a different email
+        </button>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 id="code-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Check your email</h2>
+          <p style="margin: 0; color: #55615f;">We sent a 6-digit code to <strong style="font-weight: 600; color: #1e2a2d;">{{email}}</strong>. Enter it to confirm your email.</p>
+        </div>
+        <sc-if value="{{errWrong}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code doesn't match.</strong> Check the newest email from us and try again.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{errExpired}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code has expired.</strong> Codes only work for a short time. Send yourself a new one below.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{errLocked}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><rect x="5" y="10.5" width="14" height="10" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">Too many tries.</strong> For your safety, signup with this email is paused. Wait a few minutes, then send yourself a new code.</span>
+          </div>
+        </sc-if>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">6-digit code
+          <sc-if value="{{codeOk}}" hint-placeholder-val="{{true}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+          <sc-if value="{{codeBad}}" hint-placeholder-val="{{false}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="482193" aria-invalid="true" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+        </label>
+        <sc-if value="{{canConfirm}}" hint-placeholder-val="{{true}}">
+          <button type="button" onClick="{{toPayment}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Confirm email</button>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">No email? Check your spam folder, or <button type="button" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">send a new code</button>.</p>
+        </sc-if>
+        <sc-if value="{{needsNewCode}}" hint-placeholder-val="{{false}}">
+          <button type="button" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Send a new code</button>
+        </sc-if>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onPayment}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="pay-title" style="width: 100%; max-width: 560px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <h2 id="pay-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Join the Supper Club</h2>
+
+        <div style="display: flex; flex-direction: column; border-top: 1px solid #c7d5d1;">
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #c7d5d1;">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span style="font-size: 12px; line-height: 18px; color: #55615f;">Your box</span>
+              <span style="font-weight: 600;">{{sizeLabel}} · {{prefLabel}} · {{priceText}} a week</span>
+            </div>
+            <button type="button" onClick="{{toDetails}}" style="flex: none; font: inherit; cursor: pointer; min-height: 44px; margin-right: -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Change</button>
+          </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #c7d5d1;">
+            <div style="display: flex; flex-direction: column; min-width: 0;">
+              <span style="font-size: 12px; line-height: 18px; color: #55615f;">Your details</span>
+              <span style="font-weight: 600;">Maria Lopez · (216) 555-0134 · English</span>
+              <span style="display: flex; align-items: center; gap: 6px; color: #1e2a2d;">{{email}}
+                <svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1c4723" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><path d="M5 12.5l5 5 9-10"></path></svg>
+                <span style="font-size: 12px; line-height: 18px; font-weight: 600; color: #1c4723;">Confirmed</span>
+              </span>
+            </div>
+            <button type="button" onClick="{{toDetails}}" style="flex: none; font: inherit; cursor: pointer; min-height: 44px; margin-right: -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Change</button>
+          </div>
+        </div>
+
+        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
+          <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">4. Payment</legend>
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <span style="font-size: 12px; line-height: 18px; font-weight: 500;">Card</span>
+            <div style="height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; background: #ffffff; display: flex; align-items: center; gap: 12px; font-size: 16px; color: #55615f;">
+              <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#487878" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="M3 10h18"></path></svg>
+              <span style="flex: 1 1 auto;">Card number</span>
+              <span>MM/YY</span>
+              <span>CVV</span>
+              <span>ZIP</span>
+            </div>
+            <span style="font-size: 12px; line-height: 18px; color: #55615f;">Secure card entry by Square. Your card is saved for the weekly charge.</span>
+          </div>
+
+          <div style="background: #f7f7f7; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+              <span>Today, for your first week</span>
+              <strong style="font-weight: 600;">{{priceText}}</strong>
+            </div>
+            <div style="display: flex; justify-content: space-between; gap: 16px;">
+              <span>Then every week, at the cutoff</span>
+              <strong style="font-weight: 600;">{{priceText}}</strong>
+            </div>
+            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">First pickup: [FIRST PICKUP DATE]. After that, your card is charged {{priceText}} at the end of each Monday for the following week's pickup, until you cancel. [HOW TO SKIP, SWITCH OR CANCEL — consent wording, task 1.12]</p>
+          </div>
+
+          <label style="display: flex; gap: 12px; align-items: flex-start; cursor: pointer; min-height: 44px;">
+            <input type="checkbox" style="flex: none; width: 20px; height: 20px; margin: 1px 0 0 0; accent-color: #003f4c;">
+            <span>I agree to a weekly charge of {{priceText}} until I cancel, and to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>. [consent wording, task 1.12]</span>
+          </label>
+        </fieldset>
+
+        <sc-if value="{{declined}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">Your card was declined.</strong> Nothing was charged. Check the card details or try another card.</span>
+          </div>
+        </sc-if>
+
+        <a href="SignupDone.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Join and pay {{priceText}}</a>
+        <p style="margin: -8px 0 0 0; text-align: center; font-size: 12px; line-height: 18px; color: #55615f;">Limited to 50 boxes. No sales tax.</p>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onSoldOut}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="full-title" style="width: 100%; max-width: 376px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <sc-if value="{{soldOutPaying}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">The last box was taken while you were paying.</strong> Nothing was charged.</span>
+          </div>
+        </sc-if>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 id="full-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">The Supper Club is sold out</h2>
+          <p style="margin: 0;">All 50 boxes are taken right now. A box opens when a member cancels, so check back.</p>
+        </div>
+        <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">Questions? Email the farm at [SENDER ADDRESS].</p>
+        <a href="#" style="align-self: flex-start; display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; color: #003f4c; text-decoration: none;">Back to ohiocityfarm.com</a>
+      </section>
+    </sc-if>
+
+  </main>
+
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["details","code","payment","soldout"],"default":"details"},"codeError":{"editor":"enum","options":["none","wrong","expired","locked"],"default":"none"},"payError":{"editor":"enum","options":["none","declined","soldout"],"default":"none"},"fieldErrors":{"editor":"boolean","default":false},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":1400}}'>
+class Component extends DCLogic {
+  constructor(props) {
+    super(props);
+    this.state = { size: 'two', pref: 'standard', step: null };
+  }
+  renderVals() {
+    const p = this.props;
+    const clicked = this.state.step !== null;
+    const step = this.state.step ?? p.step ?? 'details';
+    const codeErr = clicked ? 'none' : (p.codeError ?? 'none');
+    const payErr = clicked ? 'none' : (p.payError ?? 'none');
+    const fieldErrors = !clicked && (p.fieldErrors === true || p.fieldErrors === 'true');
+    const soldOut = step === 'soldout' || payErr === 'soldout';
+    const needsNewCode = codeErr === 'expired' || codeErr === 'locked';
+    const sizeDefs = [
+      { id: 'two', label: '2 people', price: 50 },
+      { id: 'family', label: '3–4 people', price: 80 }
+    ];
+    const prefDefs = [
+      { id: 'standard', label: 'Standard', sub: 'The regular menu' },
+      { id: 'vegan', label: 'Vegan', sub: 'Every dish plant-based. Same price.' }
+    ];
+    const chosenSize = sizeDefs.find((s) => s.id === this.state.size) || sizeDefs[0];
+    const chosenPref = prefDefs.find((x) => x.id === this.state.pref) || prefDefs[0];
+    return {
+      marketing: step === 'details' && !soldOut,
+      onDetails: step === 'details' && !soldOut,
+      onCode: step === 'code' && !soldOut,
+      onPayment: step === 'payment' && !soldOut,
+      onSoldOut: soldOut,
+      soldOutPaying: payErr === 'soldout',
+      fieldsOk: !fieldErrors,
+      fieldsBad: fieldErrors,
+      errWrong: codeErr === 'wrong',
+      errExpired: codeErr === 'expired',
+      errLocked: codeErr === 'locked',
+      codeBad: codeErr === 'wrong',
+      codeOk: codeErr !== 'wrong',
+      needsNewCode: needsNewCode,
+      canConfirm: !needsNewCode,
+      declined: payErr === 'declined',
+      email: p.email ?? 'name@example.com',
+      sizes: sizeDefs.map((s) => ({
+        label: s.label,
+        priceText: '$' + s.price,
+        selected: s.id === this.state.size,
+        unselected: s.id !== this.state.size,
+        pick: () => this.setState({ size: s.id })
+      })),
+      prefs: prefDefs.map((x) => ({
+        label: x.label,
+        sub: x.sub,
+        selected: x.id === this.state.pref,
+        unselected: x.id !== this.state.pref,
+        pick: () => this.setState({ pref: x.id })
+      })),
+      priceText: '$' + chosenSize.price,
+      sizeLabel: chosenSize.label,
+      prefLabel: chosenPref.label,
+      toCode: () => this.setState({ step: 'code' }),
+      toPayment: () => this.setState({ step: 'payment' }),
+      toDetails: () => this.setState({ step: 'details' })
+    };
+  }
+}
+</script>
+</body>
+</html>
