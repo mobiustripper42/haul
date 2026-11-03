@@ -8,8 +8,7 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
-import { migrate } from "./migrate.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
 import { AUDIT_EXEMPT, schemaViolations } from "./schema-check.js";
 import type { SchemaViolation } from "./schema-check.js";
 
@@ -29,8 +28,7 @@ describe.skipIf(!up)(`AC9–AC15 — schemaViolations against <test db>_schema${
   let db: Client;
 
   beforeAll(async () => {
-    const url = await ensureTestDatabase(TEST_DATABASE_URL, "schema");
-    await migrate(url);
+    const url = await migrateTestDatabase(TEST_DATABASE_URL, "schema");
     db = createClient(url);
     await db.connect();
   });

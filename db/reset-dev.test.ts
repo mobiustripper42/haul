@@ -7,8 +7,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createClient, createPool } from "../src/adapters/pg-connect.js";
 import type * as PgConnect from "../src/adapters/pg-connect.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
-import { migrate } from "./migrate.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
 import { resetDev } from "./reset-dev.js";
 import { runSeed } from "./seed.js";
 
@@ -73,8 +72,7 @@ describe.skipIf(!up)(`AC11 — resetDev against <test db>_reset${skipped}`, () =
   let pool: ReturnType<typeof createPool>;
 
   beforeAll(async () => {
-    url = await ensureTestDatabase(TEST_DATABASE_URL, "reset");
-    await migrate(url);
+    url = await migrateTestDatabase(TEST_DATABASE_URL, "reset");
     pool = actual.createPool(url);
   });
 

@@ -2,13 +2,12 @@
 // `<test db>_repository`, created if absent, migrated once, truncated before each test.
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { migrate } from "../../db/migrate.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
-import { ensureTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
+import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
 const skipped = up ? "" : " — skipped: no Postgres at TEST_DATABASE_URL, run `npm run db:up`";
@@ -18,8 +17,7 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   let repo: PostgresRepository;
 
   beforeAll(async () => {
-    const url = await ensureTestDatabase(TEST_DATABASE_URL, "repository");
-    await migrate(url);
+    const url = await migrateTestDatabase(TEST_DATABASE_URL, "repository");
     pool = createPool(url);
     repo = new PostgresRepository(url);
   });
