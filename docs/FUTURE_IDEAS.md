@@ -59,3 +59,4 @@ The chronological archive — the source of detail and provenance. New ideas app
 | 2026-10-25 | Refunds and store credit in the app | Less manual work | Muster showed it multiplies payment complexity | open |
 | 2026-10-25 | Free signup gift, tracked | Raised at the Oct 23 meeting | Lenny never confirmed it | open |
 | 2026-11-02 | Admin audit-log page: a member's history, row changes and sign-in events, as one timeline | The farm reads a member's history without the developer | A query does it today; an admin screen waits until the farm must act without the developer (DEC-007) | open |
+| 2026-11-03 | A member adds another subscription: a second box, or a second product | Households taking two boxes; the data model already allows it (DEC-026) | Signup, the account page and the cap each need a path for a member who already holds one | open |
