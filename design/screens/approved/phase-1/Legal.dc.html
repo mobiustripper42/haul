@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Terms and privacy</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
+
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 11px; line-height: 14px; color: #55615f;">by Re:Source Cleveland</span>
+      </a>
+      <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+        <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+        <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+        <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+      </div>
+    </div>
+  </header>
+
+  <main style="flex: 1 0 auto; padding: 48px 16px; display: flex; justify-content: center; align-items: flex-start;">
+    <article style="width: 100%; max-width: 640px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <sc-if value="{{isTerms}}" hint-placeholder-val="{{true}}">
+          <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Terms of service</h1>
+        </sc-if>
+        <sc-if value="{{isPrivacy}}" hint-placeholder-val="{{false}}">
+          <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Privacy policy</h1>
+        </sc-if>
+        <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">Last updated [DATE]</p>
+      </div>
+
+      <p style="margin: 0;">[LEGAL TEXT: the farm's existing {{docName}}, spec open question 17. The farm reviews the Spanish. Nothing here is written by the portal.]</p>
+
+      <section style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">[SECTION HEADING]</h2>
+        <p style="margin: 0;">[SECTION TEXT]</p>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">[SECTION HEADING]</h2>
+        <p style="margin: 0;">[SECTION TEXT]</p>
+      </section>
+      <section style="display: flex; flex-direction: column; gap: 8px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">[SECTION HEADING]</h2>
+        <p style="margin: 0;">[SECTION TEXT]</p>
+      </section>
+
+      <div style="border-top: 1px solid #c7d5d1; padding-top: 20px; font-size: 12px; line-height: 18px; color: #55615f;">Questions about this page? Email the farm at [SENDER ADDRESS].</div>
+    </article>
+  </main>
+
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="Legal.dc.html">Terms</a>
+        <a href="LegalPrivacy.dc.html">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"page":{"editor":"enum","options":["terms","privacy"],"default":"terms"},"$preview":{"width":1280,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const page = this.props.page ?? 'terms';
+    return {
+      isTerms: page === 'terms',
+      isPrivacy: page === 'privacy',
+      docName: page === 'terms' ? 'terms of service' : 'privacy policy'
+    };
+  }
+}
+</script>
+</body>
+</html>

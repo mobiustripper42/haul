@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Missing menu email, admin</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="width: 640px; min-height: 700px; box-sizing: border-box; background: #e3ebe8; padding: 24px 40px; font-family: 'Montserrat', Arial, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px; display: flex; flex-direction: column; gap: 16px;">
+  <div style="font-size: 12px; line-height: 18px; color: #55615f; display: flex; flex-direction: column; gap: 2px;">
+    <span><strong style="font-weight: 600; color: #1e2a2d;">From:</strong> Ohio City Farm &lt;[SENDER ADDRESS]&gt;</span>
+    <span><strong style="font-weight: 600; color: #1e2a2d;">Subject:</strong> No menu yet for January 24 and 25</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+    <div style="padding: 20px 32px; border-bottom: 1px solid #c7d5d1; display: flex; flex-direction: column;">
+      <span style="font-family: 'Oswald', Arial, sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+      <span style="font-size: 11px; line-height: 14px; color: #55615f;">by Re:Source Cleveland</span>
+    </div>
+    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 20px;">
+      <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">No menu yet for January 24 and 25</h1>
+      <p style="margin: 0;">The menu email to members goes out on [MENU EMAIL DAY], and the menu page shows "coming" until then. Assign a menu to the week in the portal.</p>
+      <a href="#" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none; align-self: flex-start;">Assign a menu</a>
+      <p style="margin: 0; font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Sent to the admins once a day while a week within [DAYS] days has no menu.</p>
+    </div>
+  </div>
+  <div style="padding: 0 8px; font-size: 12px; line-height: 18px; color: #55615f; display: flex; flex-direction: column; gap: 4px;">
+    <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+    <span><a href="#">Terms</a> · <a href="#">Privacy</a></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":700}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

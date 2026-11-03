@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menu emails</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 11px; line-height: 14px; color: #55615f;">by Re:Source Cleveland</span>
+      </a>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;">
+        <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div>
+        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Sign in</a>
+      </div>
+    </div>
+  </header>
+  <main style="flex: 1 0 auto; padding: 48px 16px; display: flex; justify-content: center; align-items: flex-start;">
+    <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; width: 100%; max-width: 376px; box-sizing: border-box;">
+      <sc-if value="{{isOff}}" hint-placeholder-val="{{true}}">
+        <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Menu emails are off</h1>
+        <p style="margin: 0;">You won't get the weekly menu at <strong style="font-weight: 600;">name@example.com</strong>. Your box and your charges don't change, and the menu is always on this site.</p>
+        <button type="button" onClick="{{turnOn}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Turn menu emails back on</button>
+      </sc-if>
+      <sc-if value="{{isOn}}" hint-placeholder-val="{{false}}">
+        <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Menu emails are on</h1>
+        <p style="margin: 0;">You'll get the menu each week at <strong style="font-weight: 600;">name@example.com</strong>.</p>
+        <button type="button" onClick="{{turnOff}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; align-self: flex-start;">Turn them off</button>
+      </sc-if>
+      <a href="Menu.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; align-self: flex-start; margin-left: -8px;">See this week's menu</a>
+    </section>
+  </main>
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"state":{"editor":"enum","options":["off","on"],"default":"off"},"$preview":{"width":1280,"height":700}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { on: null }; }
+  renderVals() {
+    const on = this.state.on ?? ((this.props.state ?? 'off') === 'on');
+    return { isOff: !on, isOn: on, turnOn: () => this.setState({ on: true }), turnOff: () => this.setState({ on: false }) };
+  }
+}
+</script>
+</body>
+</html>

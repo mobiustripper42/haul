@@ -1,0 +1,153 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menus, admin</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 11px; line-height: 14px; color: #55615f;">Admin · by Re:Source Cleveland</span>
+      </a>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;">
+        <div class="ocf-nav" style="flex-wrap: wrap; align-items: center; gap: 4px 12px;"><nav aria-label="Admin" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;">
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">MEMBERS</a>
+          <a href="AdminMenus.dc.html" aria-current="page" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 4px; background: #e3ebe8; color: #003f4c; text-decoration: none;">MENUS</a>
+          <a href="AdminWeeks.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKS</a>
+          <a href="AdminLists.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKLY LISTS</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">HANDBOOK</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">SIGN OUT</a>
+        </nav>
+        <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div></div>
+        <details class="ocf-burger" open="{{menuOpen}}" style="position: relative;">
+          <summary aria-label="Admin menu" style="list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; color: #003f4c; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>MENU</summary>
+          <div style="position: absolute; right: 0; top: 48px; z-index: 1; width: 260px; box-sizing: border-box; background: #ffffff; border: 1px solid #c7d5d1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 63, 76, 0.18); padding: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;">
+            <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">MEMBERS</a>
+            <a href="AdminMenus.dc.html" aria-current="page" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 4px; background: #e3ebe8; color: #003f4c; text-decoration: none;">MENUS</a>
+            <a href="AdminWeeks.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKS</a>
+            <a href="AdminLists.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKLY LISTS</a>
+            <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">HANDBOOK</a>
+            <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">SIGN OUT</a>
+            <div style="border-top: 1px solid #c7d5d1; margin-top: 4px; padding-top: 8px;"><div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div></div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+  <main style="flex: 1 0 auto; width: 100%; max-width: 960px; box-sizing: border-box; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 20px;">
+    <sc-if value="{{onList}}" hint-placeholder-val="{{true}}">
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <div style="display: flex; flex-direction: column; gap: 4px;">
+          <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Menus</h1>
+          <p style="margin: 0; color: #55615f;">A menu has a standard text and a vegan text. Assign one to each week; members get it by email and on the menu page.</p>
+        </div>
+        <button type="button" onClick="{{toEdit}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">New menu</button>
+      </div>
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500; max-width: 420px;">Search<input type="search" placeholder="A dish or a menu name" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;"></label>
+        <div style="display: flex; flex-direction: column;">
+          <sc-for list="{{menus}}" as="m" hint-placeholder-count="4">
+            <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #c7d5d1; align-items: flex-start;">
+              <div style="display: flex; flex-direction: column; min-width: 0; gap: 2px;">
+                <span style="font-weight: 600; color: #003f4c;">{{m.title}}</span>
+                <span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">{{m.sides}}</span>
+                <sc-if value="{{m.assigned}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Assigned to {{m.week}}</span></sc-if>
+                <sc-if value="{{m.unassigned}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Not assigned to a week</span></sc-if>
+              </div>
+              <div style="flex: none; display: flex; gap: 4px;">
+                <button type="button" onClick="{{m.edit}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Edit</button>
+                <button type="button" onClick="{{m.edit}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Duplicate</button>
+              </div>
+            </div>
+          </sc-for>
+        </div>
+      </section>
+    </sc-if>
+    <sc-if value="{{onEmpty}}" hint-placeholder-val="{{false}}">
+      <div style="display: flex; flex-wrap: wrap; align-items: flex-end; justify-content: space-between; gap: 16px;">
+        <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Menus</h1>
+        <button type="button" onClick="{{toEdit}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">New menu</button>
+      </div>
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">No menus yet</h2>
+        <p style="margin: 0; color: #55615f;">Make the first one with New menu. A menu has a standard text and a vegan text, and you can assign it to any week and duplicate it later.</p>
+      </section>
+    </sc-if>
+    <sc-if value="{{onEdit}}" hint-placeholder-val="{{false}}">
+      <button type="button" onClick="{{toList}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; align-self: flex-start; margin-left: -8px; display: flex; align-items: center; gap: 4px;"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>All menus</button>
+      <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Edit menu</h1>
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; max-width: 640px;">
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Menu name<input type="text" value="Shish tawook chicken skewers" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;"><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Members see this as the week's title.</span></label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Standard menu<textarea rows="6" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; min-height: 120px; box-sizing: border-box; padding: 8px 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff; resize: vertical;">Shish tawook chicken skewers
+Mujadara rice and lentils with onions, uncooked with instructions
+Roasted squash
+Shredded carrot and walnut salad with sumac
+Butternut squash soup</textarea><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">One dish per line.</span></label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Vegan menu<textarea rows="6" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; min-height: 120px; box-sizing: border-box; padding: 8px 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff; resize: vertical;">Lebanese chickpea moussaka
+Mujadara rice and lentils with onions, uncooked with instructions
+Roasted squash
+Shredded carrot and walnut salad with sumac
+Butternut squash soup</textarea></label>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Assigned to<select style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;"><option>January 17 and 18</option><option>January 24 and 25</option><option>January 31 and February 1</option><option>Not assigned</option></select><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">A week can have one menu. Assigning this one replaces the week's current menu.</span></label>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+          <button type="button" onClick="{{toList}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Save</button>
+          <button type="button" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Duplicate</button>
+        </div>
+      </section>
+    </sc-if>
+  </main>
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"view":{"editor":"enum","options":["list","edit","empty"],"default":"list"},"menu":{"editor":"enum","options":["closed","open"],"default":"closed"},"$preview":{"width":1280,"height":1000}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { view: null }; }
+  renderVals() {
+    const v = this.state.view ?? this.props.view ?? 'list';
+    const menus = [
+      ['Shish tawook chicken skewers', 'Mujadara rice and lentils · Roasted squash · Carrot and walnut salad · Butternut squash soup', 'January 17 and 18'],
+      ['Cajun red beans and smoked sausage', 'Jasmine rice · Sherry braised collard greens · Cabbage slaw · Potato onion soup', 'January 24 and 25'],
+      ['Egg shakshuka', 'Pita · Za\'atar roasted root mix · Carrot fennel salad · Lentil soup', 'February 6 and 7'],
+      ['Chicken drumstick pulao', 'Chapati · Creamed spinach · Chickpea chaat salad · Chana dal', '']
+    ];
+    return { menuOpen: (this.props.menu ?? 'closed') === 'open', 
+      onList: v === 'list', onEdit: v === 'edit', onEmpty: v === 'empty',
+      toEdit: () => this.setState({ view: 'edit' }), toList: () => this.setState({ view: 'list' }),
+      menus: menus.map((m) => ({ title: m[0], sides: m[1], week: m[2], assigned: m[2] !== '', unassigned: m[2] === '', edit: () => this.setState({ view: 'edit' }) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

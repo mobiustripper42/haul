@@ -1,0 +1,53 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Weekly menu email</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="width: 640px; min-height: 1100px; box-sizing: border-box; background: #e3ebe8; padding: 24px 40px; font-family: 'Montserrat', Arial, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px; display: flex; flex-direction: column; gap: 16px;">
+  <div style="font-size: 12px; line-height: 18px; color: #55615f; display: flex; flex-direction: column; gap: 2px;">
+    <span><strong style="font-weight: 600; color: #1e2a2d;">From:</strong> Ohio City Farm &lt;[SENDER ADDRESS]&gt;</span>
+    <span><strong style="font-weight: 600; color: #1e2a2d;">Subject:</strong> This week's Supper Club menu</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 8px; overflow: hidden; display: flex; flex-direction: column;">
+    <div style="padding: 20px 32px; border-bottom: 1px solid #c7d5d1; display: flex; flex-direction: column;">
+      <span style="font-family: 'Oswald', Arial, sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+      <span style="font-size: 11px; line-height: 14px; color: #55615f;">by Re:Source Cleveland</span>
+    </div>
+    <div style="padding: 28px 32px; display: flex; flex-direction: column; gap: 20px;">
+      <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Menu for January 17 and 18</h1>
+      <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+        <div style="background: #e3ebe8; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 8px;"><span style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878; color: #003f4c;">STANDARD</span><p style="margin: 0;">Shish tawook chicken skewers<br>Mujadara rice and lentils with onions<br>Roasted squash<br>Shredded carrot and walnut salad with sumac<br>Butternut squash soup</p></div>
+        <div style="background: #e3ebe8; border-radius: 8px; padding: 20px; display: flex; flex-direction: column; gap: 8px;"><span style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878; color: #003f4c;">VEGAN</span><p style="margin: 0;">Lebanese chickpea moussaka<br>Mujadara rice and lentils with onions<br>Roasted squash<br>Shredded carrot and walnut salad with sumac<br>Butternut squash soup</p></div>
+      </div>
+      <p style="margin: 0;">Your box: <strong style="font-weight: 600;">2 people · Standard</strong>. Pick up Sunday or Monday at the farm store, 2304 Bridge Ave. Hours: [PICKUP HOURS].</p>
+      <p style="margin: 0;">The week after is charged at the end of Monday, January 18. To skip or switch it, sign in before then.</p>
+      <a href="#" style="display: inline-flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none; align-self: flex-start;">Skip or switch a week</a>
+    </div>
+  </div>
+  <div style="padding: 0 8px; font-size: 12px; line-height: 18px; color: #55615f; display: flex; flex-direction: column; gap: 4px;">
+    <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+    <span>You get this email because you are in the Supper Club. <a href="#">Turn off the menu email</a>. Sign-in codes, receipts and card notices still send.</span>
+    <span><a href="#">Terms</a> · <a href="#">Privacy</a></span>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":640,"height":1100}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>
