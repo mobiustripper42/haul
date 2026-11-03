@@ -318,7 +318,7 @@ Viewable reports, scoped once the farm says what Square does not already give th
     member cancels or changes a signup by calling Lenny; the developer applies it in SQL.
 12. DNS: does the farm move `ohiocityfarm.com`'s nameservers to Cloudflare (the zone also carries
     the Wix site and email), or is a single-subdomain setup possible on their plan?
-13. *Answered 2026-11-03 (Eric):* a member may hold one or more subscriptions, to any product.
+13. *Answered 2026-11-02 (Eric):* a member may hold one or more subscriptions, to any product.
     Phase 1's signup creates exactly one; a member adding another comes later. A cap counts
     subscriptions (§6.1), so a household taking two boxes takes two spots.
 14. Receipts: does Square email the receipt for each charge, or does the app?
