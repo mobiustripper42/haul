@@ -8,7 +8,13 @@
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
 
-const PRODUCT = "Supper Club";
+const PRODUCT = {
+  name: "Supper Club",
+  cap: 50,
+  firstPickupDate: "2027-01-03",
+  cutoffWeekday: 1,
+  cutoffTime: "24:00",
+};
 
 const OPTION_TYPES: ReadonlyArray<{
   name: string;
@@ -36,14 +42,14 @@ const OPTION_TYPES: ReadonlyArray<{
 export async function seed(db: Client): Promise<void> {
   const product = await db.query<{ id: string }>(
     `insert into products (name, cap, first_pickup_date, cutoff_weekday, cutoff_time)
-     values ($1, 50, '2027-01-03', 1, '24:00')
+     values ($1, $2, $3, $4, $5)
      on conflict (name) do update
        set cap = excluded.cap,
            first_pickup_date = excluded.first_pickup_date,
            cutoff_weekday = excluded.cutoff_weekday,
            cutoff_time = excluded.cutoff_time
      returning id`,
-    [PRODUCT],
+    [PRODUCT.name, PRODUCT.cap, PRODUCT.firstPickupDate, PRODUCT.cutoffWeekday, PRODUCT.cutoffTime],
   );
   const productId = product.rows[0]?.id;
   if (productId === undefined) throw new Error("supper-club seed: the product upsert returned no id");
