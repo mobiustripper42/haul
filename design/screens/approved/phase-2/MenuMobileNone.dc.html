@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Menu not posted yet, mobile</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="width: 390px; min-height: 900px; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif;">
+<dc-import name="Menu" state="none" hint-size="390px,900px"></dc-import>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"$preview":{"width":390,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() { return {}; }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Member, admin</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Montserrat:wght@400;500;600&amp;family=Oswald:wght@400;500&amp;display=swap">
+<style>
+body{margin:0;background:#f7f7f7}
+a{color:#003f4c}a:hover{color:#487878}
+.ocf-nav{display:flex}.ocf-burger{display:none}
+@media (max-width: 720px){.ocf-nav{display:none}.ocf-burger{display:block}}
+</style>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
+  <header style="background: #ffffff; border-bottom: 1px solid #c7d5d1;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 12px 16px; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 20px;">
+      <a href="#" style="text-decoration: none; display: flex; flex-direction: column;">
+        <span style="font-family: 'Oswald', sans-serif; font-size: 19px; line-height: 22px; letter-spacing: 0.12em; color: #003f4c;">OHIO CITY FARM</span>
+        <span style="font-size: 11px; line-height: 14px; color: #55615f;">Admin · by Re:Source Cleveland</span>
+      </a>
+      <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;">
+        <div class="ocf-nav" style="flex-wrap: wrap; align-items: center; gap: 4px 12px;"><nav aria-label="Admin" style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;">
+          <a href="#" aria-current="page" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 4px; background: #e3ebe8; color: #003f4c; text-decoration: none;">MEMBERS</a>
+          <a href="AdminMenus.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">MENUS</a>
+          <a href="AdminWeeks.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKS</a>
+          <a href="AdminLists.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKLY LISTS</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">HANDBOOK</a>
+          <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">SIGN OUT</a>
+        </nav>
+        <div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div></div>
+        <details class="ocf-burger" open="{{menuOpen}}" style="position: relative;">
+          <summary aria-label="Admin menu" style="list-style: none; cursor: pointer; display: inline-flex; align-items: center; gap: 8px; min-height: 44px; padding: 0 8px; color: #003f4c; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;"><svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="2" stroke-linecap="round"><path d="M4 7h16M4 12h16M4 17h16"></path></svg>MENU</summary>
+          <div style="position: absolute; right: 0; top: 48px; z-index: 1; width: 260px; box-sizing: border-box; background: #ffffff; border: 1px solid #c7d5d1; border-radius: 8px; box-shadow: 0 8px 24px rgba(0, 63, 76, 0.18); padding: 8px; display: flex; flex-direction: column; gap: 4px; font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em;">
+            <a href="#" aria-current="page" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; border-radius: 4px; background: #e3ebe8; color: #003f4c; text-decoration: none;">MEMBERS</a>
+            <a href="AdminMenus.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">MENUS</a>
+            <a href="AdminWeeks.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKS</a>
+            <a href="AdminLists.dc.html" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">WEEKLY LISTS</a>
+            <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">HANDBOOK</a>
+            <a href="#" style="display: flex; align-items: center; min-height: 44px; padding: 0 12px; color: #003f4c; text-decoration: none;">SIGN OUT</a>
+            <div style="border-top: 1px solid #c7d5d1; margin-top: 4px; padding-top: 8px;"><div role="group" aria-label="Language" style="display: flex; gap: 4px; font-size: 14px; line-height: 24px;">
+          <a href="#" aria-current="true" style="padding: 10px 8px; font-weight: 600; color: #003f4c; text-decoration: none;">English</a>
+          <span aria-hidden="true" style="padding: 10px 0; color: #c7d5d1;">|</span>
+          <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
+        </div></div>
+          </div>
+        </details>
+      </div>
+    </div>
+  </header>
+  <main style="flex: 1 0 auto; width: 100%; max-width: 960px; box-sizing: border-box; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 20px;">
+    <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; text-decoration: none; align-self: flex-start; margin-left: -8px; gap: 4px;"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>All members</a>
+    <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 12px;">
+      <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Abara, Chidi</h1>
+      <sc-if value="{{isActive}}" hint-placeholder-val="{{true}}"><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #1c4723; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Active</span></sc-if>
+      <sc-if value="{{isDeclined}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #fbeeec; color: #a93226; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Card declined</span></sc-if>
+      <sc-if value="{{isCancelled}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 1px 7px; border: 1px solid #c7d5d1; border-radius: 4px; background: #f7f7f7; color: #55615f; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Cancelled</span></sc-if>
+    </div>
+    <sc-if value="{{isDeclined}}" hint-placeholder-val="{{false}}"><div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;"><svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg><span><strong style="font-weight: 600; color: #a93226;">Card declined</strong> at the end of Monday, February 1 for the week of February 7–8. The box is still made. They were emailed to update their card; nothing cancels on its own.</span></div></sc-if>
+    <sc-if value="{{confirmOpen}}" hint-placeholder-val="{{false}}">
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; border: 1px solid #a93226;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Cancel the Supper Club for Chidi Abara?</h2>
+        <p style="margin: 0;">Their last pickup is January 17 or 18, already paid. Nothing more is charged, and they can sign up again. Do this only when they asked you to.</p>
+        <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+          <button type="button" onClick="{{keep}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Cancel their Supper Club</button>
+          <button type="button" onClick="{{keep}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Keep it</button>
+        </div>
+      </section>
+    </sc-if>
+    <div style="display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px;">
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Contact</h2>
+        <dl style="margin: 0; display: flex; flex-direction: column; gap: 8px;">
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">EMAIL</dt><dd style="margin: 0;">chidi.abara@example.com</dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">PHONE</dt><dd style="margin: 0;">(216) 555-0142</dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">LANGUAGE</dt><dd style="margin: 0;">English</dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">JOINED</dt><dd style="margin: 0;">December 1, 2026</dd></div>
+        </dl>
+      </section>
+      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Subscription</h2>
+        <dl style="margin: 0; display: flex; flex-direction: column; gap: 8px;">
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">BOX</dt><dd style="margin: 0;">3–4 people · Standard · $80 a week</dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">CARD</dt><dd style="margin: 0;">Visa ending 4242</dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">SQUARE CUSTOMER</dt><dd style="margin: 0;"><a href="#">Open in Square</a></dd></div>
+          <div><dt style="font-size: 11px; line-height: 16px; font-weight: 600; letter-spacing: 0.08em; color: #487878;">WEEK CREDITS</dt><dd style="margin: 0;">0</dd></div>
+        </dl>
+      </section>
+    </div>
+    <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+      <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Weeks</h2>
+      <div style="display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #c7d5d1;"><div style="display: flex; flex-direction: column;"><span style="font-weight: 600;">January 24 or 25</span><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">3–4 people · Standard · charged at the end of Monday, January 18</span></div><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #003f4c; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Coming</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #c7d5d1;"><div style="display: flex; flex-direction: column;"><span style="font-weight: 600;">January 17 or 18</span><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">3–4 people · Standard · $80</span></div><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #1c4723; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Paid</span></div>
+        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #c7d5d1;"><div style="display: flex; flex-direction: column;"><span style="font-weight: 600;">January 10 or 11</span><span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">3–4 people · Standard · $80 · paid at signup</span></div><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #1c4723; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">Paid</span></div>
+      </div>
+    </section>
+    <sc-if value="{{notCancelled}}" hint-placeholder-val="{{true}}">
+      <sc-if value="{{confirmClosed}}" hint-placeholder-val="{{true}}">
+        <button type="button" onClick="{{ask}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; align-self: flex-start;">Cancel for this member</button>
+      </sc-if>
+    </sc-if>
+    <p style="margin: 0; font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Skips, switches and refunds are the member's own, or Square's. This page cancels, and shows.</p>
+  </main>
+  <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
+    <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
+      <span>Ohio City Farm · 2304 Bridge Ave, Cleveland, OH</span>
+      <div style="display: flex; gap: 24px;">
+        <a href="#">Terms</a>
+        <a href="#">Privacy</a>
+        <a href="#">Contact</a>
+      </div>
+    </div>
+  </footer>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"status":{"editor":"enum","options":["active","declined","cancelled"],"default":"active"},"confirm":{"editor":"enum","options":["none","open"],"default":"none"},"menu":{"editor":"enum","options":["closed","open"],"default":"closed"},"$preview":{"width":1280,"height":1100}}'>
+class Component extends DCLogic {
+  constructor(props) { super(props); this.state = { confirm: null }; }
+  renderVals() {
+    const s = this.props.status ?? 'active';
+    const c = this.state.confirm ?? ((this.props.confirm ?? 'none') === 'open');
+    return { menuOpen: (this.props.menu ?? 'closed') === 'open', 
+      isActive: s === 'active', isDeclined: s === 'declined', isCancelled: s === 'cancelled', notCancelled: s !== 'cancelled',
+      confirmOpen: c, confirmClosed: !c, ask: () => this.setState({ confirm: true }), keep: () => this.setState({ confirm: false })
+    };
+  }
+}
+</script>
+</body>
+</html>
