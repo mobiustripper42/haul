@@ -22,7 +22,7 @@ Roles:
 - **Hosting/target** — Vercel behind Cloudflare's proxy, at `members.ohiocityfarm.com`
 - **Payments** — Square only (Web Payments SDK, Customers, Cards, Payments)
 - **Email** — Resend, behind a port
-- **Env** — `env.example` names every variable the app reads; git ignores every `.env*` file
+- **Env** — `env.example` names every variable the app reads, and the two only `npm run test:square` reads; git ignores every `.env*` file
 - **Testing** — Vitest (DEC-011); Playwright for browser e2e, CI only (DEC-023)
 - **Bundler** — webpack, not Turbopack (DEC-012)
 - **Styling** — Tailwind v4 through PostCSS; its theme is rebuilt from `design/design-system/tokens.json`, and fonts are vendored in `app/fonts/` (DEC-020)
@@ -47,6 +47,7 @@ npm run typecheck:app        # the app, under tsconfig.json
 npm run typecheck:db         # the db/ scripts, under the core's compiler options (tsconfig.db.json)
 npm run lint                 # app/, src/, db/, the project's tests and configs — not jig's scripts/
 npm run test                 # vitest run; add a path to run one file. The Postgres suites skip without a database
+npm run test:square          # the payments contract against Square's real sandbox (src/adapters/square-payments.sandbox.ts). By hand, never in verify or CI: needs the network and SQUARE_SANDBOX_ACCESS_TOKEN and SQUARE_SANDBOX_LOCATION_ID in .env.local, and leaves customers in the sandbox account
 npm run test:e2e             # playwright test: desktop and mobile on a next dev server on port 4100, over haul_test_e2e. Needs `npm run db:up`; not in verify
 
 # Database (docker-compose.yml)
@@ -92,9 +93,14 @@ npm run check:decisions
 
 ## Blast-Radius Triggers
 
-None yet — no money path exists. The money paths arrive with task 1.2 (the Square port), task 1.4 (the
-signup charge) and task 2.2 (the charge run), and each of those tasks adds its paths here. Until
-then `/kill-this` uses its generic triggers.
+The first money paths, from task 1.2 (the Square port):
+
+- `src/ports/payments.ts`
+- `src/adapters/square-payments.ts`
+- `src/adapters/fake-payments.ts`
+- `src/customer-match.ts`
+
+Task 1.4 (the signup charge) and task 2.2 (the charge run) each add their paths here.
 
 ## Migration Protocol (project)
 
