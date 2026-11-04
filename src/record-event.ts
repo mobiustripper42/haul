@@ -1,5 +1,5 @@
 import { EmailSendError } from "./ports/email.js";
-import type { AuditEvent, Repository } from "./ports/repository.js";
+import type { Actor, AuditEvent, Repository } from "./ports/repository.js";
 
 /**
  * What a log says about an error: its name, its `code` when that is a string (a Postgres SQLSTATE,
@@ -15,19 +15,36 @@ export function errorFields(error: unknown): { error: string; code?: string; sta
   };
 }
 
+/** The one log line for an event that was not recorded: the event and the member, never the client address a refusal carries. */
+function logEventNotRecorded(event: AuditEvent, error: unknown): void {
+  console.error("audit event not recorded", {
+    event: event.kind,
+    ...(event.kind === "rate_limit_refusal" ? {} : { memberId: event.memberId }),
+    ...errorFields(error),
+  });
+}
+
 /**
  * Records an audit event. A failure is logged and goes no further: what the caller was doing goes
- * ahead, so `audit_log` can have gaps that only the server log shows. The log names the event and
- * the member, never the client address a refusal carries.
+ * ahead, so `audit_log` can have gaps that only the server log shows.
  */
 export async function recordEventSafely(repo: Repository, event: AuditEvent): Promise<void> {
   try {
     await repo.recordEvent(event);
   } catch (error) {
-    console.error("audit event not recorded", {
-      event: event.kind,
-      ...(event.kind === "rate_limit_refusal" ? {} : { memberId: event.memberId }),
-      ...errorFields(error),
-    });
+    logEventNotRecorded(event, error);
+  }
+}
+
+/**
+ * Records an audit event in a transaction of its own, under `actor`. Like `recordEventSafely`, a
+ * failure goes no further, and that includes the transaction's own: a rejection from `withActor`
+ * (connect, begin, set_config, commit) is logged, once, the same way as a failed write.
+ */
+export async function recordEventAs(repo: Repository, actor: Actor, event: AuditEvent): Promise<void> {
+  try {
+    await repo.withActor(actor, (scoped) => scoped.recordEvent(event));
+  } catch (error) {
+    logEventNotRecorded(event, error);
   }
 }

@@ -42,11 +42,8 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
   linkExpiresAt: row.link_expires_at,
 });
 
-// SQLSTATEs: a unique violation, and a value that isn't a valid uuid.
-const UNIQUE_VIOLATION = "23505";
-const INVALID_UUID = "22P02";
-
-const sqlState = (e: unknown): string | undefined => (e as { code?: string }).code;
+// The shape Postgres accepts for a uuid parameter, any version.
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the
@@ -83,16 +80,17 @@ export class PostgresRepository implements Repository {
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
-    try {
-      const { rows } = await this.db.query<MemberRow>(
-        "insert into members (email, language, role) values ($1, $2, $3) returning id, email, language, role, created_at",
-        [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
-      );
-      return toMember(rows[0] as MemberRow);
-    } catch (e) {
-      if (sqlState(e) === UNIQUE_VIOLATION) throw new DuplicateEmailError(email);
-      throw e;
-    }
+    // `on conflict do nothing`, not a caught 23505: a failed statement aborts a `withActor` transaction,
+    // and a duplicate email is an ordinary outcome the caller may catch and go on from. A concurrent
+    // insert of the same email waits on the unique index and then conflicts here too, so none is raised.
+    const { rows } = await this.db.query<MemberRow>(
+      `insert into members (email, language, role) values ($1, $2, $3)
+       on conflict (email) do nothing
+       returning id, email, language, role, created_at`,
+      [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
+    );
+    if (!rows[0]) throw new DuplicateEmailError(email);
+    return toMember(rows[0]);
   }
 
   async findMemberByEmail(email: string): Promise<Member | null> {
@@ -104,16 +102,13 @@ export class PostgresRepository implements Repository {
   }
 
   async findMemberById(id: string): Promise<Member | null> {
-    try {
-      const { rows } = await this.db.query<MemberRow>(
-        "select id, email, language, role, created_at from members where id = $1",
-        [id],
-      );
-      return rows[0] ? toMember(rows[0]) : null;
-    } catch (e) {
-      if (sqlState(e) === INVALID_UUID) return null;
-      throw e;
-    }
+    // Checked here, not by catching 22P02: a failed query aborts a `withActor` transaction.
+    if (!UUID_SHAPE.test(id)) return null;
+    const { rows } = await this.db.query<MemberRow>(
+      "select id, email, language, role, created_at from members where id = $1",
+      [id],
+    );
+    return rows[0] ? toMember(rows[0]) : null;
   }
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {

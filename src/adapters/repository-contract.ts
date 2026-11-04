@@ -276,6 +276,42 @@ export function runRepositoryContract(
         expect(await repo.getSignInCode(ada.id)).toEqual(before);
       });
 
+      // The port promises a duplicate email and a non-UUID id as ordinary outcomes (src/ports/repository.ts),
+      // so one met inside fn must not break the transaction: fn's later writes still run, and all commit.
+      it("AC3/AC5: a DuplicateEmailError caught inside withActor does not break the transaction — withActor resolves, and the member and the later event are kept", async () => {
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        let duplicate: unknown = "not thrown";
+        const run = repo.withActor({ member: grace.id }, async (r) => {
+          const member = await r.createMember({ email: "ada@example.com" });
+          try {
+            await r.createMember({ email: "ADA@example.com" });
+          } catch (error) {
+            duplicate = error;
+          }
+          await r.recordEvent({ kind: "lock", memberId: member.id });
+          return member;
+        });
+        await expect(run).resolves.toMatchObject({ email: "ada@example.com" });
+        expect(duplicate).toBeInstanceOf(DuplicateEmailError);
+        expect(await repo.findMemberByEmail("ada@example.com")).toEqual(await run);
+        expect(await eventActors()).toEqual([{ member: grace.id }]);
+      });
+
+      it('AC3/AC5: findMemberById("not-a-uuid") returning null inside withActor does not break the transaction — withActor resolves, and the member and the event written after it are kept', async () => {
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        let found: unknown = "not looked up";
+        const run = repo.withActor({ member: grace.id }, async (r) => {
+          found = await r.findMemberById("not-a-uuid");
+          const member = await r.createMember({ email: "ada@example.com" });
+          await r.recordEvent({ kind: "lock", memberId: member.id });
+          return member;
+        });
+        await expect(run).resolves.toMatchObject({ email: "ada@example.com" });
+        expect(found).toBeNull();
+        expect(await repo.findMemberByEmail("ada@example.com")).toEqual(await run);
+        expect(await eventActors()).toEqual([{ member: grace.id }]);
+      });
+
       it("AC3: withActor does not nest — calling withActor on the repository fn receives rejects", async () => {
         let nested: "resolved" | "rejected" | "not called" = "not called";
         await repo.withActor(null, async (r) => {

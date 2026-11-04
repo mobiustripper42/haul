@@ -4,8 +4,8 @@ import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
 import { deliverSignInCode, deliverSignInLink, signInLinkUrl } from "@core/sign-in-email.js";
-import type { Actor, AuditEvent, Repository } from "@core/ports/repository.js";
-import { errorFields, recordEventSafely } from "@core/record-event.js";
+import type { Repository } from "@core/ports/repository.js";
+import { errorFields, recordEventAs } from "@core/record-event.js";
 import { clientIpFrom } from "@core/sign-in/client-ip.js";
 import {
   issueSignInCode,
@@ -27,14 +27,6 @@ const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
 };
-
-/**
- * Records an audit event in a transaction of its own, under the actor it names: a sign-in's is the
- * member signing in, a lock's the locked member, a refusal's nobody. A failure is logged by
- * `recordEventSafely` and goes no further.
- */
-const recordEvent = (repo: Repository, actor: Actor, event: AuditEvent): Promise<void> =>
-  repo.withActor(actor, (scoped) => recordEventSafely(scoped, event));
 
 /** The request limiter's store, each count a transaction of its own: its delete and upsert commit together. */
 const limiterStore = (repo: Repository): RateLimitStore => ({
@@ -88,7 +80,7 @@ export async function requestCode(formData: FormData): Promise<void> {
   );
 
   if (result.outcome === "limited") {
-    if (result.refusal) await recordEvent(repo, null, { kind: "rate_limit_refusal", ...result.refusal });
+    if (result.refusal) await recordEventAs(repo, null, { kind: "rate_limit_refusal", ...result.refusal });
     redirect(`/sign-in?limited=${Math.max(1, Math.ceil(result.retryAfterMs / 60_000))}`);
   }
   if (result.outcome === "issue") {
@@ -137,7 +129,7 @@ export async function verifyCode(formData: FormData): Promise<void> {
       sendAfterResponse(
         lockedNow.id,
         async () => {
-          await recordEvent(repo, { member: lockedNow.id }, { kind: "lock", memberId: lockedNow.id });
+          await recordEventAs(repo, { member: lockedNow.id }, { kind: "lock", memberId: lockedNow.id });
           return repo.withActor(null, (scoped) =>
             issueSignInLink(scoped, lockedNow, { now, mintLinkToken: randomLinkToken, hold: false }),
           );
@@ -150,7 +142,7 @@ export async function verifyCode(formData: FormData): Promise<void> {
     redirect("/sign-in/code?error=invalid");
   }
 
-  await recordEvent(repo, { member: result.subjectId }, { kind: "sign_in_by_code", memberId: result.subjectId });
+  await recordEventAs(repo, { member: result.subjectId }, { kind: "sign_in_by_code", memberId: result.subjectId });
   await finishSignIn(result.subjectId);
 }
 
@@ -164,7 +156,7 @@ export async function signInWithLink(formData: FormData): Promise<void> {
   );
   if (!result.ok) redirect("/sign-in?error=link");
 
-  await recordEvent(repo, { member: result.subjectId }, { kind: "sign_in_by_link", memberId: result.subjectId });
+  await recordEventAs(repo, { member: result.subjectId }, { kind: "sign_in_by_link", memberId: result.subjectId });
   await finishSignIn(result.subjectId);
 }
 

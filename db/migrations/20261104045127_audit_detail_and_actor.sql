@@ -8,7 +8,7 @@ alter table audit_log add column detail jsonb;
 
 -- audit_event() gains a fourth argument, `detail`. Hardened as the three-argument one was
 -- (20261102155411_audit_events.sql): security definer, a search_path of pg_catalog and pg_temp only,
--- public. on every name, EXECUTE revoked from public. The actor expression is unchanged: the app sets
+-- every table name qualified with `public.`, EXECUTE revoked from public. The actor expression is unchanged: the app sets
 -- it per transaction through withActor, and a write outside one records null.
 create function audit_event(event text, table_name text, row_key jsonb, detail jsonb) returns void
 language plpgsql

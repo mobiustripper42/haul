@@ -1060,3 +1060,111 @@ describe("AC4 (issue 71) — a sign-in event's actor", () => {
     expect(kindsAndActors()).toEqual([{ kind: "rate_limit_refusal", actor: null }]);
   });
 });
+
+describe("AC14 (issue 71) — an event whose own transaction fails is logged and changes nothing the member sees", () => {
+  const EVENT_NOT_RECORDED = "audit event not recorded";
+
+  /**
+   * Makes `withActor` itself reject with `error` — as a failed connect, begin, set_config or commit
+   * would — for the transaction that writes an event, and only that one. The event write is
+   * swallowed (nothing is recorded) and the rejection comes after `fn` settles, outside anything
+   * `fn` can catch. Every other transaction runs as normal.
+   */
+  function failEventTransaction(error: Error): void {
+    const withActor = repo.withActor.bind(repo);
+    vi.spyOn(repo, "withActor").mockImplementation((async (actor, fn) => {
+      let wroteEvent = false;
+      const tracking = (scoped: Repository): Repository =>
+        new Proxy(scoped, {
+          get(target, prop) {
+            if (prop === "recordEvent") {
+              return async () => {
+                wroteEvent = true;
+              };
+            }
+            const value: unknown = Reflect.get(target, prop, target);
+            return typeof value === "function" ? value.bind(target) : value;
+          },
+        });
+      const result = await withActor(actor, (scoped) => fn(tracking(scoped)));
+      if (wroteEvent) throw error;
+      return result;
+    }) as Repository["withActor"]);
+  }
+
+  it("AC14: when withActor rejects for sign_in_by_code's event, the sign-in still completes, and \"audit event not recorded\" is logged with the event, the member id, the error's name and its code — never its message", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    failEventTransaction(pgError("08006"));
+    const errors = silenceErrors();
+    const { verifyCode } = await load();
+
+    await expect(redirectOf(verifyCode(form({ code: RIGHT_CODE })))).resolves.toBe("/");
+    const sessions = setsNamed(SESSION);
+    expect(sessions).toHaveLength(1);
+    expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
+    expect(cookieGone(SIGN_IN_EMAIL)).toBe(true);
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "08006" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("sign_in_by_code");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+  });
+
+  it("AC14: when withActor rejects for sign_in_by_link's event, the sign-in still completes, and \"audit event not recorded\" is logged with the event, the member id, the error's name and its code — never its message", async () => {
+    await plantLink();
+    failEventTransaction(pgError("08006"));
+    const errors = silenceErrors();
+    const { signInWithLink } = await load();
+
+    await expect(redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).resolves.toBe("/");
+    const sessions = setsNamed(SESSION);
+    expect(sessions).toHaveLength(1);
+    expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "08006" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("sign_in_by_link");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+  });
+
+  it("AC14: when withActor rejects for the lock's event, the lock's link is still stored and sent, and \"audit event not recorded\" is logged with the event, the member id, the error's name and its code — never its message or the token", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    failEventTransaction(pgError("08006"));
+    const errors = silenceErrors();
+    const { verifyCode } = await load();
+
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await expect(runScheduled()).resolves.toBeUndefined();
+    expect(email.sent).toHaveLength(1);
+    const token = tokenIn(email.last()?.text) ?? "no link in the message";
+    expect(email.last()).toEqual(linkEmailFor(token));
+    expect(await redeemSignInLink(repo, token, { now: new Date() })).toEqual({ ok: true, subjectId: ada.id });
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "08006" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("lock");
+    expect(logged).toContain(ada.id);
+    expect(logged).not.toContain("hunter2");
+    expect(logged).not.toContain(token);
+  });
+
+  it("AC14: when withActor rejects for a refusal's event, the request still redirects to /sign-in?limited=<minutes>, and \"audit event not recorded\" is logged with the event, the error's name and its code — never the client address or its message", async () => {
+    failEventTransaction(pgError("08006"));
+    const errors = silenceErrors();
+    const { requestCode } = await load();
+
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    await expect(redirectOf(requestCode(form({ email: STRANGER })))).resolves.toBe("/sign-in?limited=35");
+    expect(request.current.sets.filter((c) => c.name === SIGN_IN_EMAIL)).toHaveLength(20);
+
+    expect(fieldsLoggedWith(errors, EVENT_NOT_RECORDED)).toEqual([expect.objectContaining({ error: "error", code: "08006" })]);
+    const logged = loggedText(errors);
+    expect(logged).toContain("rate_limit_refusal");
+    expect(logged).not.toContain(ADDRESS);
+    expect(logged).not.toContain("hunter2");
+  });
+});
