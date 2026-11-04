@@ -8,7 +8,7 @@
 import tls from "node:tls";
 import pg from "pg";
 
-export type { Client, ClientConfig, DatabaseError, Pool, PoolConfig } from "pg";
+export type { Client, ClientConfig, DatabaseError, Pool, PoolClient, PoolConfig } from "pg";
 
 /** What `pg` accepts for `ssl`; the subset of node's TLS options this module sets. */
 export type DbSslConfig = { ca: string[]; rejectUnauthorized: true };

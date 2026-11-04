@@ -1,8 +1,8 @@
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { AuditEvent, Repository } from "../ports/repository.js";
+import type { Actor, AuditEvent, Repository } from "../ports/repository.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
-import { createPool, type Pool } from "./pg-connect.js";
+import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
 
 type MemberRow = { id: string; email: string; language: Language; role: Role; created_at: Date };
 
@@ -42,11 +42,8 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
   linkExpiresAt: row.link_expires_at,
 });
 
-// SQLSTATEs: a unique violation, and a value that isn't a valid uuid.
-const UNIQUE_VIOLATION = "23505";
-const INVALID_UUID = "22P02";
-
-const sqlState = (e: unknown): string | undefined => (e as { code?: string }).code;
+// The shape Postgres accepts for a uuid parameter, any version.
+const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
  * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the
@@ -63,30 +60,41 @@ function holdWhere(hold: SaveHold | undefined, params: unknown[], keyword: "wher
     or (sign_in_codes.link_created_at is not null and ${now} < sign_in_codes.link_created_at + ${wait}))`;
 }
 
+/** What every query goes through: the pool, or inside `withActor` the transaction's one client. */
+type Db = Pick<PoolClient, "query">;
+
+/** `audit_log.actor` as text: `member:<uuid>` or `system:<name>`; empty for nobody, which reads back as null. */
+const actorText = (actor: Actor): string => (actor === null ? "" : "member" in actor ? `member:${actor.member}` : `system:${actor.system}`);
+
 export class PostgresRepository implements Repository {
   private readonly pool: Pool;
+  private db: Db;
+  // Set on the view `withActor` hands its function.
+  private scoped = false;
 
   // TLS is applied inside the constructor, through `createPool`, per DEC-001.
   constructor(url: string) {
     this.pool = createPool(url);
+    this.db = this.pool;
   }
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
-    try {
-      const { rows } = await this.pool.query<MemberRow>(
-        "insert into members (email, language, role) values ($1, $2, $3) returning id, email, language, role, created_at",
-        [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
-      );
-      return toMember(rows[0] as MemberRow);
-    } catch (e) {
-      if (sqlState(e) === UNIQUE_VIOLATION) throw new DuplicateEmailError(email);
-      throw e;
-    }
+    // `on conflict do nothing`, not a caught 23505: a failed statement aborts a `withActor` transaction,
+    // and a duplicate email is an ordinary outcome the caller may catch and go on from. A concurrent
+    // insert of the same email waits on the unique index and then conflicts here too, so none is raised.
+    const { rows } = await this.db.query<MemberRow>(
+      `insert into members (email, language, role) values ($1, $2, $3)
+       on conflict (email) do nothing
+       returning id, email, language, role, created_at`,
+      [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
+    );
+    if (!rows[0]) throw new DuplicateEmailError(email);
+    return toMember(rows[0]);
   }
 
   async findMemberByEmail(email: string): Promise<Member | null> {
-    const { rows } = await this.pool.query<MemberRow>(
+    const { rows } = await this.db.query<MemberRow>(
       "select id, email, language, role, created_at from members where email = $1",
       [normalizeEmail(email)],
     );
@@ -94,20 +102,17 @@ export class PostgresRepository implements Repository {
   }
 
   async findMemberById(id: string): Promise<Member | null> {
-    try {
-      const { rows } = await this.pool.query<MemberRow>(
-        "select id, email, language, role, created_at from members where id = $1",
-        [id],
-      );
-      return rows[0] ? toMember(rows[0]) : null;
-    } catch (e) {
-      if (sqlState(e) === INVALID_UUID) return null;
-      throw e;
-    }
+    // Checked here, not by catching 22P02: a failed query aborts a `withActor` transaction.
+    if (!UUID_SHAPE.test(id)) return null;
+    const { rows } = await this.db.query<MemberRow>(
+      "select id, email, language, role, created_at from members where id = $1",
+      [id],
+    );
+    return rows[0] ? toMember(rows[0]) : null;
   }
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {
-    const { rows } = await this.pool.query<SignInCodeRow>(
+    const { rows } = await this.db.query<SignInCodeRow>(
       `select member_id, code_hash, created_at, expires_at, attempts, consumed_at, failed_since, failed_in_window,
               link_hash, link_created_at, link_expires_at
          from sign_in_codes where member_id = $1`,
@@ -124,7 +129,7 @@ export class PostgresRepository implements Repository {
     // part of the statement's `where`, so it is decided in the same atomic step as the write: a
     // concurrent upsert waits on the row, then re-checks the hold against what the first one wrote.
     const params: unknown[] = [code.subjectId, code.codeHash, code.createdAt, code.expiresAt];
-    const { rowCount } = await this.pool.query(
+    const { rowCount } = await this.db.query(
       `insert into sign_in_codes (member_id, code_hash, created_at, expires_at)
        values ($1, $2, $3, $4)
        on conflict (member_id) do update
@@ -144,7 +149,7 @@ export class PostgresRepository implements Repository {
     hold?: SaveHold,
   ): Promise<boolean> {
     const params: unknown[] = [link.subjectId, link.linkHash, link.createdAt, link.expiresAt];
-    const { rowCount } = await this.pool.query(
+    const { rowCount } = await this.db.query(
       `update sign_in_codes
           set link_hash = $2, link_created_at = $3, link_expires_at = $4
         where member_id = $1
@@ -156,7 +161,7 @@ export class PostgresRepository implements Repository {
 
   /** One statement: concurrent redeems of a token queue on the row, and the later finds the link gone. */
   async redeemSignInLink(linkHash: string, now: Date): Promise<string | null> {
-    const { rows } = await this.pool.query<{ member_id: string }>(
+    const { rows } = await this.db.query<{ member_id: string }>(
       `update sign_in_codes
           set link_hash = null, link_created_at = null, link_expires_at = null,
               failed_since = null, failed_in_window = 0,
@@ -179,7 +184,7 @@ export class PostgresRepository implements Repository {
   ): Promise<{ codeHash: string; expiresAt: Date; failedInWindow: number } | null> {
     // "Live": failed_since is set and now < failed_since + windowMs.
     const live = "(failed_since is not null and $3::timestamptz < failed_since + $4::double precision * interval '1 millisecond')";
-    const { rows } = await this.pool.query<{ code_hash: string; expires_at: Date; failed_in_window: number }>(
+    const { rows } = await this.db.query<{ code_hash: string; expires_at: Date; failed_in_window: number }>(
       `update sign_in_codes
           set attempts = attempts + 1,
               failed_since = case when code_hash = $2 or ${live} then failed_since else $3::timestamptz end,
@@ -199,7 +204,7 @@ export class PostgresRepository implements Repository {
   }
 
   async consumeSignInCode(subjectId: string, now: Date): Promise<boolean> {
-    const { rowCount } = await this.pool.query(
+    const { rowCount } = await this.db.query(
       "update sign_in_codes set consumed_at = $2 where member_id = $1 and consumed_at is null",
       [subjectId, now],
     );
@@ -209,8 +214,8 @@ export class PostgresRepository implements Repository {
   async incrementRateLimit(bucket: string, key: string, windowStart: Date, expiresAt: Date, now: Date): Promise<number> {
     // Two statements, not one CTE: within one statement the upsert would still see the expired row
     // the delete removes, and count on from it instead of starting at 1.
-    await this.pool.query("delete from rate_limit_hits where expires_at <= $1", [now]);
-    const { rows } = await this.pool.query<{ hits: number }>(
+    await this.db.query("delete from rate_limit_hits where expires_at <= $1", [now]);
+    const { rows } = await this.db.query<{ hits: number }>(
       `insert into rate_limit_hits (bucket, key, window_start, expires_at, hits)
        values ($1, $2, $3, $4, 1)
        on conflict (bucket, key, window_start) do update set hits = rate_limit_hits.hits + 1
@@ -224,17 +229,47 @@ export class PostgresRepository implements Repository {
   async recordEvent(event: AuditEvent): Promise<void> {
     if (event.kind === "rate_limit_refusal") {
       // The row_key is the counter row's primary key, built in SQL from typed parameters.
-      await this.pool.query(
+      await this.db.query(
         `select public.audit_event($1, 'rate_limit_hits',
-           jsonb_build_object('bucket', $2::text, 'key', $3::text, 'window_start', $4::timestamptz))`,
+           jsonb_build_object('bucket', $2::text, 'key', $3::text, 'window_start', $4::timestamptz), null::jsonb)`,
         [event.kind, event.bucket, event.key, event.windowStart],
       );
       return;
     }
-    await this.pool.query("select public.audit_event($1, 'members', jsonb_build_object('id', $2::text))", [
+    await this.db.query("select public.audit_event($1, 'members', jsonb_build_object('id', $2::text), null::jsonb)", [
       event.kind,
       event.memberId,
     ]);
+  }
+
+  /**
+   * One transaction, opened with `haul.actor` set for it alone (DEC-019: inside a transaction, never
+   * per connection, so a pooled connection carries it into no one else's request). Every query `fn`
+   * makes through the repository it is given runs in it; it commits when `fn` resolves and rolls back
+   * when it throws. It does not nest.
+   */
+  async withActor<T>(actor: Actor, fn: (repo: Repository) => Promise<T>): Promise<T> {
+    if (this.scoped) throw new Error("withActor does not nest");
+    const client = await this.pool.connect();
+    let broken = false;
+    try {
+      await client.query("begin");
+      await client.query("select set_config('haul.actor', $1, true)", [actorText(actor)]);
+      const view: PostgresRepository = Object.create(this);
+      view.db = client;
+      view.scoped = true;
+      const result = await fn(view);
+      await client.query("commit");
+      return result;
+    } catch (error) {
+      // A failed rollback leaves the connection in an unknown state: the pool must drop it.
+      await client.query("rollback").catch(() => {
+        broken = true;
+      });
+      throw error;
+    } finally {
+      client.release(broken);
+    }
   }
 
   close(): Promise<void> {
