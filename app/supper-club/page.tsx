@@ -1,6 +1,6 @@
 import { resolveChoices } from "@core/choices.js";
 import { formatUsdWhole } from "@core/money.js";
-import { SUPPER_CLUB_PRODUCT_NAME } from "@core/products.js";
+import { requireSupperClub } from "@core/products.js";
 import { Button } from "../../components/ui/button";
 import { ButtonRow } from "../../components/ui/button-row";
 import { Card } from "../../components/ui/card";
@@ -25,7 +25,8 @@ const EVERY_WEEK = [
 /**
  * The Supper Club: the farm's copy, then a card with one picker per option type of the product, so an
  * option type added in data adds a picker. The pickers and both account buttons are one GET form to
- * `/supper-club/continue`, which keeps the choices through sign-in; there is no client script.
+ * `/supper-club/continue`, which keeps the choices through sign-in; signed in, the form is a GET to this
+ * page, so Enter on a radio keeps the choices and never reaches sign-in. There is no client script.
  */
 export default async function SupperClub({
   searchParams,
@@ -33,8 +34,7 @@ export default async function SupperClub({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const [t, query, member] = await Promise.all([getTranslator(), searchParams, getSignedInMember()]);
-  const product = await getRepository().findProductByName(SUPPER_CLUB_PRODUCT_NAME);
-  if (!product) throw new Error(`The product "${SUPPER_CLUB_PRODUCT_NAME}" is not in the database`);
+  const product = await requireSupperClub(getRepository());
   const choices = resolveChoices(product, query);
 
   return (
@@ -46,7 +46,7 @@ export default async function SupperClub({
         </div>
         <p>{t("supperClub.intro")}</p>
         <p className="text-ink-muted">{t("supperClub.team")}</p>
-        <Card>
+        <Card width="fill">
           <p className="font-display text-section text-teal">{t("supperClub.everyWeek")}</p>
           <ul className="flex list-disc flex-col gap-1 pl-5">
             {EVERY_WEEK.map((key) => (
@@ -65,9 +65,9 @@ export default async function SupperClub({
         </p>
       </section>
       <section className="min-w-0 flex-1">
-        <Card>
+        <Card width="fill">
           <p className="font-display text-heading text-teal">{t("supperClub.joinTitle")}</p>
-          <form method="get" action="/supper-club/continue" className="flex flex-col gap-5">
+          <form method="get" action={member ? "/supper-club" : "/supper-club/continue"} className="flex flex-col gap-5">
             {product.optionTypes.map((type, index) => (
               <OptionPicker
                 key={type.id}

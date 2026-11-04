@@ -127,6 +127,16 @@ describe("AC4 — the details form", () => {
     expect((inputNamed(html, name)?.["aria-describedby"] ?? "").split(/\s+/)).toContain(help);
   });
 
+  it.each([
+    ["firstName", "100"],
+    ["lastName", "100"],
+    ["email", "254"],
+    ["phone", "40"],
+  ])("AC4: the %s input carries maxLength %s", async (name, limit) => {
+    const { html } = await render();
+    expect(inputNamed(html, name)?.maxlength).toBe(limit);
+  });
+
   it("AC4: no line sits as a block inside a Field's <p>, with every error showing", async () => {
     const { html } = await render({ error: "firstName,lastName,email,phone" });
     expect(textsOf(html)).toContain(FIELD_ERRORS.phone);

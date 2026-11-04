@@ -32,4 +32,17 @@ describe("AC13 — safeReturnTo", () => {
       expect(safeReturnTo(value)).toBe("/");
     },
   );
+
+  // Browsers strip tabs and newlines from a URL, so each of the first three reads as //evil.com.
+  it.each([
+    ["a tab", "/\t/evil.com"],
+    ["a newline", "/\n/evil.com"],
+    ["a carriage return", "/\r/evil.com"],
+    ["U+007F", "/\u007f/evil.com"],
+    ["U+0000, the first of the range", "/\u0000/evil.com"],
+    ["U+001F, the last of the range", "/\u001f/evil.com"],
+    ["a control character at the very end", "/supper-club?size=four\n"],
+  ])("AC13: a path holding %s is /", (_what, value) => {
+    expect(safeReturnTo(value)).toBe("/");
+  });
 });

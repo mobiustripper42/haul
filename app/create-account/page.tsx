@@ -1,6 +1,6 @@
 import { cookies } from "next/headers";
 import { LANGUAGES, isLanguage } from "@core/i18n.js";
-import type { AccountField } from "@core/create-account.js";
+import { ACCOUNT_LIMITS, type AccountField } from "@core/create-account.js";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Field } from "../../components/ui/field";
@@ -71,12 +71,13 @@ export default async function CreateAccount({
         {error === "expired" && <Notice icon="clock">{t("signIn.stepExpired")}</Notice>}
         <Heading>{t("createAccount.title")}</Heading>
         <form action={requestAccountCode} noValidate className="flex flex-col gap-6">
-          <div className="flex flex-wrap gap-4">
+          <div className="flex flex-wrap gap-x-4 gap-y-6">
             <div className="min-w-0 flex-1 basis-36">
               <Field label={t("createAccount.firstName")} htmlFor="firstName">
                 <Input
                   id="firstName"
                   name="firstName"
+                  maxLength={ACCOUNT_LIMITS.firstName}
                   autoComplete="given-name"
                   defaultValue={draft.firstName ?? ""}
                   aria-invalid={invalid("firstName")}
@@ -90,6 +91,7 @@ export default async function CreateAccount({
                 <Input
                   id="lastName"
                   name="lastName"
+                  maxLength={ACCOUNT_LIMITS.lastName}
                   autoComplete="family-name"
                   defaultValue={draft.lastName ?? ""}
                   aria-invalid={invalid("lastName")}
@@ -103,6 +105,7 @@ export default async function CreateAccount({
             <Input
               id="email"
               name="email"
+              maxLength={ACCOUNT_LIMITS.email}
               type="email"
               autoComplete="email"
               defaultValue={draft.email ?? ""}
@@ -115,6 +118,7 @@ export default async function CreateAccount({
             <Input
               id="phone"
               name="phone"
+              maxLength={ACCOUNT_LIMITS.phone}
               type="tel"
               autoComplete="tel"
               defaultValue={draft.phone ?? ""}
@@ -135,7 +139,7 @@ export default async function CreateAccount({
             {t("signIn.sendCode")}
           </Button>
         </form>
-        <Hint>
+        <Hint rule>
           {t("createAccount.haveAccount")}{" "}
           <Button kind="quiet" href="/sign-in">
             {t("home.signIn")}

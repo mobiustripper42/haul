@@ -173,6 +173,11 @@
     @apply flex w-full max-w-card flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
   }
 
+  /* A card that fills its column (the Supper Club page's two): the same card, with no width of its own. */
+  .card-fill {
+    @apply flex w-full flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
+  }
+
   /* A text field; the code field is taller, centred and set in the code style. */
   .field {
     @apply block h-field w-full rounded-sm border border-border bg-surface px-3 text-ink;

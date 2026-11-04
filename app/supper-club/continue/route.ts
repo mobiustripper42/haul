@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { choicesQuery, resolveChoices } from "@core/choices.js";
-import { SUPPER_CLUB_PRODUCT_NAME } from "@core/products.js";
+import { requireSupperClub } from "@core/products.js";
 import { RETURN_TO_COOKIE } from "../../session";
 import { getRepository } from "../../services";
 import { setFlowCookie } from "../../sign-in/shared";
@@ -12,8 +12,7 @@ import { setFlowCookie } from "../../sign-in/shared";
  * anything else goes to sign-in.
  */
 export async function GET(request: Request): Promise<Response> {
-  const product = await getRepository().findProductByName(SUPPER_CLUB_PRODUCT_NAME);
-  if (!product) throw new Error(`The product "${SUPPER_CLUB_PRODUCT_NAME}" is not in the database`);
+  const product = await requireSupperClub(getRepository());
 
   const params = new URL(request.url).searchParams;
   const query = Object.fromEntries(product.optionTypes.map((type) => [type.id, params.get(type.id) ?? undefined]));

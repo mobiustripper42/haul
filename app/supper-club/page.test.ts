@@ -7,7 +7,8 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { ProductInput, ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../next-headers-fake";
-import { attributesOf, screenMarkup, textsOf, utilitiesOf } from "../screen-test-helpers";
+import { attributesOf, findAll, screenMarkup, textsOf, utilitiesOf } from "../screen-test-helpers";
+import { Card } from "../../components/ui/card";
 import SupperClub from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -219,8 +220,23 @@ describe("AC3 — signed in", () => {
   it("AC3: the pickers stay, in the AC2 form, with the button inside it", async () => {
     const html = await render();
     expect(legendsOf(html)).toEqual(["1. Size", "2. Preference"]);
-    expect(attributesOf(html, "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
+    expect(attributesOf(html, "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
     expect(screenMarkup(html)).toMatch(/<form\b[\s\S]*Continue to payment[\s\S]*<\/form>/);
+  });
+});
+
+describe("AC3 — the form's target follows the session", () => {
+  it('AC3: signed out the form stays method="get" to /supper-club/continue; signed in it is method="get" to /supper-club', async () => {
+    expect(attributesOf(await render(), "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
+    await signIn();
+    expect(attributesOf(await render(), "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
+  });
+});
+
+describe("AC17 — the page's cards fill their columns", () => {
+  it('AC17: both cards use width="fill"', async () => {
+    const element = await SupperClub({ searchParams: Promise.resolve({}) });
+    expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill", "fill"]);
   });
 });
 

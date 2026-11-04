@@ -56,6 +56,26 @@ describe("AC4 — validateAccountDetails", () => {
   it.each(["fr", "EN", ""])("AC4: language %j is not a language and becomes the default", (language) => {
     expect(validateAccountDetails({ ...VALID, language })).toEqual({ ok: true, details: { ...VALID, language: "en" } });
   });
+
+  /** A well-formed value of exactly `length` characters, so only its length can fail it. */
+  const ofLength = (field: "firstName" | "lastName" | "email" | "phone", length: number) =>
+    field === "email" ? `${"a".repeat(length - "@example.com".length)}@example.com` : "1".repeat(length);
+
+  it.each([
+    ["firstName", 100],
+    ["lastName", 100],
+    ["email", 254],
+    ["phone", 40],
+  ] as const)("AC4: %s passes at %i characters after trimming, and fails one past", (field, limit) => {
+    const atLimit = ofLength(field, limit);
+    expect(validateAccountDetails({ ...VALID, [field]: `  ${atLimit}  ` })).toEqual({ ok: true, details: { ...VALID, [field]: atLimit } });
+    expect(validateAccountDetails({ ...VALID, [field]: ofLength(field, limit + 1) })).toEqual({ ok: false, errors: [field] });
+  });
+
+  it("AC4: a value too long takes its place in form order, among missing and invalid ones", () => {
+    const entered = { firstName: "", lastName: ofLength("lastName", 101), email: "nope", phone: ofLength("phone", 41), language: "en" };
+    expect(validateAccountDetails(entered)).toEqual({ ok: false, errors: ["firstName", "lastName", "email", "phone"] });
+  });
 });
 
 const T0 = new Date("2026-10-28T14:25:30.000Z");

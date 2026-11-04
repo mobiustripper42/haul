@@ -175,6 +175,31 @@ describe("AC4 — details that fail", () => {
     expect(JSON.parse(setsNamed(DRAFT)[0]?.value ?? "null")).toEqual(entered);
   });
 
+  it("AC4: a value too long is a failing field: every one is listed, and nothing is left to run after the response", async () => {
+    const { requestAccountCode } = await load();
+    const tooLong = {
+      firstName: "f".repeat(101),
+      lastName: "l".repeat(101),
+      email: `${"e".repeat(243)}@example.com`,
+      phone: "1".repeat(41),
+    };
+    expect(await redirectOf(requestAccountCode(details(tooLong)))).toBe("/create-account?error=firstName,lastName,email,phone");
+    expect(scheduled.tasks).toEqual([]);
+  });
+
+  it("AC4: the draft holds each value cut to its limit", async () => {
+    const { requestAccountCode } = await load();
+    const entered = { firstName: "f".repeat(300), lastName: "l".repeat(300), email: "e".repeat(300), phone: "1".repeat(300), language: "es" };
+    await redirectOf(requestAccountCode(form(entered)));
+    expect(JSON.parse(setsNamed(DRAFT)[0]?.value ?? "null")).toEqual({
+      firstName: "f".repeat(100),
+      lastName: "l".repeat(100),
+      email: "e".repeat(254),
+      phone: "1".repeat(40),
+      language: "es",
+    });
+  });
+
   it("AC4: the draft has SIGN_IN_EMAIL_COOKIE's options and max age", async () => {
     const { requestAccountCode } = await load("development");
     await redirectOf(requestAccountCode(details({ firstName: "" })));

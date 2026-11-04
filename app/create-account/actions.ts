@@ -2,7 +2,7 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
-import { issueAccountCode, validateAccountDetails } from "@core/create-account.js";
+import { ACCOUNT_LIMITS, issueAccountCode, validateAccountDetails } from "@core/create-account.js";
 import { recordEventAs } from "@core/record-event.js";
 import { clientIpFrom } from "@core/sign-in/client-ip.js";
 import { hashCode, randomCode, randomLinkToken, SIGN_IN_REQUEST_LIMIT } from "@core/sign-in/code.js";
@@ -42,7 +42,15 @@ export async function requestAccountCode(formData: FormData): Promise<void> {
   };
   const checked = validateAccountDetails(draft);
   if (!checked.ok) {
-    await setFlowCookie(ACCOUNT_DRAFT_COOKIE, JSON.stringify(draft));
+    // Each value cut to its limit, so a long one cannot overflow the cookie.
+    const kept = {
+      ...draft,
+      firstName: draft.firstName.slice(0, ACCOUNT_LIMITS.firstName),
+      lastName: draft.lastName.slice(0, ACCOUNT_LIMITS.lastName),
+      email: draft.email.slice(0, ACCOUNT_LIMITS.email),
+      phone: draft.phone.slice(0, ACCOUNT_LIMITS.phone),
+    };
+    await setFlowCookie(ACCOUNT_DRAFT_COOKIE, JSON.stringify(kept));
     redirect(`/create-account?error=${checked.errors.join(",")}`);
   }
   (await cookies()).delete(ACCOUNT_DRAFT_COOKIE);

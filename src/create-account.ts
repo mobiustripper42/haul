@@ -7,6 +7,9 @@ export type AccountField = "firstName" | "lastName" | "email" | "phone";
 
 export type AccountDetails = { email: string; firstName: string; lastName: string; phone: string; language: Language };
 
+/** The longest each value may be, after trimming: the email index's, and sane for the rest. The page's `maxLength`s and the draft cookie use these too. */
+export const ACCOUNT_LIMITS = { firstName: 100, lastName: 100, email: 254, phone: 40 } as const satisfies Record<AccountField, number>;
+
 /**
  * Valid when it has no whitespace, exactly one `@`, a non-empty part before it, and a part after it
  * with at least one `.` and a non-empty label on each side of every `.`.
@@ -35,10 +38,10 @@ export function validateAccountDetails(input: {
   const language = input.language.trim();
 
   const errors: AccountField[] = [];
-  if (firstName === "") errors.push("firstName");
-  if (lastName === "") errors.push("lastName");
-  if (!isValidEmail(email)) errors.push("email");
-  if (phone === "") errors.push("phone");
+  if (firstName === "" || firstName.length > ACCOUNT_LIMITS.firstName) errors.push("firstName");
+  if (lastName === "" || lastName.length > ACCOUNT_LIMITS.lastName) errors.push("lastName");
+  if (!isValidEmail(email) || email.length > ACCOUNT_LIMITS.email) errors.push("email");
+  if (phone === "" || phone.length > ACCOUNT_LIMITS.phone) errors.push("phone");
   if (errors.length > 0) return { ok: false, errors };
 
   return {
