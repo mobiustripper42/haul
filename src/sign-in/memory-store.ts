@@ -1,6 +1,12 @@
 import { isLocked, isWindowLive } from "./code.js";
 import type { RateLimitStore, SaveHold, SignInCode, SignInStore } from "./store.js";
 
+/** What `MemorySignInStore.snapshot` returns: opaque to callers. */
+export type MemorySignInSnapshot = {
+  codes: Map<string, SignInCode>;
+  hits: Map<string, { expiresAt: Date; hits: number }>;
+};
+
 /**
  * The folder's own permanent fake (DEC-010), standing in for a database in the code-flow tests.
  * `runSignInStoreContract` runs against it as well as against haul's adapters, which proves it
@@ -9,6 +15,22 @@ import type { RateLimitStore, SaveHold, SignInCode, SignInStore } from "./store.
 export class MemorySignInStore implements SignInStore, RateLimitStore {
   private readonly codes = new Map<string, SignInCode>();
   private readonly hits = new Map<string, { expiresAt: Date; hits: number }>();
+
+  /** Everything held now, copied; `restore` puts it back. For the repository fake's `withActor` rollback. */
+  snapshot(): MemorySignInSnapshot {
+    return {
+      codes: new Map([...this.codes].map(([id, code]) => [id, copy(code)])),
+      hits: new Map([...this.hits].map(([id, row]) => [id, { ...row, expiresAt: new Date(row.expiresAt) }])),
+    };
+  }
+
+  /** Replaces everything held with `snapshot`'s contents. */
+  restore(snapshot: MemorySignInSnapshot): void {
+    this.codes.clear();
+    for (const [id, code] of snapshot.codes) this.codes.set(id, copy(code));
+    this.hits.clear();
+    for (const [id, row] of snapshot.hits) this.hits.set(id, { ...row, expiresAt: new Date(row.expiresAt) });
+  }
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {
     const code = this.codes.get(subjectId);

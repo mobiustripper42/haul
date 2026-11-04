@@ -3,7 +3,7 @@ schema: 1
 id: DEC-025
 title: "Sign-in events go in the audit log through audit_event()"
 topic: "Data model"
-status: "active"
+status: "superseded"
 date: "2026-11-02"
 ruling: "A sign-in by code, a sign-in by link, a lock and an address's first rate-limit refusal in a window each write one audit_log row through audit_event(); a failed write is logged and changes nothing."
 claims:
@@ -13,6 +13,7 @@ claims:
     target: "app/sign-in/actions.ts"
   - kind: "test"
     target: "db/audit-events.test.ts"
+superseded_by: DEC-028
 revisit_if: "An attack or a member's question needs an event this does not record, or open question 17 promises erasure"
 ---
 

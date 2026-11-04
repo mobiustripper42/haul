@@ -12,6 +12,12 @@ export type AuditEvent =
   | ({ kind: "rate_limit_refusal" } & RateLimitRefusal);
 
 /**
+ * Who acted: a member, a named system actor, or nobody identified. Stored in `audit_log.actor` as
+ * `member:<uuid>` or `system:<name>`, or null.
+ */
+export type Actor = { member: string } | { system: string } | null;
+
+/**
  * The core's view of stored data (DEC-010). `InMemoryRepository` is the permanent fake and the
  * test substrate; `PostgresRepository` is the real one; one contract suite runs against both.
  *
@@ -27,4 +33,9 @@ export interface Repository extends SignInStore, RateLimitStore {
   /** Null for an unknown id and for a string that isn't a UUID. */
   findMemberById(id: string): Promise<Member | null>;
   recordEvent(event: AuditEvent): Promise<void>;
+  /**
+   * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and
+   * rolled back when it throws. It does not nest.
+   */
+  withActor<T>(actor: Actor, fn: (repo: Repository) => Promise<T>): Promise<T>;
 }

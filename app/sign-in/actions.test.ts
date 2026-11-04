@@ -9,6 +9,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { renderEmail } from "@core/email-templates.js";
 import type { Member } from "@core/members.js";
 import type { EmailMessage } from "@core/ports/email.js";
+import type { Repository } from "@core/ports/repository.js";
 import { hashCode, issueSignInCode, issueSignInLink, redeemSignInLink, verifySignInCode } from "@core/sign-in/code.js";
 import { SESSION_TTL_MS, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
@@ -103,6 +104,27 @@ const cookieGone = (name: string): boolean =>
   !(name in request.current.cookies) || request.current.cookies[name] === "";
 const silenceErrors = () => vi.spyOn(console, "error").mockImplementation(() => {});
 
+type WriteMethod = "recordEvent" | "saveSignInCode" | "saveSignInLink" | "incrementRateLimit";
+
+/**
+ * Makes `method` reject with `error` on the repository and on every repository `withActor` hands its
+ * function: since issue 71 a write runs inside withActor, on whichever repository that gives it.
+ */
+function failWrite(method: WriteMethod, error: Error): void {
+  vi.spyOn(repo, method).mockRejectedValue(error);
+  const withActor = repo.withActor.bind(repo);
+  const failing = (scoped: Repository): Repository =>
+    new Proxy(scoped, {
+      get(target, prop) {
+        if (prop === method) return () => Promise.reject(error);
+        const value: unknown = Reflect.get(target, prop, target);
+        return typeof value === "function" ? value.bind(target) : value;
+      },
+    });
+  vi.spyOn(repo, "withActor").mockImplementation(((actor, fn) =>
+    withActor(actor, (scoped) => fn(failing(scoped)))) as Repository["withActor"]);
+}
+
 describe("AC26 (issue 9) — requestCode", () => {
   it.each([
     ["missing", {}],
@@ -187,7 +209,7 @@ describe("AC26 (issue 9) — requestCode", () => {
   it("AC26: a broken counter is written to console.error, naming the bucket, and the request still goes through", async () => {
     const { requestCode } = await load();
     const errors = silenceErrors();
-    vi.spyOn(repo, "incrementRateLimit").mockRejectedValue(new Error("counter unavailable"));
+    failWrite("incrementRateLimit", new Error("counter unavailable"));
     expect(await redirectOf(requestCode(form({ email: "ada@example.com" })))).toBe("/sign-in/code");
     expect(loggedText(errors)).toContain("sign-in-request");
   });
@@ -260,7 +282,7 @@ describe("AC27 (issue 9) — requestCode issues and sends after the response", (
   it("AC27: an error while issuing is caught and logged with the member id and the error's name — never its message — and nothing is sent", async () => {
     const { requestCode } = await load();
     const failure = Object.assign(new Error("could not reach postgres://haul:hunter2@db/haul"), { name: "StoreDownError" });
-    vi.spyOn(repo, "saveSignInCode").mockRejectedValue(failure);
+    failWrite("saveSignInCode", failure);
     const errors = silenceErrors();
     await redirectOf(requestCode(form({ email: "ada@example.com" })));
     await expect(runScheduled()).resolves.toBeUndefined();
@@ -444,7 +466,7 @@ describe("AC18 (issue 22) — verifyCode emails the link after the guess that lo
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const failure = Object.assign(new Error("could not reach postgres://haul:hunter2@db/haul"), { name: "StoreDownError" });
-    vi.spyOn(repo, "saveSignInLink").mockRejectedValue(failure);
+    failWrite("saveSignInLink", failure);
     const errors = silenceErrors();
     const { verifyCode } = await load();
     for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
@@ -664,7 +686,7 @@ describe("AC1 — a sign-in by code records one sign_in_by_code event", () => {
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { verifyCode } = await load();
     expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
-    expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: ada.id }]);
+    expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: ada.id, actor: { member: ada.id } }]);
     expect(scheduled.tasks).toEqual([]);
   });
 });
@@ -674,7 +696,7 @@ describe("AC2 — a sign-in by link records one sign_in_by_link event", () => {
     await plantLink();
     const { signInWithLink } = await load();
     expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
-    expect(repo.events()).toEqual([{ kind: "sign_in_by_link", memberId: ada.id }]);
+    expect(repo.events()).toEqual([{ kind: "sign_in_by_link", memberId: ada.id, actor: { member: ada.id } }]);
     expect(scheduled.tasks).toEqual([]);
   });
 });
@@ -687,7 +709,7 @@ describe("AC3 — the guess that locks records one lock event, after the respons
     for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
     expect(repo.events()).toEqual([]);
     await runScheduled();
-    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id }]);
+    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id, actor: { member: ada.id } }]);
   });
 
   it("AC3: the four wrong guesses before it record nothing, and guesses while locked — wrong or right — record nothing more", async () => {
@@ -704,12 +726,13 @@ describe("AC3 — the guess that locks records one lock event, after the respons
     expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
     expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/sign-in/code?error=invalid");
     await runScheduled();
-    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id }]);
+    expect(repo.events()).toEqual([{ kind: "lock", memberId: ada.id, actor: { member: ada.id } }]);
   });
 });
 
 describe("AC4 — an address's first rate-limit refusal in a window records one rate_limit_refusal event", () => {
-  const refusal = (windowStart: Date, key = ADDRESS) => ({ kind: "rate_limit_refusal", bucket: "sign-in-request", key, windowStart });
+  // A refusal identifies nobody, so its actor is null (issue 71).
+  const refusal = (windowStart: Date, key = ADDRESS) => ({ kind: "rate_limit_refusal", bucket: "sign-in-request", key, windowStart, actor: null });
 
   it("AC4: the 21st request in the clock hour records one rate_limit_refusal event with the bucket, the address's limiter key and the window's start; the 20 within the limit record nothing", async () => {
     const { requestCode } = await load();
@@ -838,10 +861,11 @@ describe("AC5 — what happens more than once records no event", () => {
 });
 
 describe("AC10 — an event that fails to record is logged and changes nothing the member sees", () => {
-  const EVENT_NOT_RECORDED = "sign-in event not recorded";
+  // Issue 71, AC14: logged by recordEventSafely, under this message.
+  const EVENT_NOT_RECORDED = "audit event not recorded";
 
   it("AC10: when sign_in_by_code fails to record, the sign-in still completes, and console.error gets the message with the event, the member id, the error's name and its code — never its message", async () => {
-    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    failWrite("recordEvent", pgError("57P01"));
     const errors = silenceErrors();
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
@@ -861,7 +885,7 @@ describe("AC10 — an event that fails to record is logged and changes nothing t
   });
 
   it("AC10: when sign_in_by_link fails to record, the sign-in still completes, and the failure is logged with the event, the member id, the error's name and its code — never its message", async () => {
-    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    failWrite("recordEvent", pgError("57P01"));
     const errors = silenceErrors();
     await plantLink();
     const { signInWithLink } = await load();
@@ -879,7 +903,7 @@ describe("AC10 — an event that fails to record is logged and changes nothing t
   });
 
   it("AC10: when the lock fails to record, the lock's link is still stored and sent, and the failure is logged with the event, the member id, the error's name and its code — never its message", async () => {
-    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    failWrite("recordEvent", pgError("57P01"));
     const errors = silenceErrors();
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
@@ -901,7 +925,7 @@ describe("AC10 — an event that fails to record is logged and changes nothing t
   });
 
   it("AC10: when a refusal fails to record, the request still redirects to /sign-in?limited=<minutes>, and the failure is logged with the event, the error's name and its code — never the client address or its message", async () => {
-    vi.spyOn(repo, "recordEvent").mockRejectedValue(pgError("57P01"));
+    failWrite("recordEvent", pgError("57P01"));
     const errors = silenceErrors();
     const { requestCode } = await load();
 
@@ -921,7 +945,7 @@ describe("AC11 — the sign-in email log says which stage failed", () => {
   const NOT_DELIVERED = "sign-in email not delivered";
 
   it("AC11: a Postgres error storing a code is logged with stage store, the member id, the error's name and its SQLSTATE — never its message — and nothing is sent", async () => {
-    vi.spyOn(repo, "saveSignInCode").mockRejectedValue(pgError("53300"));
+    failWrite("saveSignInCode", pgError("53300"));
     const errors = silenceErrors();
     const { requestCode } = await load();
     await redirectOf(requestCode(form({ email: "ada@example.com" })));
@@ -937,7 +961,7 @@ describe("AC11 — the sign-in email log says which stage failed", () => {
   it("AC11: a Postgres error storing the lock's link is logged with stage store, the member id, the error's name and its SQLSTATE — never its message — and nothing is sent", async () => {
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
-    vi.spyOn(repo, "saveSignInLink").mockRejectedValue(pgError("53300"));
+    failWrite("saveSignInLink", pgError("53300"));
     const errors = silenceErrors();
     const { verifyCode } = await load();
     for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
@@ -998,5 +1022,41 @@ describe("AC11 — the sign-in email log says which stage failed", () => {
     expect(logged).not.toContain(token);
     expect(logged).not.toContain("/sign-in/link");
     expect(logged).not.toContain(services.siteUrl);
+  });
+});
+
+// Issue 71 from here on: every event names who acted, read from the fake's events().
+describe("AC4 (issue 71) — a sign-in event's actor", () => {
+  const kindsAndActors = () => repo.events().map(({ kind, actor }) => ({ kind, actor }));
+
+  it("AC4: a sign-in by code's event names the member signing in as its actor", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(kindsAndActors()).toEqual([{ kind: "sign_in_by_code", actor: { member: ada.id } }]);
+  });
+
+  it("AC4: a sign-in by link's event names the member signing in as its actor", async () => {
+    await plantLink();
+    const { signInWithLink } = await load();
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    expect(kindsAndActors()).toEqual([{ kind: "sign_in_by_link", actor: { member: ada.id } }]);
+  });
+
+  it("AC4: a lock's event names the locked member as its actor", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await runScheduled();
+    expect(kindsAndActors()).toEqual([{ kind: "lock", actor: { member: ada.id } }]);
+  });
+
+  it("AC4: a rate-limit refusal's event has a null actor", async () => {
+    const { requestCode } = await load();
+    for (let i = 0; i < 21; i++) await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await runScheduled();
+    expect(kindsAndActors()).toEqual([{ kind: "rate_limit_refusal", actor: null }]);
   });
 });

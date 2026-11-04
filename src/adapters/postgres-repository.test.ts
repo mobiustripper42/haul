@@ -2,6 +2,7 @@
 // `<test db>_repository`, created if absent, migrated once, truncated before each test.
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import type { Actor } from "../ports/repository.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { createPool } from "./pg-connect.js";
@@ -37,7 +38,18 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     await pool.query(`truncate ${rows.map((r) => `"${r.tablename}"`).join(", ")} restart identity cascade`);
   };
 
-  runRepositoryContract("postgres", async () => repo, truncateAll);
+  // Issue 71, AC5: the actor of each event row, decoded from `member:<uuid>` / `system:<name>` / null.
+  const eventActors = async (): Promise<Actor[]> =>
+    (await pool.query<{ actor: string | null }>("select actor from audit_log where operation = 'event' order by id")).rows.map(
+      ({ actor }) => {
+        if (actor === null) return null;
+        if (actor.startsWith("member:")) return { member: actor.slice("member:".length) };
+        if (actor.startsWith("system:")) return { system: actor.slice("system:".length) };
+        throw new Error(`audit_log.actor ${JSON.stringify(actor)} is neither member:<uuid>, system:<name> nor null`);
+      },
+    );
+
+  runRepositoryContract("postgres", async () => repo, eventActors, truncateAll);
 
   // Issue 9, AC16–AC19: the sign-in store contract, a subject being a real member row.
   runSignInStoreContract(
