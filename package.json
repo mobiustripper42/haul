@@ -17,6 +17,7 @@
     "db:migrate": "tsx db/migrate.ts",
     "db:new-migration": "tsx db/new-migration.ts",
     "db:seed:members": "tsx db/seed.ts members",
+    "db:seed:supper-club": "tsx db/seed.ts supper-club",
     "db:reset:dev": "tsx db/reset-dev.ts",
     "db:rebuild:dev": "tsx db/rebuild.ts",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
