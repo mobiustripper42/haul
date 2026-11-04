@@ -44,6 +44,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-019 — Audit by trigger, with an exempt list
 - DEC-025 — Sign-in events go in the audit log through audit_event()
 - DEC-026 — A member holds one or more subscriptions, to any product
+- DEC-027 — Product, option type and option names are data
 - DEC-028 — Every audit row names who acted; events only where the trigger can't tell
 
 ### Product rules
