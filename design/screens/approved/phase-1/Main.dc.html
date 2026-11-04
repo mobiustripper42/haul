@@ -131,79 +131,57 @@ a{color:#003f4c}a:hover{color:#487878}
           </sc-if>
           <sc-if value="{{signedIn}}" hint-placeholder-val="{{false}}">
             <p style="margin: 0;">Signed in as <strong style="font-weight: 600;">{{email}}</strong>.</p>
-            <button type="button" onClick="{{toPayment}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Continue to payment</button>
           </sc-if>
         </fieldset>
-      </section>
-    </sc-if>
 
-    <sc-if value="{{onPayment}}" hint-placeholder-val="{{false}}">
-      <section aria-labelledby="pay-title" style="width: 100%; max-width: 560px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
-        <h2 id="pay-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Join the Supper Club</h2>
-
-        <div style="display: flex; flex-direction: column; border-top: 1px solid #c7d5d1;">
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #c7d5d1;">
-            <div style="display: flex; flex-direction: column; min-width: 0;">
-              <span style="font-size: 12px; line-height: 18px; color: #55615f;">Your box</span>
-              <span style="font-weight: 600;">{{sizeLabel}} · {{prefLabel}} · {{priceText}} a week</span>
+        <sc-if value="{{signedIn}}" hint-placeholder-val="{{false}}">
+          <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
+            <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">4. Payment</legend>
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <span style="font-size: 12px; line-height: 18px; font-weight: 500;">Card</span>
+              <div style="height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; background: #ffffff; display: flex; align-items: center; gap: 12px; font-size: 16px; color: #55615f;">
+                <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#487878" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="M3 10h18"></path></svg>
+                <span style="flex: 1 1 auto;">Card number</span>
+                <span>MM/YY</span>
+                <span>CVV</span>
+                <span>ZIP</span>
+              </div>
+              <span style="font-size: 12px; line-height: 18px; color: #55615f;">Secure card entry by Square. Your card is saved for the weekly charge.</span>
             </div>
-            <button type="button" onClick="{{toDetails}}" style="flex: none; font: inherit; cursor: pointer; min-height: 44px; margin-right: -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Change</button>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid #c7d5d1;">
-            <div style="display: flex; flex-direction: column; min-width: 0;">
-              <span style="font-size: 12px; line-height: 18px; color: #55615f;">Your details</span>
-              <span style="font-weight: 600;">Maria Lopez</span>
-              <span>{{email}} · (216) 555-0134</span>
-            </div>
-          </div>
-        </div>
 
-        <fieldset style="margin: 0; padding: 0; border: 0; display: flex; flex-direction: column; gap: 16px;">
-          <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">4. Payment</legend>
-          <div style="display: flex; flex-direction: column; gap: 8px;">
-            <span style="font-size: 12px; line-height: 18px; font-weight: 500;">Card</span>
-            <div style="height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; background: #ffffff; display: flex; align-items: center; gap: 12px; font-size: 16px; color: #55615f;">
-              <svg aria-hidden="true" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#487878" stroke-width="1.5" stroke-linecap="round"><rect x="3" y="5.5" width="18" height="13" rx="2"></rect><path d="M3 10h18"></path></svg>
-              <span style="flex: 1 1 auto;">Card number</span>
-              <span>MM/YY</span>
-              <span>CVV</span>
-              <span>ZIP</span>
+            <div style="background: #f7f7f7; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; gap: 16px;">
+                <span>Today, for your first week</span>
+                <strong style="font-weight: 600;">{{priceText}}</strong>
+              </div>
+              <div style="display: flex; justify-content: space-between; gap: 16px;">
+                <span>Then every week, at the cutoff</span>
+                <strong style="font-weight: 600;">{{priceText}}</strong>
+              </div>
+              <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">First pickup: [FIRST PICKUP DATE]. After that, your card is charged {{priceText}} at the end of each Monday for the following week's pickup, until you cancel. [HOW TO SKIP, SWITCH OR CANCEL — consent wording, task 1.12]</p>
             </div>
-            <span style="font-size: 12px; line-height: 18px; color: #55615f;">Secure card entry by Square. Your card is saved for the weekly charge.</span>
-          </div>
 
-          <div style="background: #f7f7f7; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 8px;">
-            <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span>Today, for your first week</span>
-              <strong style="font-weight: 600;">{{priceText}}</strong>
+            <label style="display: flex; gap: 12px; align-items: flex-start; cursor: pointer; min-height: 44px;">
+              <input type="checkbox" style="flex: none; width: 20px; height: 20px; margin: 1px 0 0 0; accent-color: #003f4c;">
+              <span>I agree to a weekly charge of {{priceText}} until I cancel, and to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>. [consent wording, task 1.12]</span>
+            </label>
+          </fieldset>
+
+          <sc-if value="{{declined}}" hint-placeholder-val="{{false}}">
+            <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+              <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+              <span><strong style="font-weight: 600; color: #a93226;">Your card was declined.</strong> Nothing was charged. Check the card details or try another card.</span>
             </div>
-            <div style="display: flex; justify-content: space-between; gap: 16px;">
-              <span>Then every week, at the cutoff</span>
-              <strong style="font-weight: 600;">{{priceText}}</strong>
-            </div>
-            <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">First pickup: [FIRST PICKUP DATE]. After that, your card is charged {{priceText}} at the end of each Monday for the following week's pickup, until you cancel. [HOW TO SKIP, SWITCH OR CANCEL — consent wording, task 1.12]</p>
-          </div>
+          </sc-if>
 
-          <label style="display: flex; gap: 12px; align-items: flex-start; cursor: pointer; min-height: 44px;">
-            <input type="checkbox" style="flex: none; width: 20px; height: 20px; margin: 1px 0 0 0; accent-color: #003f4c;">
-            <span>I agree to a weekly charge of {{priceText}} until I cancel, and to the <a href="#">Terms</a> and <a href="#">Privacy Policy</a>. [consent wording, task 1.12]</span>
-          </label>
-        </fieldset>
-
-        <sc-if value="{{declined}}" hint-placeholder-val="{{false}}">
-          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
-            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
-            <span><strong style="font-weight: 600; color: #a93226;">Your card was declined.</strong> Nothing was charged. Check the card details or try another card.</span>
-          </div>
+          <a href="SignupDone.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Join and pay {{priceText}}</a>
+          <p style="margin: -8px 0 0 0; text-align: center; font-size: 12px; line-height: 18px; color: #55615f;">Limited to 50 boxes. No sales tax.</p>
         </sc-if>
-
-        <a href="SignupDone.dc.html" style="display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Join and pay {{priceText}}</a>
-        <p style="margin: -8px 0 0 0; text-align: center; font-size: 12px; line-height: 18px; color: #55615f;">Limited to 50 boxes. No sales tax.</p>
       </section>
     </sc-if>
 
     <sc-if value="{{onSoldOut}}" hint-placeholder-val="{{false}}">
-      <section aria-labelledby="full-title" style="width: 100%; max-width: 376px; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+      <section aria-labelledby="full-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
         <sc-if value="{{soldOutPaying}}" hint-placeholder-val="{{false}}">
           <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
             <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
@@ -233,7 +211,7 @@ a{color:#003f4c}a:hover{color:#487878}
   </footer>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["details","payment","soldout"],"default":"details"},"signedIn":{"editor":"boolean","default":false},"payError":{"editor":"enum","options":["none","declined","soldout"],"default":"none"},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":1400}}'>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["details","soldout"],"default":"details"},"signedIn":{"editor":"boolean","default":false},"payError":{"editor":"enum","options":["none","declined","soldout"],"default":"none"},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":1400}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
@@ -244,7 +222,7 @@ class Component extends DCLogic {
     const clicked = this.state.step !== null;
     const step = this.state.step ?? p.step ?? 'details';
     const payErr = clicked ? 'none' : (p.payError ?? 'none');
-    const signedIn = step === 'payment' || p.signedIn === true || p.signedIn === 'true';
+    const signedIn = p.signedIn === true || p.signedIn === 'true' || payErr !== 'none';
     const soldOut = step === 'soldout' || payErr === 'soldout';
     const sizeDefs = [
       { id: 'two', label: '2 people', price: 50 },
@@ -257,9 +235,8 @@ class Component extends DCLogic {
     const chosenSize = sizeDefs.find((s) => s.id === this.state.size) || sizeDefs[0];
     const chosenPref = prefDefs.find((x) => x.id === this.state.pref) || prefDefs[0];
     return {
-      marketing: step === 'details' && !soldOut,
+      marketing: true,
       onDetails: step === 'details' && !soldOut,
-      onPayment: step === 'payment' && !soldOut,
       onSoldOut: soldOut,
       soldOutPaying: payErr === 'soldout',
       signedIn: signedIn,
@@ -283,7 +260,6 @@ class Component extends DCLogic {
       priceText: '$' + chosenSize.price,
       sizeLabel: chosenSize.label,
       prefLabel: chosenPref.label,
-      toPayment: () => this.setState({ step: 'payment' }),
       toDetails: () => this.setState({ step: 'details' })
     };
   }
