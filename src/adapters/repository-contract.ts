@@ -9,6 +9,7 @@
  * there, so each test starts from an empty database.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { AccountDetails } from "../create-account.js";
 import { LANGUAGES, type Language } from "../i18n.js";
 import { DuplicateEmailError, ROLES, type Role } from "../members.js";
 import type { Actor, Repository } from "../ports/repository.js";
@@ -159,6 +160,121 @@ export function runRepositoryContract(
         const member = await repo.createMember({ email: "ada@example.com", role });
         expect(member.role).toBe(role);
         expect((await repo.findMemberById(member.id))?.role).toBe(role);
+      });
+    });
+
+    // Issue 55: Create Account's one writer, and the one place an email is confirmed.
+    describe("saveAccount and confirmMemberEmail (issue 55)", () => {
+      const EARLIER = new Date("2026-10-28T13:00:00.000Z");
+      const LATER = new Date("2026-10-28T15:00:00.000Z");
+      const ADA: AccountDetails = { email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" };
+      const OTHER = { firstName: "Augusta", lastName: "King", phone: "216-555-0199", language: "es" } as const;
+
+      it("AC5: a member made by createMember has no details and is unconfirmed", async () => {
+        const member = await repo.createMember({ email: "ada@example.com" });
+        expect(member).toMatchObject({ firstName: null, lastName: null, phone: null, emailConfirmedAt: null });
+        expect(await repo.findMemberById(member.id)).toEqual(member);
+      });
+
+      it("AC5: for a new email it inserts an unconfirmed member, with a UUID id, the role member and the details given", async () => {
+        const member = await repo.saveAccount(ADA);
+        expect(member.id).toMatch(UUID);
+        expect(member).toMatchObject({ ...ADA, role: "member", emailConfirmedAt: null });
+        expect(member.createdAt).toBeInstanceOf(Date);
+      });
+
+      it("AC5: what it returns is what is stored, found by email and by id", async () => {
+        const member = await repo.saveAccount(ADA);
+        expect(member.email).toBe("ada@example.com");
+        expect(await repo.findMemberByEmail("ada@example.com")).toEqual(member);
+        expect(await repo.findMemberById(member.id)).toEqual(member);
+      });
+
+      it("AC5: the email is stored normalized", async () => {
+        const member = await repo.saveAccount({ ...ADA, email: "  Ada@Example.COM " });
+        expect(member.email).toBe("ada@example.com");
+      });
+
+      it("AC5: a new member saved inside withActor is gone when fn throws", async () => {
+        const failure = new Error("fn failed after saving");
+        await expect(
+          repo.withActor(null, async (r) => {
+            expect((await r.saveAccount(ADA)).email).toBe("ada@example.com");
+            throw failure;
+          }),
+        ).rejects.toBe(failure);
+        expect(await repo.findMemberByEmail("ada@example.com")).toBeNull();
+      });
+
+      it("AC6: for an unconfirmed member it replaces first name, last name, phone and language, on the same row", async () => {
+        const first = await repo.saveAccount(ADA);
+        const second = await repo.saveAccount({ ...ADA, ...OTHER });
+        expect(second).toEqual({ ...first, ...OTHER });
+        expect(await repo.findMemberById(first.id)).toEqual(second);
+      });
+
+      it("AC6: the match ignores the email's case and surrounding whitespace", async () => {
+        const first = await repo.saveAccount(ADA);
+        const second = await repo.saveAccount({ ...ADA, ...OTHER, email: " ADA@example.com " });
+        expect(second.id).toBe(first.id);
+        expect(second.firstName).toBe("Augusta");
+      });
+
+      it("AC6: a member made by createMember is unconfirmed, and takes the details", async () => {
+        const created = await repo.createMember({ email: "ada@example.com" });
+        const saved = await repo.saveAccount(ADA);
+        expect(saved).toMatchObject({ ...ADA, id: created.id, createdAt: created.createdAt });
+      });
+
+      it("AC6: it does not touch the role", async () => {
+        const admin = await repo.createMember({ email: "ada@example.com", role: "admin" });
+        expect(await repo.saveAccount(ADA)).toMatchObject({ id: admin.id, role: "admin", firstName: "Ada" });
+      });
+
+      it("AC6: a replacement inside withActor goes back to what it was when fn throws", async () => {
+        const first = await repo.saveAccount(ADA);
+        const failure = new Error("fn failed after saving");
+        await expect(
+          repo.withActor(null, async (r) => {
+            expect((await r.saveAccount({ ...ADA, ...OTHER })).firstName).toBe("Augusta");
+            throw failure;
+          }),
+        ).rejects.toBe(failure);
+        expect(await repo.findMemberById(first.id)).toEqual(first);
+      });
+
+      it("AC7: for a confirmed member it changes nothing and returns the member as stored", async () => {
+        const { id } = await repo.saveAccount(ADA);
+        await repo.confirmMemberEmail(id, EARLIER);
+        const stored = await repo.findMemberById(id);
+        expect(stored?.firstName).toBe("Ada");
+        expect(await repo.saveAccount({ ...ADA, ...OTHER })).toEqual(stored);
+        expect(await repo.findMemberById(id)).toEqual(stored);
+      });
+
+      it("AC8: confirmMemberEmail sets emailConfirmedAt where it was null", async () => {
+        const { id } = await repo.saveAccount(ADA);
+        await repo.confirmMemberEmail(id, EARLIER);
+        expect((await repo.findMemberById(id))?.emailConfirmedAt).toEqual(EARLIER);
+      });
+
+      it("AC8: a second confirmMemberEmail changes nothing", async () => {
+        const { id } = await repo.saveAccount(ADA);
+        await repo.confirmMemberEmail(id, EARLIER);
+        await repo.confirmMemberEmail(id, LATER);
+        expect((await repo.findMemberById(id))?.emailConfirmedAt).toEqual(EARLIER);
+      });
+
+      it("AC8: it confirms that member and no other", async () => {
+        const ada = await repo.saveAccount(ADA);
+        const grace = await repo.saveAccount({ ...ADA, email: "grace@example.com" });
+        await repo.confirmMemberEmail(ada.id, EARLIER);
+        expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toEqual(EARLIER);
+        expect((await repo.findMemberById(grace.id))?.emailConfirmedAt).toBeNull();
+      });
+
+      it("AC8: for an unknown member it does nothing and does not throw", async () => {
+        await expect(repo.confirmMemberEmail(UNKNOWN_UUID, EARLIER)).resolves.toBeUndefined();
       });
     });
 

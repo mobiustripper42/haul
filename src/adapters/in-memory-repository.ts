@@ -1,13 +1,16 @@
 import { randomUUID } from "node:crypto";
+import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Actor, AuditEvent, Repository } from "../ports/repository.js";
+import type { ProductInput, ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
 
 /** The permanent fake (DEC-010): same behaviour as `PostgresRepository`, proved by one contract. */
 export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
+  private readonly products: ProductWithOptions[] = [];
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
   private readonly recorded: RecordedEvent[] = [];
@@ -24,6 +27,10 @@ export class InMemoryRepository implements Repository {
       language: input.language ?? DEFAULT_LANGUAGE,
       role: input.role ?? DEFAULT_ROLE,
       createdAt: new Date(),
+      firstName: null,
+      lastName: null,
+      phone: null,
+      emailConfirmedAt: null,
     };
     this.members.set(member.id, member);
     return copy(member);
@@ -37,6 +44,49 @@ export class InMemoryRepository implements Repository {
   async findMemberById(id: string): Promise<Member | null> {
     const member = this.members.get(id);
     return member ? copy(member) : null;
+  }
+
+  async saveAccount(input: AccountDetails): Promise<Member> {
+    const email = normalizeEmail(input.email);
+    const existing = this.find((m) => m.email === email) ?? (await this.createMember({ email }));
+    if (existing.emailConfirmedAt !== null) return existing;
+    // A new object, not a mutation: `withActor` restores the map's entries on rollback.
+    const replaced: Member = {
+      ...existing,
+      firstName: input.firstName,
+      lastName: input.lastName,
+      phone: input.phone,
+      language: input.language,
+    };
+    this.members.set(replaced.id, replaced);
+    return copy(replaced);
+  }
+
+  async confirmMemberEmail(memberId: string, now: Date): Promise<void> {
+    const member = this.members.get(memberId);
+    if (member && member.emailConfirmedAt === null) this.members.set(memberId, { ...member, emailConfirmedAt: new Date(now) });
+  }
+
+  async findProductByName(name: string): Promise<ProductWithOptions | null> {
+    const product = this.products.find((p) => p.name === name);
+    return product ? structuredClone(product) : null;
+  }
+
+  /** A test seam on the fake only, not on `Repository`: assigns UUIDs and returns the product as `findProductByName` would. */
+  addProduct(input: ProductInput): ProductWithOptions {
+    const product: ProductWithOptions = {
+      ...input,
+      id: randomUUID(),
+      optionTypes: input.optionTypes
+        .map((type) => ({
+          ...type,
+          id: randomUUID(),
+          options: type.options.map((option) => ({ ...option, id: randomUUID() })).sort(byPositionThenName),
+        }))
+        .sort(byPositionThenName),
+    };
+    this.products.push(product);
+    return structuredClone(product);
   }
 
   getSignInCode(subjectId: string): Promise<SignInCode | null> {
@@ -117,7 +167,15 @@ export class InMemoryRepository implements Repository {
 }
 
 // Callers get their own object, as they would from a database row, so mutating one can't edit the store.
-const copy = (member: Member): Member => ({ ...member, createdAt: new Date(member.createdAt) });
+const copy = (member: Member): Member => ({
+  ...member,
+  createdAt: new Date(member.createdAt),
+  emailConfirmedAt: member.emailConfirmedAt && new Date(member.emailConfirmedAt),
+});
+
+/** The order `findProductByName` promises for option types and options. */
+const byPositionThenName = (a: { position: number; name: string }, b: { position: number; name: string }): number =>
+  a.position - b.position || a.name.localeCompare(b.name);
 
 /** An event as recorded: with who acted, null outside `withActor`. */
 export type RecordedEvent = AuditEvent & { actor: Actor };

@@ -18,3 +18,10 @@ export function formatUsd(cents: number): string {
   // `+ 0` turns -0 into 0, which Intl would otherwise print as "-$0.00".
   return usd.format((assertCents(cents) + 0) / 100);
 }
+
+const usdWhole = new Intl.NumberFormat("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
+
+/** `formatUsd` without ".00" when the amount is whole dollars: 5000 → "$50", 1125 → "$11.25". */
+export function formatUsdWhole(cents: number): string {
+  return assertCents(cents) % 100 === 0 ? usdWhole.format((cents + 0) / 100) : formatUsd(cents);
+}

@@ -1,5 +1,5 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
-import { takeRateLimit, type RateLimitPolicy, type RateLimitRefusal } from "./rate-limit.js";
+import { refusalFrom, takeRateLimit, type RateLimitPolicy, type RateLimitRefusal } from "./rate-limit.js";
 import type { RateLimitStore, SignInCode, SignInStore, SignInSubject } from "./store.js";
 
 export const CODE_TTL_MS = 10 * 60_000;
@@ -72,11 +72,7 @@ export async function requestSignInCode<S extends SignInSubject>(
     params.clientKey,
   );
   if (!limit.allowed) {
-    // A refusal to report is the window's first, and only a counted request has a key.
-    const refusal =
-      limit.first && params.clientKey !== null
-        ? { bucket: SIGN_IN_REQUEST_LIMIT.bucket, key: params.clientKey, windowStart: limit.windowStart }
-        : null;
+    const refusal = refusalFrom(limit, SIGN_IN_REQUEST_LIMIT.bucket, params.clientKey);
     return { outcome: "limited", retryAfterMs: limit.retryAfterMs, refusal };
   }
 

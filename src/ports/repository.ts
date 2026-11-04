@@ -1,5 +1,7 @@
+import type { AccountDetails } from "../create-account.js";
 import type { Language } from "../i18n.js";
 import type { Member, Role } from "../members.js";
+import type { ProductWithOptions } from "../products.js";
 import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
 import type { RateLimitStore, SignInStore } from "../sign-in/store.js";
 
@@ -32,6 +34,9 @@ export interface Repository extends SignInStore, RateLimitStore {
   findMemberByEmail(email: string): Promise<Member | null>;
   /** Null for an unknown id and for a string that isn't a UUID. */
   findMemberById(id: string): Promise<Member | null>;
+  saveAccount(input: AccountDetails): Promise<Member>;
+  confirmMemberEmail(memberId: string, now: Date): Promise<void>;
+  findProductByName(name: string): Promise<ProductWithOptions | null>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

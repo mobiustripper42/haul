@@ -297,6 +297,75 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     });
   });
 
+  // Issue 55: Postgres only. saveAccount is one statement, so callers that arrive together cannot make
+  // two rows, and a member's insert and update are the row changes the trigger records (DEC-028).
+  describe("issue 55 — saveAccount under concurrency and in the audit log", () => {
+    const ADA = { email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" } as const;
+    const OTHER = { firstName: "Augusta", lastName: "King", phone: "216-555-0199", language: "es" } as const;
+    const CONFIRMED_AT = new Date("2026-10-28T13:00:00.000Z");
+
+    const rowChanges = async (id: string) =>
+      (
+        await pool.query<{ operation: string; actor: string | null }>(
+          "select operation, actor from audit_log where table_name = 'members' and row_key = $1::jsonb order by id",
+          [JSON.stringify({ id })],
+        )
+      ).rows;
+
+    it("AC5: 10 concurrent saveAccount calls for a new email make one row, none fails, and every call returns that member", async () => {
+      await truncateAll();
+      const members = await Promise.all(Array.from({ length: 10 }, () => repo.saveAccount(ADA)));
+      const { rows } = await pool.query<{ id: string }>("select id from members where email = $1", [ADA.email]);
+      expect(rows).toHaveLength(1);
+      expect(new Set(members.map((member) => member.id))).toEqual(new Set([rows[0]?.id]));
+    });
+
+    it("AC7: 10 concurrent saveAccount calls for a confirmed member change nothing, and every call returns it as stored", async () => {
+      await truncateAll();
+      const { id } = await repo.saveAccount(ADA);
+      await repo.confirmMemberEmail(id, CONFIRMED_AT);
+      const stored = await repo.findMemberById(id);
+      expect(stored?.emailConfirmedAt).toEqual(CONFIRMED_AT);
+      const members = await Promise.all(Array.from({ length: 10 }, () => repo.saveAccount({ ...ADA, ...OTHER })));
+      for (const member of members) expect(member).toEqual(stored);
+      expect(await repo.findMemberById(id)).toEqual(stored);
+    });
+
+    it("AC5: a new member through withActor(null) is one insert row in audit_log, with a null actor", async () => {
+      await truncateAll();
+      const { id } = await repo.withActor(null, (scoped) => scoped.saveAccount(ADA));
+      expect(await rowChanges(id)).toEqual([{ operation: "insert", actor: null }]);
+    });
+
+    it("AC6: a replacement is one update row in audit_log", async () => {
+      await truncateAll();
+      const { id } = await repo.withActor(null, (scoped) => scoped.saveAccount(ADA));
+      await repo.withActor(null, (scoped) => scoped.saveAccount({ ...ADA, ...OTHER }));
+      expect(await rowChanges(id)).toEqual([
+        { operation: "insert", actor: null },
+        { operation: "update", actor: null },
+      ]);
+    });
+
+    it("AC7: saving over a confirmed member writes no row change", async () => {
+      await truncateAll();
+      const { id } = await repo.saveAccount(ADA);
+      await repo.confirmMemberEmail(id, CONFIRMED_AT);
+      const before = await rowChanges(id);
+      expect(before.map((change) => change.operation)).toEqual(["insert", "update"]);
+      await repo.saveAccount({ ...ADA, ...OTHER });
+      expect(await rowChanges(id)).toEqual(before);
+    });
+
+    it("AC8: a second confirmMemberEmail writes no row change", async () => {
+      await truncateAll();
+      const { id } = await repo.saveAccount(ADA);
+      await repo.confirmMemberEmail(id, CONFIRMED_AT);
+      await repo.confirmMemberEmail(id, new Date(CONFIRMED_AT.getTime() + 60_000));
+      expect((await rowChanges(id)).map((change) => change.operation)).toEqual(["insert", "update"]);
+    });
+  });
+
   // Postgres only: the typed port gives the in-memory adapter no way to store an unsupported code.
   describe("AC10 (issue 7) — members.language accepts only en and es", () => {
     const CHECK_VIOLATION = "23514";

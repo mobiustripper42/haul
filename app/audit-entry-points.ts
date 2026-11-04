@@ -10,6 +10,10 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/sign-in/actions.ts#verifyCode": { records: ["sign_in_by_code", "lock"] },
   "app/sign-in/actions.ts#signInWithLink": { records: ["sign_in_by_link"] },
   "app/sign-in/actions.ts#signOut": { none: "ends the session; writes no data" },
+  "app/create-account/actions.ts#requestAccountCode": { records: ["rate_limit_refusal"] },
+  "app/create-account/actions.ts#verifyAccountCode": { records: ["sign_in_by_code", "lock"] },
+  "app/create-account/actions.ts#resendAccountCode": { records: ["rate_limit_refusal"] },
   "app/language-actions.ts#setLanguage": { none: "sets a cookie only" },
+  "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
   "app/dev/outbox/route.ts#GET": { none: "dev only; reads" },
 };

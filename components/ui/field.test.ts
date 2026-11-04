@@ -2,8 +2,9 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { normalMarkup } from "../../app/screen-test-helpers";
+import { blocksInsideParagraphs, normalMarkup, textsOf } from "../../app/screen-test-helpers";
 import { Field } from "./field";
+import { Hint } from "./hint";
 
 describe("AC4 — Field", () => {
   it.each([
@@ -14,5 +15,27 @@ describe("AC4 — Field", () => {
     expect(normalMarkup(html)).toBe(
       normalMarkup(`<p><label for="${htmlFor}" class="mb-2 block text-field-label">${label}</label><input id="${htmlFor}"/></p>`),
     );
+  });
+});
+
+// Issue 55: `help`, rendered through Hint. Field is called with the new prop, as the spec shapes it.
+describe("AC17 (issue 55) — Field's help", () => {
+  const HELP = "So the farm can reach you.";
+  const render = () =>
+    renderToStaticMarkup(createElement(Field, { label: "Phone", htmlFor: "phone", help: HELP, children: createElement("input", { id: "phone" }) }));
+
+  it("AC17: with help it renders Hint, with the id <htmlFor>-help, after its children", () => {
+    const hint = renderToStaticMarkup(createElement(Hint, { id: "phone-help", children: HELP }));
+    const html = render();
+    expect(textsOf(html)).toEqual(["Phone", HELP]);
+    expect(normalMarkup(html)).toBe(
+      normalMarkup(`<p><label for="phone" class="mb-2 block text-field-label">Phone</label><input id="phone"/>${hint}</p>`),
+    );
+  });
+
+  it("AC17: the help line is no block inside Field's <p>, which a browser would close at it", () => {
+    const html = render();
+    expect(textsOf(html)).toContain(HELP);
+    expect(blocksInsideParagraphs(html)).toEqual([]);
   });
 });

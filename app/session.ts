@@ -7,6 +7,10 @@ import { getRepository, getSessionSecret } from "./services";
 
 export const SESSION_COOKIE = "ocf_session";
 export const SIGN_IN_EMAIL_COOKIE = "ocf_sign_in_email";
+/** Where sign-in or Create Account sends the person afterwards; set with `SIGN_IN_EMAIL_COOKIE`'s options and max age. */
+export const RETURN_TO_COOKIE = "ocf_return_to";
+/** The details a failed Create Account request had entered, to refill the form; same options and max age. */
+export const ACCOUNT_DRAFT_COOKIE = "ocf_account_draft";
 
 /**
  * The signed-in member, or null: no cookie, a token that fails verification, or a member who is gone.

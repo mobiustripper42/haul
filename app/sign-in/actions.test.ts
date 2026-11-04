@@ -1061,6 +1061,107 @@ describe("AC4 (issue 71) — a sign-in event's actor", () => {
   });
 });
 
+// Issue 55 from here on: finishSignIn confirms the member's email and honours ocf_return_to, so a
+// sign-in by code and one by link both end the same way.
+const RETURN_TO = "ocf_return_to";
+const BACK_TO_SUPPER_CLUB = "/supper-club?size=four&menu=vegan";
+
+describe("AC9 (issue 55) — a sign-in confirms the email and goes back where it came from", () => {
+  type Actions = Awaited<ReturnType<typeof load>>;
+
+  const SIGN_INS: Array<[string, (actions: Actions) => Promise<unknown>]> = [
+    [
+      "code",
+      async ({ verifyCode }) => {
+        await plantCode();
+        request.current.cookies[SIGN_IN_EMAIL] = "ada@example.com";
+        return verifyCode(form({ code: RIGHT_CODE }));
+      },
+    ],
+    [
+      "link",
+      async ({ signInWithLink }) => {
+        await plantLink();
+        return signInWithLink(form({ token: LINK_TOKEN }));
+      },
+    ],
+  ];
+
+  it.each(SIGN_INS)("AC9: a sign-in by %s sets email_confirmed_at when it was null", async (_how, signIn) => {
+    expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toBeNull();
+    const actions = await load();
+    await redirectOf(signIn(actions));
+    expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toEqual(T0);
+  });
+
+  it.each(SIGN_INS)("AC9: a sign-in by %s leaves an email_confirmed_at already set", async (_how, signIn) => {
+    const confirmedAt = new Date(T0.getTime() - 60 * MINUTE);
+    await repo.confirmMemberEmail(ada.id, confirmedAt);
+    const actions = await load();
+    await redirectOf(signIn(actions));
+    expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toEqual(confirmedAt);
+  });
+
+  it.each(SIGN_INS)("AC9: a sign-in by %s redirects to ocf_return_to's path and deletes the cookie", async (_how, signIn) => {
+    request.current.cookies[RETURN_TO] = BACK_TO_SUPPER_CLUB;
+    const actions = await load();
+    expect(await redirectOf(signIn(actions))).toBe(BACK_TO_SUPPER_CLUB);
+    expect(cookieGone(RETURN_TO)).toBe(true);
+  });
+
+  it.each(SIGN_INS)("AC9: a sign-in by %s with no ocf_return_to still redirects to /", async (_how, signIn) => {
+    const actions = await load();
+    expect(await redirectOf(signIn(actions))).toBe("/");
+    expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toEqual(T0);
+  });
+
+  it.each(SIGN_INS)("AC9: a sign-in by %s confirms the email before the session starts, inside withActor", async (_how, signIn) => {
+    const withActor = repo.withActor.bind(repo);
+    let inTransaction = 0;
+    vi.spyOn(repo, "withActor").mockImplementation((async (actor, fn) => {
+      inTransaction++;
+      try {
+        return await withActor(actor, fn);
+      } finally {
+        inTransaction--;
+      }
+    }) as Repository["withActor"]);
+    const confirm = repo.confirmMemberEmail.bind(repo);
+    const seen: Array<{ inTransaction: number; sessions: number }> = [];
+    vi.spyOn(repo, "confirmMemberEmail").mockImplementation(async (id, now) => {
+      seen.push({ inTransaction, sessions: setsNamed(SESSION).length });
+      await confirm(id, now);
+    });
+
+    const actions = await load();
+    await redirectOf(signIn(actions));
+    expect(seen).toEqual([{ inTransaction: 1, sessions: 0 }]);
+    expect(setsNamed(SESSION)).toHaveLength(1);
+  });
+
+  it("AC9: a failed code confirms nobody and leaves ocf_return_to for the next try", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com", [RETURN_TO]: BACK_TO_SUPPER_CLUB };
+    const { verifyCode } = await load();
+    expect(await redirectOf(verifyCode(form({ code: WRONG_CODE })))).toBe("/sign-in/code?error=invalid");
+    expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toBeNull();
+    expect(request.current.cookies[RETURN_TO]).toBe(BACK_TO_SUPPER_CLUB);
+  });
+});
+
+describe("AC13 (issue 55) — a return path read from the cookie is never followed off the site", () => {
+  it.each(["https://evil.com", "//evil.com", "/\\evil.com", "/supper-club\\evil"])(
+    "AC13: an ocf_return_to of %j redirects to / and the cookie is deleted",
+    async (path) => {
+      await plantCode();
+      request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com", [RETURN_TO]: path };
+      const { verifyCode } = await load();
+      expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+      expect(cookieGone(RETURN_TO)).toBe(true);
+    },
+  );
+});
+
 describe("AC14 (issue 71) — an event whose own transaction fails is logged and changes nothing the member sees", () => {
   const EVENT_NOT_RECORDED = "audit event not recorded";
 

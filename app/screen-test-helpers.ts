@@ -1,5 +1,6 @@
 // Test-only: reading a screen rendered through react-dom/server (no DOM library is installed),
 // catching a mocked `redirect`, and reading what was logged. Nothing that ships imports this.
+import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
 import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
 
@@ -71,6 +72,46 @@ export function findAll(node: ReactNode, type: string | ComponentType<never>): R
 }
 
 export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * A `class` attribute's tokens, plus what each one's rule in app/globals.css applies, so a test can ask
+ * for a look (`text-danger`) without caring whether a component writes the utility or names a class.
+ */
+export function utilitiesOf(classAttribute: string | undefined): string[] {
+  const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+  return (classAttribute ?? "")
+    .split(/\s+/)
+    .filter(Boolean)
+    .flatMap((name) => [
+      name,
+      ...[...css.matchAll(new RegExp(`\\.${escapeRegExp(name)}\\s*\\{([^}]*)\\}`, "g"))].flatMap((rule) =>
+        (rule[1] ?? "").split(/[\s;]+/).filter(Boolean),
+      ),
+    ]);
+}
+
+const BLOCK_TAGS = new Set(["p", "div", "section", "fieldset", "form", "ul", "ol", "table", "h1", "h2", "h3", "h4", "h5", "h6", "main", "header"]);
+const VOID_TAGS = new Set(["input", "br", "hr", "img", "meta", "link"]);
+
+/**
+ * Every block element written inside a `<p>`. A browser closes the `<p>` at the first one, so the
+ * markup it builds is not the markup the server sent. `Field` is a `<p>`, so this is what a line
+ * rendered inside one must not be.
+ */
+export function blocksInsideParagraphs(html: string): string[] {
+  const open: string[] = [];
+  const found: string[] = [];
+  for (const match of withoutScripts(html).matchAll(/<(\/?)([a-zA-Z][\w-]*)\b[^>]*?(\/?)>/g)) {
+    const [, closing, tag = "", selfClosed] = match;
+    if (closing) {
+      open.splice(open.lastIndexOf(tag), 1);
+    } else if (!selfClosed && !VOID_TAGS.has(tag)) {
+      if (BLOCK_TAGS.has(tag) && open.includes("p")) found.push(tag);
+      open.push(tag);
+    }
+  }
+  return found;
+}
 
 /**
  * The URL a mocked `redirect` was called with. Each test file mocks `next/navigation` so that

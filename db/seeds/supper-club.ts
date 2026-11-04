@@ -7,9 +7,10 @@
  * Cutoff is Monday (ISO weekday 1) at `24:00`, the end of the day, in America/New_York (DEC-017).
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
+import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 
 const PRODUCT = {
-  name: "Supper Club",
+  name: SUPPER_CLUB_PRODUCT_NAME,
   cap: 50,
   firstPickupDate: "2027-01-03",
   cutoffWeekday: 1,
