@@ -63,15 +63,15 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
 
   runProductContract("postgres", async () => repo, addProduct, truncateAll);
 
-  it("AC1: the supper-club seed's product is found by SUPPER_CLUB_PRODUCT_NAME, its pickers in the seed's order", async () => {
+  it("AC1, AC14 (issue 77): the supper-club seed's product is found by SUPPER_CLUB_PRODUCT_NAME, its pickers in the seed's order", async () => {
     await truncateAll();
     await runSeed("supper-club", url);
 
     const found = await repo.findProductByName(SUPPER_CLUB_PRODUCT_NAME);
     expect(found).toMatchObject({ name: "Supper Club", cap: 50, firstPickupDate: "2027-01-03", cutoffWeekday: 1, cutoffTime: "24:00:00" });
     expect(found?.optionTypes.map((type) => [type.name, type.options.map((option) => [option.name, option.priceCents])])).toEqual([
-      ["Size", [["2 person", 5000], ["3–4 person", 8000]]],
-      ["Preference", [["Standard", 0], ["Vegan", 0]]],
+      ["How many people?", [["2 people", 5000], ["3–4 people", 8000]]],
+      ["Which menu?", [["Standard", 0], ["Vegan", 0]]],
     ]);
   });
 });

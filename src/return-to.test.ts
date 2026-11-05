@@ -1,6 +1,6 @@
 // Issue 55, AC13: a return path that could leave the site is never followed.
 import { describe, expect, it } from "vitest";
-import { safeReturnTo } from "./return-to.js";
+import { returnToOr, safeReturnTo } from "./return-to.js";
 
 describe("AC13 — safeReturnTo", () => {
   it.each(["/", "/supper-club", "/supper-club?size=four&menu=vegan"])("AC13: %j, a path on this site, is kept", (path) => {
@@ -45,4 +45,21 @@ describe("AC13 — safeReturnTo", () => {
   ])("AC13: a path holding %s is /", (_what, value) => {
     expect(safeReturnTo(value)).toBe("/");
   });
+});
+
+describe("AC6 (issue 77) — returnToOr", () => {
+  it("AC6: no value at all gives the fallback", () => {
+    expect(returnToOr(undefined, "/supper-club")).toBe("/supper-club");
+  });
+
+  it("AC6: a safe path is kept, over the fallback", () => {
+    expect(returnToOr("/supper-club?size=four&menu=vegan", "/elsewhere")).toBe("/supper-club?size=four&menu=vegan");
+  });
+
+  it.each(["//evil.com", "https://evil.com", "/\\evil.com", "/\t/evil.com", ""])(
+    "AC6: an unsafe value (%j) gives /, as safeReturnTo does, and never the fallback",
+    (value) => {
+      expect(returnToOr(value, "/supper-club")).toBe("/");
+    },
+  );
 });

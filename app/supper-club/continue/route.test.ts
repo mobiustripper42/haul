@@ -1,4 +1,5 @@
-// Issue 55, AC2, AC13 and AC14: /supper-club/continue, the GET form's target. `next/headers` is faked,
+// Issue 55, AC2, AC13 and AC14: /supper-club/continue, the GET form's target. Issue 77, AC1 and AC2: the
+// redirects now open the Supper Club page's panes. `next/headers` is faked,
 // `redirect` throws as the real one does, and the composition root hands out an InMemoryRepository.
 // The route is loaded afresh after stubbing NODE_ENV, so a cookie's `secure` holds whether it is read
 // per call or at load.
@@ -86,16 +87,16 @@ const picked = (size: number, menu: number) =>
   `${typeId(0)}=${optionId(0, size)}&${typeId(1)}=${optionId(1, menu)}`;
 
 describe("AC2 — the form's target", () => {
-  it("AC2: next=create-account redirects to /create-account", async () => {
-    expect(await get(`${picked(1, 1)}&next=create-account`)).toBe("/create-account");
+  it("AC1 (issue 77): next=create-account redirects to /supper-club/create-account", async () => {
+    expect(await get(`${picked(1, 1)}&next=create-account`)).toBe("/supper-club/create-account");
   });
 
-  it("AC2: next=sign-in redirects to /sign-in", async () => {
-    expect(await get(`${picked(1, 1)}&next=sign-in`)).toBe("/sign-in");
+  it("AC2 (issue 77): next=sign-in redirects to /supper-club/sign-in", async () => {
+    expect(await get(`${picked(1, 1)}&next=sign-in`)).toBe("/supper-club/sign-in");
   });
 
-  it.each(["next=somewhere", "next=", ""])("AC2: anything else (%j) redirects to /sign-in", async (next) => {
-    expect(await get(`${picked(1, 1)}&${next}`)).toBe("/sign-in");
+  it.each(["next=somewhere", "next=", ""])("AC2 (issue 77): anything else (%j) redirects to /supper-club/sign-in", async (next) => {
+    expect(await get(`${picked(1, 1)}&${next}`)).toBe("/supper-club/sign-in");
   });
 
   it("AC2: it sets ocf_return_to to /supper-club?<choices>, the choices picked when the button was pressed", async () => {

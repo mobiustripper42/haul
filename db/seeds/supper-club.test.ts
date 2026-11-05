@@ -1,4 +1,4 @@
-// Issue #53 — the `supper-club` seed, AC1–AC4. Every test runs against a database of this suite's
+// Issue #53 — the `supper-club` seed, AC1–AC4; issue 77, AC14, renames its option types and sizes. Every test runs against a database of this suite's
 // own, `<test db>_supper_club`, created if absent, migrated once, and emptied (every table but the
 // migration ledger) before each test. Without a reachable Postgres they skip locally and fail in CI
 // (DEC-014). The seed is run as `npm run db:seed:supper-club` runs it, through `runSeed`.
@@ -84,7 +84,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
   });
 
   describe("AC2 — the option types and options", () => {
-    it("AC2: the Supper Club's option types by position are Size then Preference, at distinct positions", async () => {
+    it('AC14 (issue 77): the Supper Club\'s option types by position are "How many people?" then "Which menu?", at distinct positions', async () => {
       await seed();
 
       const { rows } = await pool.query<{ name: string; position: number }>(
@@ -93,25 +93,25 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
           where p.name = 'Supper Club'
           order by t.position, t.name`,
       );
-      expect(rows.map((r) => r.name)).toEqual(["Size", "Preference"]);
+      expect(rows.map((r) => r.name)).toEqual(["How many people?", "Which menu?"]);
       expect(new Set(rows.map((r) => r.position)).size).toBe(rows.length);
     });
 
-    it(`AC2: Size's options by position are 2 person at 5000 cents then 3${EN_DASH}4 person (an en dash) at 8000, at distinct positions`, async () => {
+    it(`AC14 (issue 77): "How many people?" has, by position, 2 people at 5000 cents then 3${EN_DASH}4 people (an en dash) at 8000, at distinct positions`, async () => {
       await seed();
 
-      const rows = await optionsOf("Size");
+      const rows = await optionsOf("How many people?");
       expect(rows.map(({ name, price_cents }) => ({ name, price_cents }))).toEqual([
-        { name: "2 person", price_cents: 5000 },
-        { name: `3${EN_DASH}4 person`, price_cents: 8000 },
+        { name: "2 people", price_cents: 5000 },
+        { name: `3${EN_DASH}4 people`, price_cents: 8000 },
       ]);
       expect(new Set(rows.map((r) => r.position)).size).toBe(rows.length);
     });
 
-    it("AC2: Preference's options by position are Standard then Vegan, both at 0 cents, at distinct positions", async () => {
+    it('AC14 (issue 77): "Which menu?" has, by position, Standard then Vegan, both at 0 cents, at distinct positions', async () => {
       await seed();
 
-      const rows = await optionsOf("Preference");
+      const rows = await optionsOf("Which menu?");
       expect(rows.map(({ name, price_cents }) => ({ name, price_cents }))).toEqual([
         { name: "Standard", price_cents: 0 },
         { name: "Vegan", price_cents: 0 },
@@ -120,27 +120,27 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     });
   });
 
-  it("AC3: with cap edited to 10 and 2 person to 5500 cents at position 9, a re-run puts back cap 50, 5000 and position 1, and keeps both ids", async () => {
+  it("AC3: with cap edited to 10 and 2 people to 5500 cents at position 9, a re-run puts back cap 50, 5000 and position 1, and keeps both ids", async () => {
     await seed();
     const [product] = await supperClub();
-    const [twoPerson] = (await optionsOf("Size")).filter((o) => o.name === "2 person");
+    const [twoPerson] = (await optionsOf("How many people?")).filter((o) => o.name === "2 people");
     expect(product).toBeDefined();
     expect(twoPerson).toBeDefined();
 
     await pool.query("update products set cap = 10 where name = 'Supper Club'");
     await pool.query("update options set price_cents = 5500, position = 9 where id = $1", [twoPerson?.id]);
     expect((await supperClub())[0]?.cap).toBe(10);
-    expect((await optionsOf("Size")).find((o) => o.name === "2 person")).toMatchObject({ price_cents: 5500, position: 9 });
+    expect((await optionsOf("How many people?")).find((o) => o.name === "2 people")).toMatchObject({ price_cents: 5500, position: 9 });
 
     await seed();
 
     expect(await supperClub()).toEqual([expect.objectContaining({ id: product?.id, cap: 50 })]);
-    expect((await optionsOf("Size")).filter((o) => o.name === "2 person")).toEqual([
-      { id: twoPerson?.id, name: "2 person", price_cents: 5000, position: 1 },
+    expect((await optionsOf("How many people?")).filter((o) => o.name === "2 people")).toEqual([
+      { id: twoPerson?.id, name: "2 people", price_cents: 5000, position: 1 },
     ]);
   });
 
-  it("AC4: a product the seed doesn't name (Test Box, its option type and option) and Spicy under Preference are unchanged in every column after a re-run", async () => {
+  it('AC4: a product the seed doesn\'t name (Test Box, its option type and option) and Spicy under "Which menu?" are unchanged in every column after a re-run', async () => {
     await seed();
 
     const box = await pool.query<{ id: string }>(
@@ -159,7 +159,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
       `insert into options (option_type_id, name, price_cents, position)
        select t.id, 'Spicy', 0, 3
          from option_types t join products p on p.id = t.product_id
-        where p.name = 'Supper Club' and t.name = 'Preference'
+        where p.name = 'Supper Club' and t.name = 'Which menu?'
        returning id`,
     );
     expect(spicy.rows).toHaveLength(1);

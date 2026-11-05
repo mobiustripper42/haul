@@ -50,14 +50,14 @@ describe("AC12 — the check on the real repo", () => {
   });
 });
 
-describe("AC13 — the list is exactly these ten entries", () => {
+describe("AC13 — the list is exactly these fifteen entries", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
       Object.entries(entries).map(([key, entry]) => [key, "records" in entry ? { records: [...entry.records].sort() } : entry]),
     );
 
-  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions and the three Create Account actions with their kinds, and signOut, setLanguage, the dev outbox's GET and the Supper Club continue route's GET with their reasons", () => {
+  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, setLanguage, the dev outbox's GET and the Supper Club continue route's GET with their reasons", () => {
     expect(normalized(AUDIT_ENTRY_POINTS)).toEqual(
       normalized({
         "app/sign-in/actions.ts#requestCode": { records: ["rate_limit_refusal"] },
@@ -69,6 +69,11 @@ describe("AC13 — the list is exactly these ten entries", () => {
         "app/create-account/actions.ts#requestAccountCode": { records: ["rate_limit_refusal"] },
         "app/create-account/actions.ts#verifyAccountCode": { records: ["sign_in_by_code", "lock"] },
         "app/create-account/actions.ts#resendAccountCode": { records: ["rate_limit_refusal"] },
+        "app/supper-club/actions.ts#requestPaneCode": { records: ["rate_limit_refusal"] },
+        "app/supper-club/actions.ts#verifyPaneCode": { records: ["sign_in_by_code", "lock"] },
+        "app/supper-club/actions.ts#requestPaneAccountCode": { records: ["rate_limit_refusal"] },
+        "app/supper-club/actions.ts#verifyPaneAccountCode": { records: ["sign_in_by_code", "lock"] },
+        "app/supper-club/actions.ts#resendPaneAccountCode": { records: ["rate_limit_refusal"] },
         "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
       }),
     );

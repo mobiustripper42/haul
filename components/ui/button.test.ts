@@ -4,7 +4,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { normalMarkup } from "../../app/screen-test-helpers";
+import { attributesOf, normalMarkup } from "../../app/screen-test-helpers";
 import { Button, type ButtonKind, type ButtonProps } from "./button";
 
 const KINDS: ButtonKind[] = ["primary", "secondary", "quiet"];
@@ -74,5 +74,14 @@ describe("AC8 — Button with href", () => {
     expect(normalMarkup(render({ kind: "quiet", href: "/sign-in", back: true, flush: true }, "Use a different email"))).toBe(
       normalMarkup('<a href="/sign-in" class="btn-quiet back-link btn-flush">Use a different email</a>'),
     );
+  });
+});
+
+// Issue 77: the link form's `current`. The fill's colour is read in a browser, e2e/supper-club.spec.ts.
+describe("AC5 (issue 77) — Button's link form, current", () => {
+  it('AC5: current adds aria-current="page" to the link, keeping its kind and href', () => {
+    const [link] = attributesOf(render({ kind: "secondary", href: "/supper-club/sign-in", current: true }), "a");
+    expect(link).toMatchObject({ href: "/supper-club/sign-in", "aria-current": "page" });
+    expect(link?.class).toContain("btn-secondary");
   });
 });

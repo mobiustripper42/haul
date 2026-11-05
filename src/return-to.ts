@@ -11,3 +11,8 @@ export function safeReturnTo(value: string | null | undefined): string {
   }
   return value;
 }
+
+/** The return path a flow lands on: `fallback` when none was held, otherwise `safeReturnTo` of what was. */
+export function returnToOr(value: string | undefined, fallback: string): string {
+  return value === undefined ? fallback : safeReturnTo(value);
+}
