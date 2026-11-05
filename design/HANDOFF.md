@@ -41,13 +41,17 @@ One folder per canvas, because each canvas has its own `Main.dc.html`: `phase-1/
 - A confirmed code creates the member and returns them to the page they came from (the Supper Club page, with their choices), signed in. No frame.
 - Every string is proposed except "Email me a code", "6-digit code", "Send a new code" and "Use a different email" (`src/messages/`). Not in `components/ui/`: a select, field error text.
 
-### Create account and sign in, in the pane (task 1.3b, desktop)
+### Create account, sign in and signup done, in the pane (tasks 1.3b, 1.4, desktop)
 - On desktop, "Create an account" and "Sign in" in section 3, and the header's "Sign in", open the form in the Supper Club page's right pane; the marketing column does not move. Phones keep the full-page `CreateAccount` and `SignIn` cards, unchanged.
-- `Main.dc.html` is the one source, with new props `pane` (none | create | signin), `paneStep` (form | code), `codeError` (none | wrong | expired | locked) and `fieldErrors` (boolean). Mounts, all at 1280: `SignupPaneCreate`, `SignupPaneCreateErrFields`, `SignupPaneCreateCode`, `SignupPaneCreateErrWrong`, `SignupPaneCreateErrExpired`, `SignupPaneCreateErrLocked`, `SignupPaneSignIn`, `SignupPaneSignInCode`, `SignupPaneSignInErrWrong`, `SignupPaneSignInErrExpired`, `SignupPaneSignInErrLocked`.
+- `Main.dc.html` is the one source, with new props `pane` (none | create | signin | done), `paneStep` (form | code), `codeError` (none | wrong | expired | locked) and `fieldErrors` (boolean). Mounts, all at 1280: `SignupPaneCreate`, `SignupPaneCreateErrFields`, `SignupPaneCreateCode`, `SignupPaneCreateErrWrong`, `SignupPaneCreateErrExpired`, `SignupPaneCreateErrLocked`, `SignupPaneSignIn`, `SignupPaneSignInCode`, `SignupPaneSignInErrWrong`, `SignupPaneSignInErrExpired`, `SignupPaneSignInErrLocked`, `SignupPaneDone`.
 - The panes carry `CreateAccount`'s and `SignIn`'s words in their order, at the current tokens. The details and email steps open with a quiet back link, "Back to your choices", in the style of "Use a different email"; the picks are kept. The code steps keep "Use a different email". "Already have an account? Sign in" and "No account yet? Create an account" switch panes. The sign-in pane drops "Not a member yet? Join the Supper Club", which would point at the page it sits on.
 - **Width:** the pane keeps the Join panel's width (about 508px at 1280) and the form fills it, as the pickers do. First name and Last name stay side by side.
 - **Header "Sign in":** while the sign-in pane shows, it is marked current (`sage-soft` fill) and pressing it returns the pane to the email step. From the create pane it switches to sign in.
 - A confirmed code closes the pane and shows the signed-in card with the payment section, choices kept. No frame.
+- **Signup done** (`pane=done`): at desktop "Join and pay" opens the confirmation in the pane; the header shows "Your account". `SignupDone`'s words in its order: the done mark, "You're in the Supper Club", the thank-you line, "Your box", "What happens next", "Go to your account", "Back to ohiocityfarm.com". Phones keep `SignupDoneMobile`, unchanged.
+  - The title drops from the `display` size to `heading`, as "Join the Supper Club" is, because the left column holds the page title.
+  - "Your box" and "What happens next" become sections of the pane, each under a `divider` hairline, not a card inside a card.
+  - At about 508px the box's two-column list (size, menu, paid today, then) and the first-pickup line fit as they are; "Go to your account" and "Back to ohiocityfarm.com" sit side by side.
 - Proposed: "Back to your choices", "No account yet? Create an account". New components: none.
 
 ### Signup confirmation (tasks 1.3b, 1.6)
