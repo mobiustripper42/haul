@@ -5,7 +5,8 @@ import { recordEventAs } from "@core/record-event.js";
 import { redeemSignInLink } from "@core/sign-in/code.js";
 import { endSession } from "../session";
 import { getRepository, getSessionSecret } from "../services";
-import { finishSignIn, requestCodeFor, SIGN_IN_PAGES, textField, verifyCodeFor } from "./shared";
+import { SIGN_IN_PAGES } from "../paths";
+import { finishSignIn, requestCodeFor, textField, verifyCodeFor } from "./shared";
 
 /** Asks for a code. A member's email and a stranger's get the same cookie and the same redirect. */
 export async function requestCode(formData: FormData): Promise<void> {

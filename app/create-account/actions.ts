@@ -1,6 +1,7 @@
 "use server";
 
-import { requestAccountCodeFor, resendAccountCodeFor, CREATE_ACCOUNT_PAGES } from "./shared";
+import { CREATE_ACCOUNT_PAGES } from "../paths";
+import { requestAccountCodeFor, resendAccountCodeFor } from "./shared";
 import { verifyCodeFor } from "../sign-in/shared";
 
 /** The details step: checked, limited, then a code is on its way. */

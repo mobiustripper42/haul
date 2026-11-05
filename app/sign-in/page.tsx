@@ -1,6 +1,6 @@
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
-import { CREATE_ACCOUNT_PAGES } from "../create-account/shared";
+import { CREATE_ACCOUNT_PAGES } from "../paths";
 import { requestCode } from "./actions";
 import { SignInForm } from "./sign-in-form";
 

@@ -19,9 +19,6 @@ import {
   type FlowPages,
 } from "../sign-in/shared";
 
-/** Create Account's own pages. */
-export const CREATE_ACCOUNT_PAGES: FlowPages = { start: "/create-account", code: "/create-account/code", done: "/" };
-
 /** A form value as entered: not trimmed, since the draft cookie refills the form with what was typed. */
 const entered = (formData: FormData, name: string): string => {
   const value = formData.get(name);

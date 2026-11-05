@@ -14,6 +14,7 @@ import { Hint } from "../../components/ui/hint";
 import { Panel } from "../../components/ui/panel";
 import { Shell } from "../../components/ui/shell";
 import { getTranslator } from "../language";
+import { SUPPER_CLUB_PATH } from "./paths";
 import { RETURN_TO_COOKIE, getSignedInMember } from "../session";
 import { SiteHeader } from "../site-header";
 
@@ -33,7 +34,7 @@ const EVERY_WEEK = [
  */
 export async function JoinPage({ pane, children }: { pane: "none" | "create-account" | "sign-in"; children: ReactNode }) {
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
-  if (pane !== "none" && member) redirect("/supper-club");
+  if (pane !== "none" && member) redirect(SUPPER_CLUB_PATH);
   const account = member ? "your-account" : pane === "sign-in" ? "sign-in-current" : "sign-in";
   const wide = pane === "none" ? "" : " wide-only";
   return (
@@ -79,7 +80,7 @@ export async function BackToChoices() {
   const [t, cookieStore] = await Promise.all([getTranslator(), cookies()]);
   return (
     <p className="wide-only">
-      <Button kind="quiet" href={returnToOr(cookieStore.get(RETURN_TO_COOKIE)?.value, "/supper-club")} back flush>
+      <Button kind="quiet" href={returnToOr(cookieStore.get(RETURN_TO_COOKIE)?.value, SUPPER_CLUB_PATH)} back flush>
         {t("supperClub.backToChoices")}
       </Button>
     </p>

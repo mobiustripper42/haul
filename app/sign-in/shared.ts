@@ -29,9 +29,6 @@ const FLOW_COOKIE_MAX_AGE_SECONDS = 600;
  */
 export type FlowPages = { start: string; code: string; done: string };
 
-/** Sign-in's own pages. */
-export const SIGN_IN_PAGES: FlowPages = { start: "/sign-in", code: "/sign-in/code", done: "/" };
-
 export const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
