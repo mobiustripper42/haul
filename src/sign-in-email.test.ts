@@ -14,6 +14,10 @@ const member = (language: Language): Member => ({
   language,
   role: "member",
   createdAt: new Date("2026-10-01T12:00:00.000Z"),
+  firstName: null,
+  lastName: null,
+  phone: null,
+  emailConfirmedAt: null,
 });
 
 describe("AC10 (issue 9) — deliverSignInCode", () => {

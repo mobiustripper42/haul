@@ -1,7 +1,7 @@
 // Issue 9, AC20, AC21 and AC23: takeRateLimit over MemorySignInStore, and limitKeyFor.
 import { describe, expect, it } from "vitest";
 import { MemorySignInStore } from "./memory-store.js";
-import { limitKeyFor, takeRateLimit, type RateLimitPolicy } from "./rate-limit.js";
+import { limitKeyFor, refusalFrom, takeRateLimit, type RateLimitPolicy } from "./rate-limit.js";
 import type { RateLimitStore } from "./store.js";
 
 const SECOND = 1000;
@@ -161,6 +161,31 @@ describe("AC4 — a refusal names the window's first, and the window", () => {
       first: true,
       windowStart: HOUR_END,
     });
+  });
+});
+
+// Issue 55: the refusal shape requestSignInCode and requestAccountCode share.
+describe("AC12 (issue 55) — refusalFrom", () => {
+  const refused = (first: boolean) => ({ allowed: false, retryAfterMs: 1000, first, windowStart: HOUR_START }) as const;
+
+  it("AC12: a window's first refusal, with a key, names the bucket, the key and the window's start", () => {
+    expect(refusalFrom(refused(true), "sign-in-request", "203.0.113.7")).toEqual({
+      bucket: "sign-in-request",
+      key: "203.0.113.7",
+      windowStart: HOUR_START,
+    });
+  });
+
+  it("AC12: a later refusal in the window is null", () => {
+    expect(refusalFrom(refused(false), "sign-in-request", "203.0.113.7")).toBeNull();
+  });
+
+  it("AC12: a refusal with no key is null", () => {
+    expect(refusalFrom(refused(true), "sign-in-request", null)).toBeNull();
+  });
+
+  it("AC12: an allowed decision is null", () => {
+    expect(refusalFrom({ allowed: true }, "sign-in-request", "203.0.113.7")).toBeNull();
   });
 });
 

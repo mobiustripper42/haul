@@ -49,6 +49,7 @@ in the sibling repo and are background, not rulings for Haul.
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens
+- DEC-029 — An account is a member row whose email a sign-in code confirms
 
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class

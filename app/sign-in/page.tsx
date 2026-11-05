@@ -7,13 +7,7 @@ import { Notice } from "../../components/ui/notice";
 import { Shell } from "../../components/ui/shell";
 import { getTranslator } from "../language";
 import { requestCode } from "./actions";
-
-/** The `limited` notice's minutes: an integer from 1 to 60, anything else shows no notice. */
-const limitedMinutes = (value: string | undefined): number | null => {
-  if (value === undefined || !/^[1-9]\d*$/.test(value)) return null;
-  const minutes = Number(value);
-  return minutes <= 60 ? minutes : null;
-};
+import { limitedMinutes } from "./shared";
 
 export default async function SignIn({
   searchParams,

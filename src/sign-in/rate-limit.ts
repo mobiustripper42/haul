@@ -58,6 +58,14 @@ export async function takeRateLimit(
 }
 
 /**
+ * The refusal to report for a decision: only a window's first refusal, and only a counted request,
+ * which has a key. Null for an allowed decision, a later refusal and a request with no key.
+ */
+export function refusalFrom(decision: RateLimitDecision, bucket: string, key: string | null): RateLimitRefusal | null {
+  return !decision.allowed && decision.first && key !== null ? { bucket, key, windowStart: decision.windowStart } : null;
+}
+
+/**
  * A client address as a limiter key, or null when it is not an address.
  *
  * IPv4 is kept whole; an IPv4 address written in IPv6 form is unwrapped to it first. IPv6 is keyed

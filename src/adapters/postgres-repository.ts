@@ -1,10 +1,24 @@
+import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Actor, AuditEvent, Repository } from "../ports/repository.js";
+import type { ProductOptionType, ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
 
-type MemberRow = { id: string; email: string; language: Language; role: Role; created_at: Date };
+type MemberRow = {
+  id: string;
+  email: string;
+  language: Language;
+  role: Role;
+  created_at: Date;
+  first_name: string | null;
+  last_name: string | null;
+  phone: string | null;
+  email_confirmed_at: Date | null;
+};
+
+const MEMBER_COLUMNS = "id, email, language, role, created_at, first_name, last_name, phone, email_confirmed_at";
 
 const toMember = (row: MemberRow): Member => ({
   id: row.id,
@@ -12,7 +26,30 @@ const toMember = (row: MemberRow): Member => ({
   language: row.language,
   role: row.role,
   createdAt: row.created_at,
+  firstName: row.first_name,
+  lastName: row.last_name,
+  phone: row.phone,
+  emailConfirmedAt: row.email_confirmed_at,
 });
+
+type ProductRow = {
+  id: string;
+  name: string;
+  cap: number;
+  first_pickup_date: string;
+  cutoff_weekday: number;
+  cutoff_time: string;
+};
+
+type OptionRow = {
+  option_type_id: string;
+  option_type_name: string;
+  option_type_position: number;
+  option_id: string | null;
+  option_name: string | null;
+  price_cents: number | null;
+  option_position: number | null;
+};
 
 type SignInCodeRow = {
   member_id: string;
@@ -86,7 +123,7 @@ export class PostgresRepository implements Repository {
     const { rows } = await this.db.query<MemberRow>(
       `insert into members (email, language, role) values ($1, $2, $3)
        on conflict (email) do nothing
-       returning id, email, language, role, created_at`,
+       returning ${MEMBER_COLUMNS}`,
       [email, input.language ?? DEFAULT_LANGUAGE, input.role ?? DEFAULT_ROLE],
     );
     if (!rows[0]) throw new DuplicateEmailError(email);
@@ -94,21 +131,95 @@ export class PostgresRepository implements Repository {
   }
 
   async findMemberByEmail(email: string): Promise<Member | null> {
-    const { rows } = await this.db.query<MemberRow>(
-      "select id, email, language, role, created_at from members where email = $1",
-      [normalizeEmail(email)],
-    );
+    const { rows } = await this.db.query<MemberRow>(`select ${MEMBER_COLUMNS} from members where email = $1`, [
+      normalizeEmail(email),
+    ]);
     return rows[0] ? toMember(rows[0]) : null;
   }
 
   async findMemberById(id: string): Promise<Member | null> {
     // Checked here, not by catching 22P02: a failed query aborts a `withActor` transaction.
     if (!UUID_SHAPE.test(id)) return null;
-    const { rows } = await this.db.query<MemberRow>(
-      "select id, email, language, role, created_at from members where id = $1",
-      [id],
-    );
+    const { rows } = await this.db.query<MemberRow>(`select ${MEMBER_COLUMNS} from members where id = $1`, [id]);
     return rows[0] ? toMember(rows[0]) : null;
+  }
+
+  /**
+   * One upsert: a new email inserts, an unconfirmed member's details are replaced, and a confirmed
+   * member's row is left alone (the `where` fails, so no row change is written) and read back. The
+   * unique index serialises callers that arrive together, so two never make two rows.
+   */
+  async saveAccount(input: AccountDetails): Promise<Member> {
+    const email = normalizeEmail(input.email);
+    const { rows } = await this.db.query<MemberRow>(
+      `insert into members (email, first_name, last_name, phone, language) values ($1, $2, $3, $4, $5)
+       on conflict (email) do update
+         set first_name = excluded.first_name,
+             last_name = excluded.last_name,
+             phone = excluded.phone,
+             language = excluded.language
+         where members.email_confirmed_at is null
+       returning ${MEMBER_COLUMNS}`,
+      [email, input.firstName, input.lastName, input.phone, input.language],
+    );
+    if (rows[0]) return toMember(rows[0]);
+    const confirmed = await this.findMemberByEmail(email);
+    if (!confirmed) throw new Error("saveAccount: the member vanished between the upsert and the read");
+    return confirmed;
+  }
+
+  async confirmMemberEmail(memberId: string, now: Date): Promise<void> {
+    if (!UUID_SHAPE.test(memberId)) return;
+    await this.db.query("update members set email_confirmed_at = $2 where id = $1 and email_confirmed_at is null", [
+      memberId,
+      now,
+    ]);
+  }
+
+  async findProductByName(name: string): Promise<ProductWithOptions | null> {
+    const product = await this.db.query<ProductRow>(
+      `select id, name, cap, to_char(first_pickup_date, 'YYYY-MM-DD') as first_pickup_date,
+              cutoff_weekday, cutoff_time::text as cutoff_time
+         from products where name = $1`,
+      [name],
+    );
+    const row = product.rows[0];
+    if (!row) return null;
+
+    const { rows } = await this.db.query<OptionRow>(
+      `select t.id as option_type_id, t.name as option_type_name, t.position as option_type_position,
+              o.id as option_id, o.name as option_name, o.price_cents, o.position as option_position
+         from option_types t
+         left join options o on o.option_type_id = t.id
+        where t.product_id = $1
+        order by t.position, t.name, o.position, o.name`,
+      [row.id],
+    );
+    const optionTypes: ProductOptionType[] = [];
+    for (const r of rows) {
+      let type = optionTypes.at(-1);
+      if (type?.id !== r.option_type_id) {
+        type = { id: r.option_type_id, name: r.option_type_name, position: r.option_type_position, options: [] };
+        optionTypes.push(type);
+      }
+      if (r.option_id !== null) {
+        type.options.push({
+          id: r.option_id,
+          name: r.option_name as string,
+          priceCents: r.price_cents as number,
+          position: r.option_position as number,
+        });
+      }
+    }
+    return {
+      id: row.id,
+      name: row.name,
+      cap: row.cap,
+      firstPickupDate: row.first_pickup_date,
+      cutoffWeekday: row.cutoff_weekday,
+      cutoffTime: row.cutoff_time,
+      optionTypes,
+    };
   }
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {

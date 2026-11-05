@@ -255,6 +255,32 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
     expect(await lenny()).toEqual([{ id: before[0]?.id, role: "admin" }]);
   });
 
+  // Issue 55's seeds: a fresh database seeds no unconfirmed member, so Create Account treats both as AC7 says.
+  it("AC7 (issue 55): from an emptied database, members gives both a first name, a last name, a phone and a confirmed email", async () => {
+    await empty();
+    await runSeed("members", url);
+    const { rows } = await pool.query(
+      `select email, first_name is not null as named, last_name is not null as surnamed, phone is not null as reachable,
+              email_confirmed_at is not null as confirmed
+         from members order by email`,
+    );
+    expect(rows).toEqual([
+      { email: "eric@ocf.xx", named: true, surnamed: true, reachable: true, confirmed: true },
+      { email: "lenny@ocf.xx", named: true, surnamed: true, reachable: true, confirmed: true },
+    ]);
+  });
+
+  it("AC7 (issue 55): a member confirmed earlier keeps that time through a re-run of members", async () => {
+    await empty();
+    await runSeed("members", url);
+    await pool.query("update members set email_confirmed_at = '2026-10-01T12:00:00Z' where email = 'eric@ocf.xx'");
+
+    await runSeed("members", url);
+
+    const { rows } = await pool.query("select email_confirmed_at from members where email = 'eric@ocf.xx'");
+    expect(rows).toEqual([{ email_confirmed_at: new Date("2026-10-01T12:00:00Z") }]);
+  });
+
   describe("AC3 — every seed runs alone", () => {
     it.each(names)("AC3: from an emptied database, %s succeeds and leaves a row in at least one table", async (name) => {
       await empty();
