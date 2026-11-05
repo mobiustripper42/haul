@@ -12,6 +12,8 @@
 <style>
 body{margin:0;background:#f7f7f7}
 a{color:#003f4c}a:hover{color:#487878}
+.ocf-wide{display:flex}.ocf-narrow{display:none}
+@media (max-width: 720px){.ocf-wide{display:none}.ocf-narrow{display:flex}}
 </style>
 </helmet>
 <div style="min-height: 100vh; display: flex; flex-direction: column; background: #f7f7f7; font-family: 'Montserrat', system-ui, sans-serif; color: #1e2a2d; font-size: 14px; line-height: 22px;">
@@ -29,7 +31,8 @@ a{color:#003f4c}a:hover{color:#487878}
           <a href="#" lang="es" style="padding: 10px 8px; color: #487878; text-decoration: none;">Español</a>
         </div>
         <sc-if value="{{signedOut}}" hint-placeholder-val="{{true}}">
-          <a href="SignIn.dc.html" style="display: inline-flex; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; color: #003f4c; text-decoration: none;">Sign in</a>
+          <a class="ocf-narrow" href="SignIn.dc.html" style=" align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; color: #003f4c; text-decoration: none;">Sign in</a>
+          <button type="button" class="ocf-wide" onClick="{{toSignIn}}" aria-current="{{signInCurrent}}" style="font: inherit; cursor: pointer; align-items: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: {{signInBg}}; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; color: #003f4c;">Sign in</button>
         </sc-if>
         <sc-if value="{{signedIn}}" hint-placeholder-val="{{false}}">
           <a href="#" style="display: inline-flex; align-items: center; min-height: 44px; padding: 0 8px; font-size: 14px; line-height: 20px; font-weight: 600; color: #003f4c; text-decoration: none;">Your account</a>
@@ -124,9 +127,13 @@ a{color:#003f4c}a:hover{color:#487878}
           <legend style="padding: 0; margin-bottom: 12px; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">3. Your account</legend>
           <sc-if value="{{signedOut}}" hint-placeholder-val="{{true}}">
             <p style="margin: 0;">Sign in or create an account to join. Your choices stay as you left them.</p>
-            <div style="display: flex; flex-wrap: wrap; gap: 12px;">
+            <div class="ocf-narrow" style="flex-wrap: wrap; gap: 12px;">
               <a href="CreateAccount.dc.html" style="flex: 1 1 160px; display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Create an account</a>
               <a href="SignIn.dc.html" style="flex: 1 1 160px; display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Sign in</a>
+            </div>
+            <div class="ocf-wide" style="flex-wrap: wrap; gap: 12px;">
+              <button type="button" onClick="{{toCreate}}" style="font: inherit; cursor: pointer; border: 0; flex: 1 1 160px; display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 24px; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Create an account</button>
+              <button type="button" onClick="{{toSignIn}}" style="font: inherit; cursor: pointer; flex: 1 1 160px; display: flex; align-items: center; justify-content: center; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em; text-decoration: none;">Sign in</button>
             </div>
           </sc-if>
           <sc-if value="{{signedIn}}" hint-placeholder-val="{{false}}">
@@ -180,6 +187,165 @@ a{color:#003f4c}a:hover{color:#487878}
       </section>
     </sc-if>
 
+    <sc-if value="{{onCreateForm}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="pane-ca-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <button type="button" onClick="{{toChoices}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          Back to your choices
+        </button>
+        <h2 id="pane-ca-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Create your account</h2>
+          <div style="display: flex; flex-wrap: wrap; gap: 16px;">
+            <label style="flex: 1 1 155px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">First name
+              <input type="text" autocomplete="given-name" aria-invalid="{{nameBad}}" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: {{nameBorderCss}}; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </label>
+            <label style="flex: 1 1 155px; display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Last name
+              <input type="text" autocomplete="family-name" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+            </label>
+          </div>
+          <sc-if value="{{fieldsBad}}" hint-placeholder-val="{{false}}"><span role="alert" style="margin-top: -8px; font-size: 12px; line-height: 18px; font-weight: 500; color: #a93226;">Enter your first name.</span></sc-if>
+
+          <sc-if value="{{fieldsOk}}" hint-placeholder-val="{{true}}">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Email
+              <input type="email" autocomplete="email" placeholder="name@example.com" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span style="font-weight: 400; color: #55615f;">This is how you sign in: we email you a 6-digit code, no password.</span>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Phone
+              <input type="tel" autocomplete="tel" placeholder="(216) 555-0134" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span style="font-weight: 400; color: #55615f;">So the farm can reach you.</span>
+            </label>
+          </sc-if>
+          <sc-if value="{{fieldsBad}}" hint-placeholder-val="{{false}}">
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Email
+              <input type="email" autocomplete="email" value="maria@example" aria-invalid="true" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span role="alert" style="font-weight: 500; color: #a93226;">Enter a full email address, like name@example.com.</span>
+            </label>
+            <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Phone
+              <input type="tel" autocomplete="tel" aria-invalid="true" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <span role="alert" style="font-weight: 500; color: #a93226;">Enter your phone number.</span>
+            </label>
+          </sc-if>
+
+          <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Language for emails
+            <select style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+              <option>English</option>
+              <option lang="es">Español</option>
+            </select>
+          </label>
+        <button type="button" onClick="{{toPaneCode}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Email me a code</button>
+        <div style="border-top: 1px solid #c7d5d1; padding-top: 16px; font-size: 12px; line-height: 18px; color: #55615f;">Already have an account? <button type="button" onClick="{{toSignIn}}" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">Sign in</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onCreateCode}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="pane-code-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <button type="button" onClick="{{toPaneForm}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          Use a different email
+        </button>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 id="pane-code-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Check your email</h2>
+          <p style="margin: 0; color: #55615f;">We sent a 6-digit code to <strong style="font-weight: 600; color: #1e2a2d;">{{email}}</strong>. Enter it to confirm your email.</p>
+        </div>
+        <sc-if value="{{paneErrWrong}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code doesn't match.</strong> Check the newest email from us and try again.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{paneErrExpired}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code has expired.</strong> Codes only work for a short time. Send yourself a new one below.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{paneErrLocked}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><rect x="5" y="10.5" width="14" height="10" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">Too many tries.</strong> For your safety, creating an account with this email is paused. Wait a few minutes, then send yourself a new code.</span>
+          </div>
+        </sc-if>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">6-digit code
+          <sc-if value="{{paneCodeOk}}" hint-placeholder-val="{{true}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+          <sc-if value="{{paneCodeBad}}" hint-placeholder-val="{{false}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="482193" aria-invalid="true" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+        </label>
+        <sc-if value="{{paneCanConfirm}}" hint-placeholder-val="{{true}}">
+          <button type="button" onClick="{{confirmed}}" style="font: inherit; cursor: pointer; display: flex; align-items: center; justify-content: center; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Confirm email</button>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">No email? Check your spam folder, or <button type="button" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">send a new code</button>.</p>
+        </sc-if>
+        <sc-if value="{{paneNeedsNewCode}}" hint-placeholder-val="{{false}}">
+          <button type="button" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Send a new code</button>
+        </sc-if>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onSignInForm}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="pane-si-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <button type="button" onClick="{{toChoices}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          Back to your choices
+        </button>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 id="pane-si-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Sign in</h2>
+          <p style="margin: 0; color: #55615f;">Enter the email you signed up with. We will send you a 6-digit code. There is no password.</p>
+        </div>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">Email
+          <input type="email" autocomplete="email" placeholder="name@example.com" style="font: inherit; font-size: 16px; line-height: 24px; font-weight: 400; height: 40px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+        </label>
+        <button type="button" onClick="{{toPaneCode}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Email me a code</button>
+        <div style="border-top: 1px solid #c7d5d1; padding-top: 16px; font-size: 12px; line-height: 18px; color: #55615f;">No account yet? <button type="button" onClick="{{toCreate}}" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">Create an account</button></div>
+      </section>
+    </sc-if>
+
+    <sc-if value="{{onSignInCode}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="pane-sicode-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
+        <button type="button" onClick="{{toPaneForm}}" style="align-self: flex-start; font: inherit; font-size: 14px; line-height: 20px; font-weight: 600; cursor: pointer; min-height: 44px; margin: -12px 0 -12px -8px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; display: flex; align-items: center; gap: 4px;">
+          <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"></path></svg>
+          Use a different email
+        </button>
+        <div style="display: flex; flex-direction: column; gap: 8px;">
+          <h2 id="pane-sicode-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Check your email</h2>
+          <p style="margin: 0; color: #55615f;">We sent a 6-digit code to <strong style="font-weight: 600; color: #1e2a2d;">{{email}}</strong>.</p>
+        </div>
+        <sc-if value="{{paneErrWrong}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7.5v5.5"></path><path d="M12 16.5h.01"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code doesn't match.</strong> Check the newest email from us and try again.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{paneErrExpired}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" style="flex: none;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v5l3 2"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">That code has expired.</strong> Codes only work for a short time. Send yourself a new one below.</span>
+          </div>
+        </sc-if>
+        <sc-if value="{{paneErrLocked}}" hint-placeholder-val="{{false}}">
+          <div role="alert" style="display: flex; gap: 12px; align-items: flex-start; padding: 12px 16px; border: 1px solid #a93226; border-radius: 8px; background: #fbeeec; color: #1e2a2d;">
+            <svg aria-hidden="true" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" style="flex: none;"><rect x="5" y="10.5" width="14" height="10" rx="2"></rect><path d="M8 10.5V8a4 4 0 0 1 8 0v2.5"></path></svg>
+            <span><strong style="font-weight: 600; color: #a93226;">Too many tries.</strong> For your safety, sign-in is paused. Wait a few minutes, then send yourself a new code.</span>
+          </div>
+        </sc-if>
+        <label style="display: flex; flex-direction: column; gap: 8px; font-size: 12px; line-height: 18px; font-weight: 500;">6-digit code
+          <sc-if value="{{paneCodeOk}}" hint-placeholder-val="{{true}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" placeholder="000000" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 1px solid #7a9692; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+          <sc-if value="{{paneCodeBad}}" hint-placeholder-val="{{false}}">
+            <input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" value="482193" aria-invalid="true" style="font: inherit; font-size: 24px; line-height: 28px; font-weight: 500; letter-spacing: 0.4em; text-align: center; height: 52px; box-sizing: border-box; padding: 0 12px; border: 2px solid #a93226; border-radius: 4px; color: #1e2a2d; background: #ffffff;">
+          </sc-if>
+        </label>
+        <sc-if value="{{paneCanConfirm}}" hint-placeholder-val="{{true}}">
+          <button type="button" onClick="{{confirmed}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Sign in</button>
+          <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">No email? Check your spam folder, or <button type="button" style="font: inherit; cursor: pointer; padding: 0; border: 0; background: transparent; color: #003f4c; text-decoration: underline;">send a new code</button>.</p>
+        </sc-if>
+        <sc-if value="{{paneNeedsNewCode}}" hint-placeholder-val="{{false}}">
+          <button type="button" onClick="{{noop}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Send a new code</button>
+        </sc-if>
+      </section>
+    </sc-if>
+
     <sc-if value="{{onSoldOut}}" hint-placeholder-val="{{false}}">
       <section aria-labelledby="full-title" style="flex: 1 1 440px; min-width: 0; max-width: 100%; box-sizing: border-box; background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px;">
         <sc-if value="{{soldOutPaying}}" hint-placeholder-val="{{false}}">
@@ -211,18 +377,24 @@ a{color:#003f4c}a:hover{color:#487878}
   </footer>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["details","soldout"],"default":"details"},"signedIn":{"editor":"boolean","default":false},"payError":{"editor":"enum","options":["none","declined","soldout"],"default":"none"},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":1400}}'>
+<script type="text/x-dc" data-dc-script data-props='{"step":{"editor":"enum","options":["details","soldout"],"default":"details"},"signedIn":{"editor":"boolean","default":false},"payError":{"editor":"enum","options":["none","declined","soldout"],"default":"none"},"pane":{"editor":"enum","options":["none","create","signin"],"default":"none"},"paneStep":{"editor":"enum","options":["form","code"],"default":"form"},"codeError":{"editor":"enum","options":["none","wrong","expired","locked"],"default":"none"},"fieldErrors":{"editor":"boolean","default":false},"email":{"editor":"text","default":"name@example.com"},"$preview":{"width":1280,"height":1400}}'>
 class Component extends DCLogic {
   constructor(props) {
     super(props);
-    this.state = { size: 'two', pref: 'standard', step: null };
+    this.state = { size: 'two', pref: 'standard', step: null, pane: null, paneStep: null, joined: false };
   }
   renderVals() {
     const p = this.props;
     const clicked = this.state.step !== null;
     const step = this.state.step ?? p.step ?? 'details';
     const payErr = clicked ? 'none' : (p.payError ?? 'none');
-    const signedIn = p.signedIn === true || p.signedIn === 'true' || payErr !== 'none';
+    const paneTouched = this.state.pane !== null || this.state.paneStep !== null;
+    const pane = this.state.pane ?? p.pane ?? 'none';
+    const paneStep = this.state.paneStep ?? p.paneStep ?? 'form';
+    const codeErr = paneTouched ? 'none' : (p.codeError ?? 'none');
+    const fieldErrors = !paneTouched && (p.fieldErrors === true || p.fieldErrors === 'true');
+    const needsNewCode = codeErr === 'expired' || codeErr === 'locked';
+    const signedIn = this.state.joined || p.signedIn === true || p.signedIn === 'true' || payErr !== 'none';
     const soldOut = step === 'soldout' || payErr === 'soldout';
     const sizeDefs = [
       { id: 'two', label: '2 people', price: 50 },
@@ -236,7 +408,31 @@ class Component extends DCLogic {
     const chosenPref = prefDefs.find((x) => x.id === this.state.pref) || prefDefs[0];
     return {
       marketing: true,
-      onDetails: step === 'details' && !soldOut,
+      onDetails: step === 'details' && !soldOut && (pane === 'none' || signedIn),
+      onCreateForm: !soldOut && !signedIn && pane === 'create' && paneStep === 'form',
+      onCreateCode: !soldOut && !signedIn && pane === 'create' && paneStep === 'code',
+      onSignInForm: !soldOut && !signedIn && pane === 'signin' && paneStep === 'form',
+      onSignInCode: !soldOut && !signedIn && pane === 'signin' && paneStep === 'code',
+      signInCurrent: pane === 'signin' && !signedIn ? 'page' : 'false',
+      signInBg: pane === 'signin' && !signedIn ? '#e3ebe8' : '#ffffff',
+      fieldsOk: !fieldErrors,
+      fieldsBad: fieldErrors,
+      nameBad: fieldErrors ? 'true' : 'false',
+      nameBorderCss: fieldErrors ? '2px solid #a93226' : '1px solid #7a9692',
+      paneErrWrong: codeErr === 'wrong',
+      paneErrExpired: codeErr === 'expired',
+      paneErrLocked: codeErr === 'locked',
+      paneCodeBad: codeErr === 'wrong',
+      paneCodeOk: codeErr !== 'wrong',
+      paneNeedsNewCode: needsNewCode,
+      paneCanConfirm: !needsNewCode,
+      toCreate: () => this.setState({ pane: 'create', paneStep: 'form' }),
+      toSignIn: () => this.setState({ pane: 'signin', paneStep: 'form' }),
+      toChoices: () => this.setState({ pane: 'none', paneStep: 'form' }),
+      toPaneCode: () => this.setState({ paneStep: 'code', pane: pane }),
+      toPaneForm: () => this.setState({ paneStep: 'form', pane: pane }),
+      confirmed: () => this.setState({ joined: true, pane: 'none', paneStep: 'form' }),
+      noop: () => {},
       onSoldOut: soldOut,
       soldOutPaying: payErr === 'soldout',
       signedIn: signedIn,
