@@ -1,7 +1,15 @@
 import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { Actor, AuditEvent, Repository } from "../ports/repository.js";
+import {
+  SignupRefusedError,
+  type Actor,
+  type AuditEvent,
+  type PendingSignup,
+  type PendingSignupInput,
+  type Repository,
+  type SignupConfirmation,
+} from "../ports/repository.js";
 import type { ProductOptionType, ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
@@ -16,9 +24,11 @@ type MemberRow = {
   last_name: string | null;
   phone: string | null;
   email_confirmed_at: Date | null;
+  square_customer_id: string | null;
 };
 
-const MEMBER_COLUMNS = "id, email, language, role, created_at, first_name, last_name, phone, email_confirmed_at";
+const MEMBER_COLUMNS =
+  "id, email, language, role, created_at, first_name, last_name, phone, email_confirmed_at, square_customer_id";
 
 const toMember = (row: MemberRow): Member => ({
   id: row.id,
@@ -30,6 +40,7 @@ const toMember = (row: MemberRow): Member => ({
   lastName: row.last_name,
   phone: row.phone,
   emailConfirmedAt: row.email_confirmed_at,
+  squareCustomerId: row.square_customer_id,
 });
 
 type ProductRow = {
@@ -49,6 +60,19 @@ type OptionRow = {
   option_name: string | null;
   price_cents: number | null;
   option_position: number | null;
+};
+
+type PendingSignupRow = {
+  subscription_id: string;
+  ledger_id: string;
+  ledger_status: PendingSignup["ledgerStatus"];
+  attempt: number;
+  square_card_id: string | null;
+  amount_cents: number;
+  weekly_cents: number;
+  pickup_date: string;
+  created_at: Date;
+  option_ids: string[];
 };
 
 type SignInCodeRow = {
@@ -222,6 +246,215 @@ export class PostgresRepository implements Repository {
     };
   }
 
+  async setMemberSquareCustomer(memberId: string, customerId: string): Promise<void> {
+    if (!UUID_SHAPE.test(memberId)) return;
+    await this.db.query("update members set square_customer_id = $2 where id = $1", [memberId, customerId]);
+  }
+
+  async findActiveSubscription(memberId: string, productId: string): Promise<{ id: string } | null> {
+    if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
+    const { rows } = await this.db.query<{ id: string }>(
+      "select id from subscriptions where member_id = $1 and product_id = $2 and status = 'active' order by created_at limit 1",
+      [memberId, productId],
+    );
+    return rows[0] ? { id: rows[0].id } : null;
+  }
+
+  async findPendingSignup(memberId: string, productId: string): Promise<PendingSignup | null> {
+    if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
+    const { rows } = await this.db.query<PendingSignupRow>(
+      `select s.id as subscription_id, l.id as ledger_id, l.status as ledger_status, l.attempt, s.square_card_id,
+              l.amount_cents, s.weekly_cents, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, s.created_at,
+              array(select so.option_id::text from subscription_options so where so.subscription_id = s.id) as option_ids
+         from subscriptions s
+         join ledger l on l.subscription_id = s.id
+        where s.member_id = $1 and s.product_id = $2 and s.status = 'pending'
+        order by l.pickup_date
+        limit 1`,
+      [memberId, productId],
+    );
+    const row = rows[0];
+    return row
+      ? {
+          subscriptionId: row.subscription_id,
+          ledgerId: row.ledger_id,
+          ledgerStatus: row.ledger_status,
+          attempt: row.attempt,
+          squareCardId: row.square_card_id,
+          amountCents: row.amount_cents,
+          weeklyCents: row.weekly_cents,
+          pickupDate: row.pickup_date,
+          createdAt: row.created_at,
+          optionIds: row.option_ids,
+        }
+      : null;
+  }
+
+  /**
+   * The pending subscription, its picks and its ledger row, in one transaction under a lock on the member
+   * row, which a bind and a confirm take too, so neither lands between the checks and the write. With the
+   * lock held it refuses (`SignupRefusedError`) when the member holds an active subscription to the product,
+   * or when the pending row has a card bound and its ledger row pending: that row is frozen. Otherwise the
+   * upsert on the one-pending-row index makes a double submit one signup. A decline charged nothing, so the
+   * row after one goes back to pending as the next attempt, with no card; a pending row keeps both.
+   */
+  async savePendingSignup(input: PendingSignupInput): Promise<PendingSignup> {
+    if (!this.scoped) return this.withActor(null, (repo) => repo.savePendingSignup(input));
+    await this.db.query("select id from members where id = $1 for update", [input.memberId]);
+    const { rows: refusals } = await this.db.query<{ refused: boolean }>(
+      `select exists (select 1 from subscriptions where member_id = $1 and product_id = $2 and status = 'active')
+           or exists (select 1 from subscriptions s join ledger l on l.subscription_id = s.id
+                       where s.member_id = $1 and s.product_id = $2 and s.status = 'pending'
+                         and s.square_card_id is not null and l.status = 'pending') as refused`,
+      [input.memberId, input.productId],
+    );
+    if (refusals[0]?.refused) throw new SignupRefusedError();
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into subscriptions (member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents)
+       values ($1, $2, 'pending', $3, $4, $5, $6)
+       on conflict (member_id, product_id) where status = 'pending' do update
+         set consent_text = excluded.consent_text,
+             consent_at = excluded.consent_at,
+             first_charge_cents = excluded.first_charge_cents,
+             weekly_cents = excluded.weekly_cents
+       returning id`,
+      [input.memberId, input.productId, input.consentText, input.consentAt, input.firstChargeCents, input.weeklyCents],
+    );
+    const subscriptionId = (rows[0] as { id: string }).id;
+
+    const typeIds = Object.keys(input.choices);
+    const optionIds = typeIds.map((typeId) => input.choices[typeId]);
+    await this.db.query(
+      `delete from subscription_options where subscription_id = $1 and option_type_id <> all($2::uuid[])`,
+      [subscriptionId, typeIds],
+    );
+    await this.db.query(
+      `insert into subscription_options (subscription_id, option_type_id, option_id)
+       select $1, picked.option_type_id, picked.option_id from unnest($2::uuid[], $3::uuid[]) as picked (option_type_id, option_id)
+       on conflict (subscription_id, option_type_id) do update set option_id = excluded.option_id
+         where subscription_options.option_id is distinct from excluded.option_id`,
+      [subscriptionId, typeIds, optionIds],
+    );
+
+    const ledger = await this.db.query<{ id: string; status: string }>(
+      "select id, status from ledger where subscription_id = $1 order by pickup_date limit 1 for update",
+      [subscriptionId],
+    );
+    const earlier = ledger.rows[0];
+    if (!earlier) {
+      await this.db.query(
+        "insert into ledger (subscription_id, pickup_date, amount_cents, status) values ($1, $2, $3, 'pending')",
+        [subscriptionId, input.pickupDate, input.firstChargeCents],
+      );
+    } else {
+      const declined = earlier.status === "declined";
+      await this.db.query(
+        `update ledger
+            set pickup_date = $2,
+                amount_cents = $3,
+                status = case when $4::boolean then 'pending' else status end,
+                attempt = case when $4::boolean then attempt + 1 else attempt end
+          where id = $1`,
+        [earlier.id, input.pickupDate, input.firstChargeCents, declined],
+      );
+      if (declined) await this.db.query("update subscriptions set square_card_id = null where id = $1", [subscriptionId]);
+    }
+    const saved = await this.findPendingSignup(input.memberId, input.productId);
+    return saved as PendingSignup;
+  }
+
+  /**
+   * Binds the card where the subscription is pending and has none, under the member row's lock, and returns the
+   * amount and attempt the same statement read from the ledger row: that is what the caller charges. No row, no bind.
+   */
+  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null> {
+    if (!UUID_SHAPE.test(subscriptionId)) return null;
+    if (!this.scoped) return this.withActor(null, (repo) => repo.saveSubscriptionCard(subscriptionId, cardId));
+    await this.db.query(
+      "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
+      [subscriptionId],
+    );
+    const { rows } = await this.db.query<{ amount_cents: number; attempt: number }>(
+      `update subscriptions s set square_card_id = $2
+         from ledger l
+        where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and s.square_card_id is null
+        returning l.amount_cents, l.attempt`,
+      [subscriptionId, cardId],
+    );
+    return rows[0] ? { amountCents: rows[0].amount_cents, attempt: rows[0].attempt } : null;
+  }
+
+  async recordSignupDecline(ledgerId: string): Promise<void> {
+    if (!UUID_SHAPE.test(ledgerId)) return;
+    await this.db.query("update ledger set status = 'declined' where id = $1 and status = 'pending'", [ledgerId]);
+  }
+
+  /**
+   * Flips the ledger row and its subscription together, under the member row's lock: a concurrent confirm waits,
+   * re-reads the row and finds it paid, so it says "already", whatever amount it brings. An amount that is not
+   * the ledger's leaves both rows pending and says "mismatch".
+   */
+  async confirmSignupRows(
+    ledgerId: string,
+    paymentId: string,
+    amountCents: number,
+    now: Date,
+  ): Promise<"confirmed" | "already" | "mismatch"> {
+    if (!UUID_SHAPE.test(ledgerId)) return "already";
+    if (!this.scoped) return this.withActor(null, (repo) => repo.confirmSignupRows(ledgerId, paymentId, amountCents, now));
+    await this.db.query(
+      `select m.id from members m
+         join subscriptions s on s.member_id = m.id
+         join ledger l on l.subscription_id = s.id
+        where l.id = $1 for update of m`,
+      [ledgerId],
+    );
+    const { rows: held } = await this.db.query<{ status: string; amount_cents: number; subscription_id: string }>(
+      "select status, amount_cents, subscription_id from ledger where id = $1 for update",
+      [ledgerId],
+    );
+    const row = held[0];
+    if (!row || row.status === "paid") return "already";
+    if (row.amount_cents !== amountCents) return "mismatch";
+    await this.db.query("update ledger set status = 'paid', square_payment_id = $2, paid_at = $3 where id = $1", [
+      ledgerId,
+      paymentId,
+      now,
+    ]);
+    await this.db.query("update subscriptions set status = 'active' where id = $1", [row.subscription_id]);
+    return "confirmed";
+  }
+
+  async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
+    if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
+    const found = await this.db.query<{ id: string; pickup_date: string; first_charge_cents: number; weekly_cents: number }>(
+      `select s.id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, s.first_charge_cents, s.weekly_cents
+         from subscriptions s
+         join ledger l on l.subscription_id = s.id
+        where s.member_id = $1 and s.product_id = $2 and s.status = 'active'
+        order by s.created_at desc, l.pickup_date
+        limit 1`,
+      [memberId, productId],
+    );
+    const row = found.rows[0];
+    if (!row) return null;
+    const options = await this.db.query<{ type_name: string; option_name: string }>(
+      `select t.name as type_name, o.name as option_name
+         from subscription_options so
+         join option_types t on t.id = so.option_type_id
+         join options o on o.id = so.option_id
+        where so.subscription_id = $1
+        order by t.position, t.name`,
+      [row.id],
+    );
+    return {
+      pickupDate: row.pickup_date,
+      firstChargeCents: row.first_charge_cents,
+      weeklyCents: row.weekly_cents,
+      options: options.rows.map((option) => ({ typeName: option.type_name, optionName: option.option_name })),
+    };
+  }
+
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {
     const { rows } = await this.db.query<SignInCodeRow>(
       `select member_id, code_hash, created_at, expires_at, attempts, consumed_at, failed_since, failed_in_window,
@@ -347,9 +580,10 @@ export class PostgresRepository implements Repository {
       );
       return;
     }
-    await this.db.query("select public.audit_event($1, 'members', jsonb_build_object('id', $2::text), null::jsonb)", [
+    await this.db.query("select public.audit_event($1, 'members', jsonb_build_object('id', $2::text), $3::jsonb)", [
       event.kind,
       event.memberId,
+      event.detail === undefined ? null : JSON.stringify(event.detail),
     ]);
   }
 

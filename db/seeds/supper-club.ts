@@ -26,8 +26,8 @@ const OPTION_TYPES: ReadonlyArray<{
     name: "How many people?",
     position: 1,
     options: [
-      { name: "2 people", priceCents: 5000, position: 1 },
-      { name: "3–4 people", priceCents: 8000, position: 2 },
+      { name: "3–4 people", priceCents: 8000, position: 1 },
+      { name: "2 people", priceCents: 5000, position: 2 },
     ],
   },
   {

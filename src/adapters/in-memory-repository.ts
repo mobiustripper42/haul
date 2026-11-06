@@ -2,14 +2,51 @@ import { randomUUID } from "node:crypto";
 import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { Actor, AuditEvent, Repository } from "../ports/repository.js";
+import {
+  SignupRefusedError,
+  type Actor,
+  type AuditEvent,
+  type PendingSignup,
+  type PendingSignupInput,
+  type Repository,
+  type SignupConfirmation,
+} from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
 
+type StoredSubscription = {
+  id: string;
+  memberId: string;
+  productId: string;
+  status: "pending" | "active";
+  squareCardId: string | null;
+  consentText: string;
+  consentAt: Date;
+  firstChargeCents: number;
+  weeklyCents: number;
+  createdAt: Date;
+  /** Option type id → option id. */
+  optionIds: Record<string, string>;
+};
+
+type StoredLedger = {
+  id: string;
+  subscriptionId: string;
+  pickupDate: string;
+  amountCents: number;
+  status: "pending" | "paid" | "declined";
+  attempt: number;
+  squarePaymentId: string | null;
+  paidAt: Date | null;
+};
+
 /** The permanent fake (DEC-010): same behaviour as `PostgresRepository`, proved by one contract. */
 export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
+  // Entries are replaced, never mutated: `withActor` restores the maps' entries on rollback.
+  private readonly subscriptions = new Map<string, StoredSubscription>();
+  private readonly ledger = new Map<string, StoredLedger>();
   private readonly products: ProductWithOptions[] = [];
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
@@ -31,6 +68,7 @@ export class InMemoryRepository implements Repository {
       lastName: null,
       phone: null,
       emailConfirmedAt: null,
+      squareCustomerId: null,
     };
     this.members.set(member.id, member);
     return copy(member);
@@ -89,6 +127,124 @@ export class InMemoryRepository implements Repository {
     return structuredClone(product);
   }
 
+  async setMemberSquareCustomer(memberId: string, customerId: string): Promise<void> {
+    const member = this.members.get(memberId);
+    if (!member) return;
+    // The database's unique index, as an error the same way.
+    if (this.find((m) => m.id !== memberId && m.squareCustomerId === customerId)) {
+      throw new Error(`Square customer ${customerId} already belongs to another member`);
+    }
+    this.members.set(memberId, { ...member, squareCustomerId: customerId });
+  }
+
+  async findActiveSubscription(memberId: string, productId: string): Promise<{ id: string } | null> {
+    const found = this.subscriptionsOf(memberId, productId, "active")[0];
+    return found ? { id: found.id } : null;
+  }
+
+  async findPendingSignup(memberId: string, productId: string): Promise<PendingSignup | null> {
+    const subscription = this.subscriptionsOf(memberId, productId, "pending")[0];
+    const ledger = subscription && this.ledgerOf(subscription.id);
+    if (!subscription || !ledger) return null;
+    return {
+      subscriptionId: subscription.id,
+      ledgerId: ledger.id,
+      ledgerStatus: ledger.status,
+      attempt: ledger.attempt,
+      squareCardId: subscription.squareCardId,
+      amountCents: ledger.amountCents,
+      weeklyCents: subscription.weeklyCents,
+      pickupDate: ledger.pickupDate,
+      createdAt: new Date(subscription.createdAt),
+      optionIds: Object.values(subscription.optionIds),
+    };
+  }
+
+  async savePendingSignup(input: PendingSignupInput): Promise<PendingSignup> {
+    if (this.subscriptionsOf(input.memberId, input.productId, "active").length > 0) throw new SignupRefusedError();
+    const existing = this.subscriptionsOf(input.memberId, input.productId, "pending")[0];
+    const earlier = existing && this.ledgerOf(existing.id);
+    if (existing?.squareCardId && earlier?.status === "pending") throw new SignupRefusedError();
+    const subscription: StoredSubscription = {
+      id: existing?.id ?? randomUUID(),
+      memberId: input.memberId,
+      productId: input.productId,
+      status: "pending",
+      squareCardId: existing?.squareCardId ?? null,
+      consentText: input.consentText,
+      consentAt: new Date(input.consentAt),
+      firstChargeCents: input.firstChargeCents,
+      weeklyCents: input.weeklyCents,
+      createdAt: existing?.createdAt ?? new Date(),
+      optionIds: { ...input.choices },
+    };
+    const before = existing && this.ledgerOf(existing.id);
+    // A decline charged nothing, so the next try is a new attempt with no card; a pending row keeps both.
+    const declined = before?.status === "declined";
+    const ledger: StoredLedger = {
+      id: before?.id ?? randomUUID(),
+      subscriptionId: subscription.id,
+      pickupDate: input.pickupDate,
+      amountCents: input.firstChargeCents,
+      status: declined ? "pending" : (before?.status ?? "pending"),
+      attempt: before ? before.attempt + (declined ? 1 : 0) : 1,
+      squarePaymentId: before?.squarePaymentId ?? null,
+      paidAt: before?.paidAt ?? null,
+    };
+    if (declined) subscription.squareCardId = null;
+    this.subscriptions.set(subscription.id, subscription);
+    this.ledger.set(ledger.id, ledger);
+    const saved = await this.findPendingSignup(input.memberId, input.productId);
+    return saved as PendingSignup;
+  }
+
+  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    const ledger = this.ledgerOf(subscriptionId);
+    if (!subscription || !ledger || subscription.status !== "pending" || subscription.squareCardId !== null) return null;
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
+    return { amountCents: ledger.amountCents, attempt: ledger.attempt };
+  }
+
+  async recordSignupDecline(ledgerId: string): Promise<void> {
+    const row = this.ledger.get(ledgerId);
+    if (row?.status === "pending") this.ledger.set(ledgerId, { ...row, status: "declined" });
+  }
+
+  async confirmSignupRows(
+    ledgerId: string,
+    paymentId: string,
+    amountCents: number,
+    now: Date,
+  ): Promise<"confirmed" | "already" | "mismatch"> {
+    const row = this.ledger.get(ledgerId);
+    if (!row || row.status === "paid") return "already";
+    if (row.amountCents !== amountCents) return "mismatch";
+    this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now) });
+    const subscription = this.subscriptions.get(row.subscriptionId);
+    if (subscription) this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
+    return "confirmed";
+  }
+
+  async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
+    const subscription = [...this.subscriptions.values()]
+      .filter((s) => s.memberId === memberId && s.productId === productId && s.status === "active")
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
+    const ledger = subscription && this.ledgerOf(subscription.id);
+    if (!subscription || !ledger) return null;
+    const product = this.products.find((p) => p.id === subscription.productId);
+    const options = (product?.optionTypes ?? []).flatMap((type) => {
+      const picked = type.options.find((option) => option.id === subscription.optionIds[type.id]);
+      return picked ? [{ typeName: type.name, optionName: picked.name }] : [];
+    });
+    return {
+      pickupDate: ledger.pickupDate,
+      firstChargeCents: subscription.firstChargeCents,
+      weeklyCents: subscription.weeklyCents,
+      options,
+    };
+  }
+
   getSignInCode(subjectId: string): Promise<SignInCode | null> {
     return this.signIn.getSignInCode(subjectId);
   }
@@ -138,6 +294,8 @@ export class InMemoryRepository implements Repository {
   async withActor<T>(actor: Actor, fn: (repo: Repository) => Promise<T>): Promise<T> {
     if (this.scoped) throw new Error("withActor does not nest");
     const members = new Map(this.members);
+    const subscriptions = new Map(this.subscriptions);
+    const ledger = new Map(this.ledger);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
 
@@ -149,6 +307,10 @@ export class InMemoryRepository implements Repository {
     } catch (error) {
       this.members.clear();
       for (const [id, member] of members) this.members.set(id, member);
+      this.subscriptions.clear();
+      for (const [id, subscription] of subscriptions) this.subscriptions.set(id, subscription);
+      this.ledger.clear();
+      for (const [id, row] of ledger) this.ledger.set(id, row);
       this.signIn.restore(signIn);
       this.recorded.splice(0, this.recorded.length, ...recorded);
       throw error;
@@ -158,6 +320,20 @@ export class InMemoryRepository implements Repository {
   /** The events recorded, in order, each with the actor it was recorded under; for tests. */
   events(): RecordedEvent[] {
     return this.recorded.map(copyEvent);
+  }
+
+  /** The member's subscriptions to the product with `status`, oldest first. */
+  private subscriptionsOf(memberId: string, productId: string, status: "pending" | "active"): StoredSubscription[] {
+    return [...this.subscriptions.values()]
+      .filter((s) => s.memberId === memberId && s.productId === productId && s.status === status)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  /** A subscription's earliest ledger row. */
+  private ledgerOf(subscriptionId: string): StoredLedger | undefined {
+    return [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId)
+      .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))[0];
   }
 
   private find(match: (member: Member) => boolean): Member | null {
@@ -183,7 +359,6 @@ export type RecordedEvent = AuditEvent & { actor: Actor };
 // The same for an event, its refusal's window start and its actor included.
 const copyEvent = (event: RecordedEvent): RecordedEvent => {
   const actor = event.actor && { ...event.actor };
-  return event.kind === "rate_limit_refusal"
-    ? { ...event, windowStart: new Date(event.windowStart), actor }
-    : { ...event, actor };
+  if (event.kind === "rate_limit_refusal") return { ...event, windowStart: new Date(event.windowStart), actor };
+  return { ...event, ...(event.detail !== undefined && { detail: structuredClone(event.detail) }), actor };
 };

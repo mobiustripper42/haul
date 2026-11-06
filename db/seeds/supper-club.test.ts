@@ -97,13 +97,13 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
       expect(new Set(rows.map((r) => r.position)).size).toBe(rows.length);
     });
 
-    it(`AC14 (issue 77): "How many people?" has, by position, 2 people at 5000 cents then 3${EN_DASH}4 people (an en dash) at 8000, at distinct positions`, async () => {
+    it(`AC14: "How many people?" has, by position, 3${EN_DASH}4 people (an en dash) at 8000 cents then 2 people at 5000, at distinct positions`, async () => {
       await seed();
 
       const rows = await optionsOf("How many people?");
       expect(rows.map(({ name, price_cents }) => ({ name, price_cents }))).toEqual([
-        { name: "2 people", price_cents: 5000 },
         { name: `3${EN_DASH}4 people`, price_cents: 8000 },
+        { name: "2 people", price_cents: 5000 },
       ]);
       expect(new Set(rows.map((r) => r.position)).size).toBe(rows.length);
     });
@@ -120,7 +120,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     });
   });
 
-  it("AC3: with cap edited to 10 and 2 people to 5500 cents at position 9, a re-run puts back cap 50, 5000 and position 1, and keeps both ids", async () => {
+  it("AC3: with cap edited to 10 and 2 people to 5500 cents at position 9, a re-run puts back cap 50, 5000 and position 2, and keeps both ids", async () => {
     await seed();
     const [product] = await supperClub();
     const [twoPerson] = (await optionsOf("How many people?")).filter((o) => o.name === "2 people");
@@ -136,7 +136,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
 
     expect(await supperClub()).toEqual([expect.objectContaining({ id: product?.id, cap: 50 })]);
     expect((await optionsOf("How many people?")).filter((o) => o.name === "2 people")).toEqual([
-      { id: twoPerson?.id, name: "2 people", price_cents: 5000, position: 1 },
+      { id: twoPerson?.id, name: "2 people", price_cents: 5000, position: 2 },
     ]);
   });
 

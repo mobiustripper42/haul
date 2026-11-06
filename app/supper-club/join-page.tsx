@@ -1,6 +1,7 @@
 // The Supper Club page's frame, and the one home for it: the header, the shell and the left column. The
-// Supper Club page and its four pane pages (Create Account and sign-in, each with its code step) call it
-// with their card as `children`, which stands on the right where the Join card stands. Called inline,
+// Supper Club page and its pane pages (Create Account and sign-in, each with its code step, and the signup
+// confirmation and the already-a-member page) call it with their card as `children`, which stands on the
+// right where the Join card stands. Called inline,
 // `await JoinPage(...)`, as `SiteHeader` is, because `findAll` does not enter a component.
 import type { ReactNode } from "react";
 import { cookies } from "next/headers";
@@ -29,17 +30,26 @@ const EVERY_WEEK = [
 /**
  * The header by who is signed in (Sign in for a visitor, a link to the account for a member), then the
  * left column, then `children`. `pane` is which pane the page shows: "none" for the Supper Club page,
- * which keeps its left column and header link at every width; a pane hides both below `lg`, marks the
- * header's Sign in as current on the sign-in pane, and sends a signed-in member to the Supper Club page.
+ * which keeps its left column and header link at every width; a pane hides the left column below `lg`.
+ * The two account panes (Create Account and sign-in) also hide the header link there, mark the header's
+ * Sign in as current on the sign-in pane, and send a signed-in member to the Supper Club page; "done" and
+ * "already" are for a signed-in member, so they send nobody away and keep "Your account" at every width.
  */
-export async function JoinPage({ pane, children }: { pane: "none" | "create-account" | "sign-in"; children: ReactNode }) {
+export async function JoinPage({
+  pane,
+  children,
+}: {
+  pane: "none" | "create-account" | "sign-in" | "done" | "already";
+  children: ReactNode;
+}) {
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
-  if (pane !== "none" && member) redirect(SUPPER_CLUB_PATH);
+  const accountPane = pane === "create-account" || pane === "sign-in";
+  if (accountPane && member) redirect(SUPPER_CLUB_PATH);
   const account = member ? "your-account" : pane === "sign-in" ? "sign-in-current" : "sign-in";
   const wide = pane === "none" ? "" : " wide-only";
   return (
     <>
-      {await SiteHeader({ account, wideOnly: pane !== "none" })}
+      {await SiteHeader({ account, wideOnly: accountPane })}
       <Shell width={pane === "none" ? "page" : "pane"}>
         <section className={`flex min-w-0 flex-1 flex-col gap-5${wide}`}>
           <div className="flex flex-col gap-2">

@@ -159,9 +159,12 @@ and 4.
 > **Amended by DEC-026 — a member may hold several subscriptions; the ledger stays keyed on subscription and week**
 <!-- /amended-by-dec -->
 
-- Square is the processor and the customer directory. At signup a member is matched to an
-  existing Square customer by email; one match links, none creates, several links the most
-  recently updated and logs the rest for the farm to merge in Square.
+- Square is the processor. Square holds cards and charges; Haul holds the person (name, phone,
+  language, email), and after a member's first payment nothing is synced between the two. At signup a member
+  is matched to an existing Square customer by email; one match links, none creates, several links
+  the most recently updated and logs the rest for the farm to merge in Square. The customer's id is
+  stored on the member and the member's id goes in the customer's `reference_id`. A customer Haul
+  creates carries email only; names can be added if the farm wants them in Square.
 - **The first week is charged at signup**, for the first pickup on or after the product's
   **first-pickup date** (a seeded setting; the Supper Club starts in January 2027) whose cutoff has
   not passed. Every later week is charged by the app's own run at cutoff, on the card on file.

@@ -1,7 +1,10 @@
 import { FakeEmail } from "@core/adapters/fake-email.js";
+import { FakePayments } from "@core/adapters/fake-payments.js";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
 import { ResendEmail } from "@core/adapters/resend-email.js";
+import { SquarePayments } from "@core/adapters/square-payments.js";
 import type { EmailPort } from "@core/ports/email.js";
+import type { PaymentsPort } from "@core/ports/payments.js";
 import type { Repository } from "@core/ports/repository.js";
 import { sessionSecret } from "@core/sign-in/session.js";
 
@@ -14,6 +17,7 @@ const DEV_DATABASE_URL = "postgres://haul:haul@localhost:5434/haul_dev";
 
 let repository: Repository | undefined;
 let email: EmailPort | undefined;
+let payments: PaymentsPort | undefined;
 
 /** One `PostgresRepository` per server process, built on first call. */
 export function getRepository(): Repository {
@@ -52,6 +56,31 @@ export function getEmail(): EmailPort {
     }
   }
   return email;
+}
+
+/**
+ * Square when `SQUARE_ACCESS_TOKEN` and `SQUARE_LOCATION_ID` are both set, in `SQUARE_ENVIRONMENT`: which
+ * must then be `sandbox` or `production`, in every environment, so a typo can never send a sandbox
+ * charge to production or the reverse. Without them, a fake outside production, and in production a
+ * throw, so a misconfigured production can never take a free signup.
+ */
+export function getPayments(): PaymentsPort {
+  if (!payments) {
+    const accessToken = process.env.SQUARE_ACCESS_TOKEN;
+    const locationId = process.env.SQUARE_LOCATION_ID;
+    if (accessToken && locationId) {
+      const environment = process.env.SQUARE_ENVIRONMENT;
+      if (environment !== "sandbox" && environment !== "production") {
+        throw new Error('SQUARE_ENVIRONMENT must be "sandbox" or "production" when Square is configured');
+      }
+      payments = new SquarePayments({ accessToken, locationId, environment });
+    } else if (!isProduction()) {
+      payments = new FakePayments();
+    } else {
+      throw new Error("SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID must both be set in production");
+    }
+  }
+  return payments;
 }
 
 export function getSessionSecret(): string {

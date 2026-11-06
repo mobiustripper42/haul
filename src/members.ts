@@ -8,7 +8,8 @@ export const DEFAULT_ROLE: Role = "member";
 
 /**
  * `firstName`, `lastName` and `phone` are null for a member who never went through Create Account.
- * `emailConfirmedAt` is null until a sign-in code or link is first redeemed (DEC-029).
+ * `emailConfirmedAt` is null until a sign-in code or link is first redeemed (DEC-029). `squareCustomerId`
+ * is null until the member's first payment (issue 56).
  */
 export type Member = {
   id: string;
@@ -20,6 +21,7 @@ export type Member = {
   lastName: string | null;
   phone: string | null;
   emailConfirmedAt: Date | null;
+  squareCustomerId: string | null;
 };
 
 /** Emails are stored and looked up normalized, so one plain unique constraint is case-insensitive. */

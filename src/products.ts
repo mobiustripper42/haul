@@ -21,6 +21,18 @@ export type ProductInput = Omit<ProductWithOptions, "id" | "optionTypes"> & {
   optionTypes: Array<Omit<ProductOptionType, "id" | "options"> & { options: Array<Omit<ProductOption, "id">> }>;
 };
 
+/**
+ * The sum of the picked options' prices, in cents (docs/SPEC.md §7.1). `choices` maps an option type id to
+ * an option id; a type with no pick, or a pick that is not its option, adds nothing.
+ */
+export function priceOfChoices(product: ProductWithOptions, choices: Record<string, string>): number {
+  let total = 0;
+  for (const type of product.optionTypes) {
+    total += type.options.find((option) => option.id === choices[type.id])?.priceCents ?? 0;
+  }
+  return total;
+}
+
 /** The Supper Club product. It is seeded data, so a database without it is broken, not empty. */
 export async function requireSupperClub(repo: Repository): Promise<ProductWithOptions> {
   const product = await repo.findProductByName(SUPPER_CLUB_PRODUCT_NAME);

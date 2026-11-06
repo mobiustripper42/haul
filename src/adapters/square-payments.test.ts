@@ -1,8 +1,9 @@
 // Issue 54: SquarePayments over a stubbed fetch — its input check (AC10), the requests it makes
 // (AC11), paging (AC12), how it reads Square's replies (AC13) and errors (AC14), and what it never
 // leaks (AC15). Nothing here reaches the network; the contract against the real sandbox is
-// square-payments.sandbox.ts.
-import { afterEach, describe, expect, it, vi } from "vitest";
+// square-payments.sandbox.ts. Issue 56 adds a customer's reference_id (AC6), the payment lookup (AC10)
+// and the timeout on every request (AC12).
+import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import type * as PortModule from "../ports/payments.js";
 import { checkPaymentsInput, IdempotencyKeyReusedError, PaymentsError } from "../ports/payments.js";
 import {
@@ -29,7 +30,7 @@ afterEach(() => {
   checkSpy.mockImplementation(realCheck);
 });
 
-type Call = { url: string; init: { method: string; headers: Record<string, string>; body: string } };
+type Call = { url: string; init: Parameters<FetchLike>[1] };
 type Reply = { ok: boolean; status: number; text(): Promise<string> };
 
 /** A fetch that records each call and answers with `replies` in turn, repeating the last. */
@@ -539,5 +540,198 @@ describe("AC15 (issue 54) — SquarePayments leaks no token, and passes a fetch 
     const error = await rejectionOf(call(square(fetch), method));
     expect(error).toBe(failure);
     expect(error).not.toBeInstanceOf(PaymentsError);
+  });
+});
+
+describe("AC6 (issue 56) — a customer's reference_id", () => {
+  it("AC6: createCustomer adds reference_id when given", async () => {
+    const { fetch, calls } = okFetch("createCustomer");
+    await square(fetch).createCustomer({ email: "ada@example.com", idempotencyKey: "customer-key-1", referenceId: "member-1" });
+    expect(bodyOf(calls[0])).toStrictEqual({ idempotency_key: "customer-key-1", email_address: "ada@example.com", reference_id: "member-1" });
+  });
+
+  it("AC6: a customer's reference_id maps to referenceId", async () => {
+    const { fetch } = stubFetch(json(200, { customers: [{ ...SQ_CUSTOMER, reference_id: "member-1" }] }));
+    const [customer] = await square(fetch).findCustomersByEmail("ada@example.com");
+    expect(customer?.referenceId).toBe("member-1");
+  });
+
+  it("AC6: a 41-character referenceId on createCustomer sends nothing", async () => {
+    const { fetch, calls } = okFetch("createCustomer");
+    const error = await rejectionOf(square(fetch).createCustomer({ email: "ada@example.com", idempotencyKey: "key", referenceId: "r".repeat(41) }));
+    expect(error).toBeInstanceOf(RangeError);
+    expect(calls).toHaveLength(0);
+  });
+
+  const update = (fetch: FetchLike, environment: "sandbox" | "production" = "sandbox") =>
+    square(fetch, environment).setCustomerReference({ customerId: "CUS_ADA", referenceId: "member-1" });
+
+  it("AC6: setCustomerReference makes one PUT to /customers/{customer_id} with reference_id, and resolves to nothing", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+    await expect(update(fetch)).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://connect.squareupsandbox.com/v2/customers/CUS_ADA");
+    expect(calls[0]?.init.method).toBe("PUT");
+    expect(bodyOf(calls[0])).toMatchObject({ reference_id: "member-1" });
+  });
+
+  it("AC6: setCustomerReference goes to production's base in production, with Square's headers", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+    await update(fetch, "production");
+    expect(calls[0]?.url).toBe("https://connect.squareup.com/v2/customers/CUS_ADA");
+    expect(calls[0]?.init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Square-Version": "2026-09-16" });
+  });
+
+  it("AC6: a non-2xx from setCustomerReference rejects with PaymentsError", async () => {
+    const { fetch } = stubFetch(json(404, squareError("INVALID_REQUEST_ERROR", "NOT_FOUND", "No such customer.")));
+    expect(await rejectionOf(update(fetch))).toBeInstanceOf(PaymentsError);
+  });
+
+  it("AC6: setCustomerReference with a 41-character referenceId sends nothing", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+    const error = await rejectionOf(square(fetch).setCustomerReference({ customerId: "CUS_ADA", referenceId: "r".repeat(41) }));
+    expect(error).toBeInstanceOf(RangeError);
+    expect(calls).toHaveLength(0);
+  });
+});
+
+describe("AC10 (issue 56) — findPaymentByReference", () => {
+  const SINCE = new Date("2026-11-06T12:00:00.000Z");
+  const LEDGER = "ledger-1";
+  const listed = (id: string, status: string, reference_id?: string) => ({
+    id,
+    status,
+    location_id: LOCATION,
+    amount_money: { amount: 5000, currency: "USD" },
+    ...(reference_id !== undefined && { reference_id }),
+  });
+  const find = (fetch: FetchLike, environment: "sandbox" | "production" = "sandbox") =>
+    square(fetch, environment).findPaymentByReference({ referenceId: LEDGER, since: SINCE });
+
+  it("AC10: it sends a GET to /payments with no body, begin_time and location_id in the query", async () => {
+    const { fetch, calls } = stubFetch(json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }));
+    await find(fetch);
+    const url = new URL(calls[0]?.url ?? "https://nothing.invalid/");
+    expect(`${url.origin}${url.pathname}`).toBe("https://connect.squareupsandbox.com/v2/payments");
+    expect(Date.parse(url.searchParams.get("begin_time") ?? "")).toBe(SINCE.getTime());
+    expect(url.searchParams.get("location_id")).toBe(LOCATION);
+    expect(calls[0]?.init.method).toBe("GET");
+    expect(calls[0]?.init.body).toBeUndefined();
+    expect(calls[0]?.init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Square-Version": "2026-09-16" });
+  });
+
+  it("AC10: it goes to production's base in production", async () => {
+    const { fetch, calls } = stubFetch(json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }));
+    await find(fetch, "production");
+    expect(calls[0]?.url.startsWith("https://connect.squareup.com/v2/payments?")).toBe(true);
+  });
+
+  it("AC10: it finds the COMPLETED payment carrying the reference_id, among others", async () => {
+    const { fetch } = stubFetch(json(200, { payments: [listed("PAY_OTHER", "COMPLETED", "ledger-2"), listed("PAY_BARE", "COMPLETED"), listed("PAY_1", "COMPLETED", LEDGER)] }));
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
+  });
+
+  it("AC11: it returns the amount Square holds for that payment, so a confirm can compare it with the ledger", async () => {
+    const { fetch } = stubFetch(json(200, { payments: [{ ...listed("PAY_1", "COMPLETED", LEDGER), amount_money: { amount: 7300, currency: "USD" } }] }));
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 7300 });
+  });
+
+  it("AC10: it follows cursor to a later page, sending it there and only there", async () => {
+    const { fetch, calls } = stubFetch(
+      json(200, { payments: [listed("PAY_OTHER", "COMPLETED", "ledger-2")], cursor: "CURSOR_1" }),
+      json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }),
+    );
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
+    expect(calls).toHaveLength(2);
+    const cursors = calls.map((call) => new URL(call.url).searchParams.get("cursor"));
+    expect(cursors).toEqual([null, "CURSOR_1"]);
+    expect(new URL(calls[1]?.url ?? "https://nothing.invalid/").searchParams.get("location_id")).toBe(LOCATION);
+  });
+
+  it("AC10: a page with a cursor and no payments is followed", async () => {
+    const { fetch, calls } = stubFetch(json(200, { cursor: "CURSOR_1" }), json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }));
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
+    expect(calls).toHaveLength(2);
+  });
+
+  it("AC10: a reply of {} is null, which guards the finds above", async () => {
+    const { fetch } = stubFetch(json(200, {}));
+    expect(await find(fetch)).toBeNull();
+  });
+
+  it.each(["FAILED", "APPROVED", "PENDING", "CANCELED"])("AC10: a %s payment under the reference is never found, the COMPLETED rule", async (status) => {
+    const { fetch, calls } = stubFetch(json(200, { payments: [listed("PAY_1", status, LEDGER)] }));
+    expect(await find(fetch)).toBeNull();
+    expect(calls).toHaveLength(1);
+  });
+
+  it("AC10: attempt 1's FAILED payment and attempt 2's COMPLETED one, under one reference, give the COMPLETED one", async () => {
+    const { fetch } = stubFetch(json(200, { payments: [listed("PAY_ATTEMPT_1", "FAILED", LEDGER), listed("PAY_ATTEMPT_2", "COMPLETED", LEDGER)] }));
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_ATTEMPT_2", amountCents: 5000 });
+  });
+
+  it("AC10: a non-2xx rejects with PaymentsError, so no charge can follow a failed lookup", async () => {
+    const { fetch } = stubFetch(json(503, squareError("API_ERROR", "SERVICE_UNAVAILABLE", "Try later.")));
+    expect(await rejectionOf(find(fetch))).toBeInstanceOf(PaymentsError);
+  });
+
+  it("AC10: a fetch that rejects rejects the lookup with that very error", async () => {
+    const failure = new TypeError("fetch failed");
+    expect(await rejectionOf(find(() => Promise.reject(failure)))).toBe(failure);
+  });
+});
+
+describe("AC12 (issue 56) — every Square request has a timeout", () => {
+  type Run = [string, (payments: SquarePayments) => Promise<unknown>, unknown];
+  const RUNS: Run[] = [
+    ...PAYMENTS_METHODS.map((method): Run => [method, (payments) => call(payments, method), OK_REPLIES[method]]),
+    ["setCustomerReference", (payments) => payments.setCustomerReference({ customerId: "CUS_ADA", referenceId: "member-1" }), { customer: SQ_CUSTOMER }],
+    ["findPaymentByReference", (payments) => payments.findPaymentByReference({ referenceId: "ledger-1", since: new Date(0) }), { payments: [] }],
+  ];
+  const settings = { accessToken: TOKEN, locationId: LOCATION, environment: "sandbox" } as const;
+
+  let timeout: MockInstance<typeof AbortSignal.timeout>;
+  beforeEach(() => {
+    timeout = vi.spyOn(AbortSignal, "timeout");
+  });
+  afterEach(() => {
+    timeout.mockRestore();
+  });
+
+  it.each(RUNS)("AC12: %s, built without timeoutMs, passes fetch the signal of AbortSignal.timeout(15_000)", async (_name, run, reply) => {
+    const { fetch, calls } = stubFetch(json(200, reply));
+    await run(new SquarePayments({ ...settings, fetch }));
+    expect(timeout).toHaveBeenCalledWith(15_000);
+    expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
+    expect(calls[0]?.init.signal).toBe(timeout.mock.results[0]?.value);
+  });
+
+  it("AC12: timeoutMs: undefined still means 15_000, never no timeout", async () => {
+    const { fetch, calls } = okFetch("charge");
+    const given = { ...settings, fetch, timeoutMs: undefined } as unknown as ConstructorParameters<typeof SquarePayments>[0];
+    await call(new SquarePayments(given), "charge");
+    expect(timeout).toHaveBeenCalledWith(15_000);
+    expect(calls[0]?.init.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it("AC12: a timeoutMs given replaces the default", async () => {
+    const { fetch } = okFetch("charge");
+    await call(new SquarePayments({ ...settings, fetch, timeoutMs: 2_500 }), "charge");
+    expect(timeout).toHaveBeenCalledWith(2_500);
+    expect(timeout).not.toHaveBeenCalledWith(15_000);
+  });
+
+  it("AC12: a request that hangs rejects when the timeout passes", async () => {
+    const hangs: FetchLike = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        const { signal } = init;
+        if (!signal) {
+          reject(new Error("fetch was given no signal"));
+          return;
+        }
+        signal.addEventListener("abort", () => reject(signal.reason as Error));
+      });
+    const error = await rejectionOf(call(new SquarePayments({ ...settings, fetch: hangs, timeoutMs: 5 }), "charge"));
+    expect((error as Error).name).toBe("TimeoutError");
   });
 });

@@ -13,6 +13,9 @@
  * lags ("Some updates can take up to 1 minute"). The fake shows it at once, so its run waits 0.
  *
  * It also exports AC10's input table, shared by the port's and both adapters' tests.
+ *
+ * Issue 56 adds what signup needs of the port: a customer's `referenceId`, read back on the customer
+ * (AC6), and `findPaymentByReference`, the lookup "Try again" starts with (AC10).
  */
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
@@ -50,6 +53,18 @@ export function runPaymentsContract(
       const customers = await payments.findCustomersByEmail(email);
       const left = deadline - Date.now();
       if (done(customers) || left <= 0) return customers;
+      await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, left)));
+    }
+  }
+
+  /** Looks a payment up until it appears or `searchWaitMs` has passed, and returns the last result. */
+  async function paymentUntilFound(payments: PaymentsPort, referenceId: string): Promise<{ paymentId: string } | null> {
+    const since = new Date(Date.now() - 5 * 60_000);
+    const deadline = Date.now() + searchWaitMs;
+    for (;;) {
+      const found = await payments.findPaymentByReference({ referenceId, since });
+      const left = deadline - Date.now();
+      if (found !== null || left <= 0) return found;
       await new Promise((resolve) => setTimeout(resolve, Math.min(2_000, left)));
     }
   }
@@ -192,12 +207,75 @@ export function runPaymentsContract(
         expect(error).toBeInstanceOf(IdempotencyKeyReusedError);
       },
     );
+
+    it("AC6 (issue 56): a customer created with a referenceId is found carrying it", { timeout }, async () => {
+      const payments = await make();
+      const email = freshEmail();
+      const referenceId = randomUUID();
+      const customer = await payments.createCustomer({ email, idempotencyKey: freshKey(), referenceId });
+      const found = await searchUntil(payments, email, (cs) => cs.some((c) => c.id === customer.id));
+      expect(found.find((c) => c.id === customer.id)?.referenceId).toBe(referenceId);
+    });
+
+    it("AC6 (issue 56): setCustomerReference gives a customer made without one its referenceId", { timeout }, async () => {
+      const payments = await make();
+      const email = freshEmail();
+      const referenceId = randomUUID();
+      const customer = await payments.createCustomer({ email, idempotencyKey: freshKey() });
+      await payments.setCustomerReference({ customerId: customer.id, referenceId });
+      const found = await searchUntil(payments, email, (cs) => cs.some((c) => c.referenceId === referenceId));
+      expect(found.find((c) => c.id === customer.id)?.referenceId).toBe(referenceId);
+    });
+
+    it("AC10 (issue 56): findPaymentByReference finds a paid charge made with that referenceId", { timeout }, async () => {
+      const payments = await make();
+      const { customerId, cardId } = await customerWithCard(payments);
+      const referenceId = randomUUID();
+      const paid = await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId });
+      expect(paid.outcome).toBe("paid");
+      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
+    });
+
+    it("AC10 (issue 56): findPaymentByReference returns null for a referenceId no payment has", { timeout }, async () => {
+      const payments = await make();
+      const { customerId, cardId } = await customerWithCard(payments);
+      await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId: randomUUID() });
+      const since = new Date(Date.now() - 5 * 60_000);
+      expect(await payments.findPaymentByReference({ referenceId: randomUUID(), since })).toBeNull();
+    });
+
+    it("AC10 (issue 56): a declined charge is never found, so a decline cannot confirm a signup", { timeout }, async () => {
+      const payments = await make();
+      const customer = await payments.createCustomer({ email: freshEmail(), idempotencyKey: freshKey() });
+      const referenceId = randomUUID();
+      const declined = await payments.charge({
+        customerId: customer.id,
+        cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
+        amountCents: 5000,
+        idempotencyKey: freshKey(),
+        referenceId,
+      });
+      expect(declined.outcome).toBe("declined");
+      const since = new Date(Date.now() - 5 * 60_000);
+      expect(await payments.findPaymentByReference({ referenceId, since })).toBeNull();
+    });
+
+    it("AC10 (issue 56): a repeated charge key returns the same payment, and the lookup finds that one", { timeout }, async () => {
+      const payments = await make();
+      const { customerId, cardId } = await customerWithCard(payments);
+      const referenceId = randomUUID();
+      const input = { customerId, cardId, amountCents: 5000, idempotencyKey: `${referenceId}:1`, referenceId };
+      const first = await payments.charge({ ...input });
+      const second = await payments.charge({ ...input });
+      expect(second).toEqual(first);
+      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: first.paymentId, amountCents: 5000 });
+    });
   });
 }
 
 // ── AC10's input table, shared by src/ports/payments.test.ts and both adapters' tests ──────────
 
-export type PaymentsMethod = keyof PaymentsPort;
+export type PaymentsMethod = "findCustomersByEmail" | "createCustomer" | "saveCard" | "charge";
 
 export const PAYMENTS_METHODS: PaymentsMethod[] = ["findCustomersByEmail", "createCustomer", "saveCard", "charge"];
 
@@ -251,6 +329,7 @@ const breach = (method: PaymentsMethod, field: string, snake: string, label: str
 export const PAYMENTS_INPUT_BREACHES: InputBreach[] = [
   breach("findCustomersByEmail", "email", "email_address", "an empty email", { email: "" }),
   breach("createCustomer", "email", "email_address", "an empty email", { email: "" }),
+  breach("createCustomer", "referenceId", "reference_id", "a 41-character referenceId (issue 56)", { referenceId: "r".repeat(41) }),
 
   ...(["createCustomer", "saveCard", "charge"] as const).flatMap((method) => [
     breach(method, "idempotencyKey", "idempotency_key", "an empty idempotencyKey", { idempotencyKey: "" }),

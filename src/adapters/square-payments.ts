@@ -1,6 +1,7 @@
 import {
   checkPaymentsInput,
   IdempotencyKeyReusedError,
+  isCardRefusal,
   PaymentsError,
   type Card,
   type ChargeResult,
@@ -20,6 +21,9 @@ export const SQUARE_BASE_URLS: Record<"sandbox" | "production", string> = {
   sandbox: "https://connect.squareupsandbox.com/v2",
   production: "https://connect.squareup.com/v2",
 };
+
+/** How long a Square request may take before it is abandoned. */
+export const SQUARE_TIMEOUT_MS = 15_000;
 
 /** Square's sandbox test values: the one home for them. */
 export const SQUARE_SANDBOX_VALUES = {
@@ -66,37 +70,40 @@ export class SquarePayments implements PaymentsPort {
   private readonly locationId: string;
   private readonly baseUrl: string;
   private readonly fetch: FetchLike;
+  private readonly timeoutMs: number;
 
   constructor(options: {
     accessToken: string;
     locationId: string;
     environment: "sandbox" | "production";
     fetch?: FetchLike;
+    /** Per request; unset means `SQUARE_TIMEOUT_MS`, never no timeout. */
+    timeoutMs?: number;
   }) {
     this.accessToken = options.accessToken;
     this.locationId = options.locationId;
     this.baseUrl = SQUARE_BASE_URLS[options.environment];
     this.fetch = options.fetch ?? ((url, init) => globalThis.fetch(url, init));
+    this.timeoutMs = options.timeoutMs ?? SQUARE_TIMEOUT_MS;
   }
 
   /** Follows Square's cursor until a page has none. */
   async findCustomersByEmail(email: string): Promise<Customer[]> {
     checkPaymentsInput("findCustomersByEmail", { email });
     const customers: Customer[] = [];
-    let cursor: string | undefined;
-    do {
-      const reply = await this.post("/customers/search", {
-        query: { filter: { email_address: { exact: email } } },
-        limit: 100,
-        ...(cursor !== undefined && { cursor }),
-      });
-      if (!reply.ok) throw errorFor(reply);
-      const page = parseObject(reply);
-      const found = page.customers ?? [];
-      if (!Array.isArray(found)) throw unexpected(reply, "customers");
-      customers.push(...found.map((raw: unknown) => toCustomer(reply, raw)));
-      cursor = typeof page.cursor === "string" && page.cursor !== "" ? page.cursor : undefined;
-    } while (cursor !== undefined);
+    await this.eachPage(
+      "customers",
+      (cursor) =>
+        this.request("POST", "/customers/search", {
+          query: { filter: { email_address: { exact: email } } },
+          limit: 100,
+          ...(cursor !== undefined && { cursor }),
+        }),
+      (reply, found) => {
+        customers.push(...found.map((raw: unknown) => toCustomer(reply, raw)));
+        return false;
+      },
+    );
     return customers;
   }
 
@@ -105,13 +112,15 @@ export class SquarePayments implements PaymentsPort {
     idempotencyKey: string;
     givenName?: string;
     familyName?: string;
+    referenceId?: string;
   }): Promise<Customer> {
     checkPaymentsInput("createCustomer", input);
-    const reply = await this.post("/customers", {
+    const reply = await this.request("POST", "/customers", {
       idempotency_key: input.idempotencyKey,
       email_address: input.email,
       ...(input.givenName !== undefined && { given_name: input.givenName }),
       ...(input.familyName !== undefined && { family_name: input.familyName }),
+      ...(input.referenceId !== undefined && { reference_id: input.referenceId }),
     });
     if (!reply.ok) throw errorFor(reply);
     return toCustomer(reply, parseObject(reply).customer);
@@ -125,7 +134,7 @@ export class SquarePayments implements PaymentsPort {
     verificationToken?: string;
   }): Promise<Card> {
     checkPaymentsInput("saveCard", input);
-    const reply = await this.post("/cards", {
+    const reply = await this.request("POST", "/cards", {
       idempotency_key: input.idempotencyKey,
       source_id: input.sourceId,
       card: { customer_id: input.customerId },
@@ -158,7 +167,7 @@ export class SquarePayments implements PaymentsPort {
     referenceId?: string;
   }): Promise<ChargeResult> {
     checkPaymentsInput("charge", input);
-    const reply = await this.post("/payments", {
+    const reply = await this.request("POST", "/payments", {
       idempotency_key: input.idempotencyKey,
       source_id: input.cardId,
       customer_id: input.customerId,
@@ -168,15 +177,12 @@ export class SquarePayments implements PaymentsPort {
       ...(input.referenceId !== undefined && { reference_id: input.referenceId }),
     });
     if (!reply.ok) {
-      const error = readSquareError(reply.text);
-      if (error.category === "PAYMENT_METHOD_ERROR") {
-        return {
-          outcome: "declined",
-          code: error.code,
-          ...(error.paymentId !== undefined && { paymentId: error.paymentId }),
-        };
+      const failure = errorFor(reply);
+      if (isCardRefusal(failure)) {
+        const { paymentId } = readSquareError(reply.text);
+        return { outcome: "declined", code: failure.code, ...(paymentId !== undefined && { paymentId }) };
       }
-      throw errorFor(reply);
+      throw failure;
     }
     const payment = parseObject(reply).payment;
     if (!isObject(payment) || typeof payment.id !== "string" || typeof payment.status !== "string") {
@@ -192,16 +198,78 @@ export class SquarePayments implements PaymentsPort {
     });
   }
 
-  /** One POST. A `fetch` that rejects rejects the call with that same error. */
-  private async post(path: string, body: object): Promise<Reply> {
+  /** Square's `UpdateCustomer`: gives a customer made without one its `reference_id`. */
+  async setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void> {
+    checkPaymentsInput("setCustomerReference", input);
+    const reply = await this.request("PUT", `/customers/${encodeURIComponent(input.customerId)}`, {
+      reference_id: input.referenceId,
+    });
+    if (!reply.ok) throw errorFor(reply);
+  }
+
+  /**
+   * Square's `ListPayments` from `since` at this location, following the cursor until a COMPLETED
+   * payment carries `referenceId`: the rule `charge` has for paid, so a FAILED attempt never confirms a signup.
+   * The amount is what Square holds for it, so a confirm can compare it with the ledger.
+   */
+  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null> {
+    checkPaymentsInput("findPaymentByReference", input);
+    let found: { paymentId: string; amountCents: number } | null = null;
+    await this.eachPage(
+      "payments",
+      (cursor) => {
+        const query = new URLSearchParams({ begin_time: input.since.toISOString(), location_id: this.locationId });
+        if (cursor !== undefined) query.set("cursor", cursor);
+        return this.request("GET", `/payments?${query.toString()}`);
+      },
+      (reply, payments) => {
+        for (const raw of payments) {
+          if (!isObject(raw) || typeof raw.id !== "string" || typeof raw.status !== "string") throw unexpected(reply, "payment");
+          if (raw.status === "COMPLETED" && raw.reference_id === input.referenceId) {
+            const amount = isObject(raw.amount_money) ? raw.amount_money.amount : undefined;
+            if (typeof amount !== "number") throw unexpected(reply, "payment amount");
+            found = { paymentId: raw.id, amountCents: amount };
+            return true;
+          }
+        }
+        return false;
+      },
+    );
+    return found;
+  }
+
+  /**
+   * Follows Square's cursor until a page has none, or `visit` returns true. `key` names the list in the
+   * reply; a page may have a cursor and no items.
+   */
+  private async eachPage(
+    key: string,
+    request: (cursor: string | undefined) => Promise<Reply>,
+    visit: (reply: Reply, items: unknown[]) => boolean,
+  ): Promise<void> {
+    let cursor: string | undefined;
+    do {
+      const reply = await request(cursor);
+      if (!reply.ok) throw errorFor(reply);
+      const page = parseObject(reply);
+      const items = page[key] ?? [];
+      if (!Array.isArray(items)) throw unexpected(reply, key);
+      if (visit(reply, items as unknown[])) return;
+      cursor = typeof page.cursor === "string" && page.cursor !== "" ? page.cursor : undefined;
+    } while (cursor !== undefined);
+  }
+
+  /** One request, abandoned after `timeoutMs`. A `fetch` that rejects rejects the call with that same error. */
+  private async request(method: "GET" | "POST" | "PUT", path: string, body?: object): Promise<Reply> {
     const response = await this.fetch(`${this.baseUrl}${path}`, {
-      method: "POST",
+      method,
       headers: {
         Authorization: `Bearer ${this.accessToken}`,
         "Square-Version": SQUARE_VERSION,
-        "Content-Type": "application/json",
+        ...(body !== undefined && { "Content-Type": "application/json" }),
       },
-      body: JSON.stringify(body),
+      ...(body !== undefined && { body: JSON.stringify(body) }),
+      signal: AbortSignal.timeout(this.timeoutMs),
     });
     const text = await response.text().catch(() => "");
     return { ok: response.ok, status: response.status, text };
@@ -237,5 +305,6 @@ function toCustomer(reply: Reply, raw: unknown): Customer {
     email: typeof raw.email_address === "string" ? raw.email_address : undefined,
     createdAt: new Date(raw.created_at),
     updatedAt: new Date(raw.updated_at),
+    ...(typeof raw.reference_id === "string" && { referenceId: raw.reference_id }),
   };
 }

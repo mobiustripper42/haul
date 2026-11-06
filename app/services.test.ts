@@ -163,3 +163,63 @@ describe("AC32 (issue 9) — getRepository", () => {
     expect(() => services.getRepository()).toThrow(/DATABASE_URL/);
   });
 });
+
+describe("AC8 (issue 56) — getPayments", () => {
+  const SQUARE = { SQUARE_ACCESS_TOKEN: "EAAA-test-token", SQUARE_LOCATION_ID: "LOCATION_MAIN" };
+  const NAMES = ["NODE_ENV", "SQUARE_ENVIRONMENT", "SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID"] as const;
+
+  async function loadPayments(env: Partial<Record<(typeof NAMES)[number], string>>) {
+    for (const name of NAMES) vi.stubEnv(name, env[name]);
+    vi.resetModules();
+    return {
+      services: await import("./services"),
+      FakePayments: (await import("@core/adapters/fake-payments.js")).FakePayments,
+      SquarePayments: (await import("@core/adapters/square-payments.js")).SquarePayments,
+    };
+  }
+
+  it.each(["development", "production"])("AC8: with the token and location set and a valid SQUARE_ENVIRONMENT, NODE_ENV %s, it returns SquarePayments", async (NODE_ENV) => {
+    const { services, SquarePayments } = await loadPayments({ NODE_ENV, ...SQUARE, SQUARE_ENVIRONMENT: "sandbox" });
+    expect(services.getPayments()).toBeInstanceOf(SquarePayments);
+  });
+
+  it.each([
+    ["sandbox", "https://connect.squareupsandbox.com/v2/customers/search"],
+    ["production", "https://connect.squareup.com/v2/customers/search"],
+  ])("AC8: SQUARE_ENVIRONMENT %s picks Square's base URL", async (SQUARE_ENVIRONMENT, url) => {
+    const { services } = await loadPayments({ NODE_ENV: "development", ...SQUARE, SQUARE_ENVIRONMENT });
+    const fetch = vi.fn<(url: string) => Promise<Response>>(async () => new Response(JSON.stringify({ customers: [] }), { status: 200 }));
+    vi.stubGlobal("fetch", fetch);
+    try {
+      await services.getPayments().findCustomersByEmail("ada@example.com");
+      expect(fetch.mock.calls[0]?.[0]).toBe(url);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it.each(["development", "test"])("AC8: without them, NODE_ENV %s, it returns the fake, which guards the two production refusals", async (NODE_ENV) => {
+    const { services, FakePayments } = await loadPayments({ NODE_ENV });
+    expect(services.getPayments()).toBeInstanceOf(FakePayments);
+  });
+
+  it.each([
+    ["neither variable", {}],
+    ["only SQUARE_ACCESS_TOKEN", { SQUARE_ACCESS_TOKEN: SQUARE.SQUARE_ACCESS_TOKEN }],
+    ["only SQUARE_LOCATION_ID", { SQUARE_LOCATION_ID: SQUARE.SQUARE_LOCATION_ID }],
+  ])("AC8: in production, with %s, it throws, so a misconfigured production takes no free signup", async (_what, vars) => {
+    const { services } = await loadPayments({ NODE_ENV: "production", ...vars });
+    expect(() => services.getPayments()).toThrow();
+  });
+
+  it.each(
+    ["development", "test", "production"].flatMap((NODE_ENV) => [
+      [NODE_ENV, "unset", undefined],
+      [NODE_ENV, "invalid", "staging"],
+      [NODE_ENV, "empty", ""],
+    ]),
+  )("AC8: NODE_ENV %s, with the token and location set and SQUARE_ENVIRONMENT %s, it throws", async (NODE_ENV, _what, SQUARE_ENVIRONMENT) => {
+    const { services } = await loadPayments({ NODE_ENV: NODE_ENV as string, ...SQUARE, ...(SQUARE_ENVIRONMENT === undefined ? {} : { SQUARE_ENVIRONMENT }) });
+    expect(() => services.getPayments()).toThrow();
+  });
+});

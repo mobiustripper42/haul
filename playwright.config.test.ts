@@ -137,6 +137,11 @@ describe("AC2 — one next dev server on 4100, pointed at the e2e database", () 
     });
   });
 
+  it("AC1 (issue 56): its environment blanks SQUARE_ACCESS_TOKEN and SQUARE_LOCATION_ID, so e2e stays on the fake whatever .env.local holds", async () => {
+    const [server] = webServersOf(await load());
+    expect(server?.env).toMatchObject({ SQUARE_ACCESS_TOKEN: "", SQUARE_LOCATION_ID: "" });
+  });
+
   it("AC2: its environment sets a fixed SESSION_SECRET of 32 or more characters", async () => {
     const first = webServersOf(await load())[0]?.env?.SESSION_SECRET;
     const second = webServersOf(await load())[0]?.env?.SESSION_SECRET;

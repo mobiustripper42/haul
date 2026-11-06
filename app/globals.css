@@ -188,7 +188,8 @@
    */
   .card,
   .card-fill,
-  .card-pane {
+  .card-pane,
+  .pane-box {
     @apply flex w-full flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
   }
   .card {
@@ -196,6 +197,21 @@
   }
   .card-pane {
     @apply mx-auto max-w-card lg:mx-0 lg:max-w-none;
+  }
+
+  /*
+   * The signup confirmation (SignupDoneMobile, SignupPaneDone). Below lg its parts stand on the page, "Your
+   * box" in a card (`.pane-box` shares the card body above); at lg and wider it is one card and its parts
+   * are sections under a hairline.
+   */
+  .pane-done {
+    @apply mx-auto flex w-full max-w-card flex-col gap-5 lg:mx-0 lg:max-w-none lg:rounded-md lg:bg-surface lg:px-5 lg:py-7 lg:shadow-card;
+  }
+  .pane-box {
+    @apply lg:rounded-none lg:border-t lg:border-divider lg:bg-transparent lg:p-0 lg:pt-5 lg:shadow-none;
+  }
+  .pane-next {
+    @apply flex flex-col gap-3 lg:border-t lg:border-divider lg:pt-5;
   }
 
   /* A text field; the code field is taller, centred and set in the code style. */

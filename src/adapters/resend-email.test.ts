@@ -5,7 +5,7 @@ import { EmailSendError, type EmailMessage } from "../ports/email.js";
 import { runEmailContract } from "./email-contract.js";
 import { RESEND_ENDPOINT, ResendEmail, type FetchLike } from "./resend-email.js";
 
-type Call = { url: string; init: { method: string; headers: Record<string, string>; body: string } };
+type Call = { url: string; init: Parameters<FetchLike>[1] };
 type Reply = { ok: boolean; status: number; text(): Promise<string> };
 
 /** A fetch that records each call and answers with `reply`. */

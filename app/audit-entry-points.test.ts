@@ -50,7 +50,9 @@ describe("AC12 — the check on the real repo", () => {
   });
 });
 
-describe("AC13 — the list is exactly these fifteen entries", () => {
+const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
+
+describe("AC13 — the list is exactly these fifteen entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
@@ -58,7 +60,8 @@ describe("AC13 — the list is exactly these fifteen entries", () => {
     );
 
   it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, setLanguage, the dev outbox's GET and the Supper Club continue route's GET with their reasons", () => {
-    expect(normalized(AUDIT_ENTRY_POINTS)).toEqual(
+    const entries = Object.fromEntries(Object.entries(AUDIT_ENTRY_POINTS).filter(([key]) => !ISSUE_56_ENTRIES.includes(key)));
+    expect(normalized(entries)).toEqual(
       normalized({
         "app/sign-in/actions.ts#requestCode": { records: ["rate_limit_refusal"] },
         "app/sign-in/actions.ts#verifyCode": { records: ["sign_in_by_code", "lock"] },
@@ -77,6 +80,27 @@ describe("AC13 — the list is exactly these fifteen entries", () => {
         "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
       }),
     );
+  });
+});
+
+describe("issue 56 — the pay actions are declared", () => {
+  const records = (key: string) => {
+    const entry = AUDIT_ENTRY_POINTS[key];
+    return entry && "records" in entry ? [...entry.records].sort() : entry;
+  };
+
+  it("AC5: joinSupperClub records the five signup events", () => {
+    expect(records("app/supper-club/actions.ts#joinSupperClub")).toEqual([
+      "already_subscribed",
+      "card_declined",
+      "charge_outcome_unknown",
+      "square_customer_duplicates",
+      "square_customer_linked",
+    ]);
+  });
+
+  it("AC10: retrySupperClubPayment declares at least the decline it can record", () => {
+    expect(records("app/supper-club/actions.ts#retrySupperClubPayment")).toEqual(expect.arrayContaining(["card_declined"]));
   });
 });
 

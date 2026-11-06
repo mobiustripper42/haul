@@ -61,7 +61,7 @@ A member can sign up, pay for their first week and hold one of the ~50 spots. Du
 | 1.1 | Seeded Supper Club product: option types, options, cap, cutoff and first-pickup settings | 5 | [#53](https://github.com/mobiustripper42/haul/issues/53) · SQL and seeds only. **Blocked on spec open question 13** |
 | 1.2 | Square port: fake and sandbox adapters (Customers, Cards, Payments), email match | 8 | [#54](https://github.com/mobiustripper42/haul/issues/54) · Template: muster's `fake-payment.ts` discipline |
 | 1.3 | Public signup page | 5 | [#55](https://github.com/mobiustripper42/haul/issues/55) · Pickers generated from option types; placeholder recurring-charge wording until 1.12. Signup confirms the email by code, using 0.6's flow, before the member is created. Signup needs its own wrong-guess limit: 0.6's is kept per member, and no member exists yet at signup (issue #22) |
-| 1.4 | Card on file and first-week charge; ledger table | 8 | [#56](https://github.com/mobiustripper42/haul/issues/56) · Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
+| 1.4 | Card on file and first-week charge; ledger table | 13 | [#56](https://github.com/mobiustripper42/haul/issues/56) · Fold candidate with 1.6; consent checkbox and its record. Ledger key depends on spec open question 13 |
 | 1.5 | Cap: reserve, charge, confirm or release | 3 | [#57](https://github.com/mobiustripper42/haul/issues/57) · Muster's guarded write |
 | 1.6 | Signup confirmation email | 2 | [#58](https://github.com/mobiustripper42/haul/issues/58) |
 | 1.7 | Admin member list and CSV | 3 | [#59](https://github.com/mobiustripper42/haul/issues/59) · Cards on mobile. The first second admin surface, so it adds a test that every page, route and server action under `app/admin/` calls `requireAdmin` first — the CSV route included (DEC-018) |
@@ -88,7 +88,7 @@ pickup.
 | # | Task | Points | Notes |
 |---|------|--------|-------|
 | 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | Week credit added and re-pointed from 8 on 2026-10-26 (DEC-005); split at spec |
-| 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13 |
+| 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13. Also picks up stranded signup payments: a `pending` ledger row with a saved card whose charge got no answer (task 1.4, AC10) |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | |
 | 2.4 | Account pages: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
 | 2.5 | Skip one or more weeks | 3 | Cutoff enforced on the server |
