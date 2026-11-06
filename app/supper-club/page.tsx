@@ -103,7 +103,7 @@ async function paymentSection({
  * type of the product, so an option type added in data adds a picker. The pickers and both account buttons
  * are one GET form to `/supper-club/continue`, which keeps the choices through sign-in; signed in, the form
  * is a GET to this page, so Enter on a radio keeps the choices and never reaches sign-in, and the payment
- * section is its own POST form after it. A member who already has a box goes to the already page, picks
+ * section is its own POST form after it. A member who already has a subscription goes to the already page, picks
  * discarded; one whose payment got no answer sees the retry state instead of the pickers and the payment
  * section, decided by their pending row and never by the URL. At the cap everyone else sees the sold-out card
  * in the Join card's place, decided by the count and never by the URL.

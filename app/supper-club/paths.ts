@@ -8,7 +8,7 @@ export const SUPPER_CLUB_PATH = "/supper-club";
 /** The signup confirmation, in the right pane. */
 export const SUPPER_CLUB_DONE_PATH = "/supper-club/done";
 
-/** What a member who already has a box is told, in the right pane. */
+/** What a member who already has a subscription is told, in the right pane. */
 export const SUPPER_CLUB_ALREADY_PATH = "/supper-club/already";
 
 /** The `payError` value a sold-out refusal lands on, and the only one the page reads as the sold-out notice. */
