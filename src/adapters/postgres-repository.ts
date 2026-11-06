@@ -9,6 +9,7 @@ import {
   type PendingSignupInput,
   type Repository,
   type SignupConfirmation,
+  type Subscriber,
 } from "../ports/repository.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
@@ -471,21 +472,71 @@ export class PostgresRepository implements Repository {
     );
     const row = found.rows[0];
     if (!row) return null;
-    const options = await this.db.query<{ type_name: string; option_name: string }>(
-      `select t.name as type_name, o.name as option_name
-         from subscription_options so
-         join option_types t on t.id = so.option_type_id
-         join options o on o.id = so.option_id
-        where so.subscription_id = $1
-        order by t.position, t.name`,
-      [row.id],
-    );
     return {
       pickupDate: row.pickup_date,
       firstChargeCents: row.first_charge_cents,
       weeklyCents: row.weekly_cents,
-      options: options.rows.map((option) => ({ typeName: option.type_name, optionName: option.option_name })),
+      options: (await this.optionsOf([row.id])).get(row.id) ?? [],
     };
+  }
+
+  /**
+   * The active subscriptions to the product, each with its member and the date its first paid row was paid, in
+   * Cleveland. A subscription with no paid row is left out: only a paid row makes one active. Stable by the date
+   * joined, then by id.
+   */
+  async listSubscribers(productId: string): Promise<Subscriber[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const { rows } = await this.db.query<{
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+      phone: string | null;
+      joined: string;
+    }>(
+      `select s.id, m.first_name, m.last_name, m.email, m.phone,
+              to_char(paid.first_paid_at at time zone 'America/New_York', 'YYYY-MM-DD') as joined
+         from subscriptions s
+         join members m on m.id = s.member_id
+         join lateral (
+           select min(l.paid_at) as first_paid_at from ledger l
+            where l.subscription_id = s.id and l.status = 'paid' and l.paid_at is not null
+         ) paid on paid.first_paid_at is not null
+        where s.product_id = $1 and s.status = 'active'
+        order by paid.first_paid_at, s.id`,
+      [productId],
+    );
+    const options = await this.optionsOf(rows.map((row) => row.id));
+    return rows.map((row) => ({
+      subscriptionId: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      email: row.email,
+      phone: row.phone,
+      options: options.get(row.id) ?? [],
+      joinedDate: row.joined,
+    }));
+  }
+
+  /** The options each subscription picked, in option-type position order, by subscription id. */
+  private async optionsOf(subscriptionIds: string[]): Promise<Map<string, Subscriber["options"]>> {
+    const { rows } = await this.db.query<{ subscription_id: string; type_name: string; option_name: string }>(
+      `select so.subscription_id, t.name as type_name, o.name as option_name
+         from subscription_options so
+         join option_types t on t.id = so.option_type_id
+         join options o on o.id = so.option_id
+        where so.subscription_id = any($1::uuid[])
+        order by t.position, t.name`,
+      [subscriptionIds],
+    );
+    const bySubscription = new Map<string, Subscriber["options"]>();
+    for (const row of rows) {
+      const picked = bySubscription.get(row.subscription_id) ?? [];
+      picked.push({ typeName: row.type_name, optionName: row.option_name });
+      bySubscription.set(row.subscription_id, picked);
+    }
+    return bySubscription;
   }
 
   async getSignInCode(subjectId: string): Promise<SignInCode | null> {

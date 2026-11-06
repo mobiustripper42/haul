@@ -1,7 +1,7 @@
 // Issue 56, AC3 and AC13: the first pickup a signup pays for, read from the product's settings in Cleveland
 // time, and a pickup date in words.
-import { describe, expect, it } from "vitest";
-import { firstPickup, formatPickupDate } from "./pickup-week.js";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { clevelandDate, firstPickup, formatPickupDate, formatShortDate } from "./pickup-week.js";
 import type { ProductWithOptions } from "./products.js";
 
 const product = (over: Partial<ProductWithOptions> = {}): ProductWithOptions => ({
@@ -68,5 +68,45 @@ describe("AC13 — a pickup date in words", () => {
   it("AC13: the day is the stored date's, at either end of a month", () => {
     expect(formatPickupDate("2027-01-31", "en")).toBe("Sunday, January 31");
     expect(formatPickupDate("2027-02-28", "en")).toBe("Sunday, February 28");
+  });
+});
+
+// Issue 59: when a member joined, on Cleveland's calendar, and how the admin's list writes it.
+describe("AC11 (issue 59) — clevelandDate", () => {
+  it.each([
+    ["the last second of a winter day", "2026-12-02T04:59:59.000Z", "2026-12-01"],
+    ["the first second of a winter day", "2026-12-02T05:00:00.000Z", "2026-12-02"],
+    ["the last second of a summer day", "2026-07-02T03:59:59.000Z", "2026-07-01"],
+    ["the first second of a summer day", "2026-07-02T04:00:00.000Z", "2026-07-02"],
+    ["midnight on New Year's Day, UTC, which is still last year", "2027-01-01T00:00:00.000Z", "2026-12-31"],
+  ])("AC11 (issue 59): %s is on Cleveland's date", (_what, instant, date) => {
+    expect(clevelandDate(new Date(instant))).toBe(date);
+  });
+
+  it("AC11 (issue 59): a one-digit month and day are zero-padded", () => {
+    expect(clevelandDate(new Date("2027-01-03T17:00:00.000Z"))).toBe("2027-01-03");
+  });
+});
+
+describe("AC3 (issue 59) — formatShortDate", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it.each([
+    ["2026-12-01", "Dec 1"],
+    ["2027-01-31", "Jan 31"],
+  ])("AC3 (issue 59): %s reads %j", (date, words) => {
+    expect(formatShortDate(date, "en")).toBe(words);
+  });
+
+  // It runs in the browser, on the viewer's clock: a date is a date there too.
+  it.each(["America/New_York", "America/Los_Angeles", "Pacific/Auckland"])("AC3 (issue 59): it is the same day on a clock in %s", (zone) => {
+    vi.stubEnv("TZ", zone);
+    expect(formatShortDate("2026-12-01", "en")).toBe("Dec 1");
+  });
+
+  it("AC3 (issue 59): it is in the language given", () => {
+    expect(formatShortDate("2026-12-01", "es")).toMatch(/dic/i);
   });
 });

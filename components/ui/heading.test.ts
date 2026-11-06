@@ -11,3 +11,10 @@ describe("AC3 — Heading", () => {
     expect(normalMarkup(html)).toBe(normalMarkup('<h1 class="font-display text-heading text-teal">Sign in</h1>'));
   });
 });
+
+describe("AC7 (issue 59) — Heading at level 2", () => {
+  it('AC7 (issue 59): level 2 renders <h2 class="font-display text-section text-teal"> around its children, and nothing else', () => {
+    const html = renderToStaticMarkup(createElement(Heading, { level: 2 }, "No members yet"));
+    expect(normalMarkup(html)).toBe(normalMarkup('<h2 class="font-display text-section text-teal">No members yet</h2>'));
+  });
+});

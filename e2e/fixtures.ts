@@ -1,7 +1,8 @@
 import { expect, test as base } from "@playwright/test";
-import type { APIRequestContext } from "@playwright/test";
+import type { APIRequestContext, Page } from "@playwright/test";
 import { resetDev } from "../db/reset-dev.js";
 import { runSeed } from "../db/seed.js";
+import { en } from "../src/messages/en.js";
 import { e2eDatabaseUrl } from "./database";
 
 export { expect };
@@ -56,6 +57,18 @@ export async function waitForSignInCode(
   const code = /\b\d{6}\b/.exec(message?.text ?? "")?.[0];
   if (!code) throw new Error(`the message to ${email} holds no 6-digit code: ${message?.text}`);
   return code;
+}
+
+/** Signs `email` in at /sign-in with the code the outbox receives, and waits for the home page. */
+export async function signIn(page: Page, request: APIRequestContext, email: string): Promise<void> {
+  const before = await outboxCount(request, email);
+  await page.goto("/sign-in");
+  await page.getByLabel(en["signIn.emailLabel"]).fill(email);
+  await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
+  const code = await waitForSignInCode(request, email, before);
+  await page.getByLabel(en["signIn.codeLabel"]).fill(code);
+  await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
+  await expect(page).toHaveURL((url) => url.pathname === "/");
 }
 
 /**

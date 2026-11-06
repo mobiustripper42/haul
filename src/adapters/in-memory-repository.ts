@@ -10,7 +10,9 @@ import {
   type PendingSignupInput,
   type Repository,
   type SignupConfirmation,
+  type Subscriber,
 } from "../ports/repository.js";
+import { clevelandDate } from "../pickup-week.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -246,17 +248,34 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     const ledger = subscription && this.ledgerOf(subscription.id);
     if (!subscription || !ledger) return null;
-    const product = this.products.find((p) => p.id === subscription.productId);
-    const options = (product?.optionTypes ?? []).flatMap((type) => {
-      const picked = type.options.find((option) => option.id === subscription.optionIds[type.id]);
-      return picked ? [{ typeName: type.name, optionName: picked.name }] : [];
-    });
     return {
       pickupDate: ledger.pickupDate,
       firstChargeCents: subscription.firstChargeCents,
       weeklyCents: subscription.weeklyCents,
-      options,
+      options: this.optionsOf(subscription),
     };
+  }
+
+  async listSubscribers(productId: string): Promise<Subscriber[]> {
+    return [...this.subscriptions.values()]
+      .filter((s) => s.productId === productId && s.status === "active")
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .flatMap((subscription) => {
+        const member = this.members.get(subscription.memberId);
+        const paidAt = this.ledgerOf(subscription.id)?.paidAt;
+        if (!member || !paidAt) return [];
+        return [
+          {
+            subscriptionId: subscription.id,
+            firstName: member.firstName,
+            lastName: member.lastName,
+            email: member.email,
+            phone: member.phone,
+            options: this.optionsOf(subscription),
+            joinedDate: clevelandDate(paidAt),
+          },
+        ];
+      });
   }
 
   getSignInCode(subjectId: string): Promise<SignInCode | null> {
@@ -341,6 +360,15 @@ export class InMemoryRepository implements Repository {
     return [...this.subscriptions.values()]
       .filter((s) => s.memberId === memberId && s.productId === productId && s.status === status)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  /** The options a subscription picked, in option-type position order. */
+  private optionsOf(subscription: StoredSubscription): Subscriber["options"] {
+    const product = this.products.find((p) => p.id === subscription.productId);
+    return (product?.optionTypes ?? []).flatMap((type) => {
+      const picked = type.options.find((option) => option.id === subscription.optionIds[type.id]);
+      return picked ? [{ typeName: type.name, optionName: picked.name }] : [];
+    });
   }
 
   /** A subscription's earliest ledger row. */
