@@ -169,7 +169,6 @@ describe.skipIf(!up)(`issue 34 — audit_event() against <test db>_audit_events$
   });
 
   describe("AC8 — audit_event() writes event rows only, under the table's checks", () => {
-    // The SQL check and AUDIT_EVENT_KINDS cannot share a home; this holds them together.
     it.each([...AUDIT_EVENT_KINDS])("AC8: audit_event() accepts every kind in AUDIT_EVENT_KINDS — %j", async (kind) => {
       const m = await mark();
       await recordEvent(db, kind, "members", memberKey());
@@ -193,17 +192,23 @@ describe.skipIf(!up)(`issue 34 — audit_event() against <test db>_audit_events$
       await expect(rawInsert(operation, "lock")).rejects.toMatchObject({ code: CHECK_VIOLATION });
       expect(await since(m)).toEqual([]);
     });
+  });
 
-    it("AC8: a raw 'event' row with a name not on the list is refused with a check violation", async () => {
-      const m = await mark();
-      await expect(rawInsert("event", "sign_out")).rejects.toMatchObject({ code: CHECK_VIOLATION });
-      expect(await since(m)).toEqual([]);
+  describe("AC10 (issue 57) — an event name needs no migration", () => {
+    it("AC10: audit_log_event_known_check is gone, and audit_log_event_named_check stays", async () => {
+      const { rows } = await db.query<{ conname: string }>(
+        "select conname from pg_constraint where conrelid = 'audit_log'::regclass and conname like 'audit_log_event_%' order by conname",
+      );
+      expect(rows).toEqual([{ conname: "audit_log_event_named_check" }]);
     });
 
-    it("AC8: audit_event() with a name not on the list is refused with a check violation and writes no row", async () => {
+    it("AC10: the sold_out event PostgresRepository.recordEvent writes is keyed on the member, with a SQL NULL detail", async () => {
+      const ada = await repo.createMember({ email: `ada-${randomUUID()}@example.com` });
+      const kind: string = "sold_out";
       const m = await mark();
-      await expect(recordEvent(db, "sign_out", "members", memberKey())).rejects.toMatchObject({ code: CHECK_VIOLATION });
-      expect(await since(m)).toEqual([]);
+      await repo.recordEvent({ kind, memberId: ada.id } as AuditEvent);
+      expect(await since(m)).toEqual([expect.objectContaining({ table_name: "members", operation: "event", event: "sold_out", row_key: { id: ada.id } })]);
+      expect((await db.query<{ sql_null: boolean }>("select detail is null as sql_null from audit_log where id > $1::bigint", [m])).rows).toEqual([{ sql_null: true }]);
     });
   });
 
@@ -335,11 +340,11 @@ describe.skipIf(!up)(`issue 34 — audit_event() against <test db>_audit_events$
     });
   });
 
-  describe("issue 56 — the five signup events", () => {
+  describe("issue 56 — the signup events", () => {
     const LEDGER = "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60";
 
-    it.each(["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown"])(
-      "AC9: audit_log_event_known_check lets audit_event() record %j",
+    it.each(["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown", "sold_out"])(
+      "AC9, AC10 (issue 57): audit_event() records %j",
       async (kind) => {
         const m = await mark();
         await recordEvent(db, kind, "members", memberKey());

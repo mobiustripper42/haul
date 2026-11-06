@@ -4,7 +4,7 @@ import type { Translator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { firstPickup } from "@core/pickup-week.js";
-import { requireSupperClub, type ProductWithOptions } from "@core/products.js";
+import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import { Button } from "../../components/ui/button";
 import { ButtonRow } from "../../components/ui/button-row";
@@ -14,13 +14,14 @@ import { Notice } from "../../components/ui/notice";
 import { OptionPicker } from "../../components/ui/option-picker";
 import { PricePanel } from "../../components/ui/price-panel";
 import { getLanguage, getTranslator } from "../language";
-import { getRepository, isProduction } from "../services";
+import { getFarmContactEmail, getRepository, isProduction } from "../services";
 import { getSignedInMember } from "../session";
 import { retrySupperClubPayment } from "./actions";
 import { JoinPage } from "./join-page";
 import { paymentWording } from "./payment-wording";
 import { PaymentSection } from "./payment-section";
-import { SUPPER_CLUB_ALREADY_PATH } from "./paths";
+import { PAY_ERROR_SOLD_OUT, SUPPER_CLUB_ALREADY_PATH } from "./paths";
+import { SoldOutCard } from "./sold-out-card";
 
 const PAY_ERRORS = ["consent", "declined", "error"] as const;
 
@@ -104,7 +105,8 @@ async function paymentSection({
  * is a GET to this page, so Enter on a radio keeps the choices and never reaches sign-in, and the payment
  * section is its own POST form after it. A member who already has a box goes to the already page, picks
  * discarded; one whose payment got no answer sees the retry state instead of the pickers and the payment
- * section, decided by their pending row and never by the URL.
+ * section, decided by their pending row and never by the URL. At the cap everyone else sees the sold-out card
+ * in the Join card's place, decided by the count and never by the URL.
  */
 export default async function SupperClub({
   searchParams,
@@ -119,6 +121,14 @@ export default async function SupperClub({
   const pending = member ? await repo.findPendingSignup(member.id, product.id) : null;
   // The charge went out on a saved card and no answer came back: only "Try again" is left to press.
   const stranded = pending !== null && pending.ledgerStatus === "pending" && pending.squareCardId !== null ? pending : null;
+
+  // The cap is read from the count, never the URL. A stranded payment holds its own spot, so it is never sold out.
+  if (!stranded && isSoldOut(product, await repo.countHeldSpots(product.id))) {
+    return await JoinPage({
+      pane: "none",
+      children: <SoldOutCard t={t} notice={query.payError === PAY_ERROR_SOLD_OUT} email={getFarmContactEmail()} />,
+    });
+  }
 
   const choices = resolveChoices(product, query);
   const accountLegend = (

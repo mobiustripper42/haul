@@ -17,7 +17,7 @@ The farm's site is warm and local: "Local Food, Global Flavor," "the best way to
 - Do: short sentences, plain words, one idea per line. Say what happens and when: "Changes lock at the end of Monday."
 - Do: name the farm's things the farm's way: Supper Club, CSA share, pickup, the farm store.
 - Don't: idioms, puns, exclamation marks in the product, emoji, urgency ("Hurry!").
-- Errors say what to do next: "Your card was declined. Update it to keep your box."
+- Errors say what to do next: "Your card was declined. Update it to keep your subscription."
 
 The mockups own look and position; the spec owns the words. Where a frame and the spec disagree on a word, the spec is right.
 

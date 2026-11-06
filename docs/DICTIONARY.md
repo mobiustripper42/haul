@@ -7,11 +7,12 @@ Vocabulary already in the docs when the gate shipped is grandfathered and does n
 be registered — but registering it is always welcome, and registering one is how its
 alternates start being caught.
 
-21 terms.
+24 terms.
 
 | Term | Says | Not |
 |---|---|---|
 | **API** | the way one program asks another for data or actions over the network | — |
+| **box** | what a CSA subscription gets each week | — |
 | **CA** | certificate authority — whoever signs a server's certificate so browsers trust it | — |
 | **CI** | continuous integration — a server that runs the project's checks on every pull request | — |
 | **CRUD** | create, read, update and delete — the four basic screens for editing a table | — |
@@ -22,6 +23,7 @@ alternates start being caught.
 | **DNS** | the internet's address book, which turns a name like members.ohiocityfarm.com into a server address | — |
 | **ID** | a unique identifier for one record | — |
 | **IP** | the numeric network address a request comes from | — |
+| **meal** | what a Supper Club subscription gets each week | — |
 | **OCF** | Ohio City Farm, the Cleveland farm this app is built for; its public name for the app is the OCF Member Portal | — |
 | **POS** | point of sale — the farm's in-person checkout terminal and iPad | — |
 | **SDK** | a code library a vendor ships so other programs can use its service | — |
@@ -29,6 +31,7 @@ alternates start being caught.
 | **SPF** | a record in a domain's address book listing which servers may send its email | — |
 | **SQL** | the language used to read and change rows in the database directly | — |
 | **SSL** | the older name for the same encryption, still used in settings screens such as Cloudflare's | — |
+| **subscription** | what a member holds to a product, Supper Club or CSA, and what a cap counts | — |
 | **TLS** | the encryption that protects traffic between a browser and a server, shown as the padlock | — |
 | **UI** | user interface — the screens and words a person sees and touches | — |
 | **UTC** | coordinated universal time — the one clock that doesn't shift with time zones or daylight saving | — |

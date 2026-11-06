@@ -87,6 +87,11 @@ export function getSessionSecret(): string {
   return sessionSecret(process.env);
 }
 
+/** The address the sold-out card sends questions to. An empty `FARM_CONTACT_EMAIL` counts as unset. */
+export function getFarmContactEmail(): string | undefined {
+  return process.env.FARM_CONTACT_EMAIL || undefined;
+}
+
 const DEV_SITE_URL = "http://localhost:4000";
 
 /** The site's address, for the links in emails. An empty `SITE_URL` counts as unset. In production it must be https, since the link carries a single-use token. */

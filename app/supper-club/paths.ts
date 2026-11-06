@@ -11,6 +11,9 @@ export const SUPPER_CLUB_DONE_PATH = "/supper-club/done";
 /** What a member who already has a box is told, in the right pane. */
 export const SUPPER_CLUB_ALREADY_PATH = "/supper-club/already";
 
+/** The `payError` value a sold-out refusal lands on, and the only one the page reads as the sold-out notice. */
+export const PAY_ERROR_SOLD_OUT = "soldout";
+
 /** The farm's own site, where the confirmation sends a member back to. */
 export const FARM_SITE_URL = "https://ohiocityfarm.com";
 

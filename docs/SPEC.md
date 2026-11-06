@@ -94,7 +94,7 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
   page shows its choices to anyone (DEC-029).
 - A weekly auto-renewing subscription with no end date. Pickup only.
 - "How many people?" (placeholder prices until the farm confirms): **2 people, $50** and **3–4 people, $80**.
-- "Which menu?": **standard or vegan**, whole box, no price difference.
+- "Which menu?": **standard or vegan**, whole meal, no price difference.
 - Members can cancel any time, skip any number of weeks, and switch size or preference, each until
   that week's cutoff.
 - Capped at ~50 active subscriptions; the signup page shows sold out when full.
@@ -149,8 +149,8 @@ and 4.
 - **Moved windows:** holiday weeks may move to Saturday and Sunday.
 - **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen flooded).
   Before cutoff nobody is charged. After cutoff, every member charged for that week gets a **week
-  credit**: the next week they take is made and not charged. A credit is counted in boxes, not
-  dollars — a box is a box, whatever that week's price or the member's size (V1). A skipped week
+  credit**: the next week they take is made and not charged. A credit is counted in meals, not
+  dollars — a meal is a meal, whatever that week's price or the member's size (V1). A skipped week
   doesn't use it; a member who cancels with a credit unused is refunded in Square by hand (DEC-005).
 
 ### 7.3 Payments and the ledger
@@ -174,7 +174,7 @@ and 4.
   declined.
 - Every charge carries an idempotency key derived from its ledger row, so a retried or overlapping
   run never charges twice. Money is integer cents.
-- **Declined card:** the box is still made. The member gets an automatic email to update their
+- **Declined card:** the meal is still made. The member gets an automatic email to update their
   card, is flagged for the admin, and saving a new card retries the declined weeks. A declined
   subscription keeps running, week after week, until the member or an admin cancels it; nothing
   cancels it automatically.
@@ -184,7 +184,8 @@ and 4.
 ### 7.4 Cap
 
 A signup reserves a spot under the cap before any charge, confirms it after the charge succeeds,
-and releases it if the charge fails. A held spot with a payment attempt never expires on its own.
+and releases it if the charge fails. A spot is held once a card is bound to the signup; a signup with no
+card holds none. A held spot with a payment attempt never expires on its own.
 Nobody is charged and then refused.
 
 ### 7.5 Menus and translation
@@ -262,7 +263,7 @@ before the first real January charge, on a real Monday cutoff. Which Monday depe
 questions 1, 2 and 5. Its members are real accounts — Eric, Annabel, Lenny — whose subscriptions
 start that week, signed up through the real signup page. They are charged real money, refunded by
 hand in Square, and cancel through the real cancel or stay on. No test flag: nothing in the database
-is fake, and Lenny knows not to make those boxes.
+is fake, and Lenny knows not to make those meals.
 
 Who owns the service accounts is open question 18.
 
@@ -322,7 +323,7 @@ Geocoding port, zone check, weekly delivery charge on the Phase 2 run, skips, pi
 switch, delivery export, card add for imported members.
 
 ### 8.5 Phase 5 — Pickup check-in
-An iPad screen: find a member by the first letters of their last name and check off their box.
+An iPad screen: find a member by the first letters of their last name and check off their pickup.
 Big buttons, little text.
 
 ### 8.6 Phase 6 — Reports
@@ -353,7 +354,7 @@ Viewable reports, scoped once the farm says what Square does not already give th
     the Wix site and email), or is a single-subdomain setup possible on their plan?
 13. *Answered 2026-11-02 (Eric):* a member may hold one or more subscriptions, to any product.
     Phase 1's signup creates exactly one; a member adding another comes later. A cap counts
-    subscriptions (§6.1), so a household taking two boxes takes two spots.
+    subscriptions (§6.1), so a household with two subscriptions takes two spots.
 14. Receipts: does Square email the receipt for each charge, or does the app?
 15. Price changes: do existing subscribers keep their price, or move to the new one with notice?
     Settle before the real prices are seeded.

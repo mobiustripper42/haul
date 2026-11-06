@@ -3,7 +3,7 @@ import type { Member } from "./members.js";
 import { firstPickup } from "./pickup-week.js";
 import { isCardRefusal, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
-import { priceOfChoices, requireSupperClub } from "./products.js";
+import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
 
 /**
@@ -18,9 +18,10 @@ export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date }
 
 /**
  * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
+ * `sold_out`: the product's cap is reached, at the check before Square or at the card bind; nothing was charged.
  * `error`: something failed before anything was charged.
  */
-export type SignupResult = { outcome: "paid" | "declined" | "unknown" | "already_subscribed" | "error"; subscriptionId?: string };
+export type SignupResult = { outcome: "paid" | "declined" | "unknown" | "already_subscribed" | "sold_out" | "error"; subscriptionId?: string };
 
 /** A signup ready to charge: its pending rows, the card on the row and the member's Square customer. */
 type Charge = { row: PendingSignup; productId: string; cardId: string; customerId: string; lookupFirst: boolean };
@@ -86,6 +87,9 @@ async function prepare(
   const earlier = await repo.findPendingSignup(input.memberId, product.id);
   if (earlier && isStranded(earlier)) return stranded(member.squareCustomerId, product.id, earlier);
 
+  // A stranded row holds its own spot, so only a signup that would take a new one meets the cap.
+  if (isSoldOut(product, await repo.countHeldSpots(product.id))) return soldOut(repo, input.memberId);
+
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 
   const priceCents = priceOfChoices(product, input.choices);
@@ -123,7 +127,9 @@ async function prepare(
     return { outcome: "declined" };
   }
   // The bind returns the amount and attempt to charge: the row may have been rewritten since this tab's save.
+  // It also takes the spot, and refuses when the last one went after the check above.
   const bound = await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, cardId));
+  if (bound === "sold_out") return soldOut(repo, input.memberId);
   if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card was not bound"));
   return {
     row: { ...row, squareCardId: cardId, amountCents: bound.amountCents, attempt: bound.attempt },
@@ -172,6 +178,11 @@ async function requireMember(repo: Repository, memberId: string): Promise<Member
 async function alreadySubscribed(repo: Repository, memberId: string): Promise<SignupResult> {
   await recordEventAs(repo, { member: memberId }, { kind: "already_subscribed", memberId });
   return { outcome: "already_subscribed" };
+}
+
+async function soldOut(repo: Repository, memberId: string): Promise<SignupResult> {
+  await recordEventAs(repo, { member: memberId }, { kind: "sold_out", memberId });
+  return { outcome: "sold_out" };
 }
 
 /**

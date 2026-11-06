@@ -8,6 +8,8 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import { en } from "@core/messages/en.js";
+import type { PendingSignupInput } from "@core/ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../next-headers-fake";
@@ -20,6 +22,7 @@ const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [
 const services = vi.hoisted(() => ({
   repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
   secret: "test-session-secret-that-is-long-enough-0123456789",
+  farmEmail: undefined as string | undefined,
 }));
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("../next-headers-fake");
@@ -34,6 +37,7 @@ vi.mock("../services", () => ({
   getRepository: () => services.repo,
   getSessionSecret: () => services.secret,
   isProduction: () => process.env.NODE_ENV === "production",
+  getFarmContactEmail: () => services.farmEmail,
 }));
 // A plain function renders as a form with no action or method; what Next gives a server action renders
 // them, so a test can read which action a form posts to.
@@ -295,7 +299,7 @@ describe("issue 56 — the payment section", () => {
         pickupLine("Sunday, January 3", "$50"),
         sentence("$50"),
         "Join and pay $50",
-        "Limited to 50 boxes. No sales tax.",
+        "Limited to 50 subscriptions. No sales tax.",
       ]);
     });
 
@@ -309,7 +313,7 @@ describe("issue 56 — the payment section", () => {
       services.repo = new InMemoryRepository();
       services.repo.addProduct({ ...productOf([SIZE, PREFERENCE]), cap: 30 });
       await signIn();
-      expect(section4(await render())).toContain("Limited to 30 boxes. No sales tax.");
+      expect(section4(await render())).toContain("Limited to 30 subscriptions. No sales tax.");
     });
 
     it('AC1: the inert "Continue to payment" is gone', async () => {
@@ -593,6 +597,225 @@ describe("issue 56 — the payment section", () => {
       const html = await render();
       expect(joinCard(html)).toContain("4. Payment");
       expect(html).not.toContain("Test card");
+    });
+  });
+});
+
+describe("issue 57 — the sold-out card", () => {
+  const NOTICE = "The Supper Club sold out before your payment went through. Nothing was charged.";
+  const TITLE = "The Supper Club is sold out";
+  const BODY = "All the subscriptions are taken right now. A subscription will open when a member cancels, so check back.";
+  const BACK = "Back to ohiocityfarm.com";
+  const FARM_EMAIL = "farm@ohiocityfarm.com";
+  const QUESTIONS = `Questions? Email the farm at ${FARM_EMAIL}.`;
+  const JOIN_TITLE = "Join the Supper Club";
+  const TRY_AGAIN = "Try again";
+  const RETRY_NOTICE = "We couldn't confirm your payment. Try again and you won't be charged twice.";
+  const DAY = new Date("2026-11-06T15:00:00.000Z");
+
+  /** A fresh repository holding only this product, at `cap`. */
+  const stockAt = (cap: number) => {
+    services.repo = new InMemoryRepository();
+    product = services.repo.addProduct({ ...productOf([SIZE, PREFERENCE]), cap });
+  };
+
+  const rowsFor = (memberId: string): PendingSignupInput => ({
+    memberId,
+    productId: product.id,
+    choices: { [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 0) },
+    firstChargeCents: 8000,
+    weeklyCents: 8000,
+    pickupDate: "2027-01-03",
+    consentText: "I agree.",
+    consentAt: DAY,
+  });
+
+  /** A member's rows with a card on them and the charge unanswered: a held spot, and for that member the retry state. */
+  const holdASpot = async (memberId: string) => {
+    const row = await services.repo.savePendingSignup(rowsFor(memberId));
+    await services.repo.saveSubscriptionCard(row.subscriptionId, `ccof:${memberId}`);
+    return row;
+  };
+
+  /** The Supper Club at a cap of one, with another member holding that spot. */
+  const soldOut = async () => {
+    stockAt(1);
+    await holdASpot((await services.repo.createMember({ email: "grace@example.com" })).id);
+  };
+
+  /** The sold-out card's words, the notice with them when it shows; nothing when the card does not. */
+  const cardWords = (html: string) => {
+    const words = textsOf(html);
+    const title = words.indexOf(TITLE);
+    if (title === -1) return [];
+    return words.slice(words[title - 1] === NOTICE ? title - 1 : title);
+  };
+
+  beforeEach(() => {
+    services.farmEmail = undefined;
+  });
+
+  describe("AC3 — at the cap the card stands in place of the form", () => {
+    it("AC3 (issue 57): a visitor sees the card, and no form, picker or Join card", async () => {
+      await soldOut();
+      const html = await render();
+      expect(cardWords(html)).toEqual([TITLE, BODY, BACK]);
+      expect(joinForms(html)).toEqual([]);
+      expect(radiosOf(html)).toEqual([]);
+      expect(textsOf(html)).not.toContain(JOIN_TITLE);
+    });
+
+    it("AC3 (issue 57): a signed-in member who holds no spot sees the card, and no payment section", async () => {
+      await soldOut();
+      await signIn();
+      const html = await render();
+      expect(cardWords(html)).toEqual([TITLE, BODY, BACK]);
+      expect(textsOf(html)).not.toContain(JOIN_TITLE);
+      expect(textsOf(html).join(" ")).not.toContain("Join and pay");
+    });
+
+    it.each([
+      ["with no card", false],
+      ["declined", true],
+    ])("AC3 (issue 57): a member whose own pending row is %s holds no spot, and sees the card", async (_what, declined) => {
+      await soldOut();
+      const member = await signIn();
+      const row = await services.repo.savePendingSignup(rowsFor(member.id));
+      if (declined) await services.repo.recordSignupDecline(row.ledgerId);
+      expect(cardWords(await render())).toEqual([TITLE, BODY, BACK]);
+    });
+
+    it("AC3 (issue 57): the card is a Card that fills the right column, on the page's shell, the farm's copy before it", async () => {
+      await soldOut();
+      const element = await SupperClub({ searchParams: Promise.resolve({}) });
+      const html = renderToStaticMarkup(element);
+      expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
+      expect(screenMarkup(html)).toMatch(new RegExp(`<section class="card-fill">(?:(?!</section>)[\\s\\S])*${TITLE}`));
+      const words = textsOf(html);
+      expect(words.indexOf(TITLE)).toBeGreaterThan(words.indexOf("Weekly meals from the farm kitchen"));
+    });
+
+    it("AC3 (issue 57): the header's Sign in stays, so a member with a stranded payment can reach Try again", async () => {
+      await soldOut();
+      const html = await render();
+      expect(cardWords(html)).toContain(TITLE);
+      expect(screenMarkup(html)).toMatch(/<header\b[\s\S]*<a\b[^>]*href="\/supper-club\/sign-in"[^>]*>Sign in<\/a>[\s\S]*<\/header>/);
+    });
+
+    it("AC3 (issue 57): one spot short of the cap the form stands, which guards the card above", async () => {
+      stockAt(2);
+      await holdASpot((await services.repo.createMember({ email: "grace@example.com" })).id);
+      const html = await render();
+      expect(textsOf(html)).toContain(JOIN_TITLE);
+      expect(cardWords(html)).toEqual([]);
+    });
+  });
+
+  describe("AC4 — a member the cap does not stop", () => {
+    it("AC4 (issue 57): a member with an active subscription still goes to the already page at the cap", async () => {
+      stockAt(1);
+      const member = await signIn();
+      const { ledgerId, amountCents } = await services.repo.savePendingSignup(rowsFor(member.id));
+      await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, DAY);
+      expect(await redirectOf(SupperClub({ searchParams: Promise.resolve({}) }))).toBe("/supper-club/already");
+    });
+
+    it('AC4 (issue 57): a member with a stranded payment still sees "Try again" at the cap, and no sold-out card', async () => {
+      stockAt(1);
+      await holdASpot((await signIn()).id);
+      const html = await render();
+      expect(textsOf(html)).toEqual(expect.arrayContaining([RETRY_NOTICE, TRY_AGAIN]));
+      expect(cardWords(html)).toEqual([]);
+    });
+  });
+
+  describe("AC5 — the state comes from the count, never the URL", () => {
+    it("AC5 (issue 57): payError=soldout with spots open is the normal form for a visitor, with no notice", async () => {
+      const html = await render({ payError: "soldout" });
+      expect(textsOf(html)).toContain(JOIN_TITLE);
+      expect(textsOf(html)).not.toContain(NOTICE);
+      expect(cardWords(html)).toEqual([]);
+    });
+
+    it("AC5 (issue 57): payError=soldout with spots open is the normal form for a member, with no notice", async () => {
+      await signIn();
+      const words = textsOf(await render({ payError: "soldout" }));
+      expect(words).toContain("4. Payment");
+      expect(words).not.toContain(NOTICE);
+      expect(words).not.toContain(TITLE);
+    });
+
+    it('AC5 (issue 57): payError=soldout on a stranded payment is "Try again", with no notice', async () => {
+      stockAt(1);
+      await holdASpot((await signIn()).id);
+      const words = textsOf(await render({ payError: "soldout" }));
+      expect(words).toContain(TRY_AGAIN);
+      expect(words).not.toContain(NOTICE);
+    });
+  });
+
+  describe("AC9, AC15 — the notice", () => {
+    it("AC9, AC15 (issue 57): payError=soldout at the cap puts the notice first on the card, with the alert icon", async () => {
+      await soldOut();
+      await signIn();
+      const html = await render({ payError: "soldout" });
+      expect(cardWords(html)).toEqual([NOTICE, TITLE, BODY, BACK]);
+      expect(attributesOf(html, "p").find((p) => p.role === "alert")?.class).toContain("notice-alert");
+    });
+
+    it("AC9, AC15 (issue 57): the notice shows on PAY_ERROR_SOLD_OUT's value alone: another payError shows the card without it", async () => {
+      await soldOut();
+      expect(cardWords(await render({ payError: "declined" }))).toEqual([TITLE, BODY, BACK]);
+    });
+  });
+
+  describe("AC15, AC16 — the card's words and looks", () => {
+    it("AC15 (issue 57): the words are the four new messages, the Back line reusing supperClub.done.back", () => {
+      expect(en).toMatchObject({
+        "supperClub.soldOut.title": TITLE,
+        "supperClub.soldOut.body": BODY,
+        "supperClub.soldOut.contact": "Questions? Email the farm at {email}.",
+        "supperClub.soldOut.notice": NOTICE,
+        "supperClub.done.back": BACK,
+      });
+    });
+
+    it("AC15 (issue 57): the title has the already page's look", async () => {
+      await soldOut();
+      const classes = new RegExp(`<p\\b[^>]*class="([^"]*)"[^>]*>${TITLE}</p>`).exec(screenMarkup(await render()))?.[1];
+      expect(utilitiesOf(classes)).toEqual(expect.arrayContaining(["font-display", "text-heading", "text-teal"]));
+    });
+
+    it('AC15 (issue 57): "Back to ohiocityfarm.com" is a secondary button to the farm\'s site', async () => {
+      await soldOut();
+      const link = attributesOf(await render(), "a").find((a) => a.href === "https://ohiocityfarm.com");
+      expect(utilitiesOf(link?.class)).toContain("btn-secondary");
+    });
+
+    it('AC16 (issue 57): with an email set, the "Questions?" line stands between the paragraph and the button, as a hint', async () => {
+      await soldOut();
+      services.farmEmail = FARM_EMAIL;
+      const html = await render();
+      expect(cardWords(html)).toEqual([TITLE, BODY, QUESTIONS, BACK]);
+      expect(utilitiesOf(new RegExp(`<span\\b[^>]*class="([^"]*)"[^>]*>${QUESTIONS.replace("?", "\\?")}</span>`).exec(screenMarkup(html))?.[1])).toContain("text-ink-muted");
+    });
+
+    it("AC16 (issue 57): with the notice and an email, all five read in order", async () => {
+      await soldOut();
+      services.farmEmail = FARM_EMAIL;
+      expect(cardWords(await render({ payError: "soldout" }))).toEqual([NOTICE, TITLE, BODY, QUESTIONS, BACK]);
+    });
+  });
+
+  describe("AC17 — the four strings say subscription", () => {
+    it("AC17 (issue 57): capHint, box.title, next.change and already.title do, and consentError keeps its box, which is the checkbox", () => {
+      expect(en).toMatchObject({
+        "supperClub.capHint": "Limited to {cap} subscriptions. No sales tax.",
+        "supperClub.box.title": "Your subscription",
+        "supperClub.next.change": "To skip a week, change your subscription or cancel, sign in to your account before the end of Monday.",
+        "supperClub.already.title": "You already have a Supper Club subscription",
+        "supperClub.consentError": "Check the box to agree to the weekly charge.",
+      });
     });
   });
 });

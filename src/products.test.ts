@@ -1,6 +1,6 @@
 // Issue 55, AC1: the name the Supper Club page finds its product by, and the seed writes it under.
 import { describe, expect, it } from "vitest";
-import { priceOfChoices, SUPPER_CLUB_PRODUCT_NAME, type ProductWithOptions } from "./products.js";
+import { isSoldOut, priceOfChoices, SUPPER_CLUB_PRODUCT_NAME, type ProductWithOptions } from "./products.js";
 
 describe("AC1 — the Supper Club's product name", () => {
   it('AC1: SUPPER_CLUB_PRODUCT_NAME is "Supper Club"', () => {
@@ -44,5 +44,19 @@ describe("AC2 (issue 56) — the price of a pick", () => {
 
   it("AC2: another pick gives another sum", () => {
     expect(priceOfChoices(product, { size: "two", menu: "standard" })).toBe(5000);
+  });
+});
+
+describe("AC3 (issue 57) — isSoldOut, the one comparison of held spots with the cap", () => {
+  it("AC3: held spots at the cap are sold out", () => {
+    expect(isSoldOut({ cap: 50 }, 50)).toBe(true);
+  });
+
+  it("AC3: held spots past the cap are sold out, as a lowered cap leaves them", () => {
+    expect(isSoldOut({ cap: 30 }, 50)).toBe(true);
+  });
+
+  it("AC3: one spot short of the cap is not, which guards the two above", () => {
+    expect(isSoldOut({ cap: 50 }, 49)).toBe(false);
   });
 });

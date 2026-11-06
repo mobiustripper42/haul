@@ -157,6 +157,23 @@ describe("AC17 (issue 22) — getSiteUrl", () => {
   });
 });
 
+describe("AC16 (issue 57) — getFarmContactEmail", () => {
+  it("AC16: with FARM_CONTACT_EMAIL set it returns it", async () => {
+    vi.stubEnv("FARM_CONTACT_EMAIL", "farm@ohiocityfarm.com");
+    const { services } = await load({ NODE_ENV: "development" });
+    expect(services.getFarmContactEmail()).toBe("farm@ohiocityfarm.com");
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+  ])("AC16: with FARM_CONTACT_EMAIL %s it is undefined, which guards the line above", async (_what, value) => {
+    vi.stubEnv("FARM_CONTACT_EMAIL", value);
+    const { services } = await load({ NODE_ENV: "production" });
+    expect(services.getFarmContactEmail()).toBeUndefined();
+  });
+});
+
 describe("AC32 (issue 9) — getRepository", () => {
   it("AC32: in production without DATABASE_URL it throws an error naming DATABASE_URL", async () => {
     const { services } = await load({ NODE_ENV: "production", ...RESEND });
