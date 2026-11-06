@@ -38,7 +38,7 @@ export interface PaymentsPort {
     referenceId?: string;
   }): Promise<ChargeResult>;
   setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void>;
-  findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string } | null>;
+  findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null>;
 }
 
 /** A provider refused a request. `detail` is the provider's text, so keep the message out of logs that outlive the request. */

@@ -2,7 +2,7 @@ import { matchCustomer, sha256Key } from "./customer-match.js";
 import type { Member } from "./members.js";
 import { firstPickup } from "./pickup-week.js";
 import { isCardRefusal, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
-import type { Actor, PendingSignup, Repository } from "./ports/repository.js";
+import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
 
@@ -23,7 +23,7 @@ export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date }
 export type SignupResult = { outcome: "paid" | "declined" | "unknown" | "already_subscribed" | "error"; subscriptionId?: string };
 
 /** A signup ready to charge: its pending rows, the card on the row and the member's Square customer. */
-type Charge = { row: PendingSignup; cardId: string; customerId: string; lookupFirst: boolean };
+type Charge = { row: PendingSignup; productId: string; cardId: string; customerId: string; lookupFirst: boolean };
 
 /** The retry state: charged (or about to be) on a saved card, and no answer recorded. */
 const isStranded = (row: PendingSignup): row is PendingSignup & { squareCardId: string } =>
@@ -67,9 +67,9 @@ export async function retrySignup(deps: SignupDeps, input: { memberId: string })
 /** The one confirm: both rows flip together, and a second run says "already". */
 export async function confirmSignup(
   repo: Repository,
-  input: { ledgerId: string; paymentId: string; now: Date },
-): Promise<"confirmed" | "already"> {
-  return repo.confirmSignupRows(input.ledgerId, input.paymentId, input.now);
+  input: { ledgerId: string; paymentId: string; amountCents: number; now: Date },
+): Promise<"confirmed" | "already" | "mismatch"> {
+  return repo.confirmSignupRows(input.ledgerId, input.paymentId, input.amountCents, input.now);
 }
 
 async function prepare(
@@ -84,23 +84,30 @@ async function prepare(
   const member = await requireMember(repo, input.memberId);
 
   const earlier = await repo.findPendingSignup(input.memberId, product.id);
-  if (earlier && isStranded(earlier)) return stranded(member, earlier);
+  if (earlier && isStranded(earlier)) return stranded(member.squareCustomerId, product.id, earlier);
 
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 
   const priceCents = priceOfChoices(product, input.choices);
-  const row = await repo.withActor(actor, (scoped) =>
-    scoped.savePendingSignup({
-      memberId: input.memberId,
-      productId: product.id,
-      choices: input.choices,
-      firstChargeCents: priceCents,
-      weeklyCents: priceCents,
-      pickupDate: firstPickup(product, now),
-      consentText: input.consentText,
-      consentAt: now,
-    }),
-  );
+  let row: PendingSignup;
+  try {
+    row = await repo.withActor(actor, (scoped) =>
+      scoped.savePendingSignup({
+        memberId: input.memberId,
+        productId: product.id,
+        choices: input.choices,
+        firstChargeCents: priceCents,
+        weeklyCents: priceCents,
+        pickupDate: firstPickup(product, now),
+        consentText: input.consentText,
+        consentAt: now,
+      }),
+    );
+  } catch (error) {
+    // Another tab got there first: the box is theirs, or their card is on the row and the rewrite is refused.
+    if (!(error instanceof SignupRefusedError)) throw error;
+    return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(error);
+  }
 
   let cardId: string;
   try {
@@ -115,8 +122,16 @@ async function prepare(
     await recordDecline(repo, actor, input.memberId, row.ledgerId, error.code);
     return { outcome: "declined" };
   }
-  await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, cardId));
-  return { row: { ...row, squareCardId: cardId }, cardId, customerId, lookupFirst: false };
+  // The bind returns the amount and attempt to charge: the row may have been rewritten since this tab's save.
+  const bound = await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, cardId));
+  if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card was not bound"));
+  return {
+    row: { ...row, squareCardId: cardId, amountCents: bound.amountCents, attempt: bound.attempt },
+    productId: product.id,
+    cardId,
+    customerId,
+    lookupFirst: false,
+  };
 }
 
 async function resume(deps: SignupDeps, memberId: string): Promise<SignupResult | Charge> {
@@ -125,13 +140,27 @@ async function resume(deps: SignupDeps, memberId: string): Promise<SignupResult 
   if (await repo.findActiveSubscription(memberId, product.id)) return alreadySubscribed(repo, memberId);
   const member = await requireMember(repo, memberId);
   const row = await repo.findPendingSignup(memberId, product.id);
-  return row && isStranded(row) ? stranded(member, row) : { outcome: "error" };
+  return row && isStranded(row) ? stranded(member.squareCustomerId, product.id, row) : { outcome: "error" };
 }
 
 /** A pending row with a saved card: charge it (after asking Square), under the member's customer. */
-function stranded(member: Member, row: PendingSignup & { squareCardId: string }): Charge {
-  if (member.squareCustomerId === null) throw new Error("A saved card is on a signup whose member has no Square customer");
-  return { row, cardId: row.squareCardId, customerId: member.squareCustomerId, lookupFirst: true };
+function stranded(customerId: string | null, productId: string, row: PendingSignup & { squareCardId: string }): Charge {
+  if (customerId === null) throw new Error("A saved card is on a signup whose member has no Square customer");
+  return { row, productId, cardId: row.squareCardId, customerId, lookupFirst: true };
+}
+
+/**
+ * What another tab left behind when this tab's save or bind lost: their box is active, or their card is on
+ * the pending row and this tab takes "Try again". Null when neither is so.
+ */
+async function overtaken(repo: Repository, memberId: string, productId: string, customerId: string): Promise<SignupResult | Charge | null> {
+  if (await repo.findActiveSubscription(memberId, productId)) return alreadySubscribed(repo, memberId);
+  const row = await repo.findPendingSignup(memberId, productId);
+  return row && isStranded(row) ? stranded(customerId, productId, row) : null;
+}
+
+function raise(error: unknown): never {
+  throw error;
 }
 
 async function requireMember(repo: Repository, memberId: string): Promise<Member> {
@@ -184,6 +213,7 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
   const { repo, payments, now } = deps;
   const actor: Actor = { member: memberId };
   const { row } = charge;
+  const unknown: AuditEventDetail = { ledgerId: row.ledgerId };
   try {
     const found = charge.lookupFirst
       ? await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt })
@@ -193,11 +223,21 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
       await recordDecline(repo, actor, memberId, row.ledgerId, result.code);
       return { outcome: "declined" };
     }
-    await repo.withActor(actor, (scoped) => confirmSignup(scoped, { ledgerId: row.ledgerId, paymentId: result.paymentId, now }));
+    // What Square took, not what was asked: it must be the ledger's amount before anything turns active.
+    const chargedCents = found ? found.amountCents : row.amountCents;
+    const confirmed = await repo.withActor(actor, (scoped) =>
+      confirmSignup(scoped, { ledgerId: row.ledgerId, paymentId: result.paymentId, amountCents: chargedCents, now }),
+    );
+    if (confirmed === "mismatch") {
+      unknown.chargedCents = chargedCents;
+      const ledgerCents = (await repo.findPendingSignup(memberId, charge.productId))?.amountCents;
+      if (ledgerCents !== undefined) unknown.ledgerCents = ledgerCents;
+      throw new Error("The charge is not the ledger's amount");
+    }
     return { outcome: "paid", subscriptionId: row.subscriptionId };
   } catch (error) {
     logFailure("charge", error);
-    await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: { ledgerId: row.ledgerId } });
+    await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
     return { outcome: "unknown" };
   }
 }

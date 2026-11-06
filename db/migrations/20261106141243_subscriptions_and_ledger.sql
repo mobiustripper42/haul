@@ -26,6 +26,9 @@ create table subscriptions (
 -- signup (task 1.4, AC11). It limits nothing after a row is active.
 create unique index subscriptions_one_pending on subscriptions (member_id, product_id) where status = 'pending';
 
+-- Every signup check asks for a member's rows for one product, whatever their status.
+create index on subscriptions (member_id, product_id);
+
 -- The pick, one option per option type (option types are data: DEC-006, DEC-027).
 create table subscription_options (
   subscription_id uuid not null references subscriptions (id),

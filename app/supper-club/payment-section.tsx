@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useFormStatus } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { CardEntry, type CardEntryHandle } from "../../components/ui/card-entry";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -17,6 +18,7 @@ export type PaymentText = {
   cardLabel: string;
   cardHint: string;
   testCard: string;
+  cardFailed: string;
   todayLabel: string;
   weeklyLabel: string;
   consentError: string;
@@ -26,6 +28,16 @@ export type PaymentText = {
 };
 
 const CONSENT_ERROR_ID = "consent-error";
+
+/** Pay, disabled while the action runs, so a double-click sends one token. A child of the form, for `useFormStatus`. */
+function PayButton({ children }: { children: string }) {
+  const { pending } = useFormStatus();
+  return (
+    <Button kind="primary" type="submit" full disabled={pending}>
+      {children}
+    </Button>
+  );
+}
 
 /**
  * Section 4, the pay form: its own POST form after the pickers' GET form, so Enter on a radio can never
@@ -89,7 +101,7 @@ export function PaymentSection({
       return;
     }
     const token = await entry.current?.tokenize();
-    // No token: Square's form is showing what is wrong with the card.
+    // No token: Square's form is showing what is wrong with the card, or the card form says it failed.
     if (!token) return;
     form.set("sourceId", token);
     await joinSupperClub(form);
@@ -108,6 +120,7 @@ export function PaymentSection({
         label={text.cardLabel}
         hint={text.cardHint}
         testLabel={text.testCard}
+        failedText={text.cardFailed}
         testMode={card.testMode}
         applicationId={card.applicationId}
         locationId={card.locationId}
@@ -134,9 +147,7 @@ export function PaymentSection({
       {consentShown && <FieldError id={CONSENT_ERROR_ID}>{text.consentError}</FieldError>}
       {payError === "declined" && <Notice icon="alert">{text.declined}</Notice>}
       {payError === "error" && <Notice icon="alert">{text.error}</Notice>}
-      <Button kind="primary" type="submit" full>
-        {words.button}
-      </Button>
+      <PayButton>{words.button}</PayButton>
       <Hint center>{text.capHint}</Hint>
     </form>
   );

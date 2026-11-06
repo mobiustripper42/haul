@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { requireSupperClub } from "@core/products.js";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
@@ -17,7 +18,8 @@ import { SUPPER_CLUB_PATH } from "../paths";
 export default async function SupperClubAlready() {
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
   if (!member) redirect(SUPPER_CLUB_PATH);
-  if (!(await getRepository().findSignupConfirmation(member.id))) redirect(SUPPER_CLUB_PATH);
+  const repo = getRepository();
+  if (!(await repo.findSignupConfirmation(member.id, (await requireSupperClub(repo)).id))) redirect(SUPPER_CLUB_PATH);
 
   return await JoinPage({
     pane: "already",

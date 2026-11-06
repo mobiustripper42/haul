@@ -2,7 +2,15 @@ import { randomUUID } from "node:crypto";
 import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
-import type { Actor, AuditEvent, PendingSignup, PendingSignupInput, Repository, SignupConfirmation } from "../ports/repository.js";
+import {
+  SignupRefusedError,
+  type Actor,
+  type AuditEvent,
+  type PendingSignup,
+  type PendingSignupInput,
+  type Repository,
+  type SignupConfirmation,
+} from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -153,7 +161,10 @@ export class InMemoryRepository implements Repository {
   }
 
   async savePendingSignup(input: PendingSignupInput): Promise<PendingSignup> {
+    if (this.subscriptionsOf(input.memberId, input.productId, "active").length > 0) throw new SignupRefusedError();
     const existing = this.subscriptionsOf(input.memberId, input.productId, "pending")[0];
+    const earlier = existing && this.ledgerOf(existing.id);
+    if (existing?.squareCardId && earlier?.status === "pending") throw new SignupRefusedError();
     const subscription: StoredSubscription = {
       id: existing?.id ?? randomUUID(),
       memberId: input.memberId,
@@ -187,9 +198,12 @@ export class InMemoryRepository implements Repository {
     return saved as PendingSignup;
   }
 
-  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<void> {
+  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null> {
     const subscription = this.subscriptions.get(subscriptionId);
-    if (subscription) this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
+    const ledger = this.ledgerOf(subscriptionId);
+    if (!subscription || !ledger || subscription.status !== "pending" || subscription.squareCardId !== null) return null;
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
+    return { amountCents: ledger.amountCents, attempt: ledger.attempt };
   }
 
   async recordSignupDecline(ledgerId: string): Promise<void> {
@@ -197,18 +211,24 @@ export class InMemoryRepository implements Repository {
     if (row?.status === "pending") this.ledger.set(ledgerId, { ...row, status: "declined" });
   }
 
-  async confirmSignupRows(ledgerId: string, paymentId: string, now: Date): Promise<"confirmed" | "already"> {
+  async confirmSignupRows(
+    ledgerId: string,
+    paymentId: string,
+    amountCents: number,
+    now: Date,
+  ): Promise<"confirmed" | "already" | "mismatch"> {
     const row = this.ledger.get(ledgerId);
     if (!row || row.status === "paid") return "already";
+    if (row.amountCents !== amountCents) return "mismatch";
     this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now) });
     const subscription = this.subscriptions.get(row.subscriptionId);
     if (subscription) this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
     return "confirmed";
   }
 
-  async findSignupConfirmation(memberId: string): Promise<SignupConfirmation | null> {
+  async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
     const subscription = [...this.subscriptions.values()]
-      .filter((s) => s.memberId === memberId && s.status === "active")
+      .filter((s) => s.memberId === memberId && s.productId === productId && s.status === "active")
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     const ledger = subscription && this.ledgerOf(subscription.id);
     if (!subscription || !ledger) return null;

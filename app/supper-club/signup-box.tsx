@@ -24,13 +24,13 @@ export function SignupBox({ t, language, confirmation }: { t: Translator; langua
             </div>
           ))}
           <div className="flex flex-col gap-0.5">
-            <dt className={label}>{t("supperClub.box.paidToday")}</dt>
+            <dt className={`${label} uppercase`}>{t("supperClub.box.paidToday")}</dt>
             <dd className="font-semibold">
               {first} <span className="font-normal text-ink-muted">{t("supperClub.box.firstWeek")}</span>
             </dd>
           </div>
           <div className="flex flex-col gap-0.5">
-            <dt className={label}>{t("supperClub.box.then")}</dt>
+            <dt className={`${label} uppercase`}>{t("supperClub.box.then")}</dt>
             <dd className="font-semibold">
               {weekly} <span className="font-normal text-ink-muted">{t("supperClub.box.everyWeek")}</span>
             </dd>

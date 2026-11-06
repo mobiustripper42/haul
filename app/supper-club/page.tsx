@@ -73,6 +73,7 @@ async function paymentSection({
         cardLabel: t("supperClub.cardLabel"),
         cardHint: t("supperClub.cardHint"),
         testCard: t("supperClub.testCard"),
+        cardFailed: t("supperClub.cardFailed"),
         todayLabel: t("supperClub.todayLabel"),
         weeklyLabel: t("supperClub.weeklyLabel"),
         consentError: t("supperClub.consentError"),
@@ -133,6 +134,7 @@ export default async function SupperClub({
             {accountLegend}
             <p>{t("supperClub.signedInAs", { email: member.email })}</p>
             <Notice icon="alert">{t("supperClub.retryNotice")}</Notice>
+            {query.payError === "error" && <Notice icon="alert">{t("supperClub.payError")}</Notice>}
             <PricePanel
               summary={boxOf(product, stranded)}
               rows={[{ label: t("supperClub.todayLabel"), value: formatUsdWhole(stranded.amountCents) }]}

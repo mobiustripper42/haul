@@ -22,10 +22,10 @@ export const SQUARE_BASE_URLS: Record<"sandbox" | "production", string> = {
   production: "https://connect.squareup.com/v2",
 };
 
-/** Square's sandbox test values: the one home for them. */
 /** How long a Square request may take before it is abandoned. */
 export const SQUARE_TIMEOUT_MS = 15_000;
 
+/** Square's sandbox test values: the one home for them. */
 export const SQUARE_SANDBOX_VALUES = {
   cardNonceOk: "cnon:card-nonce-ok",
   cardOnFileOk: "ccof:customer-card-id-ok",
@@ -210,10 +210,11 @@ export class SquarePayments implements PaymentsPort {
   /**
    * Square's `ListPayments` from `since` at this location, following the cursor until a COMPLETED
    * payment carries `referenceId`: the rule `charge` has for paid, so a FAILED attempt never confirms a signup.
+   * The amount is what Square holds for it, so a confirm can compare it with the ledger.
    */
-  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string } | null> {
+  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null> {
     checkPaymentsInput("findPaymentByReference", input);
-    let found: { paymentId: string } | null = null;
+    let found: { paymentId: string; amountCents: number } | null = null;
     await this.eachPage(
       "payments",
       (cursor) => {
@@ -225,7 +226,9 @@ export class SquarePayments implements PaymentsPort {
         for (const raw of payments) {
           if (!isObject(raw) || typeof raw.id !== "string" || typeof raw.status !== "string") throw unexpected(reply, "payment");
           if (raw.status === "COMPLETED" && raw.reference_id === input.referenceId) {
-            found = { paymentId: raw.id };
+            const amount = isObject(raw.amount_money) ? raw.amount_money.amount : undefined;
+            if (typeof amount !== "number") throw unexpected(reply, "payment amount");
+            found = { paymentId: raw.id, amountCents: amount };
             return true;
           }
         }

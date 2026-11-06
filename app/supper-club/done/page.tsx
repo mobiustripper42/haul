@@ -1,4 +1,5 @@
 import { redirect } from "next/navigation";
+import { requireSupperClub } from "@core/products.js";
 import { Button } from "../../../components/ui/button";
 import { Heading } from "../../../components/ui/heading";
 import { getLanguage, getTranslator } from "../../language";
@@ -16,7 +17,8 @@ import { SignupBox } from "../signup-box";
 export default async function SupperClubDone() {
   const [t, language, member] = await Promise.all([getTranslator(), getLanguage(), getSignedInMember()]);
   if (!member) redirect(SUPPER_CLUB_PATH);
-  const confirmation = await getRepository().findSignupConfirmation(member.id);
+  const repo = getRepository();
+  const confirmation = await repo.findSignupConfirmation(member.id, (await requireSupperClub(repo)).id);
   if (!confirmation) redirect(SUPPER_CLUB_PATH);
 
   return await JoinPage({
@@ -40,7 +42,7 @@ export default async function SupperClubDone() {
           <Button kind="primary" href={ACCOUNT_PATH}>
             {t("supperClub.done.account")}
           </Button>
-          <Button kind="quiet" href={FARM_SITE_URL}>
+          <Button kind="quiet" href={FARM_SITE_URL} flush>
             {t("supperClub.done.back")}
           </Button>
         </div>

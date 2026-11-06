@@ -22,9 +22,17 @@ export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 /**
  * What an event row says beyond its name, written to `audit_log.detail` (DEC-028): `customerIds` on
  * `square_customer_duplicates`, `customerId` on `square_customer_linked`, `ledgerId` on `card_declined`
- * and `charge_outcome_unknown`, and the provider's `code` on `card_declined`. Never a provider's text.
+ * and `charge_outcome_unknown`, and the provider's `code` on `card_declined`. A charge that did not match its
+ * ledger row adds both amounts to `charge_outcome_unknown`. Never a provider's text.
  */
-export type AuditEventDetail = { customerId?: string; customerIds?: string[]; ledgerId?: string; code?: string };
+export type AuditEventDetail = {
+  customerId?: string;
+  customerIds?: string[];
+  ledgerId?: string;
+  code?: string;
+  chargedCents?: number;
+  ledgerCents?: number;
+};
 
 export type AuditEvent =
   | { kind: Exclude<AuditEventKind, "rate_limit_refusal">; memberId: string; detail?: AuditEventDetail }
@@ -49,6 +57,14 @@ export type PendingSignup = {
   createdAt: Date;
   optionIds: string[];
 };
+
+/** `savePendingSignup` refuses a save: the member already holds the box, or a card is bound to the pending row. */
+export class SignupRefusedError extends Error {
+  constructor() {
+    super("The signup cannot be saved over: it is active, or its card is bound");
+    this.name = "SignupRefusedError";
+  }
+}
 
 export type PendingSignupInput = {
   memberId: string;
@@ -89,12 +105,24 @@ export interface Repository extends SignInStore, RateLimitStore {
   setMemberSquareCustomer(memberId: string, customerId: string): Promise<void>;
   findActiveSubscription(memberId: string, productId: string): Promise<{ id: string } | null>;
   findPendingSignup(memberId: string, productId: string): Promise<PendingSignup | null>;
-  /** Creates the pending rows, or rewrites them on a retry. */
+  /**
+   * Creates the pending rows, or rewrites them on a retry. Under a lock on the member row it throws
+   * `SignupRefusedError` when the member holds an active subscription to the product, and when the pending
+   * row has a card bound with its ledger row pending: that row is frozen.
+   */
   savePendingSignup(input: PendingSignupInput): Promise<PendingSignup>;
-  saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<void>;
+  /**
+   * Binds the card to a pending subscription that has none, and gives back the amount and attempt of its ledger
+   * row, which are what to charge. Null when the bind is lost: another card is there, or it is no longer pending.
+   */
+  saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null>;
   recordSignupDecline(ledgerId: string): Promise<void>;
-  confirmSignupRows(ledgerId: string, paymentId: string, now: Date): Promise<"confirmed" | "already">;
-  findSignupConfirmation(memberId: string): Promise<SignupConfirmation | null>;
+  /**
+   * Flips the rows when `amountCents` is the ledger's `amount_cents`; "mismatch" leaves them pending. A row
+   * already paid is "already" whatever the amount, so a replay never reads as a mismatch.
+   */
+  confirmSignupRows(ledgerId: string, paymentId: string, amountCents: number, now: Date): Promise<"confirmed" | "already" | "mismatch">;
+  findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

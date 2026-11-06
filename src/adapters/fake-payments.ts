@@ -141,11 +141,11 @@ export class FakePayments implements PaymentsPort {
   }
 
   /** Paid charges only, as Square's lookup counts COMPLETED ones only. `since` is ignored: `FakeCharge` has no time. */
-  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string } | null> {
+  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null> {
     this.begin("findPaymentByReference", input);
     for (const charge of this.chargeList) {
       if (charge.referenceId === input.referenceId && charge.result.outcome === "paid") {
-        return { paymentId: charge.result.paymentId };
+        return { paymentId: charge.result.paymentId, amountCents: charge.amountCents };
       }
     }
     return null;
