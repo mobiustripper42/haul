@@ -281,6 +281,31 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
     expect(rows).toEqual([{ email_confirmed_at: new Date("2026-10-01T12:00:00Z") }]);
   });
 
+  // Issue 56's seeds: Square refuses `.xx` addresses, so the members AC15's by-hand checks sign up as are on example.com.
+  it("AC15 (issue 56): from an emptied database, members holds paid@, linked@ and duplicates@example.com, each confirmed, with a name and phone", async () => {
+    await empty();
+    await runSeed("members", url);
+    const { rows } = await pool.query<{ email: string; named: boolean; surnamed: boolean; reachable: boolean; confirmed: boolean }>(
+      `select email, first_name is not null as named, last_name is not null as surnamed, phone is not null as reachable,
+              email_confirmed_at is not null as confirmed
+         from members where email = any($1) order by email`,
+      [["paid@example.com", "linked@example.com", "duplicates@example.com"]],
+    );
+    const facts = { named: true, surnamed: true, reachable: true, confirmed: true };
+    expect(rows).toEqual([
+      { email: "duplicates@example.com", ...facts },
+      { email: "linked@example.com", ...facts },
+      { email: "paid@example.com", ...facts },
+    ]);
+  });
+
+  it("AC15 (issue 56): from an emptied database, members holds no linked@ocf.xx or duplicates@ocf.xx", async () => {
+    await empty();
+    await runSeed("members", url);
+    const { rows } = await pool.query("select email from members where email in ('linked@ocf.xx', 'duplicates@ocf.xx')");
+    expect(rows).toEqual([]);
+  });
+
   describe("AC3 — every seed runs alone", () => {
     it.each(names)("AC3: from an emptied database, %s succeeds and leaves a row in at least one table", async (name) => {
       await empty();

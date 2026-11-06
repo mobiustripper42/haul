@@ -3,8 +3,9 @@
 // only a browser can show lives here: the pane's place and width, what each width hides. Each test
 // starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
 // `supper-club` seed. Controls are found by role and wording. Issue 56: a pick changing the words, the
-// client stopping an unticked pay, and a paid signup, on the fake, through CardEntry's test field; a
-// decline is proven in Vitest, because e2e cannot force one from the browser (DEC-023).
+// client stopping an unticked pay, a card refused before it is sent, and a paid signup, on the fake,
+// through CardEntry's test field; a decline is proven in Vitest, because e2e cannot force one from the
+// browser (DEC-023).
 import type { APIRequestContext, Locator, Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
@@ -78,6 +79,11 @@ const testCard = (page: Page) => page.getByRole("textbox", { name: "Test card" }
 const consent = (page: Page) => page.getByRole("checkbox");
 const joinAndPay = (page: Page, price: string) => page.getByRole("button", { name: `Join and pay ${price}`, exact: true });
 
+const REFUSED_CARD = "refused";
+const CARD_FORM_FAILED = "The card form didn't load. Refresh the page and try again.";
+// Exact, because the decline notice ends in the same words and is a different message.
+const cardRefusal = (page: Page) => page.getByText("Check the card details or try another card.", { exact: true });
+
 /** Signs ERIC in from the page with the non-default picks, so section 4 shows. */
 async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
   await pickChoices(page);
@@ -86,10 +92,19 @@ async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
   await expectChoicesKept(page);
 }
 
-async function pay(page: Page): Promise<void> {
-  await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+async function pay(page: Page, card: string = SQUARE_SANDBOX_VALUES.cardNonceOk): Promise<void> {
+  await testCard(page).fill(card);
   await consent(page).check();
   await joinAndPay(page, "$50").click();
+}
+
+/** Counts the pay form's POSTs from here on; pay stopping in the browser leaves it at 0. */
+function countPayPosts(page: Page): () => number {
+  let posts = 0;
+  page.on("request", (sent) => {
+    if (sent.method() === "POST" && new URL(sent.url()).pathname === "/supper-club") posts += 1;
+  });
+  return () => posts;
 }
 
 test.beforeEach(async () => {
@@ -338,22 +353,59 @@ test("AC11 (issue 56): pay is disabled while the action runs, so a double-click 
   expect(posts).toBe(1);
 });
 
-// The test field stands in for Square's form, so an empty one is `tokenize` returning nothing. Square's script
-// failing to load and `tokenize` throwing cannot be reached from here: the e2e server always draws the test field.
+// The test field stands in for Square's form: an empty one is `tokenize` throwing, and the value `refused` is
+// the `TokenizationError` Square throws for a card it rejects. Square's script failing to load and a real
+// throw cannot be reached from here: the e2e server always draws the test field.
 test("AC1 (issue 56): a card form that gives no token shows the failure in the field's place, and pay stops there", async ({ page, request }) => {
   await signedIn(page, request);
   await consent(page).check();
-  let posts = 0;
-  page.on("request", (sent) => {
-    if (sent.method() === "POST" && new URL(sent.url()).pathname === "/supper-club") posts += 1;
-  });
+  const posts = countPayPosts(page);
 
   await joinAndPay(page, "$50").click();
 
-  await expect(page.getByText("The card form didn't load. Refresh the page and try again.")).toBeVisible();
+  await expect(page.getByText(CARD_FORM_FAILED)).toBeVisible();
   await expect(testCard(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
-  expect(posts).toBe(0);
+  expect(posts()).toBe(0);
+});
+
+test("AC1 (issue 56): a card Square refuses keeps the field, says so under it and submits nothing, and a good card then pays", async ({ page, request }) => {
+  await signedIn(page, request);
+  const posts = countPayPosts(page);
+
+  await pay(page, REFUSED_CARD);
+
+  await expect(cardRefusal(page)).toBeVisible();
+  await expect(testCard(page)).toBeVisible();
+  const field = (await testCard(page).boundingBox())!;
+  expect((await cardRefusal(page).boundingBox())!.y).toBeGreaterThanOrEqual(field.y + field.height);
+  await expect(page.getByText(CARD_FORM_FAILED)).toHaveCount(0);
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(page.getByRole("checkbox")).toBeChecked();
+  expect(posts()).toBe(0);
+
+  // Retyping does not clear it: it stays until the next pay.
+  await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+  await expect(cardRefusal(page)).toBeVisible();
+
+  await pay(page);
+  await expect(page).toHaveURL(onPath("/supper-club/done"));
+});
+
+test("AC1 (issue 56): a refusal lasts until the next pay, and an empty field then still shows the failure in the field's place", async ({ page, request }) => {
+  await signedIn(page, request);
+  const posts = countPayPosts(page);
+
+  await pay(page, REFUSED_CARD);
+  await expect(cardRefusal(page)).toBeVisible();
+
+  await pay(page, "");
+
+  await expect(page.getByText(CARD_FORM_FAILED)).toBeVisible();
+  await expect(cardRefusal(page)).toHaveCount(0);
+  await expect(testCard(page)).toHaveCount(0);
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  expect(posts()).toBe(0);
 });
 
 test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the right pane, the left column beside it", async ({ page, request }, testInfo) => {
