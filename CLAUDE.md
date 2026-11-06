@@ -172,7 +172,7 @@ Check the spec's out-of-scope list in `docs/SPEC.md` before adding anything. App
 
 If a task feels bigger than its estimate: stop, re-estimate, update PROJECT_PLAN.md. If it's scope creep, flag it and move on.
 
-**An observation becomes a check, a deny, or a median-gap line — or it stays a note.** A rule you can't attach to a session, transcript or pull request is a proposal; say so. And a rule that could have been a mechanism and was written as prose instead will be skimmed past forever after — which is the failure that produced this line: a prose rule was broken 11 times, 4 of them after it was written, while a mechanical deny was obeyed 7 times out of 7.
+**An observation becomes a check, a deny, or a median-gap line — or it stays a note.** A rule you can't attach to a session, transcript or pull request is a proposal; say so. And a rule that could have been a mechanism and was written as prose instead will be skimmed past forever after. Mechanisms get obeyed where prose doesn't (`<jig>/docs/research/checker-roi/`).
 
 **Prefer removing.** A retired rule with a decision explaining why it went is worth more than a new one.
 
