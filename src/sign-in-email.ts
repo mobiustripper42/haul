@@ -18,7 +18,12 @@ export function deliverSignInLink(email: EmailPort, member: Member, url: string)
   return email.send({ to: member.email, subject, text });
 }
 
+/** The site's address and a path, with one slash between them whatever the address ends in. */
+export function siteLink(siteUrl: string, path: string): string {
+  return `${siteUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+}
+
 /** Where a link's token lands: the one-button page, which redeems nothing until it is pressed. */
 export function signInLinkUrl(siteUrl: string, token: string): string {
-  return `${siteUrl.replace(/\/$/, "")}/sign-in/link?token=${token}`;
+  return siteLink(siteUrl, `/sign-in/link?token=${token}`);
 }

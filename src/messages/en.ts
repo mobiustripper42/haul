@@ -125,6 +125,14 @@ export const en = {
   "email.signInLink.body":
     "Too many wrong codes were entered for your account, so sign-in by code is paused for up to 24 hours.\n\nUse this link to sign in instead:\n{link}\n\nIt works once and expires in {minutes} minutes. If you didn't try to sign in, you can ignore this email.",
   "email.signOff": "— Ohio City Farm",
+  "email.signupConfirmation.heading": "You're in the Supper Club, {firstName}",
+  "email.signupConfirmation.thanks": "Thank you for joining. Here is what you signed up for.",
+  "email.signupConfirmation.pickup": "Pickup",
+  "email.signupConfirmation.eachWeek": "Each week",
+  "email.signupConfirmation.signIn": "You sign in with your email. We send you a 6-digit code each time, no password.",
+  "email.signupConfirmation.questions": "Questions? Reply to this email.",
+  "email.signupConfirmation.footerFarm": "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH",
+  "email.signupConfirmation.footerReason": "You are getting this email because you joined the Supper Club.",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

@@ -1244,6 +1244,59 @@ describe("AC12 — Square's detail stays out of the logs", () => {
   });
 });
 
+describe("AC1, AC2, AC3 (issue 58) — confirmedNow, the whole guard against a second email", () => {
+  /** Another tab's confirm lands while this tab waits on Square's answer to `method`. */
+  const otherTabConfirmsDuring = (method: "charge" | "findPaymentByReference") => {
+    const confirmOthers = async (ledgerId: string, paymentId: string, amountCents: number) => {
+      expect(await repo.confirmSignupRows(ledgerId, paymentId, amountCents, NOW)).toBe("confirmed");
+    };
+    if (method === "charge") {
+      const real = payments.charge.bind(payments);
+      vi.spyOn(payments, "charge").mockImplementationOnce(async (input) => {
+        const result = await real(input);
+        if (result.outcome === "paid") await confirmOthers(input.referenceId ?? "no reference", result.paymentId, input.amountCents);
+        return result;
+      });
+    } else {
+      const real = payments.findPaymentByReference.bind(payments);
+      vi.spyOn(payments, "findPaymentByReference").mockImplementationOnce(async (input) => {
+        const found = await real(input);
+        if (found) await confirmOthers(input.referenceId, found.paymentId, found.amountCents);
+        return found;
+      });
+    }
+  };
+
+  it("AC1: a signup paid on the first try, whose confirm flipped the rows, says confirmedNow", async () => {
+    expect(await submit()).toMatchObject({ outcome: "paid", confirmedNow: true });
+  });
+
+  it("AC2: Try again that charges, and whose confirm flips the rows, says confirmedNow", async () => {
+    chargeGetsNoAnswer(2);
+    await submit();
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: true });
+  });
+
+  it("AC2: Try again that finds Square's payment, and whose confirm flips the rows, says confirmedNow", async () => {
+    chargeReplyIsLost(2);
+    await submit();
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: true });
+    expect(payments.charges).toHaveLength(1);
+  });
+
+  it("AC3: a paid signup whose rows another tab confirmed first says confirmedNow false", async () => {
+    otherTabConfirmsDuring("charge");
+    expect(await submit()).toMatchObject({ outcome: "paid", confirmedNow: false });
+  });
+
+  it("AC3: Try again that finds the payment, with the rows confirmed by another tab first, says confirmedNow false", async () => {
+    chargeReplyIsLost(2);
+    await submit();
+    otherTabConfirmsDuring("findPaymentByReference");
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: false });
+  });
+});
+
 describe("AC14 — docs/SPEC.md §7.3", () => {
   const spec = readFileSync(new URL("../docs/SPEC.md", import.meta.url), "utf8");
 

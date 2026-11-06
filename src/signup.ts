@@ -20,8 +20,14 @@ export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date }
  * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
  * `sold_out`: the product's cap is reached, at the check before Square or at the card bind; nothing was charged.
  * `error`: something failed before anything was charged.
+ * `confirmedNow`, on a paid result: true only when this request flipped the rows, so it is the whole guard
+ * against a second confirmation email; a signup another tab confirmed first gives false.
  */
-export type SignupResult = { outcome: "paid" | "declined" | "unknown" | "already_subscribed" | "sold_out" | "error"; subscriptionId?: string };
+export type SignupResult = {
+  outcome: "paid" | "declined" | "unknown" | "already_subscribed" | "sold_out" | "error";
+  subscriptionId?: string;
+  confirmedNow?: boolean;
+};
 
 /** A signup ready to charge: its pending rows, the card on the row and the member's Square customer. */
 type Charge = { row: PendingSignup; productId: string; cardId: string; customerId: string; lookupFirst: boolean };
@@ -245,7 +251,7 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
       if (ledgerCents !== undefined) unknown.ledgerCents = ledgerCents;
       throw new Error("The charge is not the ledger's amount");
     }
-    return { outcome: "paid", subscriptionId: row.subscriptionId };
+    return { outcome: "paid", subscriptionId: row.subscriptionId, confirmedNow: confirmed === "confirmed" };
   } catch (error) {
     logFailure("charge", error);
     await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });

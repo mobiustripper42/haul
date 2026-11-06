@@ -73,6 +73,7 @@ export function sendAfterResponse<T>(
   memberId: string | null,
   store: () => Promise<T>,
   send: (stored: T) => Promise<void>,
+  label = "sign-in email not delivered",
 ): void {
   after(async () => {
     let stage: "store" | "send" = "store";
@@ -81,7 +82,7 @@ export function sendAfterResponse<T>(
       stage = "send";
       await send(stored);
     } catch (error) {
-      console.error("sign-in email not delivered", { stage, memberId, ...errorFields(error) });
+      console.error(label, { stage, memberId, ...errorFields(error) });
     }
   });
 }

@@ -5,7 +5,7 @@ import { FakeEmail } from "./adapters/fake-email.js";
 import { renderEmail } from "./email-templates.js";
 import type { Language } from "./i18n.js";
 import type { Member } from "./members.js";
-import { deliverSignInCode, deliverSignInLink, signInLinkUrl } from "./sign-in-email.js";
+import { deliverSignInCode, deliverSignInLink, signInLinkUrl, siteLink } from "./sign-in-email.js";
 import { hashCode } from "./sign-in/code.js";
 
 const member = (language: Language): Member => ({
@@ -61,4 +61,15 @@ describe("AC16 (issue 22) — deliverSignInLink and signInLinkUrl", () => {
       expect(signInLinkUrl(siteUrl, "AbC_-123")).toBe("https://members.ohiocityfarm.com/sign-in/link?token=AbC_-123");
     },
   );
+});
+
+describe("AC4 (issue 58) — siteLink", () => {
+  it.each([
+    ["https://members.ohiocityfarm.com", "/", "https://members.ohiocityfarm.com/"],
+    ["https://members.ohiocityfarm.com/", "/", "https://members.ohiocityfarm.com/"],
+    ["https://members.ohiocityfarm.com", "/account", "https://members.ohiocityfarm.com/account"],
+    ["https://members.ohiocityfarm.com/", "/account", "https://members.ohiocityfarm.com/account"],
+  ])("AC4: siteLink(%j, %j) has one slash between the two", (siteUrl, path, link) => {
+    expect(siteLink(siteUrl, path)).toBe(link);
+  });
 });
