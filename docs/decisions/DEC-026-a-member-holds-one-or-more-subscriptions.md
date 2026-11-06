@@ -3,7 +3,7 @@ schema: 1
 id: DEC-026
 title: "A member holds one or more subscriptions, to any product"
 topic: "Data model"
-status: "draft"
+status: "active"
 date: "2026-11-02"
 ruling: "A member may hold one or more subscriptions, to any product; no rule limits a member to one. Phase 1's signup creates exactly one, and adding another comes later. A cap counts subscriptions, not members."
 claims:

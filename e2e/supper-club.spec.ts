@@ -2,9 +2,12 @@
 // desktop and mobile. Issue 77: that round trip now runs through the Supper Club page's panes, and what
 // only a browser can show lives here: the pane's place and width, what each width hides. Each test
 // starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
-// `supper-club` seed. Controls are found by role and wording.
+// `supper-club` seed. Controls are found by role and wording. Issue 56: a pick changing the words, the
+// client stopping an unticked pay, and a paid signup, on the fake, through CardEntry's test field; a
+// decline is proven in Vitest, because e2e cannot force one from the browser (DEC-023).
 import type { APIRequestContext, Locator, Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
+import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
 import { en } from "../src/messages/en.js";
 import { e2eDatabaseUrl } from "./database";
 import { expect, outboxCount, test, waitForSignInCode } from "./fixtures";
@@ -20,7 +23,8 @@ const SAGE_SOFT = "rgb(227, 235, 232)";
 
 const onPath = (path: string) => (url: URL) => url.pathname === path;
 
-const size = (page: Page) => page.getByRole("radio", { name: /\$80 a week/ });
+// 2 people, which is not the default now that the seed puts 3–4 people first.
+const size = (page: Page) => page.getByRole("radio", { name: /\$50 a week/ });
 const menu = (page: Page) => page.getByRole("radio", { name: /Vegan/ });
 
 const pressCreateAccount = (page: Page) => page.getByRole("button", { name: en["supperClub.createAccount"], exact: true }).click();
@@ -68,6 +72,24 @@ async function askForCode(page: Page, request: APIRequestContext): Promise<strin
 async function enterSignInCode(page: Page, code: string): Promise<void> {
   await page.getByLabel(en["signIn.codeLabel"]).fill(code);
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
+}
+
+const testCard = (page: Page) => page.getByRole("textbox", { name: "Test card" });
+const consent = (page: Page) => page.getByRole("checkbox");
+const joinAndPay = (page: Page, price: string) => page.getByRole("button", { name: `Join and pay ${price}`, exact: true });
+
+/** Signs ERIC in from the page with the non-default picks, so section 4 shows. */
+async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
+  await pickChoices(page);
+  await pressSignIn(page);
+  await enterSignInCode(page, await askForCode(page, request));
+  await expectChoicesKept(page);
+}
+
+async function pay(page: Page): Promise<void> {
+  await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+  await consent(page).check();
+  await joinAndPay(page, "$50").click();
 }
 
 test.beforeEach(async () => {
@@ -254,4 +276,72 @@ test("AC11: below lg the Supper Club page itself keeps its left column and heade
   await page.goto("/supper-club");
   await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
   await expect(headerSignIn(page)).toBeVisible();
+});
+
+test("AC1 (issue 56): signed in, section 4 sits in the same card under section 3, the checkbox unticked", async ({ page, request }) => {
+  await signedIn(page, request);
+  const card = joinCard(page);
+  await expect(card.getByText(`Signed in as ${ERIC}.`)).toBeVisible();
+  await expect(card.getByText("4. Payment")).toBeVisible();
+  await expect(card.getByText("Today, for your first week")).toBeVisible();
+  await expect(consent(page)).not.toBeChecked();
+  await expect(joinAndPay(page, "$50")).toBeVisible();
+});
+
+test("AC2 (issue 56): a changed pick updates the price panel, the checkbox sentence and the button, with no new page", async ({ page, request }) => {
+  await signedIn(page, request);
+  const url = page.url();
+  await page.getByRole("radio", { name: /\$80 a week/ }).check();
+
+  await expect(joinAndPay(page, "$80")).toBeVisible();
+  await expect(page.getByText("I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy.")).toBeVisible();
+  await expect(page.getByText("your card is charged $80 at the end of each Monday")).toBeVisible();
+  expect(page.url()).toBe(url);
+});
+
+test("AC4 (issue 56): pay with the box unticked stays on the page and says why", async ({ page, request }) => {
+  await signedIn(page, request);
+  await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+  await joinAndPay(page, "$50").click();
+
+  await expect(page.getByText("Tick the box to agree to the weekly charge.")).toBeVisible();
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(size(page)).toBeChecked();
+});
+
+test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the right pane, the left column beside it", async ({ page, request }, testInfo) => {
+  desktopOnly(testInfo);
+  await signedIn(page, request);
+  const join = (await joinCard(page).boundingBox())!;
+  await pay(page);
+
+  await expect(page).toHaveURL(onPath("/supper-club/done"));
+  await expect(page.getByText("You're in the Supper Club")).toBeVisible();
+  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  const box = (await page.locator("section").filter({ hasText: "You're in the Supper Club" }).last().boundingBox())!;
+  expect(box.x).toBeCloseTo(join.x, 0);
+  await expect(page.getByRole("banner").getByRole("link", { name: "Your account", exact: true })).toBeVisible();
+});
+
+test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone", async ({ page, request }, testInfo) => {
+  phoneOnly(testInfo);
+  await signedIn(page, request);
+  await pay(page);
+
+  await expect(page).toHaveURL(onPath("/supper-club/done"));
+  await expect(page.getByText("You're in the Supper Club")).toBeVisible();
+  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeHidden();
+  await expect(page.getByRole("banner").getByRole("link", { name: "Your account", exact: true })).toBeVisible();
+});
+
+test("AC5 (issue 56): a member with a box who opens /supper-club lands on the already page, and goes on to their account", async ({ page, request }) => {
+  await signedIn(page, request);
+  await pay(page);
+  await expect(page).toHaveURL(onPath("/supper-club/done"));
+
+  await page.goto("/supper-club");
+  await expect(page).toHaveURL(onPath("/supper-club/already"));
+  await expect(page.getByText("You already have a Supper Club box")).toBeVisible();
+  await page.getByRole("main").getByRole("link", { name: "Go to your account", exact: true }).click();
+  await expect(page).toHaveURL(onPath("/"));
 });

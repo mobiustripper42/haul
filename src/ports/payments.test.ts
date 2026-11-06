@@ -6,6 +6,7 @@ import {
   checkPaymentsInput,
   IDEMPOTENCY_KEY_MAX,
   IdempotencyKeyReusedError,
+  isCardRefusal,
   PaymentsError,
   REFERENCE_ID_MAX,
 } from "./payments.js";
@@ -56,6 +57,7 @@ describe("AC10 (issue 54) — checkPaymentsInput", () => {
     ["charge with a 45-character idempotencyKey", { ...VALID_PAYMENTS_INPUTS.charge, idempotencyKey: "k".repeat(45) }],
     ["charge with a 40-character referenceId", { ...VALID_PAYMENTS_INPUTS.charge, referenceId: "r".repeat(40) }],
     ["charge of 1 cent", { ...VALID_PAYMENTS_INPUTS.charge, amountCents: 1 }],
+    ["createCustomer with a 40-character referenceId", { ...VALID_PAYMENTS_INPUTS.createCustomer, referenceId: "r".repeat(40) }],
   ] as const)("AC10: accepts a valid input: %s", (label, input) => {
     const method = label.split(" ")[0] as Parameters<typeof checkPaymentsInput>[0];
     expect(() => checkPaymentsInput(method, input)).not.toThrow();
@@ -78,5 +80,41 @@ describe("AC14 (issue 54) — the port's errors", () => {
     });
     expect(error).toBeInstanceOf(PaymentsError);
     expect(error).toMatchObject({ status: 400, category: "INVALID_REQUEST_ERROR", code: "IDEMPOTENCY_KEY_REUSED" });
+  });
+});
+
+describe("AC6 (issue 56) — checkPaymentsInput on setCustomerReference", () => {
+  const VALID = { customerId: "CUSTOMER_1", referenceId: "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60" };
+
+  it.each([
+    ["an empty customerId", "customerId", { ...VALID, customerId: "" }],
+    ["a 41-character referenceId", "referenceId", { ...VALID, referenceId: "r".repeat(41) }],
+  ])("AC6: %s throws a RangeError naming the port's field", (_label, field, input) => {
+    const error = thrownBy(() => checkPaymentsInput("setCustomerReference", input));
+    expect(error).toBeInstanceOf(RangeError);
+    expect((error as Error).message).toContain(field);
+  });
+
+  it("AC6: a 40-character referenceId is accepted", () => {
+    expect(() => checkPaymentsInput("setCustomerReference", { ...VALID, referenceId: "r".repeat(40) })).not.toThrow();
+  });
+});
+
+describe("AC10a (issue 56) — isCardRefusal", () => {
+  const error = (category: string) => new PaymentsError({ status: 402, category, code: "CVV_FAILURE", detail: "Declined." });
+
+  it("AC10a: a PaymentsError whose category is PAYMENT_METHOD_ERROR is a refusal", () => {
+    expect(isCardRefusal(error("PAYMENT_METHOD_ERROR"))).toBe(true);
+  });
+
+  it.each([
+    ["a PaymentsError of another category", error("API_ERROR")],
+    ["a reused key", new IdempotencyKeyReusedError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "IDEMPOTENCY_KEY_REUSED", detail: "" })],
+    ["a timeout", new DOMException("The operation timed out.", "TimeoutError")],
+    ["a plain Error", new Error("PAYMENT_METHOD_ERROR")],
+    ["not an error at all", "PAYMENT_METHOD_ERROR"],
+    ["nothing", undefined],
+  ])("AC10a: %s is not, which guards the refusal above", (_label, value) => {
+    expect(isCardRefusal(value)).toBe(false);
   });
 });

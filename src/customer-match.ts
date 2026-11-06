@@ -4,7 +4,8 @@ import type { Customer, PaymentsPort } from "./ports/payments.js";
 
 /**
  * Spec §7.3's email match on the payments port (issue 54): find the member's Square customer by
- * email, or create one. It records nothing; the duplicates are the caller's to log (1.4).
+ * email, or create one with the email only and the member id as its reference (issue 56). It records
+ * nothing; the duplicates are the caller's to log.
  */
 export type CustomerMatch = { customerId: string; outcome: "linked" | "created"; duplicates: string[] };
 
@@ -19,7 +20,7 @@ function byPreference(a: Customer, b: Customer): number {
 
 export async function matchCustomer(
   payments: PaymentsPort,
-  input: { email: string; givenName?: string; familyName?: string },
+  input: { email: string; referenceId: string },
 ): Promise<CustomerMatch> {
   const email = normalizeEmail(input.email);
   const found = await payments.findCustomersByEmail(email);
@@ -32,10 +33,14 @@ export async function matchCustomer(
   const created = await payments.createCustomer({
     email,
     idempotencyKey: customerIdempotencyKey(email),
-    ...(input.givenName !== undefined && { givenName: input.givenName }),
-    ...(input.familyName !== undefined && { familyName: input.familyName }),
+    referenceId: input.referenceId,
   });
   return { customerId: created.id, outcome: "created", duplicates: [] };
+}
+
+/** The base64url SHA-256 of `text`. */
+export function sha256Key(text: string): string {
+  return createHash("sha256").update(text).digest("base64url");
 }
 
 /**
@@ -43,5 +48,5 @@ export async function matchCustomer(
  * retried inside Square's search lag gets the same customer back instead of a second one.
  */
 export function customerIdempotencyKey(email: string): string {
-  return createHash("sha256").update(normalizeEmail(email)).digest("base64url");
+  return sha256Key(normalizeEmail(email));
 }

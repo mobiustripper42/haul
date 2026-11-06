@@ -44,7 +44,7 @@ const signIn = async () => {
   request.current.cookies = { ...request.current.cookies, ocf_session: signSession({ subjectId: member.id, expiresAt }, services.secret) };
 };
 
-const render = async (pane: "none" | "create-account" | "sign-in") => {
+const render = async (pane: "none" | "create-account" | "sign-in" | "done" | "already") => {
   const element = await JoinPage({ pane, children: CHILD });
   return { element, html: renderToStaticMarkup(element) };
 };
@@ -110,6 +110,33 @@ describe.each(["create-account", "sign-in"] as const)("pane %s", (pane) => {
   it(`AC12: a signed-in member on ${pane} is redirected to /supper-club`, async () => {
     await signIn();
     expect(await redirectOf(JoinPage({ pane, children: CHILD }))).toBe("/supper-club");
+  });
+});
+
+describe.each(["done", "already"] as const)("issue 56 — pane %s", (pane) => {
+  it(`AC5: a signed-in member on ${pane} is not sent away: the pane is for them`, async () => {
+    await signIn();
+    expect(textsOf((await render(pane)).html).slice(-1)).toEqual(["child"]);
+  });
+
+  it(`AC13: ${pane} is the pane shell, with the left column and then the slot`, async () => {
+    await signIn();
+    const { element, html } = await render(pane);
+    expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
+    expect(textsOf(html)).toContain(TITLE);
+  });
+
+  it(`AC13: ${pane}'s left column is wide-only, so a phone gets the slot alone`, async () => {
+    await signIn();
+    const markup = screenMarkup((await render(pane)).html);
+    expect(markup).toMatch(/<main\b[^>]*>\s*<\w+\b[^>]*class="[^"]*(?<![\w-])wide-only(?![\w-])/);
+  });
+
+  it(`AC13: ${pane}'s header shows "Your account", at every width`, async () => {
+    await signIn();
+    const header = headerOf((await render(pane)).html);
+    expect(textsOf(header)).toContain("Your account");
+    expect(header).not.toContain("wide-only");
   });
 });
 

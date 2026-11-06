@@ -48,6 +48,7 @@ npm run typecheck:db         # the db/ scripts, under the core's compiler option
 npm run lint                 # app/, src/, db/, the project's tests and configs — not jig's scripts/
 npm run test                 # vitest run; add a path to run one file. The Postgres suites skip without a database
 npm run test:square          # the payments contract against Square's real sandbox (src/adapters/square-payments.sandbox.ts). By hand, never in verify or CI: needs the network and SQUARE_SANDBOX_ACCESS_TOKEN and SQUARE_SANDBOX_LOCATION_ID in .env.local, and leaves customers in the sandbox account
+npm run square:seed          # makes the Square sandbox customers task 1.4's by-hand checks need (db/square-sandbox-customers.ts). By hand, never in verify or CI: needs the network and the sandbox variables in .env.local, and leaves customers in the sandbox account
 npm run test:e2e             # playwright test: desktop and mobile on a next dev server on port 4100, over haul_test_e2e. Needs `npm run db:up`; not in verify
 
 # Database (docker-compose.yml)
@@ -100,8 +101,10 @@ The first money paths, from task 1.2 (the Square port):
 - `src/adapters/square-payments.ts`
 - `src/adapters/fake-payments.ts`
 - `src/customer-match.ts`
+- `src/signup.ts`
+- `src/pickup-week.ts`
 
-Task 1.4 (the signup charge) and task 2.2 (the charge run) each add their paths here.
+Task 1.4 (the signup charge) added the last two. Task 2.2 (the charge run) adds its paths here.
 
 ## Migration Protocol (project)
 

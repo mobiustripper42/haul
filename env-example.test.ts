@@ -20,3 +20,16 @@ describe("AC24 (issue 54) — env.example names the Square sandbox variables", (
     },
   );
 });
+
+describe("AC1 (issue 56) — env.example names what the app reads for Square", () => {
+  it.each(["SQUARE_ENVIRONMENT", "SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID", "NEXT_PUBLIC_SQUARE_APPLICATION_ID", "NEXT_PUBLIC_SQUARE_LOCATION_ID"])(
+    "AC1: %s= appears once, empty, under a comment",
+    (name) => {
+      const at = lines.flatMap((line, index) => (line.startsWith(`${name}=`) ? [index] : []));
+      expect(at).toHaveLength(1);
+      const index = at[0] ?? -1;
+      expect(lines[index]?.trimEnd()).toBe(`${name}=`);
+      expect(lines[index - 1]?.startsWith("#")).toBe(true);
+    },
+  );
+});

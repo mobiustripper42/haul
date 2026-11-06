@@ -1,13 +1,16 @@
 // Issue 54, AC18–AC21: spec §7.3's email match on the payments port. The port here is a scripted
 // PaymentsPort that serves a directory the test chooses — ids included, so AC20's tie-breaks are
-// the test's to set — and records what matchCustomer asked of it.
+// the test's to set — and records what matchCustomer asked of it. Issue 56, AC6: the match takes the
+// member id as `referenceId`, and a customer it creates carries the email only, never a name.
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { customerIdempotencyKey, matchCustomer } from "./customer-match.js";
+import { customerIdempotencyKey, matchCustomer, sha256Key } from "./customer-match.js";
 import { IDEMPOTENCY_KEY_MAX, type Customer, type PaymentsPort } from "./ports/payments.js";
 
 type CreateInput = Parameters<PaymentsPort["createCustomer"]>[0];
 
 const CREATED_ID = "CREATED_BY_MATCH";
+const MEMBER_ID = "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60";
 
 /** A port whose directory is `directory`, searched by exact email, recording each search and create. */
 function scriptedPayments(directory: Customer[]): { payments: PaymentsPort; searches: string[]; creates: CreateInput[] } {
@@ -29,6 +32,10 @@ function scriptedPayments(directory: Customer[]): { payments: PaymentsPort; sear
     async charge() {
       throw new Error("matchCustomer has no business charging");
     },
+    async setCustomerReference() {},
+    async findPaymentByReference() {
+      throw new Error("matchCustomer has no business looking up a payment");
+    },
   };
   return { payments, searches, creates };
 }
@@ -42,41 +49,16 @@ const customer = (id: string, updatedAt: string, createdAt: string, email = "ada
 });
 
 describe("AC18 (issue 54) — no customer has the email", () => {
-  it("AC18: creates one with the normalized email and customerIdempotencyKey(email), and resolves to created", async () => {
+  it("AC18, AC6 (issue 56): creates one with the normalized email, customerIdempotencyKey(email) and the member id, and no name, and resolves to created", async () => {
     const { payments, creates } = scriptedPayments([]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(creates).toHaveLength(1);
-    expect(creates[0]).toStrictEqual({ email: "ada@example.com", idempotencyKey: customerIdempotencyKey("ada@example.com") });
+    expect(creates[0]).toStrictEqual({
+      email: "ada@example.com",
+      idempotencyKey: customerIdempotencyKey("ada@example.com"),
+      referenceId: MEMBER_ID,
+    });
     expect(match).toStrictEqual({ customerId: CREATED_ID, outcome: "created", duplicates: [] });
-  });
-
-  it("AC18: passes givenName and familyName through to createCustomer when given", async () => {
-    const { payments, creates } = scriptedPayments([]);
-    await matchCustomer(payments, { email: "ada@example.com", givenName: "Ada", familyName: "Lovelace" });
-    expect(creates).toStrictEqual([
-      {
-        email: "ada@example.com",
-        idempotencyKey: customerIdempotencyKey("ada@example.com"),
-        givenName: "Ada",
-        familyName: "Lovelace",
-      },
-    ]);
-  });
-
-  it("AC18: passes only givenName when only givenName is given", async () => {
-    const { payments, creates } = scriptedPayments([]);
-    await matchCustomer(payments, { email: "ada@example.com", givenName: "Ada" });
-    expect(creates).toStrictEqual([
-      { email: "ada@example.com", idempotencyKey: customerIdempotencyKey("ada@example.com"), givenName: "Ada" },
-    ]);
-  });
-
-  it("AC18: passes only familyName when only familyName is given", async () => {
-    const { payments, creates } = scriptedPayments([]);
-    await matchCustomer(payments, { email: "ada@example.com", familyName: "Lovelace" });
-    expect(creates).toStrictEqual([
-      { email: "ada@example.com", idempotencyKey: customerIdempotencyKey("ada@example.com"), familyName: "Lovelace" },
-    ]);
   });
 });
 
@@ -86,7 +68,7 @@ describe("AC19 (issue 54) — exactly one customer has the email", () => {
       customer("CUS_ADA", "2026-10-15T12:00:00Z", "2026-10-01T12:00:00Z"),
       customer("CUS_GRACE", "2026-10-20T12:00:00Z", "2026-10-02T12:00:00Z", "grace@example.com"),
     ]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_ADA", outcome: "linked", duplicates: [] });
     expect(creates).toEqual([]);
   });
@@ -100,7 +82,7 @@ describe("AC20 (issue 54) — several customers have the email", () => {
       customer("CUS_A", "2026-10-01T12:00:00Z", "2026-01-01T00:00:00Z"),
       customer("CUS_D", "2026-10-20T12:00:00Z", "2026-01-01T00:00:00Z"),
     ]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_C", outcome: "linked", duplicates: ["CUS_D", "CUS_B", "CUS_A"] });
     expect(creates).toEqual([]);
   });
@@ -111,7 +93,7 @@ describe("AC20 (issue 54) — several customers have the email", () => {
       customer("CUS_B", "2026-10-30T12:00:00Z", "2026-09-01T00:00:00Z"),
       customer("CUS_C", "2026-10-30T12:00:00Z", "2026-06-01T00:00:00Z"),
     ]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_B", outcome: "linked", duplicates: ["CUS_C", "CUS_A"] });
   });
 
@@ -121,7 +103,7 @@ describe("AC20 (issue 54) — several customers have the email", () => {
       customer("CUS_M", "2026-10-30T12:00:00Z", "2026-03-01T00:00:00Z"),
       customer("CUS_Z", "2026-10-30T12:00:00Z", "2026-03-01T00:00:00Z"),
     ]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_M", outcome: "linked", duplicates: ["CUS_Q", "CUS_Z"] });
   });
 
@@ -133,7 +115,7 @@ describe("AC20 (issue 54) — several customers have the email", () => {
       customer("CUS_B", "2026-10-20T12:00:00Z", "2026-02-01T00:00:00Z"),
       customer("CUS_A", "2026-10-30T12:00:00Z", "2026-01-01T00:00:00Z"),
     ]);
-    const match = await matchCustomer(payments, { email: "ada@example.com" });
+    const match = await matchCustomer(payments, { email: "ada@example.com", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_A", outcome: "linked", duplicates: ["CUS_D", "CUS_B", "CUS_C", "CUS_E"] });
   });
 });
@@ -141,19 +123,21 @@ describe("AC20 (issue 54) — several customers have the email", () => {
 describe("AC21 (issue 54) — the email is normalized, and the create key derived from it", () => {
   it("AC21: \"  Ada@Example.COM \" searches for ada@example.com", async () => {
     const { payments, searches } = scriptedPayments([]);
-    await matchCustomer(payments, { email: "  Ada@Example.COM " });
+    await matchCustomer(payments, { email: "  Ada@Example.COM ", referenceId: MEMBER_ID });
     expect(searches).toEqual(["ada@example.com"]);
   });
 
   it("AC21: \"  Ada@Example.COM \" creates ada@example.com, keyed by the normalized email", async () => {
     const { payments, creates } = scriptedPayments([]);
-    await matchCustomer(payments, { email: "  Ada@Example.COM " });
-    expect(creates).toStrictEqual([{ email: "ada@example.com", idempotencyKey: customerIdempotencyKey("ada@example.com") }]);
+    await matchCustomer(payments, { email: "  Ada@Example.COM ", referenceId: MEMBER_ID });
+    expect(creates).toStrictEqual([
+      { email: "ada@example.com", idempotencyKey: customerIdempotencyKey("ada@example.com"), referenceId: MEMBER_ID },
+    ]);
   });
 
   it("AC21: \"  Ada@Example.COM \" links the customer stored as ada@example.com", async () => {
     const { payments, creates } = scriptedPayments([customer("CUS_ADA", "2026-10-15T12:00:00Z", "2026-10-01T12:00:00Z")]);
-    const match = await matchCustomer(payments, { email: "  Ada@Example.COM " });
+    const match = await matchCustomer(payments, { email: "  Ada@Example.COM ", referenceId: MEMBER_ID });
     expect(match).toStrictEqual({ customerId: "CUS_ADA", outcome: "linked", duplicates: [] });
     expect(creates).toEqual([]);
   });
@@ -170,5 +154,20 @@ describe("AC21 (issue 54) — the email is normalized, and the create key derive
     const key = customerIdempotencyKey("ada@example.com");
     expect(key).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(key.length).toBeLessThanOrEqual(IDEMPOTENCY_KEY_MAX);
+  });
+});
+
+describe("AC7 (issue 56) — sha256Key, the one home for a hashed key", () => {
+  it("AC7: it is the base64url SHA-256 of the text", () => {
+    expect(sha256Key("cnon:card-nonce-ok")).toBe(createHash("sha256").update("cnon:card-nonce-ok").digest("base64url"));
+  });
+
+  it("AC7: it fits an idempotency key", () => {
+    expect(sha256Key("cnon:card-nonce-ok").length).toBeLessThanOrEqual(IDEMPOTENCY_KEY_MAX);
+    expect(sha256Key("cnon:card-nonce-ok")).toMatch(/^[A-Za-z0-9_-]{43}$/);
+  });
+
+  it("AC7: customerIdempotencyKey is sha256Key of the normalized email", () => {
+    expect(sha256Key("ada@example.com")).toBe(customerIdempotencyKey("  Ada@Example.COM "));
   });
 });

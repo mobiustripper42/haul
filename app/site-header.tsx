@@ -1,6 +1,7 @@
 import { Button } from "../components/ui/button";
 import { getTranslator } from "./language";
 import { LanguageSwitcher } from "./language-switcher";
+import { ACCOUNT_PATH } from "./paths";
 import { PANE_SIGN_IN_PAGES } from "./supper-club/paths";
 
 /**
@@ -38,7 +39,7 @@ export async function SiteHeader({
           <div className="flex items-center gap-4">
             {switcher}
             {account === "your-account" ? (
-              <Button kind="quiet" href="/">
+              <Button kind="quiet" href={ACCOUNT_PATH}>
                 {t("home.yourAccount")}
               </Button>
             ) : wideOnly ? (

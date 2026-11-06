@@ -317,3 +317,58 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
     expect(result.outcome).toBe("paid");
   });
 });
+
+describe("issue 56 — FakePayments' new methods", () => {
+  it("AC6: setCustomerReference on a customer it never made rejects with PaymentsError, as Square's 404 does", async () => {
+    const error = await rejectionOf(new FakePayments().setCustomerReference({ customerId: "NEVER_MADE", referenceId: "member-1" }));
+    expect(error).toBeInstanceOf(PaymentsError);
+  });
+
+  it("AC6: setCustomerReference checks its input first", async () => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    const error = await rejectionOf(fake.setCustomerReference({ customerId: customer.id, referenceId: "r".repeat(41) }));
+    expect(error).toBeInstanceOf(RangeError);
+  });
+
+  it("AC6: a customer's referenceId comes back on customers too", async () => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    await fake.setCustomerReference({ customerId: customer.id, referenceId: "member-1" });
+    expect(fake.customers[0]?.referenceId).toBe("member-1");
+  });
+
+  it("AC6: createCustomer with a key already used with no referenceId, now with one, rejects with IdempotencyKeyReusedError", async () => {
+    const fake = new FakePayments();
+    await fake.createCustomer({ email: "ada@example.com", idempotencyKey: "customer-1" });
+    const error = await rejectionOf(fake.createCustomer({ email: "ada@example.com", idempotencyKey: "customer-1", referenceId: "member-1" }));
+    expect(error).toBeInstanceOf(IdempotencyKeyReusedError);
+  });
+
+  it("AC10: findPaymentByReference ignores since, because FakeCharge has no time", async () => {
+    const fake = new FakePayments();
+    const { customerId, cardId } = await customerWithCard(fake);
+    const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1" });
+    const found = await fake.findPaymentByReference({ referenceId: "ledger-1", since: new Date("2099-01-01T00:00:00.000Z") });
+    expect(found).toEqual({ paymentId: paid.paymentId });
+  });
+
+  it("AC10: of a declined attempt and a paid one under one referenceId, it finds the paid one", async () => {
+    const fake = new FakePayments();
+    const { customerId, cardId } = await customerWithCard(fake);
+    await fake.charge({ customerId, cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined, amountCents: 5000, idempotencyKey: "ledger-1:1", referenceId: "ledger-1" });
+    const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "ledger-1:2", referenceId: "ledger-1" });
+    expect(await fake.findPaymentByReference({ referenceId: "ledger-1", since: CREATED })).toEqual({ paymentId: paid.paymentId });
+  });
+
+  it.each([
+    ["setCustomerReference", (fake: FakePayments, customerId: string) => fake.setCustomerReference({ customerId, referenceId: "member-1" })],
+    ["findPaymentByReference", (fake: FakePayments) => fake.findPaymentByReference({ referenceId: "ledger-1", since: CREATED })],
+  ] as const)("AC10a: failNext(error) makes the next %s reject with that very error", async (_method, call) => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    const failure = new Error("outage");
+    fake.failNext(failure);
+    expect(await rejectionOf(call(fake, customer.id))).toBe(failure);
+  });
+});

@@ -21,6 +21,7 @@
     "db:seed:supper-club": "tsx db/seed.ts supper-club",
     "db:reset:dev": "tsx db/reset-dev.ts",
     "db:rebuild:dev": "tsx db/rebuild.ts",
+    "square:seed": "tsx db/square-sandbox-customers.ts",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
     "gen:dictionary": "node scripts/gen-dictionary.mjs",
     "gen:decisions-baseline": "node scripts/gen-decisions-baseline.mjs",

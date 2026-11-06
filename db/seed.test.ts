@@ -255,19 +255,19 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
     expect(await lenny()).toEqual([{ id: before[0]?.id, role: "admin" }]);
   });
 
-  // Issue 55's seeds: a fresh database seeds no unconfirmed member, so Create Account treats both as AC7 says.
-  it("AC7 (issue 55): from an emptied database, members gives both a first name, a last name, a phone and a confirmed email", async () => {
+  // Issue 55's seeds: a fresh database seeds no unconfirmed member, so Create Account treats each as AC7 says.
+  it("AC7 (issue 55): from an emptied database, every member the members seed writes has a first name, a last name, a phone and a confirmed email", async () => {
     await empty();
     await runSeed("members", url);
-    const { rows } = await pool.query(
+    const { rows } = await pool.query<{ email: string; named: boolean; surnamed: boolean; reachable: boolean; confirmed: boolean }>(
       `select email, first_name is not null as named, last_name is not null as surnamed, phone is not null as reachable,
               email_confirmed_at is not null as confirmed
          from members order by email`,
     );
-    expect(rows).toEqual([
-      { email: "eric@ocf.xx", named: true, surnamed: true, reachable: true, confirmed: true },
-      { email: "lenny@ocf.xx", named: true, surnamed: true, reachable: true, confirmed: true },
-    ]);
+    expect(rows.map((r) => r.email)).toEqual(expect.arrayContaining(["eric@ocf.xx", "lenny@ocf.xx"]));
+    for (const { email, ...facts } of rows) {
+      expect(facts, email).toEqual({ named: true, surnamed: true, reachable: true, confirmed: true });
+    }
   });
 
   it("AC7 (issue 55): a member confirmed earlier keeps that time through a re-run of members", async () => {

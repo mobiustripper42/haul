@@ -35,6 +35,9 @@ export default defineConfig({
       // Empty, so the app picks the dev fake and its outbox.
       RESEND_API_KEY: "",
       EMAIL_FROM: "",
+      // Empty, so the app picks the payments fake whatever .env.local holds; the browser has no Square.
+      SQUARE_ACCESS_TOKEN: "",
+      SQUARE_LOCATION_ID: "",
       SESSION_SECRET: "e2e-session-secret-not-for-use-0123456789",
     },
   },

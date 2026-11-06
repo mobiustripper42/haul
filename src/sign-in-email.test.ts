@@ -18,6 +18,7 @@ const member = (language: Language): Member => ({
   lastName: null,
   phone: null,
   emailConfirmedAt: null,
+  squareCustomerId: null,
 });
 
 describe("AC10 (issue 9) — deliverSignInCode", () => {

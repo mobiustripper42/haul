@@ -6,7 +6,14 @@ import { assertCents } from "../money.js";
  * one contract suite runs against both (`src/adapters/payments-contract.ts`).
  */
 
-export type Customer = { id: string; email: string | undefined; createdAt: Date; updatedAt: Date };
+export type Customer = {
+  id: string;
+  email: string | undefined;
+  createdAt: Date;
+  updatedAt: Date;
+  /** The id Haul gave the customer (the member's), when it has one. */
+  referenceId?: string;
+};
 
 export type Card = { id: string; brand: string; last4: string; expMonth: number; expYear: number };
 
@@ -15,7 +22,13 @@ export type ChargeResult = { outcome: "paid"; paymentId: string } | { outcome: "
 
 export interface PaymentsPort {
   findCustomersByEmail(email: string): Promise<Customer[]>;
-  createCustomer(input: { email: string; idempotencyKey: string; givenName?: string; familyName?: string }): Promise<Customer>;
+  createCustomer(input: {
+    email: string;
+    idempotencyKey: string;
+    givenName?: string;
+    familyName?: string;
+    referenceId?: string;
+  }): Promise<Customer>;
   saveCard(input: { customerId: string; sourceId: string; idempotencyKey: string; verificationToken?: string }): Promise<Card>;
   charge(input: {
     customerId: string;
@@ -24,6 +37,8 @@ export interface PaymentsPort {
     idempotencyKey: string;
     referenceId?: string;
   }): Promise<ChargeResult>;
+  setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void>;
+  findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string } | null>;
 }
 
 /** A provider refused a request. `detail` is the provider's text, so keep the message out of logs that outlive the request. */
@@ -52,12 +67,23 @@ export class IdempotencyKeyReusedError extends PaymentsError {
   }
 }
 
+/** Whether `error` is a provider refusing the card itself: the one home for the `PAYMENT_METHOD_ERROR` rule. */
+export function isCardRefusal(error: unknown): error is PaymentsError {
+  return error instanceof PaymentsError && error.category === "PAYMENT_METHOD_ERROR";
+}
+
 export const IDEMPOTENCY_KEY_MAX = 45;
 export const REFERENCE_ID_MAX = 40;
 
 function requireText(field: string, value: unknown): void {
   if (typeof value !== "string" || value === "") {
     throw new RangeError(`${field} must be a non-empty string`);
+  }
+}
+
+function requireReference(value: unknown): void {
+  if (typeof value !== "string" || value.length > REFERENCE_ID_MAX) {
+    throw new RangeError(`referenceId must be at most ${REFERENCE_ID_MAX} characters`);
   }
 }
 
@@ -92,6 +118,12 @@ export function checkPaymentsInput(method: keyof PaymentsPort, input: object): v
     case "createCustomer":
       requireText("email", fields.email);
       requireKey(fields.idempotencyKey);
+      if (fields.referenceId !== undefined) requireReference(fields.referenceId);
+      break;
+    case "setCustomerReference":
+      requireText("customerId", fields.customerId);
+      requireText("referenceId", fields.referenceId);
+      requireReference(fields.referenceId);
       break;
     case "saveCard":
       requireText("customerId", fields.customerId);
@@ -103,9 +135,7 @@ export function checkPaymentsInput(method: keyof PaymentsPort, input: object): v
       requireText("cardId", fields.cardId);
       requirePositiveCents(fields.amountCents);
       requireKey(fields.idempotencyKey);
-      if (fields.referenceId !== undefined && (typeof fields.referenceId !== "string" || fields.referenceId.length > REFERENCE_ID_MAX)) {
-        throw new RangeError(`referenceId must be at most ${REFERENCE_ID_MAX} characters`);
-      }
+      if (fields.referenceId !== undefined) requireReference(fields.referenceId);
       break;
   }
 }

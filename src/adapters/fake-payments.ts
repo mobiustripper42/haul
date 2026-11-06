@@ -81,12 +81,19 @@ export class FakePayments implements PaymentsPort {
     idempotencyKey: string;
     givenName?: string;
     familyName?: string;
+    referenceId?: string;
   }): Promise<Customer> {
     this.begin("createCustomer", input);
-    const { email, idempotencyKey, givenName, familyName } = input;
-    return this.idempotent("createCustomer", idempotencyKey, { email, givenName, familyName }, () => {
+    const { email, idempotencyKey, givenName, familyName, referenceId } = input;
+    return this.idempotent("createCustomer", idempotencyKey, { email, givenName, familyName, referenceId }, () => {
       const now = new Date();
-      const customer: Customer = { id: this.nextId("CUSTOMER"), email, createdAt: now, updatedAt: now };
+      const customer: Customer = {
+        id: this.nextId("CUSTOMER"),
+        email,
+        createdAt: now,
+        updatedAt: now,
+        ...(referenceId !== undefined && { referenceId }),
+      };
       this.customerList.push(customer);
       return customer;
     });
@@ -124,6 +131,24 @@ export class FakePayments implements PaymentsPort {
       this.chargeList.push({ customerId, cardId, amountCents, idempotencyKey, referenceId, result });
       return result;
     });
+  }
+
+  async setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void> {
+    this.begin("setCustomerReference", input);
+    const customer = this.customerList.find((candidate) => candidate.id === input.customerId);
+    if (customer === undefined) throw notFound(`Customer ${input.customerId} not found`);
+    customer.referenceId = input.referenceId;
+  }
+
+  /** Paid charges only, as Square's lookup counts COMPLETED ones only. `since` is ignored: `FakeCharge` has no time. */
+  async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string } | null> {
+    this.begin("findPaymentByReference", input);
+    for (const charge of this.chargeList) {
+      if (charge.referenceId === input.referenceId && charge.result.outcome === "paid") {
+        return { paymentId: charge.result.paymentId };
+      }
+    }
+    return null;
   }
 
   /** Every call starts here: input checked first, then a failure `failNext` queued is spent. */

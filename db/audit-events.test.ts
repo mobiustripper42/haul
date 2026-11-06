@@ -335,6 +335,39 @@ describe.skipIf(!up)(`issue 34 — audit_event() against <test db>_audit_events$
     });
   });
 
+  describe("issue 56 — the five signup events", () => {
+    const LEDGER = "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60";
+
+    it.each(["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown"])(
+      "AC9: audit_log_event_known_check lets audit_event() record %j",
+      async (kind) => {
+        const m = await mark();
+        await recordEvent(db, kind, "members", memberKey());
+        expect(await since(m)).toEqual([expect.objectContaining({ operation: "event", event: kind })]);
+      },
+    );
+
+    it.each<[string, unknown]>([
+      ["square_customer_linked", { customerId: "CUSTOMER_1" }],
+      ["square_customer_duplicates", { customerIds: ["CUSTOMER_2", "CUSTOMER_3"] }],
+      ["card_declined", { ledgerId: LEDGER, code: "GENERIC_DECLINE" }],
+      ["charge_outcome_unknown", { ledgerId: LEDGER }],
+    ])("AC9: recordEvent writes the %s event's detail to audit_log.detail, keyed on the member", async (kind, detail) => {
+      const ada = await repo.createMember({ email: email("ada") });
+      const m = await mark();
+      await repo.recordEvent({ kind, memberId: ada.id, detail } as AuditEvent);
+      expect(await detailsSince(m)).toEqual([{ operation: "event", detail, sql_null: false }]);
+      expect(await since(m)).toEqual([expect.objectContaining({ table_name: "members", event: kind, row_key: { id: ada.id } })]);
+    });
+
+    it("AC5: already_subscribed carries no detail", async () => {
+      const ada = await repo.createMember({ email: email("ada") });
+      const m = await mark();
+      await repo.recordEvent({ kind: "already_subscribed", memberId: ada.id } as AuditEvent);
+      expect(await detailsSince(m)).toEqual([{ operation: "event", detail: null, sql_null: true }]);
+    });
+  });
+
   describe("AC7 (issue 71) — the four-argument audit_event() replaces the three-argument one", () => {
     it("AC7: audit_event(text, text, jsonb) no longer exists", async () => {
       const { rows } = await db.query<{ gone: boolean }>("select to_regprocedure('public.audit_event(text,text,jsonb)') is null as gone");
