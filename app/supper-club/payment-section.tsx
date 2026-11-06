@@ -19,6 +19,7 @@ export type PaymentText = {
   cardHint: string;
   testCard: string;
   cardFailed: string;
+  cardRefused: string;
   todayLabel: string;
   weeklyLabel: string;
   consentError: string;
@@ -72,6 +73,7 @@ export function PaymentSection({
   const [choices, setChoices] = useState(firstChoices);
   const [ticked, setTicked] = useState(false);
   const [refused, setRefused] = useState(false);
+  const [stops, setStops] = useState(0);
   const entry = useRef<CardEntryHandle>(null);
 
   useEffect(() => {
@@ -102,7 +104,10 @@ export function PaymentSection({
     }
     const token = await entry.current?.tokenize();
     // No token: Square's form is showing what is wrong with the card, or the card form says it failed.
-    if (!token) return;
+    if (!token) {
+      setStops((earlier) => earlier + 1);
+      return;
+    }
     form.set("sourceId", token);
     await joinSupperClub(form);
   }
@@ -121,6 +126,7 @@ export function PaymentSection({
         hint={text.cardHint}
         testLabel={text.testCard}
         failedText={text.cardFailed}
+        refusedText={text.cardRefused}
         testMode={card.testMode}
         applicationId={card.applicationId}
         locationId={card.locationId}
@@ -136,6 +142,10 @@ export function PaymentSection({
       />
       <Checkbox
         name="consent"
+        // React resets the form after its action, which unticks a box whose state did not change. A stopped
+        // pay remounts the box (the key), and a new box is born with the state as its default, so the reset keeps it.
+        key={stops}
+        checked={ticked}
         aria-describedby={consentShown ? CONSENT_ERROR_ID : undefined}
         onChange={(event) => {
           setTicked(event.currentTarget.checked);

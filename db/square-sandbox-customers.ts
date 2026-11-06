@@ -1,6 +1,6 @@
 /**
  * `npm run square:seed`: the Square customers AC15's by-hand checks need, made in Square's sandbox through
- * `SquarePayments`. One customer for `linked@ocf.xx` and two for `duplicates@ocf.xx`, the emails of the
+ * `SquarePayments`. One customer for `linked@example.com` and two for `duplicates@example.com`, the emails of the
  * members AC15 signs up as, so a signup meets an existing customer and several (issue 56).
  *
  * It writes to Square, not to the database, so it lives beside the seeds and not in them; it is by hand,
@@ -19,8 +19,8 @@ import { squareSandboxSettings } from "../src/adapters/square-sandbox-settings.j
 
 /** How many Square customers each email should have. */
 export const SANDBOX_CUSTOMERS: ReadonlyArray<{ email: string; count: number }> = [
-  { email: "linked@ocf.xx", count: 1 },
-  { email: "duplicates@ocf.xx", count: 2 },
+  { email: "linked@example.com", count: 1 },
+  { email: "duplicates@example.com", count: 2 },
 ];
 
 /** Makes up to `count` customers for each email, and says how many it found and how many it made. */

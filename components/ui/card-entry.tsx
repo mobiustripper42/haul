@@ -44,7 +44,8 @@ function loadSquare(applicationId: string): Promise<SquareGlobal> {
 }
 
 /**
- * Square's card form, drawn as a 40px field, with its label and hint. It is the page's first client code:
+ * Square's card form, in a box that keeps the field's look and grows to fit it (Square's form is taller
+ * than a 40px field), with its label and hint. It is the page's first client code:
  * it loads Square's script, and `ref.tokenize()` turns what was typed into a single-use token, for the
  * form to post as `sourceId`. The token is asked for as a card to store and charge
  * (`CHARGE_AND_STORE`, the customer present), with the amount and the member as the billing contact; no
@@ -55,12 +56,15 @@ function loadSquare(applicationId: string): Promise<SquareGlobal> {
  * whose value is the token, and an empty one behaves as a throw (DEC-023); the page gates it as
  * `app/dev/outbox/route.ts` is. If Square's script fails to load or `tokenize` throws, `failedText` takes
  * the field's place and pay stops there; a `tokenize` status other than OK is a mistyped card, not a failure.
+ * A throw named `TokenizationError` is Square refusing the card: the field stays and `refusedText` shows under
+ * it until the next pay. In `testMode` the value `refused` throws one.
  */
 export function CardEntry({
   label,
   hint,
   testLabel,
   failedText,
+  refusedText,
   testMode,
   applicationId,
   locationId,
@@ -72,6 +76,8 @@ export function CardEntry({
   hint: string;
   testLabel: string;
   failedText: string;
+  /** The words under the field for a refused card; the page always passes them. Optional because components/ui/card-entry.test.ts renders the box without them. */
+  refusedText?: string;
   testMode: boolean;
   applicationId: string | undefined;
   locationId: string | undefined;
@@ -83,6 +89,8 @@ export function CardEntry({
   const card = useRef<SquareCard | null>(null);
   const [testValue, setTestValue] = useState("");
   const [failed, setFailed] = useState(false);
+  // Square refused the card: the field stays and `refusedText` shows under it until the next pay.
+  const [refused, setRefused] = useState(false);
   // Read when pay is pressed, so a pick changed after the form loaded is the amount asked for.
   const latest = useRef({ amountCents, billing, testValue });
   latest.current = { amountCents, billing, testValue };
@@ -112,9 +120,11 @@ export function CardEntry({
   useImperativeHandle(ref, () => ({
     async tokenize() {
       const { amountCents: cents, billing: contact, testValue: typed } = latest.current;
+      setRefused(false);
       try {
         if (testMode) {
           if (typed === "") throw new Error("The test card field is empty");
+          if (typed === "refused") throw Object.assign(new Error("The test card was refused"), { name: "TokenizationError" });
           return typed;
         }
         if (!card.current) return null;
@@ -127,8 +137,9 @@ export function CardEntry({
           billingContact: contact,
         });
         return result.status === "OK" && result.token ? result.token : null;
-      } catch {
-        setFailed(true);
+      } catch (error) {
+        if (error instanceof Error && error.name === "TokenizationError") setRefused(true);
+        else setFailed(true);
         return null;
       }
     },
@@ -142,8 +153,10 @@ export function CardEntry({
       ) : testMode ? (
         <Input name="sourceId" aria-label={testLabel} value={testValue} onChange={(event) => setTestValue(event.target.value)} />
       ) : (
-        <div ref={container} className="field" />
+        // h-auto is a utility, so it beats `.field`'s h-field (components layer) whatever the order.
+        <div ref={container} className="field h-auto" />
       )}
+      {refused && !failed && <FieldError id="card-refused">{refusedText}</FieldError>}
       <Hint>{hint}</Hint>
     </div>
   );

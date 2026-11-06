@@ -70,6 +70,7 @@ export const en = {
     "First pickup: {date}. After that, your card is charged {price} at the end of each Monday for the following week's pickup, until you cancel.",
   "supperClub.consent": "I agree to a weekly charge of {price} until I cancel, and to the Terms and Privacy Policy.",
   "supperClub.cardFailed": "The card form didn't load. Refresh the page and try again.",
+  "supperClub.cardRefused": "Check the card details or try another card.",
   "supperClub.consentError": "Check the box to agree to the weekly charge.",
   "supperClub.joinAndPay": "Join and pay {price}",
   "supperClub.capHint": "Limited to {cap} boxes. No sales tax.",
