@@ -95,8 +95,8 @@ const save = (member: Member, amounts: { firstChargeCents: number; weeklyCents: 
 };
 
 const subscribe = async (member: Member, amounts?: { firstChargeCents: number; weeklyCents: number }) => {
-  const { ledgerId } = await save(member, amounts);
-  await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", NOW);
+  const { ledgerId, amountCents } = await save(member, amounts);
+  await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, NOW);
 };
 
 /** The words as a person reads them: tags gone, whitespace collapsed. */
@@ -154,6 +154,23 @@ describe.each([
     await save(await signIn());
     expect(await redirectOf(Page())).toBe(SUPPER_CLUB_PATH);
   });
+
+  it(`AC5, AC13: a member whose only box is for another product on ${path} goes to /supper-club`, async () => {
+    const member = await signIn();
+    const crate = services.repo.addProduct({ ...product, name: "Crate" });
+    const { ledgerId, amountCents } = await services.repo.savePendingSignup({
+      memberId: member.id,
+      productId: crate.id,
+      choices: Object.fromEntries(crate.optionTypes.map((type) => [type.id, type.options[0]?.id ?? ""])),
+      firstChargeCents: 8000,
+      weeklyCents: 8000,
+      pickupDate: "2027-01-03",
+      consentText: "I agree.",
+      consentAt: NOW,
+    });
+    await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, NOW);
+    expect(await redirectOf(Page())).toBe(SUPPER_CLUB_PATH);
+  });
 });
 
 describe("AC13 — the confirmation", () => {
@@ -172,10 +189,10 @@ describe("AC13 — the confirmation", () => {
         "Your box",
         "3–4 people",
         "Vegan",
-        "PAID TODAY",
+        "Paid today",
         "$80",
         "for your first week",
-        "THEN",
+        "Then",
         "$80",
         "every week, at the cutoff",
         "First pickup: Sunday, January 3",
@@ -190,10 +207,18 @@ describe("AC13 — the confirmation", () => {
     ).toEqual([]);
   });
 
-  it("AC13: PAID TODAY is the first charge, and THEN the weekly price", async () => {
+  it("AC13: Paid today is the first charge, and Then the weekly price", async () => {
     await subscribe(await signIn(), { firstChargeCents: 7000, weeklyCents: 8000 });
     const text = from(plain((await render()).html), TITLE);
-    expect(inOrder(text, ["PAID TODAY", "$70", "THEN", "$80", "Your card is charged $80"])).toEqual([]);
+    expect(inOrder(text, ["Paid today", "$70", "Then", "$80", "Your card is charged $80"])).toEqual([]);
+  });
+
+  it("AC13: Paid today and Then are capitals by class, as the option types' labels are", async () => {
+    await subscribe(await signIn());
+    const labels = [...screenMarkup((await render()).html).matchAll(/<dt\b[^>]*class="([^"]*)"[^>]*>([^<]*)<\/dt>/g)];
+    const classOf = (words: string) => labels.find((label) => label[2] === words)?.[1];
+    expect(utilitiesOf(classOf("Paid today"))).toContain("uppercase");
+    expect(utilitiesOf(classOf("Then"))).toContain("uppercase");
   });
 
   it("AC13: the done mark opens it", async () => {

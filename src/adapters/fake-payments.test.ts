@@ -350,7 +350,7 @@ describe("issue 56 — FakePayments' new methods", () => {
     const { customerId, cardId } = await customerWithCard(fake);
     const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1" });
     const found = await fake.findPaymentByReference({ referenceId: "ledger-1", since: new Date("2099-01-01T00:00:00.000Z") });
-    expect(found).toEqual({ paymentId: paid.paymentId });
+    expect(found).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
   });
 
   it("AC10: of a declined attempt and a paid one under one referenceId, it finds the paid one", async () => {
@@ -358,7 +358,7 @@ describe("issue 56 — FakePayments' new methods", () => {
     const { customerId, cardId } = await customerWithCard(fake);
     await fake.charge({ customerId, cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined, amountCents: 5000, idempotencyKey: "ledger-1:1", referenceId: "ledger-1" });
     const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "ledger-1:2", referenceId: "ledger-1" });
-    expect(await fake.findPaymentByReference({ referenceId: "ledger-1", since: CREATED })).toEqual({ paymentId: paid.paymentId });
+    expect(await fake.findPaymentByReference({ referenceId: "ledger-1", since: CREATED })).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
   });
 
   it.each([

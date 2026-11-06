@@ -628,7 +628,12 @@ describe("AC10 (issue 56) — findPaymentByReference", () => {
 
   it("AC10: it finds the COMPLETED payment carrying the reference_id, among others", async () => {
     const { fetch } = stubFetch(json(200, { payments: [listed("PAY_OTHER", "COMPLETED", "ledger-2"), listed("PAY_BARE", "COMPLETED"), listed("PAY_1", "COMPLETED", LEDGER)] }));
-    expect(await find(fetch)).toEqual({ paymentId: "PAY_1" });
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
+  });
+
+  it("AC11: it returns the amount Square holds for that payment, so a confirm can compare it with the ledger", async () => {
+    const { fetch } = stubFetch(json(200, { payments: [{ ...listed("PAY_1", "COMPLETED", LEDGER), amount_money: { amount: 7300, currency: "USD" } }] }));
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 7300 });
   });
 
   it("AC10: it follows cursor to a later page, sending it there and only there", async () => {
@@ -636,7 +641,7 @@ describe("AC10 (issue 56) — findPaymentByReference", () => {
       json(200, { payments: [listed("PAY_OTHER", "COMPLETED", "ledger-2")], cursor: "CURSOR_1" }),
       json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }),
     );
-    expect(await find(fetch)).toEqual({ paymentId: "PAY_1" });
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
     expect(calls).toHaveLength(2);
     const cursors = calls.map((call) => new URL(call.url).searchParams.get("cursor"));
     expect(cursors).toEqual([null, "CURSOR_1"]);
@@ -645,7 +650,7 @@ describe("AC10 (issue 56) — findPaymentByReference", () => {
 
   it("AC10: a page with a cursor and no payments is followed", async () => {
     const { fetch, calls } = stubFetch(json(200, { cursor: "CURSOR_1" }), json(200, { payments: [listed("PAY_1", "COMPLETED", LEDGER)] }));
-    expect(await find(fetch)).toEqual({ paymentId: "PAY_1" });
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_1", amountCents: 5000 });
     expect(calls).toHaveLength(2);
   });
 
@@ -662,7 +667,7 @@ describe("AC10 (issue 56) — findPaymentByReference", () => {
 
   it("AC10: attempt 1's FAILED payment and attempt 2's COMPLETED one, under one reference, give the COMPLETED one", async () => {
     const { fetch } = stubFetch(json(200, { payments: [listed("PAY_ATTEMPT_1", "FAILED", LEDGER), listed("PAY_ATTEMPT_2", "COMPLETED", LEDGER)] }));
-    expect(await find(fetch)).toEqual({ paymentId: "PAY_ATTEMPT_2" });
+    expect(await find(fetch)).toEqual({ paymentId: "PAY_ATTEMPT_2", amountCents: 5000 });
   });
 
   it("AC10: a non-2xx rejects with PaymentsError, so no charge can follow a failed lookup", async () => {

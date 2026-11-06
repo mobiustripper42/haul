@@ -621,13 +621,13 @@ export function runSignupContract(
     describe("AC8 — confirming", () => {
       it('AC8: confirmSignupRows returns "confirmed", then "already"', async () => {
         const signup = await saved();
-        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT)).toBe("confirmed");
-        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT)).toBe("already");
+        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT)).toBe("confirmed");
+        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT)).toBe("already");
       });
 
       it("AC8: a confirmed signup is active and no longer pending", async () => {
         const signup = await saved();
-        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         expect(await repo.findActiveSubscription(memberId, product.id)).toEqual({ id: signup.subscriptionId });
         expect(await pending()).toBeNull();
       });
@@ -637,7 +637,7 @@ export function runSignupContract(
         const failure = new Error("fn failed after confirming");
         await expect(
           repo.withActor({ member: memberId }, async (r) => {
-            expect(await r.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT)).toBe("confirmed");
+            expect(await r.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT)).toBe("confirmed");
             throw failure;
           }),
         ).rejects.toBe(failure);
@@ -649,7 +649,7 @@ export function runSignupContract(
     describe("AC5 — findActiveSubscription", () => {
       it("AC5: a pending signup is not active, and a member with none has none", async () => {
         const signup = await saved();
-        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         const grace = await repo.createMember({ email: "grace@example.com" });
         expect(await repo.findActiveSubscription(memberId, product.id)).toEqual({ id: signup.subscriptionId });
         expect(await repo.findActiveSubscription(grace.id, product.id)).toBeNull();
@@ -660,7 +660,7 @@ export function runSignupContract(
       it("AC5: an active subscription to another product does not count", async () => {
         const crate = await addProduct({ ...BOX, name: "Crate" });
         const signup = await saved();
-        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         expect(await repo.findActiveSubscription(memberId, product.id)).toEqual({ id: signup.subscriptionId });
         expect(await repo.findActiveSubscription(memberId, crate.id)).toBeNull();
       });
@@ -745,8 +745,8 @@ export function runSignupContract(
     describe("AC13 — findSignupConfirmation", () => {
       it("AC13: it gives the pickup date, the amounts and each picked option's type and name, in the product's order", async () => {
         const signup = await saved({ choices: picks(1, 1), firstChargeCents: 7000, weeklyCents: 8000 });
-        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
-        expect(await repo.findSignupConfirmation(memberId)).toEqual({
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        expect(await repo.findSignupConfirmation(memberId, product.id)).toEqual({
           pickupDate: "2027-01-03",
           firstChargeCents: 7000,
           weeklyCents: 8000,
@@ -761,9 +761,76 @@ export function runSignupContract(
         const signup = await saved();
         const grace = await repo.createMember({ email: "grace@example.com" });
         await repo.savePendingSignup(input({ memberId: grace.id }));
-        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
-        expect(await repo.findSignupConfirmation(memberId)).not.toBeNull();
-        expect(await repo.findSignupConfirmation(grace.id)).toBeNull();
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        expect(await repo.findSignupConfirmation(memberId, product.id)).not.toBeNull();
+        expect(await repo.findSignupConfirmation(grace.id, product.id)).toBeNull();
+      });
+
+      it("AC13: a box for another product is not this product's confirmation", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        const choices = Object.fromEntries(crate.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+        const signup = await saved({ productId: crate.id, choices });
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        expect(await repo.findSignupConfirmation(memberId, product.id)).toBeNull();
+        expect(await repo.findSignupConfirmation(memberId, crate.id)).toMatchObject({ firstChargeCents: 5000 });
+      });
+    });
+
+    describe("AC11 — a row freezes when its card is bound", () => {
+      /** A save, however an adapter refuses it: these hold what is stored afterwards. */
+      const refused = (over: Partial<PendingSignupInput> = {}) => repo.savePendingSignup(input(over)).catch(() => null);
+
+      it("AC11: a save after the signup is confirmed makes no second row: nothing is pending and the one subscription stays active", async () => {
+        const signup = await saved();
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        await refused({ choices: picks(1, 0), firstChargeCents: 8000, weeklyCents: 8000 });
+        expect(await pending()).toBeNull();
+        expect(await repo.findActiveSubscription(memberId, product.id)).toEqual({ id: signup.subscriptionId });
+      });
+
+      it("AC11: a save over a pending row with a card rewrites nothing", async () => {
+        const first = await saved();
+        await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-1");
+        await refused({ choices: picks(1, 1), firstChargeCents: 8000, weeklyCents: 8000, pickupDate: "2027-01-10" });
+        const found = await pending();
+        expect(found).toMatchObject({
+          subscriptionId: first.subscriptionId,
+          ledgerId: first.ledgerId,
+          attempt: 1,
+          squareCardId: "ccof:card-1",
+          amountCents: 5000,
+          weeklyCents: 5000,
+          pickupDate: "2027-01-03",
+        });
+        expect(sorted(found?.optionIds)).toEqual(sorted(Object.values(picks(0, 0))));
+      });
+
+      it("AC11: saveSubscriptionCard returns the amount and the attempt of the row it bound", async () => {
+        const signup = await saved({ firstChargeCents: 8000, weeklyCents: 8000 });
+        expect(await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 8000, attempt: 1 });
+      });
+
+      it("AC11: after a decline's rewrite it returns the rewritten amount and the new attempt", async () => {
+        const first = await saved();
+        await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-1");
+        await repo.recordSignupDecline(first.ledgerId);
+        await saved({ firstChargeCents: 8000, weeklyCents: 8000 });
+        expect(await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-2")).toMatchObject({ amountCents: 8000, attempt: 2 });
+      });
+
+      it("AC11: a second card does not bind: the first stays, and the loser gets no amount to charge", async () => {
+        const signup = await saved();
+        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        const lost = await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-2");
+        expect((await pending())?.squareCardId).toBe("ccof:card-1");
+        expect(lost ?? null).toBeNull();
+      });
+
+      it('AC11: confirmSignupRows with an amount that is not the ledger\'s returns "mismatch" and leaves the row pending', async () => {
+        const signup = await saved({ firstChargeCents: 8000, weeklyCents: 8000 });
+        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", 7000, PAID_AT)).toBe("mismatch");
+        expect(await pending()).toMatchObject({ subscriptionId: signup.subscriptionId, ledgerStatus: "pending", amountCents: 8000 });
+        expect(await repo.findActiveSubscription(memberId, product.id)).toBeNull();
       });
     });
   });

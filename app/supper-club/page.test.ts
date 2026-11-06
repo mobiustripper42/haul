@@ -251,7 +251,7 @@ describe("issue 56 — the payment section", () => {
   const WEEKLY = "Then every week, at the cutoff";
   const DECLINED = "Your card was declined. Nothing was charged. Check the card details or try another card.";
   const ERROR = "Something went wrong and nothing was charged. Try again.";
-  const TICK = "Tick the box to agree to the weekly charge.";
+  const CHECK_THE_BOX = "Check the box to agree to the weekly charge.";
   const RETRY_NOTICE = "We couldn't confirm your payment. Try again and you won't be charged twice.";
 
   const sentence = (price: string) => `I agree to a weekly charge of ${price} until I cancel, and to the Terms and Privacy Policy.`;
@@ -406,8 +406,8 @@ describe("issue 56 — the payment section", () => {
 
     it("AC4: ?payError=consent shows the field error after the checkbox, before the button", async () => {
       const words = section4(await render({ payError: "consent" }));
-      expect(words.indexOf(TICK)).toBeGreaterThan(words.indexOf(sentence("$50")));
-      expect(words.indexOf(TICK)).toBeLessThan(words.indexOf("Join and pay $50"));
+      expect(words.indexOf(CHECK_THE_BOX)).toBeGreaterThan(words.indexOf(sentence("$50")));
+      expect(words.indexOf(CHECK_THE_BOX)).toBeLessThan(words.indexOf("Join and pay $50"));
       expect(words.indexOf(sentence("$50"))).toBeGreaterThan(-1);
     });
 
@@ -433,7 +433,7 @@ describe("issue 56 — the payment section", () => {
     it("AC4: with no payError it shows none of them, which guards the three above", async () => {
       const words = section4(await render());
       expect(words).toContain("4. Payment");
-      for (const notice of [TICK, DECLINED, ERROR]) expect(words).not.toContain(notice);
+      for (const notice of [CHECK_THE_BOX, DECLINED, ERROR]) expect(words).not.toContain(notice);
     });
   });
 
@@ -441,7 +441,7 @@ describe("issue 56 — the payment section", () => {
     const paidUp = async () => {
       const member = await signIn();
       const [size, menu] = product.optionTypes;
-      const { ledgerId } = await services.repo.savePendingSignup({
+      const { ledgerId, amountCents } = await services.repo.savePendingSignup({
         memberId: member.id,
         productId: product.id,
         choices: { [size?.id ?? ""]: size?.options[0]?.id ?? "", [menu?.id ?? ""]: menu?.options[0]?.id ?? "" },
@@ -451,7 +451,7 @@ describe("issue 56 — the payment section", () => {
         consentText: "I agree.",
         consentAt: SIGNUP_DAY,
       });
-      await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", SIGNUP_DAY);
+      await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, SIGNUP_DAY);
     };
 
     it("AC5: opening the page redirects to /supper-club/already", async () => {
@@ -518,6 +518,16 @@ describe("issue 56 — the payment section", () => {
       expect(textsOf(html)).not.toContain("4. Payment");
       expect(textsOf(html)).not.toContain("Card");
       expect(textsOf(html).join(" ")).not.toContain("Join and pay");
+    });
+
+    it('AC10: when "Try again" comes back error, the error notice shows above the price panel, and only then', async () => {
+      await stranded();
+      const html = await render({ payError: "error" });
+      const words = afterAccount(html);
+      expect(words).toContain(ERROR);
+      expect(words.indexOf(ERROR)).toBeLessThan(words.findIndex((word) => word.includes("3–4 person")));
+      expect(attributesOf(html, "p").filter((p) => p.role === "alert" && p.class?.includes("notice-alert"))).toHaveLength(2);
+      expect(afterAccount(await render())).not.toContain(ERROR);
     });
 
     it("AC10: it shows when they come back later with other picks in the query: the row decides, not the URL", async () => {

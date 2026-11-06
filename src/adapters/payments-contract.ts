@@ -233,7 +233,7 @@ export function runPaymentsContract(
       const referenceId = randomUUID();
       const paid = await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId });
       expect(paid.outcome).toBe("paid");
-      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: paid.paymentId });
+      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
     });
 
     it("AC10 (issue 56): findPaymentByReference returns null for a referenceId no payment has", { timeout }, async () => {
@@ -268,7 +268,7 @@ export function runPaymentsContract(
       const first = await payments.charge({ ...input });
       const second = await payments.charge({ ...input });
       expect(second).toEqual(first);
-      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: first.paymentId });
+      expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: first.paymentId, amountCents: 5000 });
     });
   });
 }

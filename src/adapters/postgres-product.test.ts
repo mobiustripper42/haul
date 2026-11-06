@@ -2,8 +2,9 @@
 // created if absent, migrated once, emptied before each test. Without a reachable Postgres it skips
 // locally and fails in CI (DEC-014). Issue 56: the signup rows, which need a product, then what only
 // Postgres can show: the stored columns, concurrent callers, and who the audit trigger names.
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { runSeed } from "../../db/seed.js";
+import type { Repository } from "../ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME, type ProductInput, type ProductWithOptions } from "../products.js";
 import { signUp, type SignupDeps } from "../signup.js";
 import { FakePayments } from "./fake-payments.js";
@@ -86,7 +87,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
     const CONSENT = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy.";
 
     /** A confirmed member, the product and the picks a signup needs. */
-    const fixture = async () => {
+    const fixture = async (sizes: ProductInput["optionTypes"][number]["options"] = [{ name: "3–4 people", priceCents: 8000, position: 1 }]) => {
       await truncateAll();
       const product = await addProduct({
         name: SUPPER_CLUB_PRODUCT_NAME,
@@ -95,7 +96,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         cutoffWeekday: 1,
         cutoffTime: "24:00:00",
         optionTypes: [
-          { name: "How many people?", position: 1, options: [{ name: "3–4 people", priceCents: 8000, position: 1 }] },
+          { name: "How many people?", position: 1, options: sizes },
           { name: "Which menu?", position: 2, options: [{ name: "Vegan", priceCents: 0, position: 1 }] },
         ],
       });
@@ -173,7 +174,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
     it("AC8: confirmSignupRows stores the payment id and paid_at, and flips both rows", async () => {
       const { input } = await fixture();
       const signup = await repo.savePendingSignup(input);
-      await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
+      await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
       expect((await pool.query("select status from subscriptions")).rows).toEqual([{ status: "active" }]);
       expect((await pool.query("select status, square_payment_id, paid_at from ledger")).rows).toEqual([
         { status: "paid", square_payment_id: "PAYMENT_1", paid_at: PAID_AT },
@@ -184,7 +185,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       const { input } = await fixture();
       const signup = await repo.savePendingSignup(input);
       const m = await mark();
-      await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT);
+      await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
       const rows = await auditSince(m);
       expect(rows.map((row) => [row.table_name, row.operation]).sort()).toEqual([
         ["ledger", "update"],
@@ -211,8 +212,8 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       const { input } = await fixture();
       const signup = await repo.savePendingSignup(input);
       const results = await Promise.all([
-        repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT),
-        repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", PAID_AT),
+        repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT),
+        repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT),
       ]);
       expect([...results].sort()).toEqual(["already", "confirmed"]);
     });
@@ -254,6 +255,167 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       const rows = await auditSince(m);
       expect(rows.filter((row) => row.event === "card_declined")).toHaveLength(1);
       expect(rows.filter((row) => row.actor !== `member:${member.id}`)).toEqual([]);
+    });
+
+    describe("AC11 — a second tab, on real rows", () => {
+      const FIRST_TAB = "cnon:card-nonce-ok";
+      const SECOND_TAB = "cnon:second-tab";
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      /** The member has their Square customer, so a tab goes straight from its checks to its save. */
+      const withCustomer = async (memberId: string): Promise<FakePayments> => {
+        const payments = new FakePayments();
+        const { id } = payments.addCustomer({ email: "ada@example.com", createdAt: NOW, updatedAt: NOW });
+        await repo.setMemberSquareCustomer(memberId, id);
+        return payments;
+      };
+
+      /** Resolves "waiting" once a query is blocked on a lock in this database, or "no lock" when none has been for a while. */
+      const blockedOnALock = async (): Promise<"waiting" | "no lock"> => {
+        for (let tries = 0; tries < 50; tries++) {
+          const { rows } = await pool.query<{ n: string }>(
+            "select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+          );
+          if (Number(rows[0]?.n) > 0) return "waiting";
+          await new Promise((resolve) => setTimeout(resolve, 20));
+        }
+        return "no lock";
+      };
+
+      it("AC11: a tab whose save lands after the first confirms gets already_subscribed, with no second row or charge", async () => {
+        const { member, choices } = await fixture();
+        const payments = await withCustomer(member.id);
+        const submit = (sourceId: string) => signUp(deps(payments), { memberId: member.id, choices, sourceId, consentText: CONSENT });
+        const read = repo.findPendingSignup;
+        vi.spyOn(repo, "findPendingSignup").mockImplementationOnce(async function (this: Repository, memberId, productId) {
+          const found = await read.call(this, memberId, productId);
+          await submit(FIRST_TAB);
+          return found;
+        });
+        const m = await mark();
+        expect((await submit(SECOND_TAB)).outcome).toBe("already_subscribed");
+        expect(payments.charges).toHaveLength(1);
+        expect(await count("subscriptions")).toBe(1);
+        expect(await count("ledger")).toBe(1);
+        expect((await auditSince(m)).filter((row) => row.event === "already_subscribed")).toHaveLength(1);
+      });
+
+      it("AC11: savePendingSignup waits on the member row's lock, and re-checks for an active subscription once it has it", async () => {
+        const { input, member } = await fixture();
+        const signup = await repo.savePendingSignup(input);
+        const holder = await pool.connect();
+        try {
+          await holder.query("begin");
+          await holder.query("select id from members where id = $1 for update", [member.id]);
+          const second = repo.savePendingSignup({ ...input, consentText: "The second tab's wording." }).catch(() => null);
+          expect(await Promise.race([second.then(() => "landed"), blockedOnALock()])).toBe("waiting");
+
+          // The first tab's confirm commits as the lock frees, so only a check made under the lock can see it.
+          await holder.query("update ledger set status = 'paid', square_payment_id = 'PAYMENT_1', paid_at = $2 where id = $1", [signup.ledgerId, PAID_AT]);
+          await holder.query("update subscriptions set status = 'active' where id = $1", [signup.subscriptionId]);
+          await holder.query("commit");
+          await second;
+        } finally {
+          await holder.query("rollback");
+          holder.release();
+        }
+        expect(await count("subscriptions")).toBe(1);
+        expect((await pool.query("select consent_text from subscriptions")).rows).toEqual([{ consent_text: CONSENT }]);
+      });
+
+      it("AC11: a rewrite refused over a bound card leaves the consent wording, its time and the amounts as they were", async () => {
+        const { input } = await fixture();
+        const signup = await repo.savePendingSignup(input);
+        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        await repo.savePendingSignup({ ...input, consentText: "New wording.", consentAt: PAID_AT, firstChargeCents: 100, weeklyCents: 100 }).catch(() => null);
+        expect((await pool.query("select consent_text, consent_at, first_charge_cents, weekly_cents from subscriptions")).rows).toEqual([
+          { consent_text: CONSENT, consent_at: NOW, first_charge_cents: 8000, weekly_cents: 8000 },
+        ]);
+      });
+
+      it("AC11: saveSubscriptionCard leaves a subscription that is no longer pending alone", async () => {
+        const { input } = await fixture();
+        const signup = await repo.savePendingSignup(input);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:late");
+        expect((await pool.query("select square_card_id from subscriptions")).rows).toEqual([{ square_card_id: null }]);
+      });
+
+      // The order is forced, so it fails every run and not only when the timing falls that way: the cheap
+      // tab saves and stops; the dear tab rewrites the row and stops; the cheap tab binds and charges.
+      it("AC11: two tabs with different picks: the charge is the ledger's amount, on the ledger's picks", async () => {
+        const { product, member } = await fixture([
+          { name: "2 people", priceCents: 5000, position: 1 },
+          { name: "3–4 people", priceCents: 8000, position: 2 },
+        ]);
+        const [size, menu] = product.optionTypes;
+        const box = (at: number) => ({ [size?.id ?? "no size"]: size?.options[at]?.id ?? "no option", [menu?.id ?? "no menu"]: menu?.options[0]?.id ?? "no option" });
+        const payments = await withCustomer(member.id);
+
+        const gate = () => {
+          let open = () => {};
+          const opened = new Promise<void>((resolve) => {
+            open = resolve;
+          });
+          return { open, opened };
+        };
+        const cheapAtCard = gate();
+        const dearAtCard = gate();
+        const charged = gate();
+        const saveCard = payments.saveCard.bind(payments);
+        payments.saveCard = async (card) => {
+          if (card.sourceId === FIRST_TAB) {
+            cheapAtCard.open();
+            await dearAtCard.opened;
+          } else {
+            dearAtCard.open();
+            await charged.opened;
+          }
+          return saveCard(card);
+        };
+        const charge = payments.charge.bind(payments);
+        payments.charge = async (request) => {
+          try {
+            return await charge(request);
+          } finally {
+            charged.open();
+          }
+        };
+
+        const submit = (at: number, sourceId: string) => signUp(deps(payments), { memberId: member.id, choices: box(at), sourceId, consentText: CONSENT });
+        const cheap = submit(0, FIRST_TAB);
+        await cheapAtCard.opened;
+        const results = await Promise.all([cheap, submit(1, SECOND_TAB)]);
+
+        const { rows } = await pool.query<{ amount_cents: number; status: string }>("select amount_cents, status from ledger");
+        expect(payments.charges.map((request) => request.amountCents)).toEqual(rows.map((row) => row.amount_cents));
+        expect(rows).toEqual([{ amount_cents: 8000, status: "paid" }]);
+        expect(results.map((result) => result.outcome).sort()).toEqual(["already_subscribed", "paid"]);
+        expect(await count("subscriptions")).toBe(1);
+        const picked = await pool.query<{ option_id: string }>("select option_id from subscription_options");
+        expect(picked.rows.map((row) => row.option_id).sort()).toEqual(Object.values(box(1)).sort());
+      });
+
+      it("AC11: a charge that no longer matches the ledger leaves both rows pending, and the event holds both amounts", async () => {
+        const { member, choices } = await fixture();
+        const payments = new FakePayments();
+        const charge = payments.charge.bind(payments);
+        payments.charge = async (request) => {
+          await pool.query("update ledger set amount_cents = 9000");
+          return charge(request);
+        };
+        const result = await signUp(deps(payments), { memberId: member.id, choices, sourceId: FIRST_TAB, consentText: CONSENT });
+        expect(result.outcome).toBe("unknown");
+        expect(payments.charges.map((request) => request.amountCents)).toEqual([8000]);
+        expect((await pool.query("select status from subscriptions")).rows).toEqual([{ status: "pending" }]);
+        expect((await pool.query("select status, square_payment_id from ledger")).rows).toEqual([{ status: "pending", square_payment_id: null }]);
+        const { rows } = await pool.query<{ detail: object; actor: string }>("select detail, actor from audit_log where event = 'charge_outcome_unknown'");
+        expect(rows.map((row) => row.actor)).toEqual([`member:${member.id}`]);
+        expect(Object.values(rows[0]?.detail ?? {})).toEqual(expect.arrayContaining([8000, 9000]));
+      });
     });
   });
 });

@@ -304,9 +304,56 @@ test("AC4 (issue 56): pay with the box unticked stays on the page and says why",
   await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
   await joinAndPay(page, "$50").click();
 
-  await expect(page.getByText("Tick the box to agree to the weekly charge.")).toBeVisible();
+  await expect(page.getByText("Check the box to agree to the weekly charge.")).toBeVisible();
   await expect(page).toHaveURL(onPath("/supper-club"));
   await expect(size(page)).toBeChecked();
+});
+
+test("AC11 (issue 56): pay is disabled while the action runs, so a double-click sends one token", async ({ page, request }) => {
+  await signedIn(page, request);
+  await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+  await consent(page).check();
+
+  let posts = 0;
+  let release = () => {};
+  const held = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  await page.route(onPath("/supper-club"), async (route) => {
+    if (route.request().method() === "POST") {
+      posts += 1;
+      await held;
+    }
+    await route.continue();
+  });
+
+  const button = joinAndPay(page, "$50");
+  try {
+    await button.dblclick();
+    await expect(button).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(page).toHaveURL(onPath("/supper-club/done"));
+  expect(posts).toBe(1);
+});
+
+// The test field stands in for Square's form, so an empty one is `tokenize` returning nothing. Square's script
+// failing to load and `tokenize` throwing cannot be reached from here: the e2e server always draws the test field.
+test("AC1 (issue 56): a card form that gives no token shows the failure in the field's place, and pay stops there", async ({ page, request }) => {
+  await signedIn(page, request);
+  await consent(page).check();
+  let posts = 0;
+  page.on("request", (sent) => {
+    if (sent.method() === "POST" && new URL(sent.url()).pathname === "/supper-club") posts += 1;
+  });
+
+  await joinAndPay(page, "$50").click();
+
+  await expect(page.getByText("The card form didn't load. Refresh the page and try again.")).toBeVisible();
+  await expect(testCard(page)).toHaveCount(0);
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  expect(posts).toBe(0);
 });
 
 test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the right pane, the left column beside it", async ({ page, request }, testInfo) => {
