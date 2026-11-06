@@ -12,6 +12,9 @@ export const SORT_CHOICES: readonly Sort[] = [
   { key: "status", direction: "asc" },
 ];
 
+/** How the list opens: the page's first paint and the client's first state. */
+export const OPENING_SORT: Sort = { key: "name", direction: "asc" };
+
 /** Case-insensitive, accents kept: "abara" and "Abara" are one name, "Lee" comes before "Lee Kim". */
 const collator = new Intl.Collator("en", { sensitivity: "accent" });
 
@@ -51,8 +54,7 @@ export function filterSubscribers(rows: Subscriber[], query: string): Subscriber
 }
 
 /** In Phase 1 every row is Active; the Status column sorts, and ties on it fall to the name. */
-const COLUMN: Record<SortKey, (row: Subscriber) => string> = {
-  name: () => "",
+const COLUMN: Record<Exclude<SortKey, "name">, (row: Subscriber) => string> = {
   meal: (row) => mealLabel(row.options),
   joined: (row) => row.joinedDate,
   status: () => "",

@@ -1,4 +1,4 @@
-import { sortSubscribers } from "@core/member-list.js";
+import { OPENING_SORT, sortSubscribers } from "@core/member-list.js";
 import { requireSupperClub } from "@core/products.js";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -45,7 +45,7 @@ export default async function Admin() {
               </>
             ) : (
               <MembersList
-                rows={sortSubscribers(subscribers, { key: "name", direction: "asc" })}
+                rows={sortSubscribers(subscribers, OPENING_SORT)}
                 language={language}
                 text={{
                   search: t("admin.members.search"),

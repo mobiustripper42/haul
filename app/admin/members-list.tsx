@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { filterSubscribers, mealLabel, nextSort, SORT_CHOICES, sortSubscribers, subscriberName, type Sort, type SortKey } from "@core/member-list.js";
+import { filterSubscribers, mealLabel, nextSort, OPENING_SORT, SORT_CHOICES, sortSubscribers, subscriberName, type Sort, type SortKey } from "@core/member-list.js";
 import type { Language } from "@core/i18n.js";
 import { formatShortDate } from "@core/pickup-week.js";
 import type { Subscriber } from "@core/ports/repository.js";
@@ -27,8 +27,6 @@ export type MembersListText = {
   sortLabels: Record<SortKey, string>;
   joinedLine: string;
 };
-
-const OPENING_SORT: Sort = { key: "name", direction: "asc" };
 
 const SORT_BY_ID = "members-sort";
 const SEARCH_ID = "members-search";
