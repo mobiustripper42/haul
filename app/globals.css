@@ -162,20 +162,40 @@
   .btn-quiet {
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
   }
+  /* A link to the page that is showing: the header's Sign in on the sign-in pane. */
+  .btn-secondary[aria-current="page"] {
+    @apply bg-sage-soft hover:bg-sage-soft;
+  }
 
   /* The page a focused screen sits on: its card centred, a 16px gutter, 40px above and below. */
   .page-narrow {
     @apply flex justify-center px-4 py-10;
   }
 
-  /* A card on a focused screen: the page's surface, 28px by 20px inside, its children 20px apart. */
-  .card {
-    @apply flex w-full max-w-card flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
+  /*
+   * The page a pane sits on: page-narrow below lg, where the left column is hidden and the card is alone;
+   * at lg the Supper Club page's own shell, two columns.
+   */
+  .page-pane {
+    @apply flex justify-center px-4 py-10 lg:mx-auto lg:w-full lg:max-w-page lg:items-start lg:gap-8 lg:py-12;
   }
 
-  /* A card that fills its column (the Supper Club page's two): the same card, with no width of its own. */
-  .card-fill {
+  /*
+   * A card on a focused screen: the page's surface, 28px by 20px inside, its children 20px apart. The
+   * three share the body and differ in width: `.card` stops at the card's width; `.card-fill` has none of
+   * its own, to fill its column (the Supper Club page's two); `.card-pane` is the card's width and
+   * centred below lg, and fills its column at lg and wider.
+   */
+  .card,
+  .card-fill,
+  .card-pane {
     @apply flex w-full flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
+  }
+  .card {
+    @apply max-w-card;
+  }
+  .card-pane {
+    @apply mx-auto max-w-card lg:mx-0 lg:max-w-none;
   }
 
   /* A text field; the code field is taller, centred and set in the code style. */
@@ -239,5 +259,16 @@
   .lang-switch > button + button::before {
     content: "";
     @apply absolute inset-y-3 -left-0.5 w-px bg-divider;
+  }
+}
+
+/*
+ * Hidden below lg: a pane page's left column, its "Back to your choices" and the header's account link.
+ * Outside every @layer on purpose: an unlayered rule beats the utilities layer, so a `flex` beside it
+ * on the same element cannot show it again. 64rem is Tailwind's lg.
+ */
+@media (width < 64rem) {
+  .wide-only {
+    display: none;
   }
 }

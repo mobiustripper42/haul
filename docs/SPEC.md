@@ -93,8 +93,8 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 - A visitor creates an account, confirmed by an emailed code, before subscribing; the Supper Club
   page shows its choices to anyone (DEC-029).
 - A weekly auto-renewing subscription with no end date. Pickup only.
-- Sizes (placeholder prices until the farm confirms): **2 person, $50** and **3–4 person, $80**.
-- Preference: **standard or vegan**, whole box, no price difference.
+- "How many people?" (placeholder prices until the farm confirms): **2 people, $50** and **3–4 people, $80**.
+- "Which menu?": **standard or vegan**, whole box, no price difference.
 - Members can cancel any time, skip any number of weeks, and switch size or preference, each until
   that week's cutoff.
 - Capped at ~50 active subscriptions; the signup page shows sold out when full.
@@ -335,7 +335,7 @@ Viewable reports, scoped once the farm says what Square does not already give th
    six days on.
 2. Does the signup charge always pay for the first pickup on or after the first-pickup date whose
    cutoff has not passed? And the exact first-pickup date in January 2027.
-3. Supper Club size names and prices. Working values: 2 person $50, 3–4 person $80 (Eric's
+3. Supper Club size names and prices. Working values: 2 people $50, 3–4 people $80 (Eric's
    working sizes; the requirements said "feeds 2" and "feeds 4–5" at ~$79).
 4. The free gift: confirm it is dropped.
 5. Is the benefit week a closed week, and which weeks move to Saturday/Sunday?

@@ -1,6 +1,8 @@
 // Issue 55, AC1–AC3 and AC14: /supper-club, `await SupperClub(props)` rendered through react-dom/server
 // with `next/headers` faked and the composition root handing out an InMemoryRepository. The left
-// column's copy is AC15's, by hand; these read the pickers and section 3.
+// column's copy is AC15's, by hand; these read the pickers and section 3. Issue 77: the page calls
+// JoinPage, which adds the header and its language switch, so the form, legend and button helpers here
+// read the Join card's and leave the switch's out.
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
@@ -9,6 +11,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../next-headers-fake";
 import { attributesOf, findAll, screenMarkup, textsOf, utilitiesOf } from "../screen-test-helpers";
 import { Card } from "../../components/ui/card";
+import { Shell } from "../../components/ui/shell";
 import SupperClub from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -78,7 +81,10 @@ const signIn = async (email = "ada@example.com") => {
 const render = async (query: Record<string, string | string[] | undefined> = {}) =>
   renderToStaticMarkup(await SupperClub({ searchParams: Promise.resolve(query) }));
 
-const legendsOf = (html: string) => [...screenMarkup(html).matchAll(/<legend\b[^>]*>([^<]*)<\/legend>/g)].map((m) => m[1]);
+const legendsOf = (html: string) =>
+  [...screenMarkup(html).matchAll(/<legend\b[^>]*>([^<]*)<\/legend>/g)].map((m) => m[1]).filter((legend) => legend !== "Language");
+const joinForms = (html: string) => attributesOf(html, "form").filter((form) => form.method === "get");
+const joinButtons = (html: string) => attributesOf(html, "button").filter((button) => button.name !== "language");
 const radiosOf = (html: string) => attributesOf(html, "input").filter((input) => input.type === "radio");
 const checkedOf = (html: string) => radiosOf(html).filter((radio) => "checked" in radio).map((radio) => radio.value);
 
@@ -141,7 +147,7 @@ describe("AC1 — one picker per option type, in stored order", () => {
 
 describe("AC2 — signed out, the pickers and both buttons are one GET form", () => {
   it("AC2: the page holds one form, method get, to /supper-club/continue", async () => {
-    expect(attributesOf(await render(), "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
+    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
   });
 
   it("AC2: each option is a radio named for its option type's id, valued with its own id", async () => {
@@ -173,7 +179,7 @@ describe("AC2 — signed out, the pickers and both buttons are one GET form", ()
   });
 
   it('AC2: the buttons are submits named next, valued create-account and sign-in, "Create an account" primary and "Sign in" secondary', async () => {
-    const buttons = attributesOf(await render(), "button");
+    const buttons = joinButtons(await render());
     expect(buttons.map(({ type, name, value }) => ({ type, name, value }))).toEqual([
       { type: "submit", name: "next", value: "create-account" },
       { type: "submit", name: "next", value: "sign-in" },
@@ -203,7 +209,7 @@ describe("AC3 — signed in", () => {
   });
 
   it('AC3: "Continue to payment" is the one button: primary, type="button", with no name, value or form action', async () => {
-    const buttons = attributesOf(await render(), "button");
+    const buttons = joinButtons(await render());
     expect(buttons).toHaveLength(1);
     expect(buttons[0]).toMatchObject({ type: "button" });
     expect(utilitiesOf(buttons[0]?.class)).toContain("btn-primary");
@@ -220,16 +226,16 @@ describe("AC3 — signed in", () => {
   it("AC3: the pickers stay, in the AC2 form, with the button inside it", async () => {
     const html = await render();
     expect(legendsOf(html)).toEqual(["1. Size", "2. Preference"]);
-    expect(attributesOf(html, "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
+    expect(joinForms(html)).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
     expect(screenMarkup(html)).toMatch(/<form\b[\s\S]*Continue to payment[\s\S]*<\/form>/);
   });
 });
 
 describe("AC3 — the form's target follows the session", () => {
   it('AC3: signed out the form stays method="get" to /supper-club/continue; signed in it is method="get" to /supper-club', async () => {
-    expect(attributesOf(await render(), "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
+    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
     await signIn();
-    expect(attributesOf(await render(), "form")).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
+    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
   });
 });
 
@@ -237,6 +243,21 @@ describe("AC17 — the page's cards fill their columns", () => {
   it('AC17: both cards use width="fill"', async () => {
     const element = await SupperClub({ searchParams: Promise.resolve({}) });
     expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill", "fill"]);
+  });
+});
+
+describe("issue 77 — the page opens on JoinPage's frame", () => {
+  it('AC4: signed out, its header is the one header, and "Sign in" there goes to /supper-club/sign-in', async () => {
+    const html = await render();
+    expect(attributesOf(html, "header")).toHaveLength(1);
+    expect(screenMarkup(html)).toMatch(/<header\b[\s\S]*<a\b[^>]*href="\/supper-club\/sign-in"[^>]*>Sign in<\/a>[\s\S]*<\/header>/);
+  });
+
+  it('AC3: it stays on the page shell, its left column first and its "Join the Supper Club" card second', async () => {
+    const element = await SupperClub({ searchParams: Promise.resolve({}) });
+    expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
+    const texts = textsOf(renderToStaticMarkup(element));
+    expect(texts.indexOf("Weekly meals from the farm kitchen")).toBeLessThan(texts.indexOf("Join the Supper Club"));
   });
 });
 

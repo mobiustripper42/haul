@@ -40,6 +40,8 @@ async function render(searchParams: { limited?: string; error?: string }) {
   return { element, html: renderToStaticMarkup(element) };
 }
 
+// Issue 77, AC10: the closing line under the form.
+const NO_ACCOUNT = ["No account yet?", "Create an account"];
 const limited = (minutes: string) => `Too many sign-in requests from this network. Try again in ${minutes} min.`;
 const EXPIRED = "That sign-in step expired. Enter your email to get a new code.";
 const LINK_FAILED =
@@ -52,13 +54,13 @@ const FORM =
 describe("AC33 (issue 9) — /sign-in", () => {
   it("AC33: with no notices it renders, in order, the heading, then a form holding the Email label and input in one <p>, then the button", async () => {
     const { html } = await render({});
-    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${FORM}`));
   });
 
   it("AC33: with both notices it renders the heading, the limited notice, the expired notice, then the form — each notice a <p role=\"alert\">", async () => {
     const { html } = await render({ limited: "5", error: "expired" });
-    expect(textsOf(html)).toEqual(["Sign in", limited("5"), EXPIRED, "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", limited("5"), EXPIRED, "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(screenMarkup(html)).toMatch(
       new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${alert(limited("5"))}\\s*${alert(EXPIRED)}\\s*${FORM}`),
     );
@@ -77,30 +79,30 @@ describe("AC33 (issue 9) — /sign-in", () => {
 
   it.each(["1", "30", "60"])("AC33: limited=%s shows the limited notice with that many minutes", async (minutes) => {
     const { html } = await render({ limited: minutes });
-    expect(textsOf(html)).toEqual(["Sign in", limited(minutes), "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", limited(minutes), "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${alert(limited(minutes))}\\s*${FORM}`));
   });
 
   it.each(["0", "61", "1.5", "-1", "abc", ""])("AC33: limited=%j shows no limited notice", async (value) => {
     const { html } = await render({ limited: value });
-    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(html).not.toContain("Too many");
   });
 
   it("AC33: error=expired shows the expired notice", async () => {
     const { html } = await render({ error: "expired" });
-    expect(textsOf(html)).toEqual(["Sign in", EXPIRED, "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", EXPIRED, "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${alert(EXPIRED)}\\s*${FORM}`));
   });
 
   it.each(["invalid", "Expired", ""])("AC33: error=%j shows no expired notice", async (error) => {
     const { html } = await render({ error });
-    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", "Email", "Email me a code", ...NO_ACCOUNT]);
   });
 
   it("AC22 (issue 22): error=link shows the link notice, a <p role=\"alert\">, between the heading and the form", async () => {
     const { html } = await render({ error: "link" });
-    expect(textsOf(html)).toEqual(["Sign in", LINK_FAILED, "Email", "Email me a code"]);
+    expect(textsOf(html)).toEqual(["Sign in", LINK_FAILED, "Email", "Email me a code", ...NO_ACCOUNT]);
     expect(screenMarkup(html)).toMatch(new RegExp(`<h1\\b[^>]*>Sign in</h1>\\s*${alert(LINK_FAILED)}\\s*${FORM}`));
   });
 
@@ -120,6 +122,15 @@ describe("AC33 (issue 9) — /sign-in", () => {
   });
 });
 
+describe("AC10 (issue 77) — the closing line", () => {
+  it('AC10, AC7: "No account yet?" sits under the form as a ruled hint, its link a quiet one to the full /create-account page', async () => {
+    const { html } = await render({});
+    expect(attributesOf(html, "a")).toEqual([expect.objectContaining({ href: "/create-account" })]);
+    expect(classesOf(attributesOf(html, "a")[0])).toContain("btn-quiet");
+    expect(classesOf(attributesOf(html, "span")[0])).toContain("border-t");
+  });
+});
+
 const classesOf = (attributes: Record<string, string> | undefined): string[] =>
   (attributes?.class ?? "").split(/\s+/).filter(Boolean);
 
@@ -130,7 +141,7 @@ describe("AC7 (issue 19) — /sign-in in its card", () => {
       const { html } = await render(params);
       const markup = screenMarkup(html).trim();
       expect(markup).toMatch(/^<main\b[^>]*>\s*<section\b[^>]*>\s*<h1\b/);
-      expect(markup).toMatch(/<\/form>\s*<\/section>\s*<\/main>$/);
+      expect(markup).toMatch(/<\/form>\s*<span\b[^>]*>No account yet\? <a\b[^>]*>Create an account<\/a>\s*<\/span>\s*<\/section>\s*<\/main>$/);
       const sections = attributesOf(html, "section");
       expect(sections).toHaveLength(1);
       expect(classesOf(sections[0])).toContain("card");

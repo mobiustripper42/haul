@@ -1,7 +1,9 @@
 // Issue 55, AC2: the choices survive the round trip in a real browser, cookies through redirects, on
-// desktop and mobile. Each test starts from an emptied e2e database with the `members` seed
-// (fixtures.ts), and these add the `supper-club` seed. Controls are found by role and wording.
-import type { Page } from "@playwright/test";
+// desktop and mobile. Issue 77: that round trip now runs through the Supper Club page's panes, and what
+// only a browser can show lives here: the pane's place and width, what each width hides. Each test
+// starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
+// `supper-club` seed. Controls are found by role and wording.
+import type { APIRequestContext, Locator, Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { en } from "../src/messages/en.js";
 import { e2eDatabaseUrl } from "./database";
@@ -10,10 +12,29 @@ import { expect, outboxCount, test, waitForSignInCode } from "./fixtures";
 const ERIC = "eric@ocf.xx";
 const NEWCOMER = "new@ocf.xx";
 
+const CREATE_PANE = "/supper-club/create-account";
+const SIGN_IN_PANE = "/supper-club/sign-in";
+const BACK_TO_CHOICES = "Back to your choices";
+const LEFT_COLUMN_TITLE = en["supperClub.title"];
+const SAGE_SOFT = "rgb(227, 235, 232)";
+
 const onPath = (path: string) => (url: URL) => url.pathname === path;
 
-const size = (page: Page) => page.getByRole("radio", { name: /3–4 person/ });
+const size = (page: Page) => page.getByRole("radio", { name: /\$80 a week/ });
 const menu = (page: Page) => page.getByRole("radio", { name: /Vegan/ });
+
+const pressCreateAccount = (page: Page) => page.getByRole("button", { name: en["supperClub.createAccount"], exact: true }).click();
+const pressSignIn = (page: Page) => page.getByRole("button", { name: en["home.signIn"], exact: true }).click();
+const headerSignIn = (page: Page) => page.getByRole("banner").getByRole("link", { name: en["home.signIn"], exact: true });
+const inMain = (page: Page, name: string) => page.getByRole("main").getByRole("link", { name, exact: true });
+
+/** The innermost section holding `text`: the card it sits in. */
+const cardHolding = (page: Page, text: string) => page.locator("section").filter({ hasText: text }).last();
+const joinCard = (page: Page) => cardHolding(page, en["supperClub.joinTitle"]);
+const paneCard = (page: Page, heading: string) => page.locator("section").filter({ has: page.getByRole("heading", { name: heading, exact: true }) }).last();
+
+const desktopOnly = (testInfo: TestInfo) => test.skip(testInfo.project.name !== "desktop", "lg and wider");
+const phoneOnly = (testInfo: TestInfo) => test.skip(testInfo.project.name !== "mobile", "below lg");
 
 /** Picks the choices that are not the defaults, so nothing but the round trip can bring them back. */
 async function pickChoices(page: Page): Promise<void> {
@@ -28,22 +49,47 @@ async function expectChoicesKept(page: Page): Promise<void> {
   await expect(menu(page)).toBeChecked();
 }
 
+async function fillAccountDetails(page: Page, email: string): Promise<void> {
+  await page.getByLabel("First name").fill("New");
+  await page.getByLabel("Last name").fill("Comer");
+  await page.getByLabel(en["signIn.emailLabel"], { exact: true }).fill(email);
+  await page.getByLabel("Phone").fill("216-555-0100");
+}
+
+/** On the email step: asks for ERIC's code, and returns it once it reaches the outbox. */
+async function askForCode(page: Page, request: APIRequestContext): Promise<string> {
+  await page.getByLabel(en["signIn.emailLabel"]).fill(ERIC);
+  const before = await outboxCount(request, ERIC);
+  await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
+  await expect(page).toHaveURL(onPath(`${SIGN_IN_PANE}/code`));
+  return waitForSignInCode(request, ERIC, before);
+}
+
+async function enterSignInCode(page: Page, code: string): Promise<void> {
+  await page.getByLabel(en["signIn.codeLabel"]).fill(code);
+  await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
+}
+
 test.beforeEach(async () => {
   await runSeed("supper-club", e2eDatabaseUrl());
 });
 
-test("AC2: Create an account, a confirmed code, and back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
-  await pickChoices(page);
-  await page.getByRole("button", { name: "Create an account", exact: true }).click();
-  await expect(page).toHaveURL(onPath("/create-account"));
+test('AC14: the Supper Club page shows the seed\'s new names: "How many people?", "2 people", "3–4 people", "Which menu?"', async ({ page }) => {
+  await page.goto("/supper-club");
+  for (const name of ["1. How many people?", "2. Which menu?"]) await expect(page.getByRole("group", { name })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^2 people/ })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^3–4 people/ })).toBeVisible();
+});
 
-  await page.getByLabel("First name").fill("New");
-  await page.getByLabel("Last name").fill("Comer");
-  await page.getByLabel(en["signIn.emailLabel"], { exact: true }).fill(NEWCOMER);
-  await page.getByLabel("Phone").fill("216-555-0100");
+test("AC1, AC9: Create an account opens the pane, a confirmed code lands back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
+  await pickChoices(page);
+  await pressCreateAccount(page);
+  await expect(page).toHaveURL(onPath(CREATE_PANE));
+
+  await fillAccountDetails(page, NEWCOMER);
   const before = await outboxCount(request, NEWCOMER);
   await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
-  await expect(page).toHaveURL(onPath("/create-account/code"));
+  await expect(page).toHaveURL(onPath(`${CREATE_PANE}/code`));
 
   const code = await waitForSignInCode(request, NEWCOMER, before);
   await page.getByLabel(en["signIn.codeLabel"]).fill(code);
@@ -53,20 +99,159 @@ test("AC2: Create an account, a confirmed code, and back on the Supper Club page
   await expect(page.getByText(`Signed in as ${NEWCOMER}.`)).toBeVisible();
 });
 
-test("AC2: Sign in, a code, and back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
+test("AC2, AC9: Sign in opens the pane, a code lands back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
   await pickChoices(page);
-  await page.getByRole("button", { name: en["home.signIn"], exact: true }).click();
-  await expect(page).toHaveURL(onPath("/sign-in"));
+  await pressSignIn(page);
+  await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
 
-  await page.getByLabel(en["signIn.emailLabel"]).fill(ERIC);
-  const before = await outboxCount(request, ERIC);
-  await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
-  await expect(page).toHaveURL(onPath("/sign-in/code"));
-
-  const code = await waitForSignInCode(request, ERIC, before);
-  await page.getByLabel(en["signIn.codeLabel"]).fill(code);
-  await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
+  await enterSignInCode(page, await askForCode(page, request));
 
   await expectChoicesKept(page);
   await expect(page.getByText(`Signed in as ${ERIC}.`)).toBeVisible();
+});
+
+test("AC4: the header's Sign in goes to the pane, and a code confirmed with no return path lands on /supper-club", async ({ page, request }) => {
+  await page.goto("/supper-club");
+  await headerSignIn(page).click();
+  await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
+
+  await enterSignInCode(page, await askForCode(page, request));
+
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(page.getByText(`Signed in as ${ERIC}.`)).toBeVisible();
+});
+
+test("AC3: at lg the pane stands where the Join card stood, at its width, beside the left column", async ({ page, request }, testInfo) => {
+  desktopOnly(testInfo);
+  await pickChoices(page);
+  const join = (await joinCard(page).boundingBox())!;
+  const left = page.getByText(LEFT_COLUMN_TITLE);
+
+  const expectInPlace = async (card: Locator) => {
+    await expect(left).toBeVisible();
+    await expect(page.getByText(en["supperClub.joinTitle"])).toHaveCount(0);
+    const box = await card.boundingBox();
+    expect(box?.x).toBeCloseTo(join.x, 0);
+    expect(box?.width).toBeCloseTo(join.width, 0);
+  };
+
+  await pressSignIn(page);
+  await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
+  await expectInPlace(paneCard(page, en["signIn.title"]));
+
+  await page.goto(CREATE_PANE);
+  await expectInPlace(paneCard(page, en["createAccount.title"]));
+
+  await page.goto(SIGN_IN_PANE);
+  await askForCode(page, request);
+  await expectInPlace(paneCard(page, en["signIn.codeTitle"]));
+});
+
+test('AC5: on the sign-in pane the header\'s Sign in is marked current, filled sage-soft, and from the code step returns to the email step', async ({ page, request }, testInfo) => {
+  desktopOnly(testInfo);
+  await page.goto("/supper-club");
+  await expect(headerSignIn(page)).not.toHaveAttribute("aria-current", "page");
+
+  await page.goto(SIGN_IN_PANE);
+  await expect(headerSignIn(page)).toHaveAttribute("aria-current", "page");
+  await expect(headerSignIn(page)).toHaveCSS("background-color", SAGE_SOFT);
+
+  await askForCode(page, request);
+  await expect(headerSignIn(page)).toHaveAttribute("aria-current", "page");
+  await headerSignIn(page).click();
+
+  await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
+  await expect(page.getByLabel(en["signIn.emailLabel"])).toBeVisible();
+});
+
+test("AC6: Back to your choices leaves either pane for the Supper Club page, the choices still picked", async ({ page }, testInfo) => {
+  desktopOnly(testInfo);
+  await pickChoices(page);
+  await pressSignIn(page);
+  await inMain(page, BACK_TO_CHOICES).click();
+  await expectChoicesKept(page);
+
+  await pressCreateAccount(page);
+  await inMain(page, BACK_TO_CHOICES).click();
+  await expectChoicesKept(page);
+});
+
+test("AC7: the closing lines switch panes, and the choices survive the switch to the end of the flow", async ({ page, request }) => {
+  await pickChoices(page);
+  await pressSignIn(page);
+
+  await inMain(page, en["supperClub.createAccount"]).click();
+  await expect(page).toHaveURL(onPath(CREATE_PANE));
+  await inMain(page, en["home.signIn"]).click();
+  await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
+
+  await enterSignInCode(page, await askForCode(page, request));
+  await expectChoicesKept(page);
+});
+
+test("AC7: on the full pages the closing lines go to the full pages", async ({ page }) => {
+  await page.goto("/sign-in");
+  await inMain(page, en["supperClub.createAccount"]).click();
+  await expect(page).toHaveURL(onPath("/create-account"));
+  await inMain(page, en["home.signIn"]).click();
+  await expect(page).toHaveURL(onPath("/sign-in"));
+});
+
+test("AC8: field errors stay in the pane with the form refilled", async ({ page }) => {
+  await page.goto(CREATE_PANE);
+  await fillAccountDetails(page, "not-an-email");
+  await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
+
+  await expect(page).toHaveURL(onPath(CREATE_PANE));
+  await expect(page.getByText(en["createAccount.error.email"])).toBeVisible();
+  await expect(page.getByLabel("First name")).toHaveValue("New");
+});
+
+test("AC8: a resent code and a wrong code stay in the pane", async ({ page }) => {
+  await page.goto(CREATE_PANE);
+  await fillAccountDetails(page, NEWCOMER);
+  await page.getByRole("button", { name: en["signIn.sendCode"] }).click();
+  await expect(page).toHaveURL(onPath(`${CREATE_PANE}/code`));
+
+  await page.getByLabel(en["signIn.codeLabel"]).fill("000000");
+  await page.getByRole("button", { name: "Confirm email" }).click();
+  await expect(page).toHaveURL(onPath(`${CREATE_PANE}/code`));
+  await expect(page.getByText(en["signIn.invalidCode"])).toBeVisible();
+
+  // The whole URL, not onPath, which ignores the query: resend redirects to the path it is already on, so
+  // `?error=invalid` going is the only sign it finished.
+  await page.getByRole("button", { name: en["signIn.resend"] }).click();
+  await expect(page).toHaveURL(`${CREATE_PANE}/code`);
+  await expect(page.getByText(en["signIn.invalidCode"])).toHaveCount(0);
+});
+
+test("AC11: below lg a pane page is the card alone, centred at card width, with no left column, back link or header Sign in", async ({ page }, testInfo) => {
+  phoneOnly(testInfo);
+  // 375 is the phone, where a card fills the gutters; 768 is tablet, which uses mobile.
+  for (const width of [375, 768]) {
+    await page.setViewportSize({ width, height: 900 });
+
+    for (const [path, heading] of [
+      [CREATE_PANE, en["createAccount.title"]],
+      [SIGN_IN_PANE, en["signIn.title"]],
+    ] as const) {
+      await page.goto(path);
+      await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
+      await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeHidden();
+      await expect(page.getByText(BACK_TO_CHOICES)).toBeHidden();
+      await expect(headerSignIn(page)).toBeHidden();
+      await expect(page.getByRole("banner").getByRole("button", { name: "English" })).toBeVisible();
+
+      const box = (await paneCard(page, heading).boundingBox())!;
+      expect(box.x + box.width / 2).toBeCloseTo(width / 2, 0);
+      expect(box.width).toBeCloseTo(Math.min(376, width - 32), 0);
+    }
+  }
+});
+
+test("AC11: below lg the Supper Club page itself keeps its left column and header Sign in", async ({ page }, testInfo) => {
+  phoneOnly(testInfo);
+  await page.goto("/supper-club");
+  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  await expect(headerSignIn(page)).toBeVisible();
 });

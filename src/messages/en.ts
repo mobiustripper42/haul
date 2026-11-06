@@ -26,6 +26,7 @@ export const en = {
   "signIn.submitCode": "Sign in",
   "signIn.resend": "Send a new code",
   "signIn.differentEmail": "Use a different email",
+  "signIn.noAccount": "No account yet?",
   "signIn.linkPrompt": "Press the button to finish signing in.",
   "signIn.linkFailed":
     "That sign-in link didn't work. It may have expired or been used already. Enter your email to try again.",
@@ -57,6 +58,7 @@ export const en = {
   "supperClub.accountLegend": "{n}. Your account",
   "supperClub.signedOutPrompt": "Sign in or create an account to join.",
   "supperClub.createAccount": "Create an account",
+  "supperClub.backToChoices": "Back to your choices",
   "supperClub.signedInAs": "Signed in as {email}.",
   "supperClub.continueToPayment": "Continue to payment",
   "createAccount.title": "Create your account",

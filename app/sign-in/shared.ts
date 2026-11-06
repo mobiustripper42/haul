@@ -6,7 +6,7 @@ import { after } from "next/server";
 import { deliverSignInCode, deliverSignInLink, signInLinkUrl } from "@core/sign-in-email.js";
 import type { Repository } from "@core/ports/repository.js";
 import { errorFields, recordEventAs } from "@core/record-event.js";
-import { safeReturnTo } from "@core/return-to.js";
+import { returnToOr } from "@core/return-to.js";
 import { clientIpFrom } from "@core/sign-in/client-ip.js";
 import {
   issueSignInCode,
@@ -23,8 +23,11 @@ import { getEmail, getRepository, getSessionSecret, getSiteUrl } from "../servic
 
 const FLOW_COOKIE_MAX_AGE_SECONDS = 600;
 
-/** The two pages of a flow: where its first step lives and where its code step lives. */
-export type FlowPages = { start: string; code: string };
+/**
+ * The pages of a flow: where its first step lives, where its code step lives, and where a confirmed code
+ * lands when no return path is held (`/` for the full pages, `/supper-club` for the Supper Club's panes).
+ */
+export type FlowPages = { start: string; code: string; done: string };
 
 export const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
@@ -85,13 +88,14 @@ export function sendAfterResponse<T>(
 
 /**
  * The end of every sign-in and every account confirmation, by code or by link: the email is confirmed
- * if it was not, the session starts, the flow's cookies go, and the person lands where they came from.
+ * if it was not, the session starts, the flow's cookies go, and the person lands where they came from:
+ * `done` when no return path was held, `/` when the one held is unsafe.
  */
-export async function finishSignIn(subjectId: string): Promise<never> {
+export async function finishSignIn(subjectId: string, done: string): Promise<never> {
   await getRepository().withActor({ member: subjectId }, (scoped) => scoped.confirmMemberEmail(subjectId, new Date()));
   await startSession(subjectId);
   const cookieStore = await cookies();
-  const returnTo = safeReturnTo(cookieStore.get(RETURN_TO_COOKIE)?.value);
+  const returnTo = returnToOr(cookieStore.get(RETURN_TO_COOKIE)?.value, done);
   cookieStore.delete(SIGN_IN_EMAIL_COOKIE);
   cookieStore.delete(RETURN_TO_COOKIE);
   redirect(returnTo);
@@ -173,5 +177,5 @@ export async function verifyCodeFor(formData: FormData, pages: FlowPages): Promi
   }
 
   await recordEventAs(repo, { member: result.subjectId }, { kind: "sign_in_by_code", memberId: result.subjectId });
-  await finishSignIn(result.subjectId);
+  await finishSignIn(result.subjectId, pages.done);
 }

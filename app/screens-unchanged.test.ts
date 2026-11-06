@@ -1,4 +1,5 @@
 // Issue 38, AC10: the sign-in, code and link screens and the sign-in header render the same elements,
+// apart from issue 77's AC10, the closing line /sign-in gains under its form,
 // attributes and text as before the components (captured from main at 97c7925), attribute order
 // aside, and leaving out the language switcher's button classes, which AC11 changes. Rendered
 // through react-dom/server with `next/headers` faked, as each screen's own test renders it.
@@ -52,7 +53,9 @@ const SIGN_IN_FORM =
   '<button type="submit" class="btn-primary w-full">Email me a code</button></form>';
 const signIn = (notices: string): string =>
   '<main class="page-narrow"><section class="card"><h1 class="font-display text-heading text-teal">Sign in</h1>' +
-  `${notices}${SIGN_IN_FORM}</section></main>`;
+  `${notices}${SIGN_IN_FORM}` +
+  '<span class="block border-t border-divider pt-4 text-small text-ink-muted">No account yet? <a href="/create-account" class="btn-quiet">Create an account</a></span>' +
+  "</section></main>";
 
 describe("AC10 — /sign-in renders as before", () => {
   it("AC10: with no notices", async () => {

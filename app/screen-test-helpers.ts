@@ -74,8 +74,9 @@ export function findAll(node: ReactNode, type: string | ComponentType<never>): R
 export const escapeRegExp = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 
 /**
- * A `class` attribute's tokens, plus what each one's rule in app/globals.css applies, so a test can ask
+ * A `class` attribute's tokens, plus what each one's rules in app/globals.css apply, so a test can ask
  * for a look (`text-danger`) without caring whether a component writes the utility or names a class.
+ * A class in a selector list (`.card, .card-fill { … }`) gets that rule too.
  */
 export function utilitiesOf(classAttribute: string | undefined): string[] {
   const css = readFileSync(new URL("./globals.css", import.meta.url), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
@@ -84,7 +85,7 @@ export function utilitiesOf(classAttribute: string | undefined): string[] {
     .filter(Boolean)
     .flatMap((name) => [
       name,
-      ...[...css.matchAll(new RegExp(`\\.${escapeRegExp(name)}\\s*\\{([^}]*)\\}`, "g"))].flatMap((rule) =>
+      ...[...css.matchAll(new RegExp(`\\.${escapeRegExp(name)}\\s*(?:,[^{}]*)?\\{([^}]*)\\}`, "g"))].flatMap((rule) =>
         (rule[1] ?? "").split(/[\s;]+/).filter(Boolean),
       ),
     ]);
