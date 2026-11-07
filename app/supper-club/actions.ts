@@ -8,11 +8,14 @@ import { firstPickup } from "@core/pickup-week.js";
 import { priceOfChoices, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { Repository } from "@core/ports/repository.js";
 import { retrySignup, signUp, type SignupResult } from "@core/signup.js";
+import { deliverSignupConfirmation } from "@core/signup-email.js";
+import { siteLink } from "@core/sign-in-email.js";
 import { requestAccountCodeFor, resendAccountCodeFor } from "../create-account/shared";
 import { getLanguage, getTranslator } from "../language";
-import { getPayments, getRepository } from "../services";
+import { ACCOUNT_PATH } from "../paths";
+import { getEmail, getPayments, getRepository, getSiteUrl } from "../services";
 import { getSignedInMember } from "../session";
-import { requestCodeFor, textField, verifyCodeFor } from "../sign-in/shared";
+import { requestCodeFor, sendAfterResponse, textField, verifyCodeFor } from "../sign-in/shared";
 import { paymentWording } from "./payment-wording";
 import {
   PANE_CREATE_PAGES,
@@ -62,6 +65,30 @@ function landing(result: SignupResult, choices: Record<string, string> | null): 
 }
 
 /**
+ * The confirmation email, after the response, and only for the request that flipped the rows to confirmed
+ * (`confirmedNow`), so no path can send it twice. Every read runs in the store step and the site address in
+ * the send step, so a failure is logged and never reaches a signup that is already paid.
+ */
+function sendConfirmationAfterResponse(repo: Repository, memberId: string, result: SignupResult): void {
+  if (result.outcome !== "paid" || !result.confirmedNow) return;
+  sendAfterResponse(
+    memberId,
+    async () => {
+      const product = await requireSupperClub(repo);
+      const member = await repo.findMemberById(memberId);
+      if (!member) throw new Error("The member is gone");
+      const confirmation = await repo.findSignupConfirmation(memberId, product.id);
+      if (!confirmation) throw new Error("The signup has no confirmation");
+      return { member, confirmation };
+    },
+    async ({ member, confirmation }) => {
+      await deliverSignupConfirmation(getEmail(), member, confirmation, siteLink(getSiteUrl(), ACCOUNT_PATH));
+    },
+    "signup email not delivered",
+  );
+}
+
+/**
  * Pay. A visitor goes to the sign-in pane and an unticked box back to the page; otherwise the price, the
  * first pickup and the consent wording are all worked out here, from the option ids and the clock. Nothing
  * of the sort is read from the form but the picks, the card token and the tick.
@@ -88,6 +115,7 @@ export async function joinSupperClub(formData: FormData): Promise<void> {
     { repo, payments: getPayments(), now },
     { memberId: member.id, choices, sourceId: textField(formData, "sourceId"), consentText: wording.consentText },
   );
+  sendConfirmationAfterResponse(repo, member.id, result);
   redirect(landing(result, choices));
 }
 
@@ -98,6 +126,7 @@ export async function retrySupperClubPayment(): Promise<void> {
 
   const repo = getRepository();
   const result = await retrySignup({ repo, payments: getPayments(), now: new Date() }, { memberId: member.id });
+  sendConfirmationAfterResponse(repo, member.id, result);
   // A decline shows the normal form again, with the picks the pending row holds.
   const kept = result.outcome === "declined" || result.outcome === "error" ? await picksOf(repo, member.id) : null;
   redirect(landing(result, kept));

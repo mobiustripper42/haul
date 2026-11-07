@@ -3,16 +3,19 @@
 // one does, `after` collects its callback for the test to run, and the composition root hands out an
 // InMemoryRepository and a FakeEmail. Issue 56: the two pay actions, over a FakePayments; what signUp and
 // retrySignup do is src/signup.test.ts, and this holds the door: who gets in and where each outcome lands.
+import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { Member } from "@core/members.js";
+import type { EmailPort } from "@core/ports/email.js";
 import { PaymentsError } from "@core/ports/payments.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { hashCode } from "@core/sign-in/code.js";
 import { signSession, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
+import { ACCOUNT_PATH } from "../paths";
 import { redirectOf } from "../screen-test-helpers";
 import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES, PAY_ERROR_SOLD_OUT } from "./paths";
 
@@ -495,6 +498,339 @@ describe("issue 56 — the pay actions", () => {
       await stranded();
       vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
       expect(landed(await retry())).toMatchObject({ path: "/supper-club", query: { payError: "unknown" } });
+    });
+  });
+
+  // The email's words are src/signup-email.test.ts; this holds whether it goes, when, and what a failure does.
+  describe("issue 58 — the confirmation email", () => {
+    const DONE = "/supper-club/done";
+    const NOT_DELIVERED = "signup email not delivered";
+    const PROVIDER_TEXT = "resend-reply-body: the to field is invalid";
+    const STORE_TEXT = "connection to the store refused: store-secret";
+
+    const sent = () => (services.email as FakeEmail).sent;
+    /** The text of the one email the member has. */
+    const onlyText = (): string => {
+      expect(sent()).toHaveLength(1);
+      return sent()[0]?.text ?? "";
+    };
+    const silenceErrors = () => vi.spyOn(console, "error").mockImplementation(() => {});
+    const logged = (errors: { mock: { calls: unknown[][] } }): string => inspect(errors.mock.calls, { depth: 6 });
+    const fieldsLoggedWith = (errors: { mock: { calls: unknown[][] } }, label: string): unknown[] =>
+      errors.mock.calls.filter(([message]) => message === label).map(([, fields]) => fields);
+    const storeDown = (): Error => Object.assign(new Error(STORE_TEXT), { name: "StoreDownError" });
+
+    /** `then` runs once Square has taken the payment: what the signup itself needed has all been read. */
+    const onceCharged = (then: () => unknown) => {
+      const real = services.payments.charge.bind(services.payments);
+      vi.spyOn(services.payments, "charge").mockImplementationOnce(async (input) => {
+        const result = await real(input);
+        await then();
+        return result;
+      });
+    };
+
+    /** Another tab's confirm lands while this tab waits on Square's reply. */
+    const otherTabConfirmsDuringCharge = () => {
+      const real = services.payments.charge.bind(services.payments);
+      vi.spyOn(services.payments, "charge").mockImplementationOnce(async (input) => {
+        const result = await real(input);
+        if (result.outcome === "paid") {
+          await repo.confirmSignupRows(input.referenceId ?? "no reference", result.paymentId, input.amountCents, T0);
+        }
+        return result;
+      });
+    };
+
+    /** Each way a first payment goes through. `arrange` runs just before the request that pays. */
+    const PAID_BY = {
+      joinSupperClub: async (arrange: () => void = () => {}) => {
+        signIn();
+        arrange();
+        return join(pay());
+      },
+      retrySupperClubPayment: async (arrange: () => void = () => {}) => {
+        await stranded();
+        arrange();
+        return retry();
+      },
+    };
+    const PATHS = Object.keys(PAID_BY) as (keyof typeof PAID_BY)[];
+
+    /** Nothing was scheduled, so nothing can have gone out, then or later. */
+    const expectNoEmail = async () => {
+      expect(scheduled.tasks).toEqual([]);
+      await runScheduled();
+      expect(sent()).toEqual([]);
+    };
+
+    describe("AC1 — paid on the first try", () => {
+      it("AC1: one email goes to the member's address, with what they signed up for", async () => {
+        signIn();
+        await join(pay());
+        await runScheduled();
+        expect(sent()).toEqual([
+          {
+            to: ADA,
+            subject: "You're in the Supper Club",
+            text: expect.stringContaining(
+              "How many people?: 3–4 people\nWhich menu?: Vegan\nPaid today: $80\nThen every week, at the cutoff: $80\nFirst pickup: Sunday, January 3\n",
+            ) as string,
+          },
+        ]);
+      });
+    });
+
+    describe("AC2 — Try again finishes the signup", () => {
+      it("AC2: by charging, one email goes to the member's address", async () => {
+        await stranded();
+        await retry();
+        await runScheduled();
+        expect(services.payments.charges).toHaveLength(1);
+        expect(sent().map((message) => message.to)).toEqual([ADA]);
+      });
+
+      it("AC2: by finding Square's payment, one email goes to the member's address", async () => {
+        signIn();
+        const real = services.payments.charge.bind(services.payments);
+        const replyLost = async (input: Parameters<typeof real>[0]) => {
+          await real(input);
+          throw noAnswer();
+        };
+        vi.spyOn(services.payments, "charge").mockImplementationOnce(replyLost).mockImplementationOnce(replyLost);
+        await join(pay());
+        await runScheduled();
+        expect(sent()).toEqual([]);
+
+        expect(await retry()).toBe(DONE);
+        await runScheduled();
+        expect(services.payments.charges).toHaveLength(1);
+        expect(sent().map((message) => message.to)).toEqual([ADA]);
+      });
+    });
+
+    describe("AC3 — no email", () => {
+      it.each(PATHS)("AC3: %s, with the rows already confirmed by another tab, lands on done and sends nothing", async (path) => {
+        expect(await PAID_BY[path](otherTabConfirmsDuringCharge)).toBe(DONE);
+        await expectNoEmail();
+      });
+
+      it("AC3: a second tab after the first has paid is already subscribed, and the member has one email", async () => {
+        signIn();
+        await join(pay());
+        expect(await join(pay({ sourceId: "cnon:second-tab" }))).toBe("/supper-club/already");
+        await runScheduled();
+        expect(sent()).toHaveLength(1);
+      });
+
+      it("AC3: Try again from a member who has paid is already subscribed, and the member has one email", async () => {
+        signIn();
+        await join(pay());
+        expect(await retry()).toBe("/supper-club/already");
+        await runScheduled();
+        expect(sent()).toHaveLength(1);
+      });
+
+      it("AC3: joinSupperClub, declined, sends nothing", async () => {
+        signIn();
+        nextCardDeclines();
+        await join(pay());
+        await expectNoEmail();
+      });
+
+      it("AC3: joinSupperClub, with an unknown result, sends nothing", async () => {
+        await stranded();
+        await expectNoEmail();
+      });
+
+      it("AC3: joinSupperClub, sold out, sends nothing", async () => {
+        signIn();
+        vi.spyOn(repo, "countHeldSpots").mockResolvedValue(product.cap);
+        expect(landed(await join(pay()))).toMatchObject({ query: { payError: "soldout" } });
+        await expectNoEmail();
+      });
+
+      it("AC3: joinSupperClub, with an error, sends nothing", async () => {
+        signIn();
+        const outage = new PaymentsError({ status: 503, category: "API_ERROR", code: "SERVICE_UNAVAILABLE", detail: "Try later." });
+        vi.spyOn(services.payments, "findCustomersByEmail").mockRejectedValueOnce(outage);
+        expect(landed(await join(pay()))).toMatchObject({ query: { payError: "error" } });
+        await expectNoEmail();
+      });
+
+      it("AC3: retrySupperClubPayment, declined, sends nothing", async () => {
+        signIn();
+        nextCardDeclines();
+        vi.spyOn(services.payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(noAnswer());
+        await join(pay());
+        expect(landed(await retry())).toMatchObject({ query: { payError: "declined" } });
+        await expectNoEmail();
+      });
+
+      it("AC3: retrySupperClubPayment, with still no answer, sends nothing", async () => {
+        await stranded();
+        vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
+        expect(landed(await retry())).toMatchObject({ query: { payError: "unknown" } });
+        await expectNoEmail();
+      });
+
+      it("AC3: retrySupperClubPayment, with an error, sends nothing", async () => {
+        signIn();
+        expect(landed(await retry())).toMatchObject({ query: { payError: "error" } });
+        await expectNoEmail();
+      });
+    });
+
+    describe("AC4 — the account link", () => {
+      const originalSiteUrl = services.siteUrl;
+
+      afterEach(() => {
+        services.siteUrl = originalSiteUrl;
+      });
+
+      it.each(["https://members.example.test", "https://members.example.test/"])(
+        "AC4: from a site address of %s the link is the site's address and ACCOUNT_PATH, with one slash",
+        async (siteUrl) => {
+          services.siteUrl = siteUrl;
+          signIn();
+          await join(pay());
+          await runScheduled();
+          expect(onlyText()).toContain(`\nGo to your account: https://members.example.test${ACCOUNT_PATH}\n`);
+        },
+      );
+    });
+
+    describe("AC5, AC6 — the stored member", () => {
+      const ana = async () => {
+        member = await repo.saveAccount({ email: "ana@example.com", firstName: "Ana", lastName: "Ruiz", phone: "216-555-0100", language: "es" });
+        await repo.confirmMemberEmail(member.id, T0);
+      };
+
+      it("AC5: a member with no first name gets the heading with no name", async () => {
+        signIn();
+        await join(pay());
+        await runScheduled();
+        expect(onlyText()).toMatch(/^You're in the Supper Club\n\n/);
+      });
+
+      it("AC5: a member with a first name gets it in the heading", async () => {
+        await ana();
+        signIn();
+        await join(pay());
+        await runScheduled();
+        expect(onlyText()).toMatch(/^You're in the Supper Club, Ana\n\n/);
+      });
+
+      it("AC6: a member stored as es gets their pickup date in Spanish", async () => {
+        await ana();
+        signIn();
+        await join(pay());
+        await runScheduled();
+        expect(onlyText()).toContain("\nFirst pickup: domingo, 3 de enero\n");
+      });
+    });
+
+    describe("AC7 — a failure never touches the paid signup", () => {
+      const refusingSend = async () => {
+        const { EmailSendError } = await import("@core/ports/email.js");
+        const send = vi.fn<EmailPort["send"]>(async () => {
+          throw new EmailSendError("Resend", 422, `{"message":"${PROVIDER_TEXT}"}`);
+        });
+        services.email = { send };
+        return send;
+      };
+
+      it.each(PATHS)("AC7: %s, when the send fails, lands on done, and the log names the failure without the message text", async (path) => {
+        const send = await refusingSend();
+        const errors = silenceErrors();
+        expect(await PAID_BY[path]()).toBe(DONE);
+        await expect(runScheduled()).resolves.toBeUndefined();
+
+        expect(send).toHaveBeenCalledTimes(1);
+        const message = send.mock.calls[0]?.[0];
+        expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([
+          expect.objectContaining({ stage: "send", memberId: member.id, error: "EmailSendError", status: 422 }),
+        ]);
+        expect(logged(errors)).not.toContain(PROVIDER_TEXT);
+        expect(logged(errors)).not.toContain(message?.subject);
+        expect(logged(errors)).not.toContain(message?.text);
+      });
+
+      it("AC7: nothing re-sends a lost email: Try again afterwards lands on already, and the one send stands", async () => {
+        const send = await refusingSend();
+        silenceErrors();
+        signIn();
+        await join(pay());
+        await runScheduled();
+
+        expect(await retry()).toBe("/supper-club/already");
+        await runScheduled();
+        expect(send).toHaveBeenCalledTimes(1);
+      });
+
+      it("AC7: a site address that can't be read fails in the send step, after the member has landed on done", async () => {
+        vi.spyOn(services, "siteUrl", "get").mockImplementation(() => {
+          throw storeDown();
+        });
+        const errors = silenceErrors();
+        signIn();
+        expect(await join(pay())).toBe(DONE);
+        await expect(runScheduled()).resolves.toBeUndefined();
+
+        expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "send", memberId: member.id })]);
+        expect(sent()).toEqual([]);
+      });
+
+      describe.each(PATHS)("%s, once the payment is through", (path) => {
+        const READ_FAILS = [
+          ["the product", () => vi.spyOn(repo, "findProductByName").mockRejectedValue(storeDown())],
+          ["the member", () => vi.spyOn(repo, "findMemberById").mockRejectedValue(storeDown())],
+          ["the confirmation", () => vi.spyOn(repo, "findSignupConfirmation").mockRejectedValue(storeDown())],
+        ] as const;
+
+        it.each(READ_FAILS)("AC7: a failed read of %s lands on done, logs stage store, and sends nothing", async (_name, fail) => {
+          const errors = silenceErrors();
+          expect(await PAID_BY[path](() => onceCharged(fail))).toBe(DONE);
+          await expect(runScheduled()).resolves.toBeUndefined();
+
+          expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([
+            expect.objectContaining({ stage: "store", memberId: member.id, error: "StoreDownError" }),
+          ]);
+          expect(logged(errors)).not.toContain(STORE_TEXT);
+          expect(sent()).toEqual([]);
+        });
+
+        const READ_FINDS_NOTHING = [
+          ["product", () => vi.spyOn(repo, "findProductByName").mockResolvedValue(null)],
+          ["member", () => vi.spyOn(repo, "findMemberById").mockResolvedValue(null)],
+          ["confirmation", () => vi.spyOn(repo, "findSignupConfirmation").mockResolvedValue(null)],
+        ] as const;
+
+        it.each(READ_FINDS_NOTHING)("AC7: a read that finds no %s is logged as a failure at stage store, and sends nothing", async (_name, fail) => {
+          const errors = silenceErrors();
+          expect(await PAID_BY[path](() => onceCharged(fail))).toBe(DONE);
+          await expect(runScheduled()).resolves.toBeUndefined();
+
+          expect(fieldsLoggedWith(errors, NOT_DELIVERED)).toEqual([expect.objectContaining({ stage: "store", memberId: member.id })]);
+          expect(sent()).toEqual([]);
+        });
+      });
+    });
+
+    describe("AC8 — after the response", () => {
+      it.each(PATHS)("AC8: %s redirects with the email still to come, whatever the send would do", async (path) => {
+        const send = vi.fn<EmailPort["send"]>(() => new Promise(() => {}));
+        const read = vi.spyOn(repo, "findSignupConfirmation");
+        expect(
+          await PAID_BY[path](() => {
+            services.email = { send };
+          }),
+        ).toBe(DONE);
+
+        expect(scheduled.tasks).toHaveLength(1);
+        expect(read).not.toHaveBeenCalled();
+        expect(send).not.toHaveBeenCalled();
+      });
     });
   });
 });

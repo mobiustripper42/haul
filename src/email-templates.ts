@@ -1,4 +1,4 @@
-import { createTranslator, type Language, type MessageKey } from "./i18n.js";
+import { createTranslator, type Language, type MessageKey, type Translator } from "./i18n.js";
 
 /** Each template's values. The words live in `src/messages/` (DEC-015), never here. */
 export type EmailTemplates = {
@@ -11,6 +11,11 @@ const KEYS = {
   signInLink: { subject: "email.signInLink.subject", body: "email.signInLink.body" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey }>;
 
+/** The body, a blank line, then the sign-off every email shares. */
+export function withSignOff(t: Translator, body: string): string {
+  return `${body}\n\n${t("email.signOff")}`;
+}
+
 /** The subject, and the body, a blank line, then the sign-off every email shares. */
 export function renderEmail<N extends keyof EmailTemplates>(
   name: N,
@@ -22,6 +27,6 @@ export function renderEmail<N extends keyof EmailTemplates>(
   const fill: Record<string, string | number> = values;
   return {
     subject: t(keys.subject, fill),
-    text: `${t(keys.body, fill)}\n\n${t("email.signOff")}`,
+    text: withSignOff(t, t(keys.body, fill)),
   };
 }

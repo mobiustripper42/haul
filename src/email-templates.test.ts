@@ -3,7 +3,8 @@
 // the template reads, and any English the template wrote itself shows up beside them. The bare-
 // string lint rule covers .tsx only; this is the check for .ts templates.
 import { describe, expect, it, vi } from "vitest";
-import { renderEmail } from "./email-templates.js";
+import { renderEmail, withSignOff } from "./email-templates.js";
+import { createTranslator } from "./i18n.js";
 
 vi.mock("./messages/es.js", async () => {
   const { en } = await import("./messages/en.js");
@@ -49,5 +50,15 @@ describe("AC15 (issue 22) — renderEmail signInLink", () => {
       subject: "«email.signInLink.subject»",
       text: "«email.signInLink.body»\n\n«email.signOff»",
     });
+  });
+});
+
+describe("AC4 (issue 58) — withSignOff", () => {
+  it("AC4: it gives the body, a blank line, then the sign-off", () => {
+    expect(withSignOff(createTranslator("en"), "The body.\nIts second line.")).toBe("The body.\nIts second line.\n\n— Ohio City Farm");
+  });
+
+  it("AC4: the sign-off comes from the translator it is handed", () => {
+    expect(withSignOff(createTranslator("es"), "The body.")).toBe("The body.\n\n«email.signOff»");
   });
 });
