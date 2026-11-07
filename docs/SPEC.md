@@ -93,7 +93,8 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 - A visitor creates an account, confirmed by an emailed code, before subscribing; the Supper Club
   page shows its choices to anyone (DEC-029).
 - A weekly auto-renewing subscription with no end date. Pickup only.
-- "How many people?" (placeholder prices until the farm confirms): **2 people, $50** and **3–4 people, $80**.
+- "How many people?": **Portioned for 2, $42** and **Portioned for 4, $74** (Lenny, 2026-11-07,
+  `docs/sources/2026-11-07-lenny-answers.md`).
 - "Which menu?": **standard or vegan**, whole meal, no price difference.
 - Members can cancel any time, skip any number of weeks, and switch size or preference, each until
   that week's cutoff.
@@ -166,8 +167,10 @@ and 4.
   stored on the member and the member's id goes in the customer's `reference_id`. A customer Haul
   creates carries email only; names can be added if the farm wants them in Square.
 - **The first week is charged at signup**, for the first pickup on or after the product's
-  **first-pickup date** (a seeded setting; the Supper Club starts in January 2027) whose cutoff has
-  not passed. Every later week is charged by the app's own run at cutoff, on the card on file.
+  **first-pickup date** (a seeded setting; the Supper Club's first window is Sunday and Monday,
+  January 10–11, 2027) whose cutoff has not passed. Every later week is charged by the app's own run
+  at cutoff, on the card on file.
+- **The app emails a receipt for each charge.** Square may send its own as well (Eric, 2026-11-07).
 - **The ledger** is one row per subscription per pickup week, written before any charge, keyed
   unique on subscription and week; a member may hold several subscriptions (open question 13). It
   is the work queue for the charge run and the source of all history: paid, skipped, closed,
@@ -285,7 +288,7 @@ mobile designs, and exist in English and Spanish; the farm reviews the Spanish l
 email carries a footer linking them, built into the shared email template.
 
 Only the weekly menu email can be unsubscribed from; the preference is a field on the member.
-Sign-in codes and links, signup confirmation and declined-card notices always send, except that a
+Sign-in codes and links, signup confirmation, receipts and declined-card notices always send, except that a
 member gets at most one sign-in email every 10 minutes, the link a locking guess sends excepted.
 
 ### 7.13 Languages
@@ -338,12 +341,12 @@ Viewable reports, scoped once the farm says what Square does not already give th
 1. *Answered 2026-11-03 (Eric):* yes — Monday midnight closes the following Sunday/Monday window,
    six days on.
 2. Does the signup charge always pay for the first pickup on or after the first-pickup date whose
-   cutoff has not passed? And the exact first-pickup date in January 2027.
-3. Supper Club size names and prices. Working values: 2 people $50, 3–4 people $80 (Eric's
-   working sizes; the requirements said "feeds 2" and "feeds 4–5" at ~$79).
+   cutoff has not passed? *The date answered 2026-11-07 (Lenny):* the first window is January
+   10–11, 2027.
+3. *Answered 2026-11-07 (Lenny):* Portioned for 2 at $42 and Portioned for 4 at $74 (§6.1).
 4. The free gift: confirm it is dropped.
 5. Is the benefit week a closed week, and which weeks move to Saturday/Sunday?
-6. Which languages do members speak, ranked?
+6. *Answered 2026-11-07 (Lenny, from Patrick):* English and Spanish are enough for now.
 7. Does Constant Contact stay for newsletters and recipes?
 8. Pickup location and hours for the Supper Club and the CSA.
 9. CSA share prices and size names; confirm fall is 6 weeks.
@@ -355,11 +358,13 @@ Viewable reports, scoped once the farm says what Square does not already give th
 13. *Answered 2026-11-02 (Eric):* a member may hold one or more subscriptions, to any product.
     Phase 1's signup creates exactly one; a member adding another comes later. A cap counts
     subscriptions (§6.1), so a household with two subscriptions takes two spots.
-14. Receipts: does Square email the receipt for each charge, or does the app?
+14. *Answered 2026-11-07 (Eric):* the app emails a receipt for each charge; Square may send one
+    too (§7.3). Lenny had no preference.
 15. *Answered 2026-11-06 (Eric):* existing subscribers move to a new price, with at least 14 days'
     notice by email.
-16. Email sender: which farm address sends, which inbox receives replies, and who adds the email
-    authentication records (SPF, DKIM, DMARC) to the farm's DNS?
+16. Who adds the email authentication records (SPF, DKIM, DMARC) to the farm's DNS? *Sender
+    answered 2026-11-07 (Lenny):* mail comes from `lenny@ohiocityfarm.com` and replies go there,
+    possibly Gavin's address later.
 17. *Answered 2026-11-06 (Eric):* the farm has no existing legal text. Stand-in terms and privacy
     policy go in at task 1.12, and the farm approves the final copies before production release. The
     policy offers a copy, correction or deletion by email. The operator carries these out by hand and

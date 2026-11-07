@@ -65,7 +65,7 @@ Every screen has a desktop and a mobile design; tablets use mobile (DEC-008). Sp
 
 - **Cards have 28px by 20px padding** (28px above and below, 20px at the sides), with 20px between their children, at every width. The README gave 16px on phones.
 - **The page has a 16px gutter at every width.** The README gave 24px on desktop. Content is at most `page` (960px) wide; a focused card is at most `card` (376px).
-- **Every control is at least 40px tall:** `field` 40px; `button`, `touch` and the language switcher 44px; `code-field` 52px. The README's 44px floor is lowered to 40px so the field stays 40 (Eric, 2026-10-31); the frame's switcher, at 40px, did not reach 44.
+- **Every control is at least 40px tall:** `field` 40px; `button`, `touch` and the language switcher 44px; `code-field` 52px. The README's 44px floor is lowered to 40px so the field stays 40 (Eric, 2026-10-31); the frame's switcher, at 40px, did not reach 44. A link inside a sentence is exempt and takes the line's height, as WCAG 2.5.8 exempts inline targets (Eric, 2026-11-07).
 
 ### Focus and accessibility
 
