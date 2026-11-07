@@ -29,12 +29,12 @@ const EVERY_WEEK = [
 ] as const;
 
 /**
- * The header by who is signed in (Sign in for a visitor, a link to the account for a member), then the
+ * The header (it reads who is signed in itself: Sign in for a visitor, Sign out for a member), then the
  * left column, then `children`. `pane` is which pane the page shows: "none" for the Supper Club page,
  * which keeps its left column and header link at every width; a pane hides the left column below `lg`.
  * The two account panes (Create Account and sign-in) also hide the header link there, mark the header's
  * Sign in as current on the sign-in pane, and send a signed-in member to the Supper Club page; "done" and
- * "already" are for a signed-in member, so they send nobody away and keep "Your account" at every width.
+ * "already" are for a signed-in member, so they send nobody away.
  */
 export async function JoinPage({
   pane,
@@ -46,7 +46,7 @@ export async function JoinPage({
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
   const accountPane = pane === "create-account" || pane === "sign-in";
   if (accountPane && member) redirect(SUPPER_CLUB_PATH);
-  const account = member ? "your-account" : pane === "sign-in" ? "sign-in-current" : "sign-in";
+  const account = pane === "sign-in" ? "sign-in-current" : "sign-in";
   const wide = pane === "none" ? "" : " wide-only";
   return (
     <>

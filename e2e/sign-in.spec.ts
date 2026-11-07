@@ -1,15 +1,14 @@
 // Issue 31, AC12-AC16, and issue 22, AC29-AC31: the sign-in round trip in a real browser, on
 // desktop and mobile. Each test starts from an emptied e2e database with the `members` seed
 // (fixtures.ts). Controls are found by role and the English wording in `en`, never by class or test id.
+// Issue 97: signing in still sends to `/`, which redirects on to /supper-club (AC2), and "signed in" is
+// the header's Sign out button, where the home page's "Signed in as" line was.
 import type { APIRequestContext, Page } from "@playwright/test";
 import { en } from "../src/messages/en.js";
-import { expect, outboxCount, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
+import { expect, headerSignOut, outboxCount, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const STRANGER = "nobody@ocf.xx";
-
-const signedInAs = (email: string) => en["home.signedInAs"].replace("{email}", email);
-const signedInPrefix = en["home.signedInAs"].split("{email}")[0]!.trim();
 
 const onPath = (path: string) => (url: URL) => url.pathname === path;
 
@@ -45,13 +44,13 @@ test("AC12: a member's email leads to Enter your code, and the outbox gets him a
   expect(await outboxCount(request, ERIC)).toBe(before + 1);
 });
 
-test("AC13: that code, entered in 6-digit code, signs him in on /", async ({ page, request }) => {
+test("AC13, AC2 (issue 97): that code, entered in 6-digit code, signs him in, and he ends on /supper-club with the header's Sign out", async ({ page, request }) => {
   const code = await codeFor(page, request, ERIC);
 
   await enterCode(page, code);
 
-  await expect(page).toHaveURL(onPath("/"));
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(headerSignOut(page)).toBeVisible();
 });
 
 test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; the right code still signs him in", async ({
@@ -68,8 +67,8 @@ test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; th
 
   await enterCode(page, code);
 
-  await expect(page).toHaveURL(onPath("/"));
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(headerSignOut(page)).toBeVisible();
 });
 
 test("AC15: an email no member has gets the same code screen, and the outbox gets nothing for it", async ({
@@ -122,7 +121,7 @@ async function pressSignInOnLinkPage(page: Page): Promise<void> {
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
 }
 
-test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in. AC30: pressed again, in a fresh browser, the link lands on /sign-in with the link notice", async ({
+test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in, and (AC2, issue 97) he ends on /supper-club. AC30: pressed again, in a fresh browser, the link lands on /sign-in with the link notice", async ({
   page,
   request,
   browser,
@@ -142,8 +141,8 @@ test("AC29: five wrong codes email him a sign-in link; the right code is refused
 
   await page.goto(link);
   await pressSignInOnLinkPage(page);
-  await expect(page).toHaveURL(onPath("/"));
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(headerSignOut(page)).toBeVisible();
 
   // AC30
   const fresh = await browser.newContext();
@@ -174,13 +173,18 @@ test("AC31: an email no member has gets the same notice for five wrong codes, an
   expect(await outboxCount(request, STRANGER)).toBe(before);
 });
 
-test("AC16: signed in, Sign out lands him on / with the Sign in link and no Signed in as", async ({ page, request }) => {
+test("AC16, AC4 (issue 97): signed in, the header's Sign out ends the session and lands him on /supper-club, signed out: the header's Sign in, and no Sign out, there or on the next page", async ({ page, request }) => {
   await enterCode(page, await codeFor(page, request, ERIC));
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(headerSignOut(page)).toBeVisible();
 
-  await page.getByRole("button", { name: en["home.signOut"] }).click();
+  await headerSignOut(page).click();
 
-  await expect(page).toHaveURL(onPath("/"));
-  await expect(page.getByRole("link", { name: en["home.signIn"], exact: true })).toBeVisible();
-  await expect(page.getByText(signedInPrefix)).toHaveCount(0);
+  await expect(page).toHaveURL(onPath("/supper-club"));
+  await expect(page.getByRole("banner").getByRole("link", { name: en["home.signIn"], exact: true })).toBeVisible();
+  await expect(headerSignOut(page)).toHaveCount(0);
+
+  // /terms shows Sign out to anyone signed in (AC6), so its absence there is the session gone.
+  await page.goto("/terms");
+  await expect(page.getByRole("banner").getByRole("button", { name: "English", exact: true })).toBeVisible();
+  await expect(headerSignOut(page)).toHaveCount(0);
 });

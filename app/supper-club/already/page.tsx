@@ -1,10 +1,8 @@
 import { redirect } from "next/navigation";
 import { requireSupperClub } from "@core/products.js";
-import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { Hint } from "../../../components/ui/hint";
 import { getTranslator } from "../../language";
-import { ACCOUNT_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { getSignedInMember } from "../../session";
 import { JoinPage } from "../join-page";
@@ -27,9 +25,6 @@ export default async function SupperClubAlready() {
       <Card width="pane">
         <p className="font-display text-heading text-teal">{t("supperClub.already.title")}</p>
         <Hint>{t("supperClub.already.nothing")}</Hint>
-        <Button kind="primary" href={ACCOUNT_PATH}>
-          {t("supperClub.done.account")}
-        </Button>
       </Card>
     ),
   });

@@ -1,14 +1,20 @@
-// AC11, AC12 and AC14's wiring: `await Home()` rendered through react-dom/server with
-// `next/headers` faked (no DOM library is installed), asserting on the markup.
-import { isValidElement, type ComponentType, type ReactElement, type ReactNode } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
+// Issue 97, AC1: / is no longer the developer placeholder; it sends everyone on to the Supper Club. The
+// unit test sees only the target: `redirect` is mocked to throw with it. That it is a temporary
+// redirect, a 307, only a real request shows (e2e/home-redirect.spec.ts). Issue 7's Spanish proof the
+// placeholder carried lives on the language switch (app/language-switcher.test.ts).
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Button } from "../components/ui/button";
-import { setLanguage } from "./language-actions";
+import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import type { Role } from "@core/members.js";
+import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "./next-headers-fake";
 import Home from "./page";
+import { redirectOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
+const services = vi.hoisted(() => ({
+  repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
+  secret: "test-session-secret-that-is-long-enough-0123456789",
+}));
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("./next-headers-fake");
   return {
@@ -16,74 +22,31 @@ vi.mock("next/headers", async () => {
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
+vi.mock("next/navigation", async () => ({ redirect: (await import("./screen-test-helpers")).throwingRedirect }));
+vi.mock("next/server", () => ({ after: () => {} }));
+vi.mock("./services", () => ({ getRepository: () => services.repo, getSessionSecret: () => services.secret }));
 
 beforeEach(() => {
   request.current = emptyRequest();
+  services.repo = new InMemoryRepository();
 });
 
-const renderHome = async (): Promise<string> => renderToStaticMarkup(await Home());
-
-// `form > fieldset > (legend, button, button)`, nothing else inside the fieldset.
-const switcher = (legend: string): RegExp =>
-  new RegExp(
-    `<form\\b[^>]*>\\s*<fieldset\\b[^>]*>\\s*<legend\\b[^>]*>${legend}</legend>\\s*` +
-      `<button\\b[^>]*>English</button>\\s*<button\\b[^>]*>Español</button>\\s*</fieldset>\\s*</form>`,
-  );
-
-function expectSpanish(html: string): void {
-  expect(html).toMatch(/<h1\b[^>]*>Portal de miembros de OCF<\/h1>/);
-  expect(html).toMatch(/<p\b[^>]*>Comprobación del núcleo: \$12\.34<\/p>/);
-  expect(html).toMatch(switcher("Idioma"));
-  expect(html).not.toContain("OCF Member Portal");
-  expect(html).not.toContain("Core check");
+async function signInAs(role: Role): Promise<void> {
+  const member = await services.repo.createMember({ email: "ada@example.com", role });
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
 }
 
-describe("AC11 — the page in Spanish", () => {
-  it('AC11: with the lang cookie set to "es", shows the Spanish heading, paragraph and fieldset', async () => {
-    request.current.cookies = { lang: "es" };
-    expectSpanish(await renderHome());
-  });
-});
+// Inside an async function, so a `Home` that redirects synchronously is caught the same way.
+const landing = () => redirectOf((async () => Home())());
 
-describe("AC12 — the page in English", () => {
-  it("AC12: with no cookie and no Accept-Language, shows the English heading, paragraph and fieldset", async () => {
-    const html = await renderHome();
-    expect(html).toMatch(/<h1\b[^>]*>OCF Member Portal<\/h1>/);
-    expect(html).toMatch(/<p\b[^>]*>Core check: \$12\.34<\/p>/);
-    expect(html).toMatch(switcher("Language"));
-    expect(html).not.toContain("Portal de miembros");
+describe("AC1 — / goes on to the Supper Club", () => {
+  it("AC1: signed out, / redirects to /supper-club", async () => {
+    await expect(landing()).resolves.toBe("/supper-club");
   });
 
-  it("AC12: with no cookie and Accept-Language es-MX, renders as in AC11", async () => {
-    request.current.headers = { "accept-language": "es-MX" };
-    expectSpanish(await renderHome());
-  });
-});
-
-// The element tree `Home` returns, searched for a tag name or a component.
-function findAll(node: ReactNode, type: string | ComponentType<never>): ReactElement<Record<string, unknown>>[] {
-  if (Array.isArray(node)) return node.flatMap((child) => findAll(child as ReactNode, type));
-  if (!isValidElement<Record<string, unknown>>(node)) return [];
-  const here = node.type === type ? [node] : [];
-  return [...here, ...findAll(node.props.children as ReactNode, type)];
-}
-
-describe("AC14 — the switcher is wired to setLanguage", () => {
-  it("AC14: the page's form has setLanguage as its action", async () => {
-    const forms = findAll(await Home(), "form");
-    expect(forms).toHaveLength(1);
-    expect(forms[0]?.props.action).toBe(setLanguage);
-  });
-
-  it('AC14: each button submits name="language" with its language code', async () => {
-    const [form] = findAll(await Home(), "form");
-    const buttons = findAll(form?.props.children as ReactNode, Button).map((b) => ({
-      name: b.props.name,
-      value: b.props.value,
-    }));
-    expect(buttons).toEqual([
-      { name: "language", value: "en" },
-      { name: "language", value: "es" },
-    ]);
+  it.each(["member", "admin"] as const)("AC1: signed in as a %s, / redirects to /supper-club", async (role) => {
+    await signInAs(role);
+    await expect(landing()).resolves.toBe("/supper-club");
   });
 });

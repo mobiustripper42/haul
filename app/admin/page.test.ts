@@ -274,6 +274,19 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     });
   });
 
+  // Issue 97: the header reads the session; on /admin the admin's Admin button is the page showing.
+  describe("AC5 (issue 97) — the header on /admin", () => {
+    it('AC5: the header shows Admin, then Sign out, and Admin, a link to /admin, is marked aria-current="page"', async () => {
+      addSupperClub(services.repo);
+      const html = await render();
+      const header = /<header\b[\s\S]*<\/header>/.exec(html)?.[0] ?? "";
+      expect(textsOf(header).slice(-2)).toEqual(["Admin", "Sign out"]);
+      expect(attributesOf(header, "a").filter((link) => link.href === "/admin")).toEqual([
+        expect.objectContaining({ "aria-current": "page" }),
+      ]);
+    });
+  });
+
   describe("AC11 — Joined on the screen", () => {
     it("AC11: a payment at 22:30 on December 1 in Cleveland, already December 2 in UTC, reads Dec 1", async () => {
       const product = addSupperClub(services.repo);

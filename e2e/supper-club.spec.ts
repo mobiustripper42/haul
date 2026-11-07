@@ -14,7 +14,7 @@ import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
 import { en } from "../src/messages/en.js";
 import { requireSupperClub } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
-import { expect, outboxCount, test, waitForSignInCode } from "./fixtures";
+import { expect, headerSignOut, outboxCount, test, waitForSignInCode } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const NEWCOMER = "new@ocf.xx";
@@ -499,7 +499,7 @@ test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the ri
   await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
   const box = (await page.locator("section").filter({ hasText: "You're in the Supper Club" }).last().boundingBox())!;
   expect(box.x).toBeCloseTo(join.x, 0);
-  await expect(page.getByRole("banner").getByRole("link", { name: "Your account", exact: true })).toBeVisible();
+  await expect(headerSignOut(page)).toBeVisible();
 });
 
 test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone", async ({ page, request }, testInfo) => {
@@ -510,10 +510,10 @@ test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone"
   await expect(page).toHaveURL(onPath("/supper-club/done"));
   await expect(page.getByText("You're in the Supper Club")).toBeVisible();
   await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeHidden();
-  await expect(page.getByRole("banner").getByRole("link", { name: "Your account", exact: true })).toBeVisible();
+  await expect(headerSignOut(page)).toBeVisible();
 });
 
-test("AC5 (issue 56): a member with a box who opens /supper-club lands on the already page, and goes on to their account", async ({ page, request }) => {
+test("AC5 (issue 56), AC9 (issue 97): a member with a box who opens /supper-club lands on the already page, which has no \"Go to your account\"", async ({ page, request }) => {
   await signedIn(page, request);
   await pay(page);
   await expect(page).toHaveURL(onPath("/supper-club/done"));
@@ -521,8 +521,8 @@ test("AC5 (issue 56): a member with a box who opens /supper-club lands on the al
   await page.goto("/supper-club");
   await expect(page).toHaveURL(onPath("/supper-club/already"));
   await expect(page.getByText("You already have a Supper Club subscription")).toBeVisible();
-  await page.getByRole("main").getByRole("link", { name: "Go to your account", exact: true }).click();
-  await expect(page).toHaveURL(onPath("/"));
+  await expect(page.getByText(en["supperClub.already.nothing"], { exact: true })).toBeVisible();
+  await expect(page.getByRole("link", { name: "Go to your account", exact: true })).toHaveCount(0);
 });
 
 test("AC3, AC9 (issue 57): the last spot goes while a member is on the page: pay lands on the sold-out card and its notice, where the Join card stood, beside or after the farm copy", async ({ page, request }) => {

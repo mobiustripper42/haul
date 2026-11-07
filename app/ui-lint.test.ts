@@ -8,8 +8,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "./next-headers-fake";
-import Home from "./page";
 import { attributesOf, escapeRegExp, screenMarkup } from "./screen-test-helpers";
+import { SiteHeader } from "./site-header";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
 const eslint = new ESLint({ cwd: ROOT, errorOnUnmatchedPattern: false });
@@ -546,14 +546,15 @@ describe("AC17 — every .tsx file in the repo passes lint", () => {
     expect(errors).toEqual([]);
   });
 
-  it("AC17: the home page's sign-out button carries btn-secondary", async () => {
+  // Issue 97: the sign-out button moved from the home page to the header, where it is quiet.
+  it("AC4 (issue 97): the header's sign-out button carries btn-quiet", async () => {
     const member = await services.repo.createMember({ email: "ada@example.com" });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
     request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
-    const html = renderToStaticMarkup(await Home());
+    const html = renderToStaticMarkup(await SiteHeader({ account: "sign-in" }));
     const opening = new RegExp(`(<button\\b[^>]*>)${escapeRegExp("Sign out")}</button>`).exec(screenMarkup(html))?.[1];
     expect(opening, "no Sign out button").toBeDefined();
     const classes = (attributesOf(opening ?? "", "button")[0]?.class ?? "").split(/\s+/);
-    expect(classes).toContain("btn-secondary");
+    expect(classes).toContain("btn-quiet");
   });
 });

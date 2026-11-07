@@ -273,17 +273,16 @@ describe("AC5 — the already-a-member page", () => {
     return { element, html: renderToStaticMarkup(element) };
   };
 
-  it("AC5, AC17 (issue 57): it says they already have a subscription, that nothing was charged, and links to their account, in that order", async () => {
+  // Issue 97, AC9: with / redirecting, "Go to your account" would only reload this page; it comes back
+  // with the account pages in task 2.4. The confirmation keeps its button (above).
+  it("AC9: its card says they already have a subscription, then that nothing was charged, and nothing more", async () => {
     await subscribe(await signIn());
-    const text = from(plain((await render()).html), ALREADY);
-    expect(inOrder(text, [ALREADY, "Nothing was charged.", "Go to your account"])).toEqual([]);
+    expect(from(plain((await render()).html), ALREADY)).toBe(`${ALREADY} Nothing was charged.`);
   });
 
-  it('AC5: "Go to your account" is primary and goes to ACCOUNT_PATH', async () => {
+  it('AC9: it has no "Go to your account" link', async () => {
     await subscribe(await signIn());
-    const link = linkTo((await render()).html, "Go to your account");
-    expect(link).toContain('href="/"');
-    expect(link).toContain("btn-primary");
+    expect(linkTo((await render()).html, "Go to your account")).toBe("");
   });
 
   it("AC5: it is a pane on JoinPage: the left column's card, then its own", async () => {

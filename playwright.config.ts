@@ -24,7 +24,8 @@ export default defineConfig({
   ],
   webServer: {
     command: `./node_modules/.bin/next dev --webpack --port ${PORT}`,
-    url: baseURL,
+    // Not `/`: it redirects to /supper-club, which 500s on an empty e2e database until a test's fixture seeds it.
+    url: `${baseURL}/sign-in`,
     reuseExistingServer: !ci,
     timeout: 120_000,
     env: {

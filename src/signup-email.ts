@@ -44,7 +44,7 @@ export function deliverSignupConfirmation(
     t("email.signupConfirmation.signIn"),
     t("email.signupConfirmation.questions"),
   ];
-  const footer = [t("email.signupConfirmation.footerFarm"), t("email.signupConfirmation.footerReason")].join("\n");
+  const footer = [t("brand.address"), t("email.signupConfirmation.footerReason")].join("\n");
   const text = `${withSignOff(t, blocks.join("\n\n"))}\n${footer}\n\n${legalFooter(t, siteUrl)}`;
   return email.send({ to: member.email, subject, text });
 }

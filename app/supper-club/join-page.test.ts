@@ -61,11 +61,14 @@ describe("no pane: the Supper Club page", () => {
     expect(normalMarkup(html).startsWith(normalMarkup(header))).toBe(true);
   });
 
-  it('AC4: signed in it opens with SiteHeader\'s "your-account" header, and redirects nowhere', async () => {
+  // Issue 97: signed in, the header reads the session itself, whatever `account` JoinPage passes.
+  it("AC4 (issue 97): signed in it opens with SiteHeader's signed-in header, Sign out and no Sign in or \"Your account\", and redirects nowhere", async () => {
     await signIn();
     const { html } = await render("none");
-    const header = renderToStaticMarkup(await SiteHeader({ account: "your-account" }));
-    expect(textsOf(header)).toContain("Your account");
+    const header = renderToStaticMarkup(await SiteHeader({ account: "sign-in" }));
+    expect(textsOf(header)).toContain("Sign out");
+    expect(textsOf(header)).not.toContain("Sign in");
+    expect(textsOf(header)).not.toContain("Your account");
     expect(normalMarkup(html).startsWith(normalMarkup(header))).toBe(true);
   });
 
@@ -133,10 +136,11 @@ describe.each(["done", "already"] as const)("issue 56 — pane %s", (pane) => {
     expect(markup).toMatch(/<main\b[^>]*>\s*<\w+\b[^>]*class="[^"]*(?<![\w-])wide-only(?![\w-])/);
   });
 
-  it(`AC13: ${pane}'s header shows "Your account", at every width`, async () => {
+  it(`AC4 (issue 97): ${pane}'s header shows Sign out and no "Your account", at every width`, async () => {
     await signIn();
     const header = headerOf((await render(pane)).html);
-    expect(textsOf(header)).toContain("Your account");
+    expect(textsOf(header)).toContain("Sign out");
+    expect(textsOf(header)).not.toContain("Your account");
     expect(header).not.toContain("wide-only");
   });
 });
