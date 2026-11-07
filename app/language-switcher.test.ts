@@ -87,9 +87,10 @@ describe("AC6 — LanguageSwitcher", () => {
   });
 });
 
-// The home page and the sign-in header must call this component, not carry their own copy: with
-// the module mocked to a marker, the marker is what they render where the switcher goes.
-describe("AC6 — the home page and the sign-in header both use LanguageSwitcher", () => {
+// The sign-in header must call this component, not carry its own copy: with the module mocked to a
+// marker, the marker is what it renders where the switcher goes. The home page's case went with
+// issue 97, where `/` became a bare redirect.
+describe("AC6 — the sign-in header uses LanguageSwitcher", () => {
   const marker = () => createElement("div", { id: "switcher-marker" });
 
   afterEach(() => {
@@ -102,13 +103,6 @@ describe("AC6 — the home page and the sign-in header both use LanguageSwitcher
     vi.doMock("./language-switcher", () => ({ LanguageSwitcher: async () => marker() }));
     return load();
   }
-
-  it("AC6: the home page renders LanguageSwitcher and no switcher of its own", async () => {
-    const { default: Home } = await withMockedSwitcher(() => import("./page"));
-    const html = renderToStaticMarkup(await Home());
-    expect(html).toContain('<div id="switcher-marker"></div>');
-    expect(html).not.toMatch(/<fieldset\b|<legend\b/);
-  });
 
   it("AC6: the sign-in header renders LanguageSwitcher and no switcher of its own", async () => {
     const { default: SignInLayout } = await withMockedSwitcher(() => import("./sign-in/layout"));

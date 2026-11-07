@@ -59,12 +59,13 @@ test.describe("AC1 — through the real redirects", () => {
     await expect(page).toHaveURL(onPath("/sign-in"));
   });
 
-  test("AC1: a signed-in member whose role is not admin goes to / from both", async ({ page, request }) => {
+  // Issue 97, AC2: they are still sent to /, and the redirect there carries them on to /supper-club.
+  test("AC1, AC2 (issue 97): a signed-in member whose role is not admin ends on /supper-club from both", async ({ page, request }) => {
     await signIn(page, request, ERIC);
     await page.goto("/admin");
-    await expect(page).toHaveURL(onPath("/"));
+    await expect(page).toHaveURL(onPath("/supper-club"));
     await page.goto("/admin/members.csv");
-    await expect(page).toHaveURL(onPath("/"));
+    await expect(page).toHaveURL(onPath("/supper-club"));
   });
 });
 

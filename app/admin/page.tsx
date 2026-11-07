@@ -25,7 +25,7 @@ export default async function Admin() {
 
   return (
     <>
-      {await SiteHeader({ account: "your-account" })}
+      {await SiteHeader({ account: "none", current: "admin" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <div className="flex flex-wrap items-end justify-between gap-4">

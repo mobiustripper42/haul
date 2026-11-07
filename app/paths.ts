@@ -8,3 +8,6 @@ export const CREATE_ACCOUNT_PAGES: FlowPages = { start: "/create-account", code:
 
 /** A member's account: the home page, as the header's link is, until the account pages arrive (task 2.4). */
 export const ACCOUNT_PATH = "/";
+
+/** The admin's page, the header's Admin button. */
+export const ADMIN_PATH = "/admin";

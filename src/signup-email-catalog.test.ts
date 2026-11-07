@@ -2,7 +2,8 @@
 // stand-in whose every value is its own key in guillemets, so a Spanish render shows exactly which keys the
 // email reads, and any English it wrote itself shows up beside them. The stand-in lacks one key, so the same
 // render shows the translator's fallback. The spec names no suffixes under `email.signupConfirmation.`, so
-// those read as «new»; the reused keys are read by name.
+// those read as «new»; the reused keys are read by name. Issue 97 moved the address line to `brand.address`,
+// shared with the site footer, so it reads by name.
 import { describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
 import type { Member } from "./members.js";
@@ -75,7 +76,7 @@ const body = (heading: string): string =>
     "«new»",
     "",
     "«email.signOff»",
-    "«new»",
+    "«brand.address»",
     "«new»",
     "",
     "«email.legalTerms»",

@@ -7,7 +7,11 @@ import { e2eDatabaseUrl } from "./database";
 
 export { expect };
 
-/** `test`, with every test starting from an emptied e2e database with the `members` seed. */
+/**
+ * `test`, with every test starting from an emptied e2e database with the `members` and `supper-club`
+ * seeds. The Supper Club's row is there because `/` redirects to `/supper-club` (issue 97), which 500s
+ * without it, so every landing after sign-in, sign-out or a turned-away `/admin` needs it.
+ */
 export const test = base.extend<{ freshDatabase: void }>({
   freshDatabase: [
     // eslint-disable-next-line no-empty-pattern -- Playwright reads a fixture's needs from a destructured first argument, and this needs none.
@@ -15,6 +19,7 @@ export const test = base.extend<{ freshDatabase: void }>({
       const url = e2eDatabaseUrl();
       await resetDev(url);
       await runSeed("members", url);
+      await runSeed("supper-club", url);
       await use();
     },
     { auto: true },
@@ -59,7 +64,13 @@ export async function waitForSignInCode(
   return code;
 }
 
-/** Signs `email` in at /sign-in with the code the outbox receives, and waits for the home page. */
+/** The header's Sign out button: what shows a page is signed in (issue 97). */
+export const headerSignOut = (page: Page) => page.getByRole("banner").getByRole("button", { name: en["home.signOut"], exact: true });
+
+/**
+ * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands: `/`,
+ * which redirects to /supper-club, signed in.
+ */
 export async function signIn(page: Page, request: APIRequestContext, email: string): Promise<void> {
   const before = await outboxCount(request, email);
   await page.goto("/sign-in");
@@ -68,7 +79,8 @@ export async function signIn(page: Page, request: APIRequestContext, email: stri
   const code = await waitForSignInCode(request, email, before);
   await page.getByLabel(en["signIn.codeLabel"]).fill(code);
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
-  await expect(page).toHaveURL((url) => url.pathname === "/");
+  await expect(page).toHaveURL((url) => url.pathname === "/supper-club");
+  await expect(headerSignOut(page)).toBeVisible();
 }
 
 /**

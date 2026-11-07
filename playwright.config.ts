@@ -24,7 +24,7 @@ export default defineConfig({
   ],
   webServer: {
     command: `./node_modules/.bin/next dev --webpack --port ${PORT}`,
-    url: baseURL,
+    url: `${baseURL}/sign-in`,
     reuseExistingServer: !ci,
     timeout: 120_000,
     env: {

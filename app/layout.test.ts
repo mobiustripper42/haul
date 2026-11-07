@@ -1,8 +1,12 @@
 // AC13: `await RootLayout({ children })` rendered through react-dom/server with `next/headers` faked.
+// Issue 97, AC7: the root layout ends every page with the footer.
+import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import RootLayout from "./layout";
 import { emptyRequest } from "./next-headers-fake";
+import { normalMarkup, screenMarkup } from "./screen-test-helpers";
+import { SiteFooter } from "./site-footer";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -45,5 +49,24 @@ describe("AC13 — <html lang> follows the resolved language", () => {
     request.current.cookies = { lang: "en" };
     request.current.headers = { "accept-language": "es" };
     expect(await htmlTag()).toMatch(/\slang="en"/);
+  });
+});
+
+describe("AC7 (issue 97) — every page ends with the footer", () => {
+  beforeEach(() => {
+    vi.stubEnv("FARM_CONTACT_EMAIL", "farm@ohiocityfarm.test");
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  it("AC7: <body> holds the page, then SiteFooter's <footer>, and nothing after it", async () => {
+    const markup = renderToStaticMarkup(await RootLayout({ children: createElement("p", null, "child") }));
+    const body = /<body\b[^>]*>([\s\S]*)<\/body>/.exec(markup)?.[1];
+    if (body === undefined) throw new Error(`no <body> element in: ${markup}`);
+    const footer = renderToStaticMarkup(await SiteFooter());
+    expect(screenMarkup(footer)).toMatch(/^<footer\b[\s\S]*<\/footer>$/);
+    expect(normalMarkup(body)).toBe(normalMarkup(`<p>child</p>${footer}`));
   });
 });
