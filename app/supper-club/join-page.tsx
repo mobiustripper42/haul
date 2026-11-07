@@ -7,6 +7,7 @@ import type { ReactNode } from "react";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { returnToOr } from "@core/return-to.js";
+import { BulletList } from "../../components/ui/bullet-list";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Eyebrow } from "../../components/ui/eyebrow";
@@ -60,11 +61,7 @@ export async function JoinPage({
           <p className="text-ink-muted">{t("supperClub.team")}</p>
           <Card width="fill">
             <p className="font-display text-section text-teal">{t("supperClub.everyWeek")}</p>
-            <ul className="flex list-disc flex-col gap-1 pl-5">
-              {EVERY_WEEK.map((key) => (
-                <li key={key}>{t(key)}</li>
-              ))}
-            </ul>
+            <BulletList items={EVERY_WEEK.map((key) => t(key))} />
             <Hint>{t("supperClub.allergens")}</Hint>
           </Card>
           <Panel title={t("supperClub.sampleTitle")}>

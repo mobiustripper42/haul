@@ -258,13 +258,13 @@ describe("issue 56 — the payment section", () => {
   const CHECK_THE_BOX = "Check the box to agree to the weekly charge.";
   const RETRY_NOTICE = "We couldn't confirm your payment. Try again and you won't be charged twice.";
 
-  const sentence = (price: string) => `I agree to a weekly charge of ${price} until I cancel, and to the Terms and Privacy Policy.`;
+  const sentence = (price: string) => `I agree to a weekly charge of ${price} until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.`;
   const pickupLine = (date: string, price: string) =>
     `First pickup: ${date}. After that, your card is charged ${price} at the end of each Monday for the following week's pickup, until you cancel.`;
 
-  /** The words from section 4 on. */
+  /** The words from section 4 on, with the links in the checkbox sentence read as part of its one run of text. */
   const section4 = (html: string) => {
-    const card = joinCard(html);
+    const card = joinCard(html.replace(/<\/?a\b[^>]*>/g, ""));
     return card.slice(Math.max(card.indexOf("4. Payment"), 0));
   };
 
@@ -374,6 +374,45 @@ describe("issue 56 — the payment section", () => {
     expect(joinCard(html)).not.toContain("4. Payment");
     expect(joinCard(html).join(" ")).not.toContain("Join and pay");
     expect(checkbox(html)).toEqual([]);
+  });
+
+  describe("issue 63 — the checkbox sentence", () => {
+    /** The markup inside the label that holds the checkbox. */
+    const consentLabel = (html: string) =>
+      [...screenMarkup(html).matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((label) => label[1] ?? "").find((label) => label.includes('type="checkbox"')) ?? "";
+
+    beforeEach(async () => {
+      await signIn();
+    });
+
+    it("AC4 (issue 63): the label reads the whole sentence, the links' words in their places", async () => {
+      expect(consentLabel(await render()).replace(/<[^>]*>/g, "")).toBe(sentence("$50"));
+    });
+
+    it('AC6 (issue 63): "Terms" and "Privacy Policy" are the label\'s two links, to /terms and /privacy', async () => {
+      const label = consentLabel(await render());
+      expect([...label.matchAll(/<a\b[^>]*>([^<]*)<\/a>/g)].map((link) => link[1])).toEqual(["Terms", "Privacy Policy"]);
+      expect(attributesOf(label, "a").map((link) => link.href)).toEqual(["/terms", "/privacy"]);
+    });
+
+    it("AC6 (issue 63): each opens in a new tab", async () => {
+      for (const link of attributesOf(consentLabel(await render()), "a")) {
+        expect(link).toMatchObject({ target: "_blank", rel: "noopener noreferrer" });
+      }
+      expect(attributesOf(consentLabel(await render()), "a")).toHaveLength(2);
+    });
+
+    it("AC6 (issue 63): each reads as a link: underlined and teal", async () => {
+      const links = attributesOf(consentLabel(await render()), "a");
+      expect(links).toHaveLength(2);
+      for (const link of links) expect(utilitiesOf(link.class)).toEqual(expect.arrayContaining(["underline", "text-teal"]));
+    });
+
+    it("AC6 (issue 63): the links follow the pick's price in the sentence around them", async () => {
+      const label = consentLabel(await render({ [typeId(0)]: optionId(0, 1) }));
+      expect(label.replace(/<[^>]*>/g, "")).toBe(sentence("$80"));
+      expect(attributesOf(label, "a")).toHaveLength(2);
+    });
   });
 
   describe("AC2 — the price follows the pick", () => {

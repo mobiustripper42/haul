@@ -339,10 +339,60 @@ test("AC2 (issue 56): a changed pick updates the price panel, the checkbox sente
   await page.getByRole("radio", { name: /\$80 a week/ }).check();
 
   await expect(joinAndPay(page, "$80")).toBeVisible();
-  await expect(page.getByText("I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy.")).toBeVisible();
+  await expect(page.getByText("I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.")).toBeVisible();
   await expect(page.getByText("your card is charged $80 at the end of each Monday")).toBeVisible();
   expect(page.url()).toBe(url);
 });
+
+// Issue 63: only a browser can show what a link in a label does when it is clicked.
+const LEGAL_LINKS = [
+  ["Terms", "/terms", "Terms of service"],
+  ["Privacy Policy", "/privacy", "Privacy policy"],
+] as const;
+
+/**
+ * `next dev` reloads every open tab the first time it compiles a route, which a built app never does. Left to
+ * the click, that reload would wipe the card entry here, and would hide a link that ticks the box.
+ */
+async function compileFirst(request: APIRequestContext, path: string): Promise<void> {
+  expect((await request.get(path)).ok()).toBe(true);
+}
+
+/** Clicks the sentence's link, checks the page opened in a new tab, and closes that tab. */
+async function openInNewTab(page: Page, name: string, path: string, title: string): Promise<void> {
+  const link = inMain(page, name);
+  await expect(link).toBeVisible();
+  const opened = page.context().waitForEvent("page");
+  await link.click();
+  const tab = await opened;
+  await expect(tab).toHaveURL(onPath(path));
+  await expect(tab.getByRole("heading", { name: title, exact: true })).toBeVisible();
+  await tab.close();
+}
+
+for (const [name, path, title] of LEGAL_LINKS) {
+  test(`AC6 (issue 63): "${name}" opens ${path} in a new tab, and the card entry and the tick stay as they were`, async ({ page, request }) => {
+    await compileFirst(request, path);
+    await signedIn(page, request);
+    await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
+    await consent(page).check();
+
+    await openInNewTab(page, name, path, title);
+
+    await expect(page).toHaveURL(onPath("/supper-club"));
+    await expect(testCard(page)).toHaveValue(SQUARE_SANDBOX_VALUES.cardNonceOk);
+    await expect(consent(page)).toBeChecked();
+  });
+
+  test(`AC6 (issue 63): clicking "${name}" does not tick the box`, async ({ page, request }) => {
+    await compileFirst(request, path);
+    await signedIn(page, request);
+
+    await openInNewTab(page, name, path, title);
+
+    await expect(consent(page)).not.toBeChecked();
+  });
+}
 
 test("AC4 (issue 56): pay with the box unticked stays on the page and says why", async ({ page, request }) => {
   await signedIn(page, request);

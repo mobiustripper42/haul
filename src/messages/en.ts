@@ -1,3 +1,6 @@
+import { legalPrivacyEn } from "./legal-privacy.en.js";
+import { legalTermsEn } from "./legal-terms.en.js";
+
 // English is the source catalog: every key exists here, and other languages may lack some.
 export const en = {
   "home.title": "OCF Member Portal",
@@ -84,7 +87,10 @@ export const en = {
   "supperClub.weeklyLabel": "Then every week, at the cutoff",
   "supperClub.pickupLine":
     "First pickup: {date}. After that, your card is charged {price} at the end of each Monday for the following week's pickup, until you cancel.",
-  "supperClub.consent": "I agree to a weekly charge of {price} until I cancel, and to the Terms and Privacy Policy.",
+  "supperClub.consent":
+    "I agree to a weekly charge of {price} until I cancel, and to the {terms} and {privacy}. To cancel, sign in to your account before the end of Monday.",
+  "supperClub.consentTerms": "Terms",
+  "supperClub.consentPrivacy": "Privacy Policy",
   "supperClub.cardFailed": "The card form didn't load. Refresh the page and try again.",
   "supperClub.cardRefused": "Check the card details or try another card.",
   "supperClub.consentError": "Check the box to agree to the weekly charge.",
@@ -149,6 +155,13 @@ export const en = {
   "email.signupConfirmation.questions": "Questions? Reply to this email.",
   "email.signupConfirmation.footerFarm": "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH",
   "email.signupConfirmation.footerReason": "You are getting this email because you joined the Supper Club.",
+  "email.legalTerms": "Terms: {url}",
+  "email.legalPrivacy": "Privacy: {url}",
+  "legal.terms.title": "Terms of service",
+  "legal.privacy.title": "Privacy policy",
+  "legal.lastUpdated": "Last updated [DATE]",
+  "legal.terms.text": legalTermsEn,
+  "legal.privacy.text": legalPrivacyEn,
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;
