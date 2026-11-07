@@ -9,6 +9,7 @@ import { FieldError } from "../../components/ui/field-error";
 import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
 import { PricePanel } from "../../components/ui/price-panel";
+import { TextLink } from "../../components/ui/text-link";
 import { joinSupperClub } from "./actions";
 import type { PaymentWording } from "./payment-wording";
 
@@ -152,7 +153,15 @@ export function PaymentSection({
           if (event.currentTarget.checked) setRefused(false);
         }}
       >
-        {words.sentence}
+        {words.sentenceParts.map((part, index) =>
+          typeof part === "string" ? (
+            part
+          ) : (
+            <TextLink key={index} href={part.href} newTab>
+              {part.text}
+            </TextLink>
+          ),
+        )}
       </Checkbox>
       {consentShown && <FieldError id={CONSENT_ERROR_ID}>{text.consentError}</FieldError>}
       {payError === "declined" && <Notice icon="alert">{text.declined}</Notice>}

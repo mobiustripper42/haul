@@ -367,7 +367,7 @@ const tokenIn = (text: string | undefined): string | undefined => LINK_IN_TEXT.e
 /** The link email Ada should get for `token`, rendered as the template renders it. */
 const linkEmailFor = (token: string) => ({
   to: "ada@example.com",
-  ...renderEmail("signInLink", "en", { link: `${services.siteUrl}/sign-in/link?token=${token}`, minutes: 10 }),
+  ...renderEmail("signInLink", "en", { link: `${services.siteUrl}/sign-in/link?token=${token}`, minutes: 10 }, services.siteUrl),
 });
 
 /** Ada's code, saved straight through the store at the current time, with no hold. */
@@ -388,6 +388,38 @@ async function lockAda(): Promise<void> {
     await verifySignInCode(repo, (e) => repo.findMemberByEmail(e), { email: ada.email, code: WRONG_CODE }, { now: new Date() });
   }
 }
+
+describe("AC7 (issue 63) — every sign-in email ends with the footer, from the site's address", () => {
+  const FOOTER = `\n\nTerms: ${services.siteUrl}/terms\nPrivacy: ${services.siteUrl}/privacy`;
+  const lastEnding = () => email.last()?.text.slice(-FOOTER.length);
+
+  it("AC7: requestCode's code email", async () => {
+    const { requestCode } = await load();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await runScheduled();
+    expect(lastEnding()).toBe(FOOTER);
+  });
+
+  it("AC7: requestCode's link email, to a locked member", async () => {
+    await lockAda();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    const { requestCode } = await load();
+    await redirectOf(requestCode(form({ email: "ada@example.com" })));
+    await runScheduled();
+    expect(tokenIn(email.last()?.text)).toBeDefined();
+    expect(lastEnding()).toBe(FOOTER);
+  });
+
+  it("AC7: verifyCode's link email, after the guess that locks", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
+    await runScheduled();
+    expect(tokenIn(email.last()?.text)).toBeDefined();
+    expect(lastEnding()).toBe(FOOTER);
+  });
+});
 
 describe("AC18 (issue 22) — verifyCode emails the link after the guess that locks", () => {
   it("AC18: the guess that locks schedules one after() callback; before it runs nothing is stored or sent, then Ada gets the link email for <site>/sign-in/link?token=…, and the token redeems", async () => {

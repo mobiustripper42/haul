@@ -39,7 +39,7 @@ const normal = (value: string): string => value.replace(/\s+/g, " ").trim();
 // The next/font variable each family leads with (app/fonts.ts).
 const FONT_VARIABLE: Record<string, string> = { sans: "--font-montserrat", display: "--font-oswald" };
 // The size group's widths are containers (max-w-card); the rest are heights (h-field).
-const CONTAINER_SIZES = new Set(["card", "page"]);
+const CONTAINER_SIZES = new Set(["card", "page", "reading"]);
 
 /** Every theme variable tokens.json implies, by namespace, aliases resolved to `var(--color-x)`. */
 function expectedTheme(): Record<string, Map<string, string>> {
@@ -420,7 +420,7 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
     expect(usage).not.toMatch(/field/i);
   });
 
-  it("AC3: a size group holds field 40px, button 44px, code-field 52px, touch 44px, card 376px, page 960px, shaped as spacing is", () => {
+  it("AC3: a size group holds field 40px, button 44px, code-field 52px, touch 44px, card 376px, page 960px, reading 640px, shaped as spacing is", () => {
     const size = tokens().size?.tokens ?? [];
     expect(Object.fromEntries(size.map(({ name, value }) => [name, value]))).toEqual({
       field: "40px",
@@ -429,6 +429,7 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
       touch: "44px",
       card: "376px",
       page: "960px",
+      reading: "640px",
     });
     for (const token of size) expect(typeof token.usage, `${token.name} has no usage`).toBe("string");
   });

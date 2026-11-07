@@ -129,9 +129,9 @@ export async function requestCodeFor(formData: FormData, pages: FlowPages): Prom
       pending.subject.id,
       () => repo.withActor(null, (scoped) => issueSignInCode(scoped, pending, { now, mintLinkToken: randomLinkToken })),
       async (outcome) => {
-        if (outcome.send === "code") await deliverSignInCode(getEmail(), pending);
+        if (outcome.send === "code") await deliverSignInCode(getEmail(), pending, siteUrl);
         if (outcome.send === "link") {
-          await deliverSignInLink(getEmail(), pending.subject, signInLinkUrl(siteUrl, outcome.token));
+          await deliverSignInLink(getEmail(), pending.subject, signInLinkUrl(siteUrl, outcome.token), siteUrl);
         }
       },
     );
@@ -170,7 +170,7 @@ export async function verifyCodeFor(formData: FormData, pages: FlowPages): Promi
           );
         },
         async (token) => {
-          if (token) await deliverSignInLink(getEmail(), lockedNow, signInLinkUrl(siteUrl, token));
+          if (token) await deliverSignInLink(getEmail(), lockedNow, signInLinkUrl(siteUrl, token), siteUrl);
         },
       );
     }

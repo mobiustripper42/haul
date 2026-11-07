@@ -1,4 +1,5 @@
 import { createTranslator, type Language, type MessageKey, type Translator } from "./i18n.js";
+import { PRIVACY_PATH, TERMS_PATH } from "./legal-documents.js";
 
 /** Each template's values. The words live in `src/messages/` (DEC-015), never here. */
 export type EmailTemplates = {
@@ -11,22 +12,36 @@ const KEYS = {
   signInLink: { subject: "email.signInLink.subject", body: "email.signInLink.body" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey }>;
 
+/** The site's address and a path, with one slash between them whatever the address ends in. */
+export function siteLink(siteUrl: string, path: string): string {
+  return `${siteUrl.replace(/\/$/, "")}/${path.replace(/^\//, "")}`;
+}
+
+/** The two lines every email ends with, in the translator's language: the one home for them (issue 63, AC7). */
+export function legalFooter(t: Translator, siteUrl: string): string {
+  return [
+    t("email.legalTerms", { url: siteLink(siteUrl, TERMS_PATH) }),
+    t("email.legalPrivacy", { url: siteLink(siteUrl, PRIVACY_PATH) }),
+  ].join("\n");
+}
+
 /** The body, a blank line, then the sign-off every email shares. */
 export function withSignOff(t: Translator, body: string): string {
   return `${body}\n\n${t("email.signOff")}`;
 }
 
-/** The subject, and the body, a blank line, then the sign-off every email shares. */
+/** The subject, and the body, a blank line, the sign-off every email shares, a blank line, then the legal footer. */
 export function renderEmail<N extends keyof EmailTemplates>(
   name: N,
   language: Language,
   values: EmailTemplates[N],
+  siteUrl: string,
 ): { subject: string; text: string } {
   const t = createTranslator(language);
   const keys = KEYS[name];
   const fill: Record<string, string | number> = values;
   return {
     subject: t(keys.subject, fill),
-    text: withSignOff(t, t(keys.body, fill)),
+    text: `${withSignOff(t, t(keys.body, fill))}\n\n${legalFooter(t, siteUrl)}`,
   };
 }

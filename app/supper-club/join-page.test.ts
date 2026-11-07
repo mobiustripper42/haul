@@ -10,6 +10,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../next-headers-fake";
 import { attributesOf, findAll, normalMarkup, redirectOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
+import { BulletList } from "../../components/ui/bullet-list";
 import { Shell } from "../../components/ui/shell";
 import { BackToChoices, JoinPage } from "./join-page";
 
@@ -178,6 +179,15 @@ describe("AC6 — BackToChoices", () => {
 
   it("AC11: it sits in the wide-only wrapper", async () => {
     expect(screenMarkup(renderToStaticMarkup(await BackToChoices()))).toMatch(/^<\w+\b[^>]*class="[^"]*(?<![\w-])wide-only(?![\w-])[^"]*"[^>]*>\s*<a\b/);
+  });
+});
+
+describe("AC1 (issue 63) — the list's look has one home", () => {
+  it("AC1: the left column's every-week list is a BulletList of the same five items", async () => {
+    const { element } = await render("none");
+    expect(findAll(element, BulletList).map((list) => list.props.items)).toEqual([
+      ["Protein main, standard or vegan", "Grain or bread", "Veggie side", "Salad", "Soup or stew"],
+    ]);
   });
 });
 

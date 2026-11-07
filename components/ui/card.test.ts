@@ -55,3 +55,17 @@ describe("AC3 and AC11 (issue 77) — Card's pane width", () => {
     expect(css().match(/(?<![\w-])shadow-card(?![\w-])/g)?.length ?? 0).toBeLessThanOrEqual(2);
   });
 });
+
+// Issue 63: `width="reading"`, the legal pages' card. Its 640px token is held by app/theme.test.ts.
+describe("AC1 (issue 63) — Card's reading width", () => {
+  it('AC1: width="reading" renders <section class="card-reading"> around its children', () => {
+    const html = renderToStaticMarkup(createElement(Card, { width: "reading", children: createElement("p", null, "one") } as never));
+    expect(normalMarkup(html)).toBe(normalMarkup('<section class="card-reading"><p>one</p></section>'));
+  });
+
+  it("AC1: .card-reading carries the card's body and stops at the reading width, not the card's", () => {
+    const utilities = utilitiesOf("card-reading");
+    expect(utilities).toEqual(expect.arrayContaining(["w-full", "bg-surface", "shadow-card", "max-w-reading"]));
+    expect(utilities).not.toContain("max-w-card");
+  });
+});

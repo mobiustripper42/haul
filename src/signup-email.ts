@@ -1,4 +1,4 @@
-import { withSignOff } from "./email-templates.js";
+import { legalFooter, withSignOff } from "./email-templates.js";
 import { createTranslator } from "./i18n.js";
 import type { Member } from "./members.js";
 import { formatUsdWhole } from "./money.js";
@@ -9,13 +9,15 @@ import type { SignupConfirmation } from "./ports/repository.js";
 /**
  * The confirmation email, in the member's language, through the email port. It builds its own text:
  * the option rows vary in number, and the done page's strings are reused so the two can't disagree.
- * `accountUrl` is the whole link, since the core can't know the app's paths.
+ * `accountUrl` is the whole link, since the core can't know the app's paths; `siteUrl` is the site's
+ * address, for the legal footer's links.
  */
 export function deliverSignupConfirmation(
   email: EmailPort,
   member: Member,
   confirmation: SignupConfirmation,
   accountUrl: string,
+  siteUrl: string,
 ): Promise<EmailReceipt> {
   const t = createTranslator(member.language);
   const weekly = formatUsdWhole(confirmation.weeklyCents);
@@ -43,6 +45,6 @@ export function deliverSignupConfirmation(
     t("email.signupConfirmation.questions"),
   ];
   const footer = [t("email.signupConfirmation.footerFarm"), t("email.signupConfirmation.footerReason")].join("\n");
-  const text = `${withSignOff(t, blocks.join("\n\n"))}\n${footer}`;
+  const text = `${withSignOff(t, blocks.join("\n\n"))}\n${footer}\n\n${legalFooter(t, siteUrl)}`;
   return email.send({ to: member.email, subject, text });
 }

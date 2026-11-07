@@ -77,8 +77,10 @@ export async function requestAccountCodeFor(formData: FormData, pages: FlowPages
     null,
     () => issueAccountCode(repo, details, pending, { now, mintLinkToken: randomLinkToken }),
     async ({ member, outcome }) => {
-      if (outcome.send === "code") await deliverSignInCode(getEmail(), { subject: member, ...pending });
-      if (outcome.send === "link") await deliverSignInLink(getEmail(), member, signInLinkUrl(siteUrl, outcome.token));
+      if (outcome.send === "code") await deliverSignInCode(getEmail(), { subject: member, ...pending }, siteUrl);
+      if (outcome.send === "link") {
+        await deliverSignInLink(getEmail(), member, signInLinkUrl(siteUrl, outcome.token), siteUrl);
+      }
     },
   );
 
