@@ -19,8 +19,8 @@ export type PaymentWording = {
 };
 
 // Private-use characters, which no sentence holds, stand where a link goes while the sentence is cut.
-const TERMS_MARK = "";
-const PRIVACY_MARK = "";
+const TERMS_MARK = "\uE000";
+const PRIVACY_MARK = "\uE001";
 
 /**
  * The one home for the words the price panel, the checkbox, the button and `consent_text` share, so the
@@ -40,7 +40,7 @@ export function paymentWording(
   // the language gives them.
   const marked = t("supperClub.consent", { price, terms: TERMS_MARK, privacy: PRIVACY_MARK });
   const sentenceParts = marked
-    .split(/([])/)
+    .split(new RegExp(`(${TERMS_MARK}|${PRIVACY_MARK})`))
     .filter((piece) => piece !== "")
     .map((piece) =>
       piece === TERMS_MARK
