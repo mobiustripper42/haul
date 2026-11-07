@@ -355,7 +355,8 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       /**
        * Two tabs with different picks, the order forced so a test fails every run and not only when the timing
        * falls that way: the cheap tab saves and stops; the dear tab rewrites the row and stops, until the
-       * promise `stop` returns. So the cheap tab binds and charges the dear tab's picks.
+       * promise `stop` returns. So the cheap tab binds and charges the dear tab's picks. `stop` may hold other
+       * steps on `payments` too.
        */
       const twoTabs = async (stop: (payments: FakePayments, tabs: { cheapFinished: Promise<void>; dearFinished: Promise<void> }) => Promise<void>) => {
         const { product, member } = await fixture([
@@ -418,7 +419,8 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         expect(payments.charges.map((request) => request.amountCents)).toEqual([8000]);
         expect((await pool.query("select amount_cents, status from ledger")).rows).toEqual([{ amount_cents: 8000, status: "paid" }]);
         expect(results.map((result) => result.outcome).sort()).toEqual(["paid", "paid"]);
-        expect(results.filter((result) => result.confirmedNow)).toHaveLength(1);
+        // The dear tab confirmed, the cheap tab was held until it had: only the dear tab flipped the rows.
+        expect(results.map((result) => result.confirmedNow)).toEqual([false, true]);
         expect(await count("subscriptions")).toBe(1);
       });
 
