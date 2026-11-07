@@ -58,7 +58,7 @@ describe.skipIf(!up)(`AC7 — members from before the migration${skipped}`, () =
     } finally {
       await pool.end();
     }
-  });
+  }, 20_000); // Under a second as a rule, but a rebuild beside other suites' rebuilds has taken over 5 (issue 94).
 });
 
 describe.skipIf(!up)(`AC5 — the new columns${skipped}`, () => {
