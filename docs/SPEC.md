@@ -48,7 +48,7 @@ Volume: Supper Club capped at ~50, Summer CSA ~300, Fall CSA ~150.
 - **Every CSA function:** CSA sales, delivery, pickup check-in and reports (Phases 3–6) by May 1,
   2027.
 - **Critical path:** from the farm — Square production credentials, DNS for
-  `members.ohiocityfarm.com`, and their existing legal text (open question 17). Each has lead time
+  `members.ohiocityfarm.com`, and their approval of the final legal text (open question 17). Each has lead time
   the code cannot make up.
 
 ## 4. Stack
@@ -280,7 +280,7 @@ pickup list by last name (until check-in in Phase 5), and from Phase 4 delivery 
 
 Signup states the recurring charge plainly next to the pay button — amount now, amount weekly at
 cutoff, until cancelled, and how to cancel — behind a required checkbox, and records what the member
-agreed to and when. Terms and privacy pages use the farm's existing legal text, have desktop and
+agreed to and when. Terms and privacy pages use the farm's approved legal text (open question 17), have desktop and
 mobile designs, and exist in English and Spanish; the farm reviews the Spanish legal text. Every
 email carries a footer linking them, built into the shared email template.
 
@@ -356,13 +356,15 @@ Viewable reports, scoped once the farm says what Square does not already give th
     Phase 1's signup creates exactly one; a member adding another comes later. A cap counts
     subscriptions (§6.1), so a household with two subscriptions takes two spots.
 14. Receipts: does Square email the receipt for each charge, or does the app?
-15. Price changes: do existing subscribers keep their price, or move to the new one with notice?
-    Settle before the real prices are seeded.
+15. *Answered 2026-11-06 (Eric):* existing subscribers move to a new price, with at least 14 days'
+    notice by email.
 16. Email sender: which farm address sends, which inbox receives replies, and who adds the email
     authentication records (SPF, DKIM, DMARC) to the farm's DNS?
-17. The farm's existing terms of service and privacy policy text, for task 1.12. Does it promise
-    members deletion or export of their data? If so, deferring deletion (Out of scope) may not
-    hold — and the audit log keeps before/after rows, so it needs an @architect pass.
+17. *Answered 2026-11-06 (Eric):* the farm has no existing legal text. Stand-in terms and privacy
+    policy go in at task 1.12, and the farm approves the final copies before production release. The
+    policy offers a copy, correction or deletion by email. The operator carries these out by hand and
+    may delete whatever a member asks, including from `audit_log`; the audit design limits none of
+    it. Square keeps its own payment records.
 18. Service accounts (Vercel, Crunchy, Resend, Cloudflare, the Square developer app): proposed
     that the farm owns and pays for all of them, so it can keep running without the developer.
     Going to the farm in Eric's proposal; not yet agreed. Task 1.8 creates the accounts.
@@ -380,4 +382,4 @@ No phase above plans these. Ideas worth keeping are in `docs/FUTURE_IDEAS.md`.
 - Admin editing of public page copy
 - Multi-select options within one option type
 - SMS
-- Member data deletion requests — deferred; what the farm promises is not yet decided
+- In-app deletion or export of member data — the operator does these by hand on request (open question 17)

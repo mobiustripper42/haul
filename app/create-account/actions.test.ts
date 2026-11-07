@@ -262,7 +262,7 @@ describe("AC5 — an email no member has", () => {
     await runScheduled();
     expect(email.sent).toHaveLength(1);
     const code = codeIn(email.last()?.text);
-    expect(email.last()).toEqual({ to: ADA, ...renderEmail("signInCode", "es", { code, minutes: 10 }) });
+    expect(email.last()).toEqual({ to: ADA, ...renderEmail("signInCode", "es", { code, minutes: 10 }, services.siteUrl) });
   });
 
   it("AC5: a store failure after the response is logged with a null member id, its stage and the error's name, never the email, and nothing is sent", async () => {
@@ -336,7 +336,7 @@ describe("AC7 — an email whose member is confirmed", () => {
     await runScheduled();
     const code = codeIn(email.last()?.text);
     expect(email.sent).toHaveLength(1);
-    expect(email.last()).toEqual({ to: ADA, ...renderEmail("signInCode", "en", { code, minutes: 10 }) });
+    expect(email.last()).toEqual({ to: ADA, ...renderEmail("signInCode", "en", { code, minutes: 10 }, services.siteUrl) });
   });
 
   it("AC7: the same code step as AC5", async () => {
@@ -486,6 +486,30 @@ describe("AC10 — a code that fails behaves exactly as on sign-in", () => {
     expect(await redirectOf(verifyAccountCode(form({ code: RIGHT_CODE })))).toBe("/create-account?error=expired");
     expect(await repo.getSignInCode(member.id)).toEqual(before);
     expect(setsNamed(SESSION)).toEqual([]);
+  });
+});
+
+describe("AC7 (issue 63) — every email from the details step ends with the footer, from the site's address", () => {
+  const FOOTER = `\n\nTerms: ${services.siteUrl}/terms\nPrivacy: ${services.siteUrl}/privacy`;
+
+  it("AC7: the code email", async () => {
+    const { requestAccountCode } = await load();
+    await redirectOf(requestAccountCode(details()));
+    await runScheduled();
+    expect(email.last()?.text.slice(-FOOTER.length)).toBe(FOOTER);
+  });
+
+  it("AC7: the link email, to a locked member", async () => {
+    await plantCode(await repo.createMember({ email: ADA }));
+    request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
+    const { requestAccountCode, verifyAccountCode } = await load();
+    for (let guess = 1; guess <= 5; guess++) await redirectOf(verifyAccountCode(form({ code: WRONG_CODE })));
+    await runScheduled();
+    vi.setSystemTime(new Date(T0.getTime() + 10 * MINUTE));
+    await redirectOf(requestAccountCode(details()));
+    await runScheduled();
+    expect(tokenIn(email.last()?.text)).toBeDefined();
+    expect(email.last()?.text.slice(-FOOTER.length)).toBe(FOOTER);
   });
 });
 

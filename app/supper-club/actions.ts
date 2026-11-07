@@ -4,12 +4,12 @@
 // failure and every redirect stays in the pane. The page set never comes from a form value.
 import { redirect } from "next/navigation";
 import { choicesQuery, resolveChoices } from "@core/choices.js";
+import { siteLink } from "@core/email-templates.js";
 import { firstPickup } from "@core/pickup-week.js";
 import { priceOfChoices, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { Repository } from "@core/ports/repository.js";
 import { retrySignup, signUp, type SignupResult } from "@core/signup.js";
 import { deliverSignupConfirmation } from "@core/signup-email.js";
-import { siteLink } from "@core/sign-in-email.js";
 import { requestAccountCodeFor, resendAccountCodeFor } from "../create-account/shared";
 import { getLanguage, getTranslator } from "../language";
 import { ACCOUNT_PATH } from "../paths";
@@ -82,7 +82,8 @@ function sendConfirmationAfterResponse(repo: Repository, memberId: string, resul
       return { member, confirmation };
     },
     async ({ member, confirmation }) => {
-      await deliverSignupConfirmation(getEmail(), member, confirmation, siteLink(getSiteUrl(), ACCOUNT_PATH));
+      const siteUrl = getSiteUrl();
+      await deliverSignupConfirmation(getEmail(), member, confirmation, siteLink(siteUrl, ACCOUNT_PATH), siteUrl);
     },
     "signup email not delivered",
   );

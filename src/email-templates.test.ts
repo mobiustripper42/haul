@@ -2,8 +2,9 @@
 // whose every value is its own key in guillemets, so a Spanish render shows exactly which keys
 // the template reads, and any English the template wrote itself shows up beside them. The bare-
 // string lint rule covers .tsx only; this is the check for .ts templates.
+import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { renderEmail, withSignOff } from "./email-templates.js";
+import { legalFooter, renderEmail, siteLink, withSignOff } from "./email-templates.js";
 import { createTranslator } from "./i18n.js";
 
 vi.mock("./messages/es.js", async () => {
@@ -11,21 +12,26 @@ vi.mock("./messages/es.js", async () => {
   return { es: Object.fromEntries(Object.keys(en).map((key) => [key, `«${key}»`])) };
 });
 
+const SITE_URL = "https://members.example.test";
+const FOOTER = "Terms: https://members.example.test/terms\nPrivacy: https://members.example.test/privacy";
+const STAND_IN_FOOTER = "«email.legalTerms»\n«email.legalPrivacy»";
+
 describe("AC5 (issue 9) — renderEmail", () => {
-  it('AC5: signInCode in English returns exactly the subject and the body, a blank line, then the sign-off', () => {
-    expect(renderEmail("signInCode", "en", { code: "042517", minutes: 10 })).toEqual({
+  it('AC5: signInCode in English returns exactly the subject and the body, a blank line, then the sign-off, a blank line and the footer', () => {
+    expect(renderEmail("signInCode", "en", { code: "042517", minutes: 10 }, SITE_URL)).toEqual({
       subject: "Your OCF Member Portal sign-in code",
       text:
         "Your sign-in code is 042517.\n\n" +
         "It expires in 10 minutes. If you didn't ask for it, you can ignore this email.\n\n" +
-        "— Ohio City Farm",
+        "— Ohio City Farm\n\n" +
+        FOOTER,
     });
   });
 
   it("AC5: signInCode in the stand-in Spanish catalog returns only catalog values — nothing the template wrote itself", () => {
-    expect(renderEmail("signInCode", "es", { code: "042517", minutes: 10 })).toEqual({
+    expect(renderEmail("signInCode", "es", { code: "042517", minutes: 10 }, SITE_URL)).toEqual({
       subject: "«email.signInCode.subject»",
-      text: "«email.signInCode.body»\n\n«email.signOff»",
+      text: `«email.signInCode.body»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
     });
   });
 });
@@ -33,22 +39,23 @@ describe("AC5 (issue 9) — renderEmail", () => {
 describe("AC15 (issue 22) — renderEmail signInLink", () => {
   const LINK = "https://members.ohiocityfarm.com/sign-in/link?token=AbC_-123";
 
-  it("AC15: signInLink in English returns exactly the subject and the body with the link and minutes, a blank line, then the sign-off", () => {
-    expect(renderEmail("signInLink", "en", { link: LINK, minutes: 10 })).toEqual({
+  it("AC15: signInLink in English returns exactly the subject and the body with the link and minutes, a blank line, then the sign-off, a blank line and the footer", () => {
+    expect(renderEmail("signInLink", "en", { link: LINK, minutes: 10 }, SITE_URL)).toEqual({
       subject: "Your OCF Member Portal sign-in link",
       text:
         "Too many wrong codes were entered for your account, so sign-in by code is paused for up to 24 hours.\n\n" +
         "Use this link to sign in instead:\n" +
         `${LINK}\n\n` +
         "It works once and expires in 10 minutes. If you didn't try to sign in, you can ignore this email.\n\n" +
-        "— Ohio City Farm",
+        "— Ohio City Farm\n\n" +
+        FOOTER,
     });
   });
 
   it("AC15: signInLink in the stand-in Spanish catalog returns only catalog values — nothing the template wrote itself", () => {
-    expect(renderEmail("signInLink", "es", { link: LINK, minutes: 10 })).toEqual({
+    expect(renderEmail("signInLink", "es", { link: LINK, minutes: 10 }, SITE_URL)).toEqual({
       subject: "«email.signInLink.subject»",
-      text: "«email.signInLink.body»\n\n«email.signOff»",
+      text: `«email.signInLink.body»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
     });
   });
 });
@@ -60,5 +67,45 @@ describe("AC4 (issue 58) — withSignOff", () => {
 
   it("AC4: the sign-off comes from the translator it is handed", () => {
     expect(withSignOff(createTranslator("es"), "The body.")).toBe("The body.\n\n«email.signOff»");
+  });
+});
+
+describe("AC7 (issue 63) — legalFooter", () => {
+  it.each([SITE_URL, `${SITE_URL}/`])("AC7: from a site address of %s it is the two lines, each link with one slash", (siteUrl) => {
+    expect(legalFooter(createTranslator("en"), siteUrl)).toBe(FOOTER);
+  });
+
+  it("AC7: its words come from the translator it is handed", () => {
+    expect(legalFooter(createTranslator("es"), SITE_URL)).toBe(STAND_IN_FOOTER);
+  });
+
+  it("AC7: it is the one place the two lines are built", () => {
+    const uses = ["./email-templates.ts", "./sign-in-email.ts", "./signup-email.ts"].map((file) => {
+      const source = readFileSync(new URL(file, import.meta.url), "utf8");
+      return [file, source.split("email.legalTerms").length - 1, source.split("email.legalPrivacy").length - 1];
+    });
+    expect(uses).toEqual([
+      ["./email-templates.ts", 1, 1],
+      ["./sign-in-email.ts", 0, 0],
+      ["./signup-email.ts", 0, 0],
+    ]);
+  });
+
+  it.each(["signInCode", "signInLink"] as const)("AC7: %s takes the footer's links from the site address it is given", (name) => {
+    const values = { code: "042517", link: "https://elsewhere.example.test/l", minutes: 10 };
+    expect(renderEmail(name, "en", values, "https://other.example.test/").text.endsWith(
+      "\n\n— Ohio City Farm\n\nTerms: https://other.example.test/terms\nPrivacy: https://other.example.test/privacy",
+    )).toBe(true);
+  });
+});
+
+describe("AC7 (issue 63) — siteLink, moved here so the footer can use it", () => {
+  it.each([
+    ["https://members.ohiocityfarm.com", "/", "https://members.ohiocityfarm.com/"],
+    ["https://members.ohiocityfarm.com/", "/", "https://members.ohiocityfarm.com/"],
+    ["https://members.ohiocityfarm.com", "/account", "https://members.ohiocityfarm.com/account"],
+    ["https://members.ohiocityfarm.com/", "/account", "https://members.ohiocityfarm.com/account"],
+  ])("AC7: siteLink(%j, %j) has one slash between the two", (siteUrl, path, link) => {
+    expect(siteLink(siteUrl, path)).toBe(link);
   });
 });

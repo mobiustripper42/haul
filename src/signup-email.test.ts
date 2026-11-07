@@ -8,6 +8,7 @@ import type { SignupConfirmation } from "./ports/repository.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
 const ACCOUNT_URL = "https://members.example.test/";
+const SITE_URL = "https://members.example.test";
 
 const member = (over: Partial<Member> = {}): Member => ({
   id: "6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60",
@@ -37,7 +38,7 @@ const confirmation = (over: Partial<SignupConfirmation> = {}): SignupConfirmatio
 /** The one message sent for these, whatever the test is looking at in it. */
 async function sent(subject: Member = member(), details: SignupConfirmation = confirmation()) {
   const email = new FakeEmail();
-  await deliverSignupConfirmation(email, subject, details, ACCOUNT_URL);
+  await deliverSignupConfirmation(email, subject, details, ACCOUNT_URL, SITE_URL);
   expect(email.sent).toHaveLength(1);
   return email.sent[0] ?? { to: "", subject: "", text: "" };
 }
@@ -70,12 +71,15 @@ const body = (heading: string, firstPickup: string): string =>
     "— Ohio City Farm",
     "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH",
     "You are getting this email because you joined the Supper Club.",
+    "",
+    "Terms: https://members.example.test/terms",
+    "Privacy: https://members.example.test/privacy",
   ].join("\n");
 
 describe("AC1 (issue 58) — the send", () => {
   it("AC1: one message goes to the member's address, and the port's receipt comes back", async () => {
     const email = new FakeEmail();
-    const receipt = await deliverSignupConfirmation(email, member(), confirmation(), ACCOUNT_URL);
+    const receipt = await deliverSignupConfirmation(email, member(), confirmation(), ACCOUNT_URL, SITE_URL);
     expect(email.sent.map((message) => message.to)).toEqual(["ada@example.com"]);
     expect(receipt.id).toBe("fake-0");
   });
@@ -109,12 +113,36 @@ describe("AC4 (issue 58) — the wording, in order", () => {
 
   it("AC4: the account line carries the whole link it is given", async () => {
     const email = new FakeEmail();
-    await deliverSignupConfirmation(email, member(), confirmation(), "https://elsewhere.example.test/account");
+    await deliverSignupConfirmation(email, member(), confirmation(), "https://elsewhere.example.test/account", SITE_URL);
     expect(email.last()?.text ?? "").toContain("\nGo to your account: https://elsewhere.example.test/account\n");
   });
 
   it("AC4: the first pickup is the confirmation's date", async () => {
     expect((await sent(member(), confirmation({ pickupDate: "2027-01-10" }))).text).toContain("\nFirst pickup: Sunday, January 10\n");
+  });
+});
+
+describe("AC7 (issue 63) — the footer", () => {
+  it("AC7: the email ends with the two lines, after a blank line", async () => {
+    expect((await sent()).text.endsWith("\n\nTerms: https://members.example.test/terms\nPrivacy: https://members.example.test/privacy")).toBe(true);
+  });
+
+  it("AC7: the links come from the site address, not the account link", async () => {
+    const email = new FakeEmail();
+    await deliverSignupConfirmation(email, member(), confirmation(), "https://elsewhere.example.test/account", "https://other.example.test/");
+    expect(email.last()?.text.endsWith("\nTerms: https://other.example.test/terms\nPrivacy: https://other.example.test/privacy")).toBe(true);
+  });
+});
+
+describe("AC8 (issue 63) — what the email keeps", () => {
+  it("AC8: the sign-off, the farm address and the why-you-got-this line stay together, before the two lines", async () => {
+    expect((await sent()).text).toContain(
+      "Questions? Reply to this email.\n\n" +
+        "— Ohio City Farm\n" +
+        "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH\n" +
+        "You are getting this email because you joined the Supper Club.\n\n" +
+        "Terms: ",
+    );
   });
 });
 

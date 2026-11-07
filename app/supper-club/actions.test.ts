@@ -256,8 +256,8 @@ describe("resendPaneAccountCode", () => {
 
 describe("issue 56 — the pay actions", () => {
   const SOURCE = "cnon:card-nonce-ok";
-  const CONSENT_50 = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy.";
-  const CONSENT_80 = "I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy.";
+  const CONSENT_50 = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
+  const CONSENT_80 = "I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
 
   let product: ProductWithOptions;
   let member: Member;
@@ -380,6 +380,17 @@ describe("issue 56 — the pay actions", () => {
       const stored = save.mock.calls[0]?.[0].consentText;
       expect(stored).toContain(CONSENT_80);
       expect(stored).not.toContain(CONSENT_50);
+    });
+
+    it("AC5 (issue 63): what is stored is the whole sentence as shown, in plain words, within the panel and pickup line text", async () => {
+      signIn();
+      const save = vi.spyOn(repo, "savePendingSignup");
+      await join(pay());
+      expect(save.mock.calls[0]?.[0].consentText).toBe(
+        "Today, for your first week: $80. Then every week, at the cutoff: $80. " +
+          "First pickup: Sunday, January 3. After that, your card is charged $80 at the end of each Monday for the following week's pickup, until you cancel. " +
+          CONSENT_80,
+      );
     });
 
     it("AC4: the wording and its time are stored as of now", async () => {
@@ -698,6 +709,22 @@ describe("issue 56 — the pay actions", () => {
           expect(onlyText()).toContain(`\nGo to your account: https://members.example.test${ACCOUNT_PATH}\n`);
         },
       );
+    });
+
+    describe("AC7 (issue 63) — the footer", () => {
+      const originalSiteUrl = services.siteUrl;
+
+      afterEach(() => {
+        services.siteUrl = originalSiteUrl;
+      });
+
+      it("AC7: the confirmation ends with the two lines, from the site's address", async () => {
+        services.siteUrl = "https://other.example.test/";
+        signIn();
+        await join(pay());
+        await runScheduled();
+        expect(onlyText().endsWith("\n\nTerms: https://other.example.test/terms\nPrivacy: https://other.example.test/privacy")).toBe(true);
+      });
     });
 
     describe("AC5, AC6 — the stored member", () => {

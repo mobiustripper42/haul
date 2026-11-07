@@ -44,7 +44,7 @@ const CONFIRMATION = {
 
 async function sent(firstName: string | null) {
   const email = new FakeEmail();
-  await deliverSignupConfirmation(email, member(firstName), CONFIRMATION, "https://members.example.test/");
+  await deliverSignupConfirmation(email, member(firstName), CONFIRMATION, "https://members.example.test/", "https://members.example.test");
   expect(email.sent).toHaveLength(1);
   const message = email.sent[0] ?? { subject: "", text: "" };
   return { subject: message.subject, text: message.text.replace(/«email\.signupConfirmation\.[\w.]+»/g, "«new»") };
@@ -77,6 +77,9 @@ const body = (heading: string): string =>
     "«email.signOff»",
     "«new»",
     "«new»",
+    "",
+    "«email.legalTerms»",
+    "«email.legalPrivacy»",
   ].join("\n");
 
 describe("AC6 (issue 58) — the email through the stand-in catalog", () => {

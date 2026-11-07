@@ -116,6 +116,7 @@
   --spacing-touch: 2.75rem;
   --container-card: 23.5rem;
   --container-page: 60rem;
+  --container-reading: 40rem;
 }
 
 /* Base: the page, the one focus ring, the pointer. Components below own their own states. */
@@ -182,13 +183,15 @@
 
   /*
    * A card on a focused screen: the page's surface, 28px by 20px inside, its children 20px apart. The
-   * three share the body and differ in width: `.card` stops at the card's width; `.card-fill` has none of
+   * four share the body and differ in width: `.card` stops at the card's width; `.card-fill` has none of
    * its own, to fill its column (the Supper Club page's two); `.card-pane` is the card's width and
-   * centred below lg, and fills its column at lg and wider.
+   * centred below lg, and fills its column at lg and wider; `.card-reading` stops at the reading width,
+   * centred (the Terms and Privacy pages).
    */
   .card,
   .card-fill,
   .card-pane,
+  .card-reading,
   .pane-box {
     @apply flex w-full flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
   }
@@ -197,6 +200,9 @@
   }
   .card-pane {
     @apply mx-auto max-w-card lg:mx-0 lg:max-w-none;
+  }
+  .card-reading {
+    @apply mx-auto max-w-reading;
   }
 
   /*
