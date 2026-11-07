@@ -88,7 +88,7 @@ pickup.
 | # | Task | Points | Notes |
 |---|------|--------|-------|
 | 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | Week credit added and re-pointed from 8 on 2026-10-26 (DEC-005); split at spec |
-| 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13. Also picks up stranded signup payments: a `pending` ledger row with a saved card whose charge got no answer (task 1.4, AC10) |
+| 2.2 | Charge run against the ledger | 8 | **@architect pass.** Split at spec if it reads as 13. Also picks up stranded signup payments: a `pending` ledger row with a saved card whose charge got no answer (task 1.4, AC10). Also the receipt email for each successful charge (`docs/SPEC.md` §7.3, Eric 2026-11-07); re-point if it grows |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | |
 | 2.4 | Account pages: subscription, upcoming weeks, history, contact details | 5 | Email change re-verifies |
 | 2.5 | Skip one or more weeks | 3 | Cutoff enforced on the server |
