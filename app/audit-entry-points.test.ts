@@ -1,25 +1,13 @@
 // Issue 71, AC12 and AC13: every server action and route handler in this repo is declared in
 // AUDIT_ENTRY_POINTS with the events it records, or a reason it records none. The checker's own
 // rules are proved on fixtures in src/audit-entry-points-check.test.ts; this runs it on the repo.
-import { readdirSync, readFileSync } from "node:fs";
-import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { checkAuditEntryPoints, type AuditEntryPoints, type Finding } from "@core/audit-entry-points-check.js";
+import { checkAuditEntryPoints, sourcesUnder, type AuditEntryPoints, type Finding } from "@core/audit-entry-points-check.js";
 import { AUDIT_EVENT_KINDS } from "@core/ports/repository.js";
 import { AUDIT_ENTRY_POINTS } from "./audit-entry-points";
 
 const ROOT = fileURLToPath(new URL("..", import.meta.url));
-
-/** Every .ts and .tsx file under `dir`, test files included, keyed by repo-relative path with forward slashes. */
-function sourcesUnder(dir: string, into: Record<string, string> = {}): Record<string, string> {
-  for (const entry of readdirSync(join(ROOT, dir), { withFileTypes: true })) {
-    const path = `${dir}/${entry.name}`;
-    if (entry.isDirectory()) sourcesUnder(path, into);
-    else if (/\.tsx?$/.test(entry.name)) into[relative(ROOT, join(ROOT, path)).split(sep).join("/")] = readFileSync(join(ROOT, path), "utf8");
-  }
-  return into;
-}
 
 /** What a reader of a failing gate needs to do about each finding. */
 const explain = ({ kind, name }: Finding): string => {
@@ -39,7 +27,7 @@ const explain = ({ kind, name }: Finding): string => {
 
 describe("AC12 — the check on the real repo", () => {
   it("AC12: every .ts and .tsx file under app/ and src/, run through checkAuditEntryPoints with AUDIT_ENTRY_POINTS and AUDIT_EVENT_KINDS, gives no findings", () => {
-    const sources = { ...sourcesUnder("app"), ...sourcesUnder("src") };
+    const sources = { ...sourcesUnder(ROOT, "app"), ...sourcesUnder(ROOT, "src") };
     // The scan reached the entry files and their tests, so an empty result is not an empty scan.
     expect(Object.keys(sources)).toEqual(
       expect.arrayContaining(["app/sign-in/actions.ts", "app/sign-in/actions.test.ts", "app/language-actions.ts", "app/dev/outbox/route.ts"]),
@@ -52,14 +40,14 @@ describe("AC12 — the check on the real repo", () => {
 
 const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
 
-describe("AC13 — the list is exactly these fifteen entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these sixteen entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
       Object.entries(entries).map(([key, entry]) => [key, "records" in entry ? { records: [...entry.records].sort() } : entry]),
     );
 
-  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, setLanguage, the dev outbox's GET and the Supper Club continue route's GET with their reasons", () => {
+  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, setLanguage, the dev outbox's GET, the Supper Club continue route's GET and the members spreadsheet's GET (issue 59) with their reasons", () => {
     const entries = Object.fromEntries(Object.entries(AUDIT_ENTRY_POINTS).filter(([key]) => !ISSUE_56_ENTRIES.includes(key)));
     expect(normalized(entries)).toEqual(
       normalized({
@@ -78,6 +66,7 @@ describe("AC13 — the list is exactly these fifteen entries, and issue 56's two
         "app/supper-club/actions.ts#verifyPaneAccountCode": { records: ["sign_in_by_code", "lock"] },
         "app/supper-club/actions.ts#resendPaneAccountCode": { records: ["rate_limit_refusal"] },
         "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
+        "app/admin/members.csv/route.ts#GET": { none: "reads" },
       }),
     );
   });

@@ -2,9 +2,11 @@
  * The audit entry-point check (DEC-028). Every server action and route handler is declared in one
  * list with the event kinds it records, or a reason it records none, and this fails on an undeclared
  * entry, a stale one, an unclaimed kind, a claimed kind no test names, and a directive that is not at
- * the top of its file. Pure: the caller reads the files. Every source rule is read with the
- * TypeScript parser, never a regular expression.
+ * the top of its file. Pure: the caller reads the files, with `sourcesUnder`. Every source rule is read
+ * with the TypeScript parser, never a regular expression.
  */
+import { readdirSync, readFileSync } from "node:fs";
+import { join, relative, sep } from "node:path";
 import ts from "typescript";
 import type { AuditEventKind } from "./ports/repository.js";
 
@@ -15,6 +17,16 @@ export type Finding = {
   kind: "undeclared" | "stale" | "unclaimed-kind" | "untested-kind" | "inline-use-server";
   name: string;
 };
+
+/** Every .ts and .tsx file under `dir` in the repo at `root`, test files included, keyed by repo-relative path with forward slashes. */
+export function sourcesUnder(root: string, dir: string, into: Record<string, string> = {}): Record<string, string> {
+  for (const entry of readdirSync(join(root, dir), { withFileTypes: true })) {
+    const path = `${dir}/${entry.name}`;
+    if (entry.isDirectory()) sourcesUnder(root, path, into);
+    else if (/\.tsx?$/.test(entry.name)) into[relative(root, join(root, path)).split(sep).join("/")] = readFileSync(join(root, path), "utf8");
+  }
+  return into;
+}
 
 const USE_SERVER = "use server";
 const HTTP_METHODS: ReadonlySet<string> = new Set(["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]);

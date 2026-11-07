@@ -1011,5 +1011,99 @@ export function runSignupContract(
         });
       });
     });
+
+    // Issue 59: the admin's list. Several paid rows on a subscription, and a member's two rows, are Postgres
+    // only (src/adapters/postgres-repository.test.ts): the in-memory adapter cannot hold either.
+    describe("issue 59 — listSubscribers", () => {
+      const ADA: AccountDetails = { email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" };
+
+      /** A member's rows on `on`, paid at `paidAt`. */
+      const activeOn = async (on: ProductWithOptions, who: string, paidAt = PAID_AT): Promise<PendingSignup> => {
+        const choices = Object.fromEntries(on.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+        const signup = await saved({ memberId: who, productId: on.id, choices });
+        await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, paidAt);
+        return signup;
+      };
+
+      const newMember = async (email: string): Promise<string> => (await repo.createMember({ email })).id;
+
+      it("AC3: an active subscription comes back with its member, its options and the date it was paid", async () => {
+        await repo.saveAccount(ADA);
+        const signup = await saved({ choices: picks(1, 1) });
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+
+        expect(await repo.listSubscribers(product.id)).toEqual([
+          {
+            subscriptionId: signup.subscriptionId,
+            firstName: "Ada",
+            lastName: "Lovelace",
+            email: "ada@example.com",
+            phone: "216-555-0100",
+            options: [
+              { typeName: "How many people?", optionName: "3–4 people" },
+              { typeName: "Which menu?", optionName: "Vegan" },
+            ],
+            joinedDate: "2026-11-06",
+          },
+        ]);
+      });
+
+      it("AC3: a member with no details reads as nulls, and is listed however their email stands", async () => {
+        await activeOn(product, memberId);
+        expect(await repo.listSubscribers(product.id)).toEqual([
+          expect.objectContaining({ firstName: null, lastName: null, phone: null, email: "ada@example.com" }),
+        ]);
+      });
+
+      it("AC3: pending rows are left out: with no card, with a card and with a decline", async () => {
+        const held = await activeOn(product, memberId);
+        await saved({ memberId: await newMember("cardless@example.com") });
+        const carded = await saved({ memberId: await newMember("carded@example.com") });
+        await repo.saveSubscriptionCard(carded.subscriptionId, "ccof:card-1");
+        const declined = await saved({ memberId: await newMember("declined@example.com") });
+        await repo.recordSignupDecline(declined.ledgerId);
+
+        expect((await repo.listSubscribers(product.id)).map((row) => row.subscriptionId)).toEqual([held.subscriptionId]);
+      });
+
+      it("AC3: another product's subscriptions are left out", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        const held = await activeOn(product, memberId);
+        await activeOn(crate, await newMember("grace@example.com"));
+
+        expect((await repo.listSubscribers(product.id)).map((row) => row.subscriptionId)).toEqual([held.subscriptionId]);
+      });
+
+      it("AC3: options are in option-type position order, not by name", async () => {
+        const [sizes, menus] = BOX.optionTypes;
+        if (!sizes || !menus) throw new Error("BOX has two option types");
+        const reversed = await addProduct({ ...BOX, name: "Reversed", optionTypes: [{ ...menus, position: 1 }, { ...sizes, position: 2 }] });
+        await activeOn(reversed, memberId);
+
+        const [row] = await repo.listSubscribers(reversed.id);
+
+        expect(row?.options.map((option) => option.typeName)).toEqual(["Which menu?", "How many people?"]);
+      });
+
+      it("AC3: two reads give the rows in the same order", async () => {
+        await activeOn(product, memberId);
+        await activeOn(product, await newMember("grace@example.com"));
+        await activeOn(product, await newMember("linh@example.com"));
+
+        const first = await repo.listSubscribers(product.id);
+
+        expect(first).toHaveLength(3);
+        expect(await repo.listSubscribers(product.id)).toEqual(first);
+      });
+
+      it.each([
+        ["an evening in winter, already tomorrow in UTC", "2026-12-02T03:30:00.000Z", "2026-12-01"],
+        ["just after midnight in winter", "2026-12-02T05:30:00.000Z", "2026-12-02"],
+        ["an evening in summer, already tomorrow in UTC", "2026-07-02T03:30:00.000Z", "2026-07-01"],
+      ])("AC11: a payment on %s is joined on Cleveland's date", async (_what, paidAt, joined) => {
+        await activeOn(product, memberId, new Date(paidAt));
+        expect((await repo.listSubscribers(product.id))[0]?.joinedDate).toBe(joined);
+      });
+    });
   });
 }

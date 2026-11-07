@@ -65,3 +65,18 @@ export function formatPickupDate(date: string, language: Language): string {
     timeZone: "UTC",
   });
 }
+
+/** `instant`'s date on Cleveland's wall clock, `YYYY-MM-DD`. */
+export function clevelandDate(instant: Date): string {
+  const part = Object.fromEntries(wallClock.formatToParts(instant).map(({ type, value }) => [type, value]));
+  return `${part.year}-${String(part.month).padStart(2, "0")}-${String(part.day).padStart(2, "0")}`;
+}
+
+/** A date as a short label: "Dec 1". */
+export function formatShortDate(date: string, language: Language): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
+    month: "short",
+    day: "numeric",
+    timeZone: "UTC",
+  });
+}

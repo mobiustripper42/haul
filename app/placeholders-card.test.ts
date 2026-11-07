@@ -1,7 +1,7 @@
-// Issue 38, AC12: the two developer placeholders, home and admin, put their existing contents, in
-// order, in Shell and Card, their title a Heading. `next/headers` is faked and the composition root
-// mocked, as app/page-admin-link.test.ts renders them. The switcher's button classes are left out:
-// AC11 says what they are.
+// Issue 38, AC12: the developer placeholder at home puts its existing contents, in order, in Shell and
+// Card, its title a Heading. `next/headers` is faked and the composition root mocked, as
+// app/page-admin-link.test.ts renders it. The switcher's button classes are left out: AC11 says what
+// they are. Issue 59 replaced the admin placeholder with the members page, and its tests went with it.
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
@@ -10,7 +10,6 @@ import { signSession } from "@core/sign-in/session.js";
 import { Card } from "../components/ui/card";
 import { Heading } from "../components/ui/heading";
 import { Shell } from "../components/ui/shell";
-import Admin from "./admin/page";
 import { emptyRequest } from "./next-headers-fake";
 import Home from "./page";
 import { findAll, normalMarkup } from "./screen-test-helpers";
@@ -86,21 +85,6 @@ describe("AC12 — home in Shell and Card, its title a Heading", () => {
 
   it("AC12: the page's tree holds one Shell, one Card and one Heading", async () => {
     const tree = await Home();
-    expect(findAll(tree, Shell)).toHaveLength(1);
-    expect(findAll(tree, Card)).toHaveLength(1);
-    expect(findAll(tree, Heading)).toHaveLength(1);
-  });
-});
-
-describe("AC12 — admin in Shell and Card, its title a Heading", () => {
-  it("AC12: the title and the member-page link sit in the card, in order", async () => {
-    await signInAs("admin");
-    same(renderToStaticMarkup(await Admin()), framed("Admin Page", '<p><a href="/">Member Page</a></p>'));
-  });
-
-  it("AC12: the page's tree holds one Shell, one Card and one Heading", async () => {
-    await signInAs("admin");
-    const tree = await Admin();
     expect(findAll(tree, Shell)).toHaveLength(1);
     expect(findAll(tree, Card)).toHaveLength(1);
     expect(findAll(tree, Heading)).toHaveLength(1);

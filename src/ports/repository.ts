@@ -86,6 +86,20 @@ export type SignupConfirmation = {
 };
 
 /**
+ * One active subscription and who holds it, for the admin's list and spreadsheet. `options` is in option-type
+ * position order, and `joinedDate` is `YYYY-MM-DD` in America/New_York. A member holding two has two rows (DEC-026).
+ */
+export type Subscriber = {
+  subscriptionId: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  phone: string | null;
+  options: { typeName: string; optionName: string }[];
+  joinedDate: string;
+};
+
+/**
  * The core's view of stored data (DEC-010). `InMemoryRepository` is the permanent fake and the
  * test substrate; `PostgresRepository` is the real one; one contract suite runs against both.
  *
@@ -131,6 +145,8 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   confirmSignupRows(ledgerId: string, paymentId: string, amountCents: number, now: Date): Promise<"confirmed" | "already" | "mismatch">;
   findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null>;
+  /** A product's active subscriptions only, unsorted by contract beyond being stable. */
+  listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

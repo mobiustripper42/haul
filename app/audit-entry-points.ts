@@ -25,4 +25,5 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/language-actions.ts#setLanguage": { none: "sets a cookie only" },
   "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
   "app/dev/outbox/route.ts#GET": { none: "dev only; reads" },
+  "app/admin/members.csv/route.ts#GET": { none: "reads" },
 };

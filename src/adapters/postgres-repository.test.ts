@@ -366,6 +366,82 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     });
   });
 
+  // Issue 59: rows the in-memory adapter cannot hold, so the contract cannot reach them.
+  describe("issue 59 — listSubscribers over rows only Postgres holds", () => {
+    /** A product with one option type and one option, by raw insert. */
+    const addProductRows = async () => {
+      const product = await pool.query<{ id: string }>(
+        `insert into products (name, cap, first_pickup_date, cutoff_weekday, cutoff_time)
+         values ('Supper Club', 50, '2027-01-03', 1, '24:00') returning id`,
+      );
+      const type = await pool.query<{ id: string }>(
+        "insert into option_types (product_id, name, position) values ($1, 'Which menu?', 1) returning id",
+        [product.rows[0]?.id],
+      );
+      const option = async (name: string, position: number) =>
+        (
+          await pool.query<{ id: string }>("insert into options (option_type_id, name, price_cents, position) values ($1, $2, 0, $3) returning id", [
+            type.rows[0]?.id,
+            name,
+            position,
+          ])
+        ).rows[0]?.id;
+      return { productId: product.rows[0]?.id, typeId: type.rows[0]?.id, standard: await option("Standard", 1), vegan: await option("Vegan", 2) };
+    };
+
+    /** An active subscription with its pick, and no ledger rows yet. */
+    const addActive = async (memberId: string, productId: string | undefined, typeId: string | undefined, optionId: string | undefined): Promise<string> => {
+      const { rows } = await pool.query<{ id: string }>(
+        `insert into subscriptions (member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents)
+         values ($1, $2, 'active', 'I agree.', '2026-11-01T12:00:00Z', 5000, 5000) returning id`,
+        [memberId, productId],
+      );
+      const id = rows[0]?.id as string;
+      await pool.query("insert into subscription_options (subscription_id, option_type_id, option_id) values ($1, $2, $3)", [id, typeId, optionId]);
+      return id;
+    };
+
+    const addLedger = (subscriptionId: string, pickupDate: string, status: string, paidAt: string | null) =>
+      pool.query("insert into ledger (subscription_id, pickup_date, amount_cents, status, paid_at) values ($1, $2, 5000, $3, $4)", [
+        subscriptionId,
+        pickupDate,
+        status,
+        paidAt,
+      ]);
+
+    it("AC11: joined is the first paid row of several, in Cleveland, and the subscription is one row", async () => {
+      await truncateAll();
+      const { productId, typeId, standard } = await addProductRows();
+      const ada = await repo.createMember({ email: "ada@example.com" });
+      const subscriptionId = await addActive(ada.id, productId, typeId, standard);
+      // The last written first, so the order they were written in cannot be what picks the first.
+      await addLedger(subscriptionId, "2026-12-20", "paid", "2026-12-16T15:00:00Z");
+      await addLedger(subscriptionId, "2026-12-13", "paid", "2026-12-09T15:00:00Z");
+      await addLedger(subscriptionId, "2026-12-06", "paid", "2026-12-02T03:30:00Z");
+      // An earlier week that was never paid is not the first paid row.
+      await addLedger(subscriptionId, "2026-11-29", "declined", null);
+
+      expect(await repo.listSubscribers(productId as string)).toEqual([expect.objectContaining({ subscriptionId, joinedDate: "2026-12-01" })]);
+    });
+
+    it("AC3: a member holding two active subscriptions gets two rows, each with its own meal and date (DEC-026)", async () => {
+      await truncateAll();
+      const { productId, typeId, standard, vegan } = await addProductRows();
+      const ada = await repo.createMember({ email: "ada@example.com" });
+      const first = await addActive(ada.id, productId, typeId, standard);
+      const second = await addActive(ada.id, productId, typeId, vegan);
+      await addLedger(first, "2026-12-06", "paid", "2026-12-01T17:00:00Z");
+      await addLedger(second, "2026-12-13", "paid", "2026-12-08T17:00:00Z");
+
+      const rows = await repo.listSubscribers(productId as string);
+
+      expect(rows.map(({ subscriptionId, options, joinedDate }) => ({ subscriptionId, options, joinedDate })).sort((a, b) => a.joinedDate.localeCompare(b.joinedDate))).toEqual([
+        { subscriptionId: first, options: [{ typeName: "Which menu?", optionName: "Standard" }], joinedDate: "2026-12-01" },
+        { subscriptionId: second, options: [{ typeName: "Which menu?", optionName: "Vegan" }], joinedDate: "2026-12-08" },
+      ]);
+    });
+  });
+
   // Postgres only: the typed port gives the in-memory adapter no way to store an unsupported code.
   describe("AC10 (issue 7) — members.language accepts only en and es", () => {
     const CHECK_VIOLATION = "23514";

@@ -228,6 +228,35 @@
     border: 2px solid var(--color-danger);
   }
 
+  /* The search field: the icon sits inside the box's left edge, and the text starts after it. */
+  .search-box {
+    @apply relative flex items-center;
+  }
+  .search-box::before {
+    content: "";
+    @apply pointer-events-none absolute left-3 size-5 bg-teal-muted;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'%3E%3Ccircle cx='11' cy='11' r='6.5'/%3E%3Cpath d='M16 16l4 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .search-box .field {
+    @apply pl-10;
+  }
+
+  /* A sortable header: the whole cell is the button, and the sorted one shows its direction (from the th's aria-sort). */
+  .sort-button {
+    @apply flex min-h-touch w-full items-center gap-1.5 px-3 text-left text-label text-teal uppercase;
+  }
+  th[aria-sort="ascending"] .sort-button::after {
+    content: "\2191";
+  }
+  th[aria-sort="descending"] .sort-button::after {
+    content: "\2193";
+  }
+
+  /* The stacked rows: shown below 720px only (see the media query after the layers). */
+  .row-list {
+    @apply hidden;
+  }
+
   /* An alert: danger border, soft fill, an icon before the words. */
   .notice {
     @apply flex items-start gap-3 rounded-md border border-danger bg-danger-soft px-4 py-3 text-small text-ink;
@@ -286,5 +315,15 @@
 @media (width < 64rem) {
   .wide-only {
     display: none;
+  }
+}
+
+/* The members list: a table from 720px (45rem) up, stacked rows below it. Unlayered, for the reason above. */
+@media (width < 45rem) {
+  .data-table {
+    display: none;
+  }
+  .row-list {
+    display: flex;
   }
 }
