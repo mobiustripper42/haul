@@ -344,9 +344,20 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         expect((await pool.query("select square_card_id from subscriptions")).rows).toEqual([{ square_card_id: null }]);
       });
 
-      // The order is forced, so it fails every run and not only when the timing falls that way: the cheap
-      // tab saves and stops; the dear tab rewrites the row and stops; the cheap tab binds and charges.
-      it("AC11: two tabs with different picks: the charge is the ledger's amount, on the ledger's picks", async () => {
+      const gate = () => {
+        let open = () => {};
+        const opened = new Promise<void>((resolve) => {
+          open = resolve;
+        });
+        return { open, opened };
+      };
+
+      /**
+       * Two tabs with different picks, the order forced so a test fails every run and not only when the timing
+       * falls that way: the cheap tab saves and stops; the dear tab rewrites the row and stops, until the
+       * promise `stop` returns. So the cheap tab binds and charges the dear tab's picks.
+       */
+      const twoTabs = async (stop: (payments: FakePayments, tabs: { cheapFinished: Promise<void>; dearFinished: Promise<void> }) => Promise<void>) => {
         const { product, member } = await fixture([
           { name: "2 people", priceCents: 5000, position: 1 },
           { name: "3–4 people", priceCents: 8000, position: 2 },
@@ -355,16 +366,11 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         const box = (at: number) => ({ [size?.id ?? "no size"]: size?.options[at]?.id ?? "no option", [menu?.id ?? "no menu"]: menu?.options[0]?.id ?? "no option" });
         const payments = await withCustomer(member.id);
 
-        const gate = () => {
-          let open = () => {};
-          const opened = new Promise<void>((resolve) => {
-            open = resolve;
-          });
-          return { open, opened };
-        };
         const cheapAtCard = gate();
         const dearAtCard = gate();
-        const charged = gate();
+        const cheapDone = gate();
+        const dearDone = gate();
+        const dearGoesOn = stop(payments, { cheapFinished: cheapDone.opened, dearFinished: dearDone.opened });
         const saveCard = payments.saveCard.bind(payments);
         payments.saveCard = async (card) => {
           if (card.sourceId === FIRST_TAB) {
@@ -372,23 +378,20 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
             await dearAtCard.opened;
           } else {
             dearAtCard.open();
-            await charged.opened;
+            await dearGoesOn;
           }
           return saveCard(card);
         };
-        const charge = payments.charge.bind(payments);
-        payments.charge = async (request) => {
-          try {
-            return await charge(request);
-          } finally {
-            charged.open();
-          }
-        };
 
         const submit = (at: number, sourceId: string) => signUp(deps(payments), { memberId: member.id, choices: box(at), sourceId, consentText: CONSENT });
-        const cheap = submit(0, FIRST_TAB);
+        const cheap = submit(0, FIRST_TAB).finally(cheapDone.open);
         await cheapAtCard.opened;
-        const results = await Promise.all([cheap, submit(1, SECOND_TAB)]);
+        const results = await Promise.all([cheap, submit(1, SECOND_TAB).finally(dearDone.open)]);
+        return { payments, results, box };
+      };
+
+      it("AC11: two tabs with different picks: the charge is the ledger's amount, on the ledger's picks", async () => {
+        const { payments, results, box } = await twoTabs((_payments, { cheapFinished }) => cheapFinished);
 
         const { rows } = await pool.query<{ amount_cents: number; status: string }>("select amount_cents, status from ledger");
         expect(payments.charges.map((request) => request.amountCents)).toEqual(rows.map((row) => row.amount_cents));
@@ -397,6 +400,26 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         expect(await count("subscriptions")).toBe(1);
         const picked = await pool.query<{ option_id: string }>("select option_id from subscription_options");
         expect(picked.rows.map((row) => row.option_id).sort()).toEqual(Object.values(box(1)).sort());
+      });
+
+      it("AC11: a second tab that reaches the row between the charge and the confirm finishes it: both tabs are paid, on one charge", async () => {
+        const { payments, results } = await twoTabs((tabPayments, { dearFinished }) => {
+          const charged = gate();
+          const charge = tabPayments.charge.bind(tabPayments);
+          tabPayments.charge = async (request) => {
+            const result = await charge(request);
+            charged.open();
+            await dearFinished;
+            return result;
+          };
+          return charged.opened;
+        });
+
+        expect(payments.charges.map((request) => request.amountCents)).toEqual([8000]);
+        expect((await pool.query("select amount_cents, status from ledger")).rows).toEqual([{ amount_cents: 8000, status: "paid" }]);
+        expect(results.map((result) => result.outcome).sort()).toEqual(["paid", "paid"]);
+        expect(results.filter((result) => result.confirmedNow)).toHaveLength(1);
+        expect(await count("subscriptions")).toBe(1);
       });
 
       it("AC11: a charge that no longer matches the ledger leaves both rows pending, and the event holds both amounts", async () => {
