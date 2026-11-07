@@ -5,7 +5,8 @@ Portal**, Ohio City Farm's Supper Club and CSA tool; "Haul" never appears in the
 
 Sources this spec was written from, kept verbatim in `docs/sources/`:
 `2026-10-23-requirements.md` (the Oct 23 meeting, Lenny's notes, follow-up decisions),
-`2026-10-24-lenny-answers.md` (Lenny's answers and the Supper Club copy), and
+`2026-10-24-lenny-answers.md` (Lenny's answers and the Supper Club copy),
+`2026-11-07-lenny-answers.md` (Lenny's second round: sizes, prices, first pickup, sender), and
 `2026-10-market-scan.md` (background research). Where this spec and a source disagree, this spec is
 current.
 
@@ -170,7 +171,8 @@ and 4.
   **first-pickup date** (a seeded setting; the Supper Club's first window is Sunday and Monday,
   January 10–11, 2027) whose cutoff has not passed. Every later week is charged by the app's own run
   at cutoff, on the card on file.
-- **The app emails a receipt for each charge.** Square may send its own as well (Eric, 2026-11-07).
+- **The app emails a receipt for each successful charge.** Square may send its own as well (Eric,
+  2026-11-07). A decline has its own email, below.
 - **The ledger** is one row per subscription per pickup week, written before any charge, keyed
   unique on subscription and week; a member may hold several subscriptions (open question 13). It
   is the work queue for the charge run and the source of all history: paid, skipped, closed,
@@ -218,7 +220,7 @@ All UI strings live in translation files from day one, enforced by a lint rule t
 string in a component. Each member has a language preference; transactional email goes out in it.
 Product, option type and option names are data, translated as admin-written text, not catalog
 strings (DEC-027). Browser page translation is the fallback for anything else. English and Spanish
-first; the farm's real language list is an open question.
+are enough for now (open question 6).
 
 ### 7.8 Audit
 
@@ -263,7 +265,7 @@ alert the developer too; the recipient and channel are decided when task 2.11 is
 
 One full rehearsal week (task 2.16) runs in production after the rest of Phase 2 is done and
 before the first real January charge, on a real Monday cutoff. Which Monday depends on open
-questions 1, 2 and 5. Its members are real accounts — Eric, Annabel, Lenny — whose subscriptions
+question 2's charge rule and question 5; the first window is January 10–11. Its members are real accounts — Eric, Annabel, Lenny — whose subscriptions
 start that week, signed up through the real signup page. They are charged real money, refunded by
 hand in Square, and cancel through the real cancel or stay on. No test flag: nothing in the database
 is fake, and Lenny knows not to make those meals.
@@ -358,12 +360,12 @@ Viewable reports, scoped once the farm says what Square does not already give th
 13. *Answered 2026-11-02 (Eric):* a member may hold one or more subscriptions, to any product.
     Phase 1's signup creates exactly one; a member adding another comes later. A cap counts
     subscriptions (§6.1), so a household with two subscriptions takes two spots.
-14. *Answered 2026-11-07 (Eric):* the app emails a receipt for each charge; Square may send one
+14. *Answered 2026-11-07 (Eric):* the app emails a receipt for each successful charge; Square may send one
     too (§7.3). Lenny had no preference.
 15. *Answered 2026-11-06 (Eric):* existing subscribers move to a new price, with at least 14 days'
     notice by email.
 16. Who adds the email authentication records (SPF, DKIM, DMARC) to the farm's DNS? *Sender
-    answered 2026-11-07 (Lenny):* mail comes from `lenny@ohiocityfarm.com` and replies go there,
+    answered 2026-11-07 (Lenny; the address from Eric):* mail comes from `lenny@ohiocityfarm.com` and replies go there,
     possibly Gavin's address later.
 17. *Answered 2026-11-06 (Eric):* the farm has no existing legal text. Stand-in terms and privacy
     policy go in at task 1.12, and the farm approves the final copies before production release. The
