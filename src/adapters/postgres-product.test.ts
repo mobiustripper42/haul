@@ -6,7 +6,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest
 import { runSeed } from "../../db/seed.js";
 import type { Repository } from "../ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME, type ProductInput, type ProductWithOptions } from "../products.js";
-import { signUp, type SignupDeps } from "../signup.js";
+import { retrySignup, signUp, type SignupDeps } from "../signup.js";
 import { FakePayments } from "./fake-payments.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
@@ -131,6 +131,18 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       ).rows;
 
     const deps = (payments: FakePayments): SignupDeps => ({ repo, payments, now: NOW });
+
+    /** Resolves "waiting" once a query is blocked on a lock in this database, or "no lock" when none has been for a while. */
+    const blockedOnALock = async (): Promise<"waiting" | "no lock"> => {
+      for (let tries = 0; tries < 50; tries++) {
+        const { rows } = await pool.query<{ n: string }>(
+          "select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+        );
+        if (Number(rows[0]?.n) > 0) return "waiting";
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      return "no lock";
+    };
 
     it("AC4: the subscription stores the consent wording, the time and the amounts, and the ledger row the amount and pickup date", async () => {
       const { input, member, product } = await fixture();
@@ -273,18 +285,6 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         return payments;
       };
 
-      /** Resolves "waiting" once a query is blocked on a lock in this database, or "no lock" when none has been for a while. */
-      const blockedOnALock = async (): Promise<"waiting" | "no lock"> => {
-        for (let tries = 0; tries < 50; tries++) {
-          const { rows } = await pool.query<{ n: string }>(
-            "select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
-          );
-          if (Number(rows[0]?.n) > 0) return "waiting";
-          await new Promise((resolve) => setTimeout(resolve, 20));
-        }
-        return "no lock";
-      };
-
       it("AC11: a tab whose save lands after the first confirms gets already_subscribed, with no second row or charge", async () => {
         const { member, choices } = await fixture();
         const payments = await withCustomer(member.id);
@@ -415,6 +415,208 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         const { rows } = await pool.query<{ detail: object; actor: string }>("select detail, actor from audit_log where event = 'charge_outcome_unknown'");
         expect(rows.map((row) => row.actor)).toEqual([`member:${member.id}`]);
         expect(Object.values(rows[0]?.detail ?? {})).toEqual(expect.arrayContaining([8000, 9000]));
+      });
+    });
+
+    describe("issue 57 — the cap on real rows", () => {
+      const SOURCE = "cnon:card-nonce-ok";
+      const OTHER_SOURCE = "cnon:other-card";
+
+      afterEach(() => {
+        vi.restoreAllMocks();
+      });
+
+      /** The fixture, with the product capped at `cap`. */
+      const cappedAt = async (cap: number) => {
+        const stocked = await fixture();
+        await pool.query("update products set cap = $1", [cap]);
+        return stocked;
+      };
+
+      /** Another confirmed member. */
+      const rival = async () => {
+        const { id } = await repo.createMember({ email: "grace@example.com" });
+        await repo.confirmMemberEmail(id, NOW);
+        return id;
+      };
+
+      /** Every card waits at Square until `arrivals` of them are there, so each signup is past the check before any binds. */
+      const paymentsMeetingAtTheCard = (arrivals: number): FakePayments => {
+        const payments = new FakePayments();
+        const saveCard = payments.saveCard.bind(payments);
+        let open = () => {};
+        const met = new Promise<void>((resolve) => {
+          open = resolve;
+        });
+        let arrived = 0;
+        payments.saveCard = async (card) => {
+          arrived += 1;
+          if (arrived === arrivals) open();
+          await met;
+          return saveCard(card);
+        };
+        return payments;
+      };
+
+      const cardsOnFile = async () => (await pool.query<{ square_card_id: string | null }>("select square_card_id from subscriptions")).rows.map((row) => row.square_card_id);
+
+      it("AC1 (issue 57): an active subscription holds one spot, however many ledger rows it has and whatever they say", async () => {
+        const { input, product } = await cappedAt(50);
+        const signup = await repo.savePendingSignup(input);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+        await pool.query(
+          `insert into ledger (subscription_id, pickup_date, amount_cents, status)
+           values ($1, '2027-01-10', 8000, 'declined'), ($1, '2027-01-17', 8000, 'pending')`,
+          [signup.subscriptionId],
+        );
+        expect(await repo.countHeldSpots(product.id)).toBe(1);
+      });
+
+      it("AC2 (issue 57): a held spot ten years old is still held, and still fills the cap", async () => {
+        const { input, product } = await cappedAt(1);
+        const signup = await repo.savePendingSignup(input);
+        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        await pool.query("update subscriptions set created_at = now() - interval '10 years', consent_at = now() - interval '10 years'");
+        expect(await repo.countHeldSpots(product.id)).toBe(1);
+        const later = await repo.savePendingSignup({ ...input, memberId: await rival() });
+        expect(await repo.saveSubscriptionCard(later.subscriptionId, "ccof:card-2")).toBe("sold_out");
+      });
+
+      it("AC6, AC10 (issue 57): a refusal at the check writes no signup rows, and one sold_out event under the member, keyed on them", async () => {
+        const { input, member, choices } = await cappedAt(1);
+        const held = await repo.savePendingSignup({ ...input, memberId: await rival() });
+        await repo.saveSubscriptionCard(held.subscriptionId, "ccof:held");
+        const payments = new FakePayments();
+        const m = await mark();
+
+        const result = await signUp(deps(payments), { memberId: member.id, choices, sourceId: SOURCE, consentText: CONSENT });
+
+        expect(result.outcome).toBe("sold_out");
+        expect(await auditSince(m)).toEqual([{ table_name: "members", operation: "event", event: "sold_out", actor: `member:${member.id}` }]);
+        expect(await count("subscriptions")).toBe(1);
+        expect(await count("ledger")).toBe(1);
+        expect(payments.customers).toEqual([]);
+      });
+
+      it("AC7, AC10 (issue 57): the last spot going after the check leaves the row cardless, charges nothing, and records sold_out under the member", async () => {
+        const { input, member, choices } = await cappedAt(1);
+        const grace = await rival();
+        const payments = new FakePayments();
+        const saveCard = payments.saveCard.bind(payments);
+        payments.saveCard = async (card) => {
+          const held = await repo.savePendingSignup({ ...input, memberId: grace });
+          await repo.saveSubscriptionCard(held.subscriptionId, "ccof:held");
+          return saveCard(card);
+        };
+        const m = await mark();
+
+        const result = await signUp(deps(payments), { memberId: member.id, choices, sourceId: SOURCE, consentText: CONSENT });
+
+        expect(result.outcome).toBe("sold_out");
+        expect(payments.charges).toEqual([]);
+        expect((await repo.findPendingSignup(member.id, input.productId))?.squareCardId).toBeNull();
+        expect((await auditSince(m)).filter((row) => row.event === "sold_out")).toEqual([
+          { table_name: "members", operation: "event", event: "sold_out", actor: `member:${member.id}` },
+        ]);
+      });
+
+      it("AC8 (issue 57): two signups binding for the last spot at once: exactly one pays, the other is sold_out, and one charge is made", async () => {
+        const { member, choices } = await cappedAt(1);
+        const grace = await rival();
+        const payments = paymentsMeetingAtTheCard(2);
+
+        const results = await Promise.all([
+          signUp(deps(payments), { memberId: member.id, choices, sourceId: SOURCE, consentText: CONSENT }),
+          signUp(deps(payments), { memberId: grace, choices, sourceId: OTHER_SOURCE, consentText: CONSENT }),
+        ]);
+
+        expect(results.map((result) => result.outcome).sort()).toEqual(["paid", "sold_out"]);
+        expect(payments.charges).toHaveLength(1);
+        expect((await pool.query("select status from subscriptions order by status")).rows).toEqual([{ status: "active" }, { status: "pending" }]);
+        expect((await cardsOnFile()).filter((card) => card === null)).toHaveLength(1);
+      });
+
+      it("AC8 (issue 57): a bind waits on the product row's lock, and counts what committed while it waited", async () => {
+        const { input, product } = await cappedAt(1);
+        const mine = await repo.savePendingSignup(input);
+        const other = await repo.savePendingSignup({ ...input, memberId: await rival() });
+        const holder = await pool.connect();
+        try {
+          await holder.query("begin");
+          await holder.query("select id from products where id = $1 for update", [product.id]);
+          const bind = repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
+          expect(await Promise.race([bind.then(() => "landed"), blockedOnALock()])).toBe("waiting");
+
+          // The rival's bind commits as the lock frees, so only a count made under the lock can see it.
+          await holder.query("update subscriptions set square_card_id = 'ccof:rival' where id = $1", [other.subscriptionId]);
+          await holder.query("commit");
+          expect(await bind).toBe("sold_out");
+        } finally {
+          await holder.query("rollback");
+          holder.release();
+        }
+        expect((await repo.findPendingSignup(input.memberId, product.id))?.squareCardId).toBeNull();
+      });
+
+      it("AC11 (issue 57): a decline at the charge writes the ledger row and its event, nothing else, and another member can then take the spot", async () => {
+        const { member, choices } = await cappedAt(1);
+        const payments = new FakePayments();
+        const saveCard = payments.saveCard.bind(payments);
+        payments.saveCard = async (card) => {
+          const saved = await saveCard(card);
+          payments.declineCard(saved.id, "GENERIC_DECLINE");
+          return saved;
+        };
+        const charge = payments.charge.bind(payments);
+        let m = "";
+        payments.charge = async (request) => {
+          m = await mark();
+          return charge(request);
+        };
+        const result = await signUp(deps(payments), { memberId: member.id, choices, sourceId: SOURCE, consentText: CONSENT });
+
+        expect(result.outcome).toBe("declined");
+        expect((await auditSince(m)).map((row) => [row.table_name, row.operation, row.event])).toEqual([
+          ["ledger", "update", null],
+          ["members", "event", "card_declined"],
+        ]);
+
+        payments.saveCard = saveCard;
+        const next = await signUp(deps(payments), { memberId: await rival(), choices, sourceId: OTHER_SOURCE, consentText: CONSENT });
+        expect(next.outcome).toBe("paid");
+      });
+
+      it("AC14 (issue 57): a confirm takes no product lock, so a bind waiting on it can never deadlock with one", async () => {
+        const { input, product } = await cappedAt(1);
+        const signup = await repo.savePendingSignup(input);
+        const holder = await pool.connect();
+        try {
+          await holder.query("begin");
+          await holder.query("select id from products where id = $1 for update", [product.id]);
+          const confirm = repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+          expect(await Promise.race([confirm.then(() => "landed"), blockedOnALock()])).toBe("landed");
+        } finally {
+          await holder.query("rollback");
+          holder.release();
+        }
+      });
+
+      it("AC14 (issue 57): a charge Try again finishes confirms after the cap is lowered past it", async () => {
+        const { input, member, choices, product } = await cappedAt(2);
+        const payments = new FakePayments();
+        const charge = payments.charge.bind(payments);
+        payments.charge = async () => {
+          throw new DOMException("The operation timed out.", "TimeoutError");
+        };
+        expect((await signUp(deps(payments), { memberId: member.id, choices, sourceId: SOURCE, consentText: CONSENT })).outcome).toBe("unknown");
+        const other = await repo.savePendingSignup({ ...input, memberId: await rival() });
+        await repo.confirmSignupRows(other.ledgerId, "PAYMENT_OTHER", other.amountCents, PAID_AT);
+        await pool.query("update products set cap = 1");
+        payments.charge = charge;
+
+        expect((await retrySignup(deps(payments), { memberId: member.id })).outcome).toBe("paid");
+        expect(await repo.findActiveSubscription(member.id, product.id)).not.toBeNull();
+        expect(await repo.countHeldSpots(product.id)).toBe(2);
       });
     });
   });

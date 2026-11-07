@@ -35,7 +35,7 @@ vi.mock("../services", () => ({ getRepository: () => services.repo, getSessionSe
 const NOW = new Date("2026-11-06T15:00:00.000Z");
 const EMAIL = "ada@example.com";
 const TITLE = "You're in the Supper Club";
-const ALREADY = "You already have a Supper Club box";
+const ALREADY = "You already have a Supper Club subscription";
 
 let product: ProductWithOptions;
 
@@ -186,7 +186,7 @@ describe("AC13 — the confirmation", () => {
       inOrder(text, [
         TITLE,
         `Thank you, Ada. We emailed a confirmation to ${EMAIL}.`,
-        "Your box",
+        "Your subscription",
         "3–4 people",
         "Vegan",
         "Paid today",
@@ -200,7 +200,7 @@ describe("AC13 — the confirmation", () => {
         "What happens next",
         "Each week we email you the menu.",
         "Your card is charged $80 at the end of each Monday for the following week's pickup.",
-        "To skip a week, change your box or cancel, sign in to your account before the end of Monday.",
+        "To skip a week, change your subscription or cancel, sign in to your account before the end of Monday.",
         "Go to your account",
         "Back to ohiocityfarm.com",
       ]),
@@ -252,10 +252,10 @@ describe("AC13 — the confirmation", () => {
     expect(utilitiesOf(/class="([^"]*)"/.exec(linkTo((await render()).html, "Back to ohiocityfarm.com"))?.[1])).toContain("btn-quiet");
   });
 
-  it("AC13: one tree: each of \"Your box\" and \"What happens next\" is rendered once", async () => {
+  it("AC13, AC17 (issue 57): one tree: each of \"Your subscription\" and \"What happens next\" is rendered once", async () => {
     await subscribe(await signIn());
     const text = plain((await render()).html);
-    expect(text.split("Your box")).toHaveLength(2);
+    expect(text.split("Your subscription")).toHaveLength(2);
     expect(text.split("What happens next")).toHaveLength(2);
   });
 
@@ -273,7 +273,7 @@ describe("AC5 — the already-a-member page", () => {
     return { element, html: renderToStaticMarkup(element) };
   };
 
-  it("AC5: it says they already have a box, that nothing was charged, and links to their account, in that order", async () => {
+  it("AC5, AC17 (issue 57): it says they already have a subscription, that nothing was charged, and links to their account, in that order", async () => {
     await subscribe(await signIn());
     const text = from(plain((await render()).html), ALREADY);
     expect(inOrder(text, [ALREADY, "Nothing was charged.", "Go to your account"])).toEqual([]);

@@ -11,7 +11,7 @@ import {
   type Repository,
   type SignupConfirmation,
 } from "../ports/repository.js";
-import type { ProductInput, ProductWithOptions } from "../products.js";
+import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
 
@@ -198,12 +198,26 @@ export class InMemoryRepository implements Repository {
     return saved as PendingSignup;
   }
 
-  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null> {
+  async saveSubscriptionCard(
+    subscriptionId: string,
+    cardId: string,
+  ): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     const subscription = this.subscriptions.get(subscriptionId);
     const ledger = this.ledgerOf(subscriptionId);
     if (!subscription || !ledger || subscription.status !== "pending" || subscription.squareCardId !== null) return null;
+    if (ledger.status !== "pending") return null;
+    const product = this.products.find((p) => p.id === subscription.productId);
+    if (product && isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
     this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
     return { amountCents: ledger.amountCents, attempt: ledger.attempt };
+  }
+
+  async countHeldSpots(productId: string): Promise<number> {
+    return [...this.subscriptions.values()].filter(
+      (s) =>
+        s.productId === productId &&
+        (s.status === "active" || (s.squareCardId !== null && this.ledgerOf(s.id)?.status === "pending")),
+    ).length;
   }
 
   async recordSignupDecline(ledgerId: string): Promise<void> {

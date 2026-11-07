@@ -8,8 +8,11 @@
 // browser (DEC-023).
 import type { APIRequestContext, Locator, Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
+import { createClient } from "../src/adapters/pg-connect.js";
+import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
 import { en } from "../src/messages/en.js";
+import { requireSupperClub } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
 import { expect, outboxCount, test, waitForSignInCode } from "./fixtures";
 
@@ -105,6 +108,33 @@ function countPayPosts(page: Page): () => number {
     if (sent.method() === "POST" && new URL(sent.url()).pathname === "/supper-club") posts += 1;
   });
   return () => posts;
+}
+
+/** Another member's paid signup, and a cap of one: the Supper Club fills while this member is on the page. */
+async function theLastSpotGoes(): Promise<void> {
+  const url = e2eDatabaseUrl();
+  const repo = new PostgresRepository(url);
+  const client = createClient(url);
+  await client.connect();
+  try {
+    const product = await requireSupperClub(repo);
+    const other = await repo.createMember({ email: "other@ocf.xx" });
+    const { ledgerId, amountCents } = await repo.savePendingSignup({
+      memberId: other.id,
+      productId: product.id,
+      choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no option"])),
+      firstChargeCents: 8000,
+      weeklyCents: 8000,
+      pickupDate: "2027-01-03",
+      consentText: "I agree.",
+      consentAt: new Date(),
+    });
+    await repo.confirmSignupRows(ledgerId, "PAYMENT_OTHER", amountCents, new Date());
+    await client.query("update products set cap = 1 where id = $1", [product.id]);
+  } finally {
+    await client.end();
+    await repo.close();
+  }
 }
 
 test.beforeEach(async () => {
@@ -440,7 +470,24 @@ test("AC5 (issue 56): a member with a box who opens /supper-club lands on the al
 
   await page.goto("/supper-club");
   await expect(page).toHaveURL(onPath("/supper-club/already"));
-  await expect(page.getByText("You already have a Supper Club box")).toBeVisible();
+  await expect(page.getByText("You already have a Supper Club subscription")).toBeVisible();
   await page.getByRole("main").getByRole("link", { name: "Go to your account", exact: true }).click();
   await expect(page).toHaveURL(onPath("/"));
+});
+
+test("AC3, AC9 (issue 57): the last spot goes while a member is on the page: pay lands on the sold-out card and its notice, where the Join card stood, beside or after the farm copy", async ({ page, request }) => {
+  await signedIn(page, request);
+  const join = (await joinCard(page).boundingBox())!;
+  await theLastSpotGoes();
+
+  await pay(page);
+
+  await expect(page).toHaveURL((url) => url.pathname === "/supper-club" && url.searchParams.get("payError") === "soldout");
+  await expect(page.getByText("The Supper Club sold out before your payment went through. Nothing was charged.")).toBeVisible();
+  await expect(page.getByText("The Supper Club is sold out", { exact: true })).toBeVisible();
+  await expect(page.getByText(en["supperClub.joinTitle"])).toHaveCount(0);
+  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  const card = (await cardHolding(page, "The Supper Club is sold out").boundingBox())!;
+  expect(card.x).toBeCloseTo(join.x, 0);
+  expect(card.width).toBeCloseTo(join.width, 0);
 });

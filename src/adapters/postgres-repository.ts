@@ -10,7 +10,7 @@ import {
   type Repository,
   type SignupConfirmation,
 } from "../ports/repository.js";
-import type { ProductOptionType, ProductWithOptions } from "../products.js";
+import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
 
@@ -364,24 +364,57 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * Binds the card where the subscription is pending and has none, under the member row's lock, and returns the
-   * amount and attempt the same statement read from the ledger row: that is what the caller charges. No row, no bind.
+   * Binds the card where the subscription is pending, has none and has its ledger row pending, and returns the
+   * amount and attempt the same statement read from the ledger row: that is what the caller charges. No row, no
+   * bind. The member row is locked first, then the product row, so two binds for the last spot take turns; a
+   * confirm takes only the member lock, so the order cannot deadlock. The row's own state outranks the cap: a
+   * row that cannot bind returns null before the count is read, and a full product returns "sold_out".
    */
-  async saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null> {
+  async saveSubscriptionCard(
+    subscriptionId: string,
+    cardId: string,
+  ): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     if (!UUID_SHAPE.test(subscriptionId)) return null;
     if (!this.scoped) return this.withActor(null, (repo) => repo.saveSubscriptionCard(subscriptionId, cardId));
     await this.db.query(
       "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
       [subscriptionId],
     );
+    const { rows: products } = await this.db.query<{ id: string; cap: number }>(
+      "select p.id, p.cap from products p join subscriptions s on s.product_id = p.id where s.id = $1 for update of p",
+      [subscriptionId],
+    );
+    const product = products[0];
+    if (!product) return null;
+    const { rows: bindable } = await this.db.query<{ id: string }>(
+      `select s.id from subscriptions s join ledger l on l.subscription_id = s.id
+        where s.id = $1 and s.status = 'pending' and s.square_card_id is null and l.status = 'pending'`,
+      [subscriptionId],
+    );
+    if (!bindable[0]) return null;
+    if (isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
     const { rows } = await this.db.query<{ amount_cents: number; attempt: number }>(
       `update subscriptions s set square_card_id = $2
          from ledger l
-        where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and s.square_card_id is null
+        where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and s.square_card_id is null and l.status = 'pending'
         returning l.amount_cents, l.attempt`,
       [subscriptionId, cardId],
     );
     return rows[0] ? { amountCents: rows[0].amount_cents, attempt: rows[0].attempt } : null;
+  }
+
+  async countHeldSpots(productId: string): Promise<number> {
+    if (!UUID_SHAPE.test(productId)) return 0;
+    const { rows } = await this.db.query<{ held: number }>(
+      `select count(*)::int as held
+         from subscriptions s
+        where s.product_id = $1
+          and (s.status = 'active'
+               or (s.status = 'pending' and s.square_card_id is not null
+                   and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'pending')))`,
+      [productId],
+    );
+    return rows[0]?.held ?? 0;
   }
 
   async recordSignupDecline(ledgerId: string): Promise<void> {

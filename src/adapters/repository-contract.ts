@@ -833,5 +833,183 @@ export function runSignupContract(
         expect(await repo.findActiveSubscription(memberId, product.id)).toBeNull();
       });
     });
+
+    // Issue 57: the cap, on a product of its own so that `BOX` stays at 50 for everything above.
+    describe("issue 57 — the cap", () => {
+      let others = 0;
+
+      const capped = (cap: number) => addProduct({ ...BOX, name: "Capped", cap });
+
+      const choicesOf = (on: ProductWithOptions) => Object.fromEntries(on.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+
+      /** The member's pending rows on `on`, with no card: Ada's, or a new member's. */
+      const rowsOn = async (on: ProductWithOptions, who?: string): Promise<PendingSignup> =>
+        saved({ memberId: who ?? (await repo.createMember({ email: `other-${++others}@example.com` })).id, productId: on.id, choices: choicesOf(on) });
+
+      /** A new member with a card on a pending row and the charge unanswered. */
+      const boundOn = async (on: ProductWithOptions): Promise<PendingSignup> => {
+        const signup = await rowsOn(on);
+        await repo.saveSubscriptionCard(signup.subscriptionId, `ccof:${signup.subscriptionId}`);
+        return signup;
+      };
+
+      /** A new member with an active subscription. */
+      const activeOn = async (on: ProductWithOptions): Promise<PendingSignup> => {
+        const signup = await rowsOn(on);
+        await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, PAID_AT);
+        return signup;
+      };
+
+      const adaOn = (on: ProductWithOptions) => repo.findPendingSignup(memberId, on.id);
+
+      describe("AC1 — countHeldSpots", () => {
+        it("AC1 (issue 57): an active subscription holds a spot", async () => {
+          await activeOn(product);
+          expect(await repo.countHeldSpots(product.id)).toBe(1);
+        });
+
+        it("AC1 (issue 57): a pending row with a card on it and its ledger row pending holds a spot", async () => {
+          await boundOn(product);
+          expect(await repo.countHeldSpots(product.id)).toBe(1);
+        });
+
+        it("AC1 (issue 57): a pending row with no card holds none, which guards the two above", async () => {
+          await rowsOn(product);
+          expect(await repo.countHeldSpots(product.id)).toBe(0);
+        });
+
+        it("AC1 (issue 57): a row whose ledger row is declined holds none, with its card on it or not, which guards the two above", async () => {
+          const carded = await boundOn(product);
+          await repo.recordSignupDecline(carded.ledgerId);
+          const cardless = await rowsOn(product);
+          await repo.recordSignupDecline(cardless.ledgerId);
+          expect(await repo.countHeldSpots(product.id)).toBe(0);
+        });
+
+        it("AC1 (issue 57): with one of each only the active row and the bound row count", async () => {
+          await activeOn(product);
+          await boundOn(product);
+          await rowsOn(product);
+          const declined = await boundOn(product);
+          await repo.recordSignupDecline(declined.ledgerId);
+          expect(await repo.countHeldSpots(product.id)).toBe(2);
+        });
+
+        it("AC1 (issue 57): a spot held on another product does not count here", async () => {
+          const crate = await capped(50);
+          await activeOn(product);
+          await activeOn(crate);
+          await boundOn(crate);
+          expect(await repo.countHeldSpots(product.id)).toBe(1);
+          expect(await repo.countHeldSpots(crate.id)).toBe(2);
+        });
+      });
+
+      describe("AC7 — the bind refuses at the cap", () => {
+        it('AC7 (issue 57): with the cap held, saveSubscriptionCard returns "sold_out" and the row stays cardless and pending', async () => {
+          const club = await capped(1);
+          await boundOn(club);
+          const mine = await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await adaOn(club)).toMatchObject({ subscriptionId: mine.subscriptionId, ledgerStatus: "pending", attempt: 1, squareCardId: null });
+          expect(await repo.countHeldSpots(club.id)).toBe(1);
+        });
+
+        it('AC7 (issue 57): an active subscription fills the cap as a held row does: "sold_out"', async () => {
+          const club = await capped(1);
+          await activeOn(club);
+          const mine = await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+        });
+
+        it('AC7 (issue 57): the last spot binds with its amount and attempt, and the next is "sold_out"', async () => {
+          const club = await capped(2);
+          await boundOn(club);
+          const mine = await rowsOn(club, memberId);
+          const last = await rowsOn(club);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.saveSubscriptionCard(last.subscriptionId, "ccof:card-2")).toBe("sold_out");
+        });
+
+        it("AC7 (issue 57): a rival's cardless pending row fills nothing, so the bind goes through, which guards the refusals above", async () => {
+          const club = await capped(1);
+          await rowsOn(club);
+          const mine = await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+        });
+      });
+
+      // What the row is outranks the cap: a member's own card must never read as the Supper Club selling out.
+      describe("AC7 — the row's own state outranks the cap", () => {
+        it('AC7 (issue 57): a row with a card on it returns null at the cap, not "sold_out", and keeps its card', async () => {
+          const club = await capped(1);
+          const mine = await rowsOn(club, memberId);
+          await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-2")) ?? null).toBeNull();
+          expect((await adaOn(club))?.squareCardId).toBe("ccof:card-1");
+        });
+
+        it('AC7 (issue 57): a row no longer pending returns null at the cap, not "sold_out"', async () => {
+          const club = await capped(1);
+          const mine = await rowsOn(club, memberId);
+          await repo.confirmSignupRows(mine.ledgerId, "PAYMENT_1", mine.amountCents, PAID_AT);
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:late")) ?? null).toBeNull();
+        });
+
+        it("AC7 (issue 57): a bind refuses a cardless row whose ledger row is declined: null, and the row stays cardless", async () => {
+          const mine = await saved();
+          await repo.recordSignupDecline(mine.ledgerId);
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")) ?? null).toBeNull();
+          expect(await pending()).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
+        });
+
+        it('AC7 (issue 57): at the cap that row still returns null, not "sold_out"', async () => {
+          const club = await capped(1);
+          await boundOn(club);
+          const mine = await rowsOn(club, memberId);
+          await repo.recordSignupDecline(mine.ledgerId);
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")) ?? null).toBeNull();
+          expect(await adaOn(club)).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
+        });
+      });
+
+      describe("AC11, AC12 — a decline releases the spot", () => {
+        it("AC11 (issue 57): the decline alone takes the count down, and another member can then bind", async () => {
+          const club = await capped(1);
+          const holder = await boundOn(club);
+          const mine = await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await repo.countHeldSpots(club.id)).toBe(1);
+
+          await repo.recordSignupDecline(holder.ledgerId);
+
+          expect(await repo.countHeldSpots(club.id)).toBe(0);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.countHeldSpots(club.id)).toBe(1);
+        });
+
+        it('AC12 (issue 57): a declined row rewritten for its next attempt meets the cap at the bind: "sold_out", on attempt 2, cardless', async () => {
+          const club = await capped(1);
+          const mine = await rowsOn(club, memberId);
+          await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
+          await repo.recordSignupDecline(mine.ledgerId);
+          await boundOn(club);
+          await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-2")).toBe("sold_out");
+          expect(await adaOn(club)).toMatchObject({ ledgerStatus: "pending", attempt: 2, squareCardId: null });
+        });
+      });
+
+      describe("AC14 — a confirm has no cap check", () => {
+        it("AC14 (issue 57): rows confirmed past the cap all confirm, and all hold a spot", async () => {
+          const club = await capped(1);
+          const first = await rowsOn(club);
+          const second = await rowsOn(club);
+          expect(await repo.confirmSignupRows(first.ledgerId, "PAYMENT_1", first.amountCents, PAID_AT)).toBe("confirmed");
+          expect(await repo.confirmSignupRows(second.ledgerId, "PAYMENT_2", second.amountCents, PAID_AT)).toBe("confirmed");
+          expect(await repo.countHeldSpots(club.id)).toBe(2);
+        });
+      });
+    });
   });
 }

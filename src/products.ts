@@ -33,6 +33,11 @@ export function priceOfChoices(product: ProductWithOptions, choices: Record<stri
   return total;
 }
 
+/** The one comparison of held spots with the cap: a cap lowered below the count still reads as sold out. */
+export function isSoldOut(product: { cap: number }, held: number): boolean {
+  return held >= product.cap;
+}
+
 /** The Supper Club product. It is seeded data, so a database without it is broken, not empty. */
 export async function requireSupperClub(repo: Repository): Promise<ProductWithOptions> {
   const product = await repo.findProductByName(SUPPER_CLUB_PRODUCT_NAME);

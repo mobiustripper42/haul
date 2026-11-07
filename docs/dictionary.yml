@@ -13,6 +13,18 @@
   says: community supported agriculture — a season of weekly farm produce boxes, paid for up front
   not: []
 
+- term: subscription
+  says: what a member holds to a product, Supper Club or CSA, and what a cap counts
+  not: []
+
+- term: meal
+  says: what a Supper Club subscription gets each week
+  not: []
+
+- term: box
+  says: what a CSA subscription gets each week
+  not: []
+
 - term: OCF
   says: Ohio City Farm, the Cleveland farm this app is built for; its public name for the app is the OCF Member Portal
   not: []

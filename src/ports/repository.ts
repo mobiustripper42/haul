@@ -5,7 +5,7 @@ import type { ProductWithOptions } from "../products.js";
 import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
 import type { RateLimitStore, SignInStore } from "../sign-in/store.js";
 
-/** The events `audit_log` records beside row changes; the SQL check on `audit_log.event` lists the same. */
+/** The events `audit_log` records beside row changes. A name outside this list is refused by the type alone. */
 export const AUDIT_EVENT_KINDS = [
   "sign_in_by_code",
   "sign_in_by_link",
@@ -16,6 +16,7 @@ export const AUDIT_EVENT_KINDS = [
   "square_customer_duplicates",
   "card_declined",
   "charge_outcome_unknown",
+  "sold_out",
 ] as const;
 export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 
@@ -113,9 +114,16 @@ export interface Repository extends SignInStore, RateLimitStore {
   savePendingSignup(input: PendingSignupInput): Promise<PendingSignup>;
   /**
    * Binds the card to a pending subscription that has none, and gives back the amount and attempt of its ledger
-   * row, which are what to charge. Null when the bind is lost: another card is there, or it is no longer pending.
+   * row, which are what to charge. Null when the bind is lost: another card is there, or it is no longer pending,
+   * or its ledger row is not pending. Those outrank the cap. Otherwise, under the member row's lock and then the
+   * product row's, it counts held spots and returns "sold_out" when the product is full, binding nothing.
    */
-  saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | null>;
+  saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | "sold_out" | null>;
+  /**
+   * The spots of a product that are taken: an active subscription, or a pending one with a card on it and its
+   * ledger row pending. A declined row and a cardless one hold none, so a decline releases its spot with no write.
+   */
+  countHeldSpots(productId: string): Promise<number>;
   recordSignupDecline(ledgerId: string): Promise<void>;
   /**
    * Flips the rows when `amountCents` is the ledger's `amount_cents`; "mismatch" leaves them pending. A row

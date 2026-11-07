@@ -14,7 +14,7 @@ import { hashCode } from "@core/sign-in/code.js";
 import { signSession, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
 import { redirectOf } from "../screen-test-helpers";
-import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES } from "./paths";
+import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES, PAY_ERROR_SOLD_OUT } from "./paths";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -435,6 +435,38 @@ describe("issue 56 — the pay actions", () => {
       services.payments.addCustomer({ email: ADA, createdAt: T0, updatedAt: T0 });
       await join(pay());
       expect(repo.events().map((event) => event.kind).sort()).toEqual(["square_customer_duplicates", "square_customer_linked"]);
+    });
+
+    describe("issue 57 — sold out", () => {
+      /** Every spot under the product's cap taken by another member. */
+      const fillTheClub = async () => {
+        for (let spot = 1; spot <= product.cap; spot++) {
+          const other = await repo.createMember({ email: `other-${spot}@example.com` });
+          const { ledgerId, amountCents } = await repo.savePendingSignup({
+            memberId: other.id,
+            productId: product.id,
+            choices: picksKept(),
+            firstChargeCents: 8000,
+            weeklyCents: 8000,
+            pickupDate: "2027-01-03",
+            consentText: CONSENT_80,
+            consentAt: T0,
+          });
+          await repo.confirmSignupRows(ledgerId, `PAYMENT_${spot}`, amountCents, T0);
+        }
+      };
+
+      it("AC9, AC10 (issue 57): a sold_out signup lands on /supper-club?payError=soldout, charges nothing, and records sold_out", async () => {
+        await fillTheClub();
+        signIn();
+        expect(landed(await join(pay()))).toMatchObject({ path: "/supper-club", query: { payError: "soldout" } });
+        expect(services.payments.charges).toEqual([]);
+        expect(repo.events().map((event) => event.kind)).toEqual(["sold_out"]);
+      });
+
+      it("AC5, AC9 (issue 57): the value the page and this action share is PAY_ERROR_SOLD_OUT, soldout", () => {
+        expect(PAY_ERROR_SOLD_OUT).toBe("soldout");
+      });
     });
   });
 

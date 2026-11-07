@@ -19,7 +19,7 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/supper-club/actions.ts#verifyPaneAccountCode": { records: ["sign_in_by_code", "lock"] },
   "app/supper-club/actions.ts#resendPaneAccountCode": { records: ["rate_limit_refusal"] },
   "app/supper-club/actions.ts#joinSupperClub": {
-    records: ["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown"],
+    records: ["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown", "sold_out"],
   },
   "app/supper-club/actions.ts#retrySupperClubPayment": { records: ["already_subscribed", "card_declined", "charge_outcome_unknown"] },
   "app/language-actions.ts#setLanguage": { none: "sets a cookie only" },

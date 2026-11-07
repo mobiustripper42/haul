@@ -17,6 +17,7 @@ import { paymentWording } from "./payment-wording";
 import {
   PANE_CREATE_PAGES,
   PANE_SIGN_IN_PAGES,
+  PAY_ERROR_SOLD_OUT,
   SUPPER_CLUB_ALREADY_PATH,
   SUPPER_CLUB_DONE_PATH,
   SUPPER_CLUB_PATH,
@@ -43,7 +44,7 @@ export async function resendPaneAccountCode(formData: FormData): Promise<void> {
 }
 
 /** Back to the page with why, and the picks kept, so the member can try again where they were. */
-const backToPage = (payError: "consent" | "declined" | "unknown" | "error", choices: Record<string, string> | null): string =>
+const backToPage = (payError: "consent" | "declined" | "unknown" | typeof PAY_ERROR_SOLD_OUT | "error", choices: Record<string, string> | null): string =>
   `${SUPPER_CLUB_PATH}?${new URLSearchParams({ payError })}${choices ? `&${choicesQuery(choices)}` : ""}`;
 
 /** Where each outcome of a signup lands. */
@@ -53,6 +54,8 @@ function landing(result: SignupResult, choices: Record<string, string> | null): 
       return SUPPER_CLUB_DONE_PATH;
     case "already_subscribed":
       return SUPPER_CLUB_ALREADY_PATH;
+    case "sold_out":
+      return backToPage(PAY_ERROR_SOLD_OUT, choices);
     default:
       return backToPage(result.outcome, choices);
   }

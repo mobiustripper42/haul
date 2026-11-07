@@ -43,6 +43,7 @@ vi.mock("../services", () => ({
   },
   getSessionSecret: () => services.secret,
   getSiteUrl: () => "https://members.example.test",
+  getFarmContactEmail: () => undefined,
 }));
 
 type Params = { limited?: string; error?: string };

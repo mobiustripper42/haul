@@ -137,6 +137,24 @@ async function alreadyActive(): Promise<string> {
   return signup.subscriptionId;
 }
 
+/** `other` runs after this tab has saved its card at Square and before it binds it to the row. */
+const overtakenBeforeBind = (other: (card: { customerId: string }) => Promise<unknown>) => {
+  const save = payments.saveCard.bind(payments);
+  vi.spyOn(payments, "saveCard").mockImplementationOnce(async (input) => {
+    const card = await save(input);
+    await other(input);
+    return card;
+  });
+};
+
+/** Another tab saves its own card at Square and binds it to the row. */
+const otherTabBinds = async (customerId: string) => {
+  const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
+  const row = await pending();
+  await repo.saveSubscriptionCard(row?.subscriptionId ?? "no row", card.id);
+  return { cardId: card.id, ledgerId: row?.ledgerId ?? "no row" };
+};
+
 describe("AC2 — the price", () => {
   it("AC2: the charge is the sum of the picked options, worked out from the option ids", async () => {
     expect((await submit({ choices: picks(1, 1) })).outcome).toBe("paid");
@@ -483,9 +501,9 @@ describe("AC9 — a decline", () => {
     });
   });
 
-  it("AC9: AUDIT_EVENT_KINDS holds the five kinds this task records", () => {
+  it("AC9, AC10 (issue 57): AUDIT_EVENT_KINDS holds the six kinds a signup records", () => {
     expect(AUDIT_EVENT_KINDS).toEqual(
-      expect.arrayContaining(["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown"]),
+      expect.arrayContaining(["already_subscribed", "square_customer_linked", "square_customer_duplicates", "card_declined", "charge_outcome_unknown", "sold_out"]),
     );
   });
 });
@@ -812,24 +830,6 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
     });
   };
 
-  /** `other` runs after this tab has saved its card at Square and before it binds it to the row. */
-  const overtakenBeforeBind = (other: (card: { customerId: string }) => Promise<unknown>) => {
-    const save = payments.saveCard.bind(payments);
-    vi.spyOn(payments, "saveCard").mockImplementationOnce(async (input) => {
-      const card = await save(input);
-      await other(input);
-      return card;
-    });
-  };
-
-  /** Another tab saves its own card at Square and binds it to the row. */
-  const otherTabBinds = async (customerId: string) => {
-    const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
-    const row = await pending();
-    await repo.saveSubscriptionCard(row?.subscriptionId ?? "no row", card.id);
-    return { cardId: card.id, ledgerId: row?.ledgerId ?? "no row" };
-  };
-
   /** The last charge_outcome_unknown recorded, its detail apart so a test can read its values. */
   const lastUnknown = () => {
     const event = repo.events().filter(({ kind }) => kind === "charge_outcome_unknown").at(-1);
@@ -907,7 +907,7 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
     const bind = repo.saveSubscriptionCard;
     vi.spyOn(repo, "saveSubscriptionCard").mockImplementationOnce(async function (this: Repository, subscriptionId, cardId) {
       const bound = await bind.call(this, subscriptionId, cardId);
-      return bound && { ...bound, amountCents: 7000 };
+      return typeof bound === "object" && bound !== null ? { ...bound, amountCents: 7000 } : bound;
     });
     expect((await submit()).outcome).toBe("unknown");
     expect(payments.charges.map((charge) => charge.amountCents)).toEqual([7000]);
@@ -941,6 +941,276 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
 
     expect((await retry()).outcome).toBe("unknown");
     expect(payments.charges).toHaveLength(1);
+  });
+});
+
+describe("issue 57 — the cap", () => {
+  let others = 0;
+
+  /** A new repository holding the Supper Club at `cap`, and the member, with nothing held. */
+  const cappedAt = async (cap: number): Promise<void> => {
+    const stocked = { ...product, cap };
+    repo = new InMemoryRepository();
+    product = repo.addProduct(stocked);
+    member = await repo.saveAccount({ email: EMAIL, firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" });
+    await repo.confirmMemberEmail(member.id, NOW);
+  };
+
+  const another = () => repo.saveAccount({ email: `other-${++others}@example.com`, firstName: "Grace", lastName: "Hopper", phone: "216-555-0101", language: "en" });
+
+  const rowsFor = (memberId: string): PendingSignupInput => ({
+    memberId,
+    productId: product.id,
+    choices: picks(),
+    firstChargeCents: 5000,
+    weeklyCents: 5000,
+    pickupDate: "2027-01-03",
+    consentText: CONSENT,
+    consentAt: NOW,
+  });
+
+  /** Another member with a card on a pending row and the charge unanswered. */
+  const holdsASpot = async (): Promise<void> => {
+    const row = await repo.savePendingSignup(rowsFor((await another()).id));
+    await repo.saveSubscriptionCard(row.subscriptionId, `ccof:${row.subscriptionId}`);
+  };
+
+  /** Another member with an active subscription, confirmed straight on, as a lowered cap would leave them. */
+  const hasAnActiveSubscription = async (): Promise<void> => {
+    const row = await repo.savePendingSignup(rowsFor((await another()).id));
+    await repo.confirmSignupRows(row.ledgerId, `PAYMENT_${row.ledgerId}`, row.amountCents, NOW);
+  };
+
+  /** Another member's whole signup, through the front door. */
+  const anotherSignsUp = async (now = NOW) => signUp(deps(now), { memberId: (await another()).id, choices: picks(), sourceId: `cnon:other-${++others}`, consentText: CONSENT });
+
+  const held = () => repo.countHeldSpots(product.id);
+
+  describe("AC2 — a held spot does not expire", () => {
+    it("AC2 (issue 57): ten years on, a spot held by an unanswered charge still fills the cap, and its holder's Try again still pays", async () => {
+      await cappedAt(1);
+      chargeGetsNoAnswer(2);
+      expect((await submit()).outcome).toBe("unknown");
+      const decade = new Date("2036-11-06T15:00:00.000Z");
+      expect((await anotherSignsUp(decade)).outcome).toBe("sold_out");
+      expect((await retry(decade)).outcome).toBe("paid");
+    });
+  });
+
+  describe("AC6 — at the cap, signUp refuses before Square", () => {
+    it.each<[string, () => Promise<void>]>([
+      ["an active subscription", hasAnActiveSubscription],
+      ["a held spot", holdsASpot],
+    ])("AC6 (issue 57): the cap reached by %s: sold_out, with no customer, no card, no charge and no rows", async (_what, fill) => {
+      await cappedAt(1);
+      await fill();
+      const search = vi.spyOn(payments, "findCustomersByEmail");
+      const create = vi.spyOn(payments, "createCustomer");
+      const card = vi.spyOn(payments, "saveCard");
+      const save = vi.spyOn(repo, "savePendingSignup");
+      expect(await submit()).toMatchObject({ outcome: "sold_out" });
+      expect(search).not.toHaveBeenCalled();
+      expect(create).not.toHaveBeenCalled();
+      expect(card).not.toHaveBeenCalled();
+      expect(save).not.toHaveBeenCalled();
+      expect(payments.customers).toEqual([]);
+      expect(payments.charges).toEqual([]);
+      expect(await pending()).toBeNull();
+      expect((await stored())?.squareCustomerId).toBeNull();
+    });
+
+    it("AC6 (issue 57): a member's own cardless pending row holds nothing: at the cap they are refused and the row is left as it was", async () => {
+      await cappedAt(1);
+      const row = await repo.savePendingSignup(rowsFor(member.id));
+      await holdsASpot();
+      expect((await submit({ choices: picks(1, 1) })).outcome).toBe("sold_out");
+      expect(await pending()).toMatchObject({ subscriptionId: row.subscriptionId, ledgerStatus: "pending", attempt: 1, squareCardId: null, amountCents: 5000 });
+      expect(payments.charges).toEqual([]);
+    });
+
+    it("AC6 (issue 57): one spot short of the cap, signUp goes on and pays, which guards the refusals above", async () => {
+      await cappedAt(2);
+      await holdsASpot();
+      expect((await submit()).outcome).toBe("paid");
+      expect(payments.charges).toHaveLength(1);
+    });
+
+    it("AC6 (issue 57): the last spot taken, the next member is refused", async () => {
+      await cappedAt(1);
+      expect((await submit()).outcome).toBe("paid");
+      expect((await anotherSignsUp()).outcome).toBe("sold_out");
+      expect(payments.charges).toHaveLength(1);
+    });
+
+    it("AC6 (issue 57): a member with an active subscription, at the cap, is already_subscribed, and no sold_out is recorded", async () => {
+      await cappedAt(1);
+      await alreadyActive();
+      expect((await submit()).outcome).toBe("already_subscribed");
+      expect(kinds()).toEqual(["already_subscribed"]);
+    });
+  });
+
+  describe("AC7 — the last spot goes after the check", () => {
+    it("AC7 (issue 57): the bind refuses, signUp returns sold_out, nothing is charged and the pending row stays cardless", async () => {
+      await cappedAt(1);
+      overtakenBeforeBind(holdsASpot);
+      const charge = vi.spyOn(payments, "charge");
+      const lookup = vi.spyOn(payments, "findPaymentByReference");
+      expect(await submit()).toMatchObject({ outcome: "sold_out" });
+      expect(charge).not.toHaveBeenCalled();
+      expect(lookup).not.toHaveBeenCalled();
+      expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, squareCardId: null });
+      expect(await active()).toBeNull();
+    });
+
+    it("AC7 (issue 57): a bind lost to the member's own other tab at the cap takes that tab's card, not sold_out", async () => {
+      await cappedAt(1);
+      let won: string | undefined;
+      overtakenBeforeBind(async ({ customerId }) => {
+        won = (await otherTabBinds(customerId)).cardId;
+      });
+      expect((await submit()).outcome).toBe("paid");
+      expect(payments.charges.map((charge) => charge.cardId)).toEqual([won]);
+      expect(kinds()).not.toContain("sold_out");
+    });
+
+    it("AC7 (issue 57): a bind lost to the member's own other tab that confirmed, at the cap, is already_subscribed, not sold_out", async () => {
+      await cappedAt(1);
+      overtakenBeforeBind(() => submit({ sourceId: OTHER_SOURCE }));
+      expect((await submit()).outcome).toBe("already_subscribed");
+      expect(payments.charges).toHaveLength(1);
+      expect(kinds()).toEqual(["already_subscribed"]);
+    });
+
+    it("AC7 (issue 57): a refused card in another tab leaves the row declined and cardless: this tab's bind is refused, it returns error and charges nothing", async () => {
+      overtakenBeforeBind(async () => repo.recordSignupDecline((await pending())?.ledgerId ?? "no row"));
+      expect((await submit()).outcome).toBe("error");
+      expect(payments.charges).toEqual([]);
+      expect(await pending()).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
+    });
+
+    it("AC7 (issue 57): the same at the cap is error too, with no sold_out recorded", async () => {
+      await cappedAt(1);
+      overtakenBeforeBind(async () => {
+        await repo.recordSignupDecline((await pending())?.ledgerId ?? "no row");
+        await holdsASpot();
+      });
+      expect((await submit()).outcome).toBe("error");
+      expect(payments.charges).toEqual([]);
+      expect(kinds()).not.toContain("sold_out");
+    });
+  });
+
+  describe("AC10 — every refusal is recorded", () => {
+    it("AC10 (issue 57): a refusal at the check records one sold_out event, with no detail, under the member", async () => {
+      await cappedAt(1);
+      await holdsASpot();
+      await submit();
+      expect(repo.events()).toEqual([{ kind: "sold_out", memberId: member.id, actor: asMember() }]);
+    });
+
+    it("AC10 (issue 57): a refusal at the bind records one sold_out event, with no detail, under the member", async () => {
+      await cappedAt(1);
+      overtakenBeforeBind(holdsASpot);
+      await submit();
+      expect(repo.events()).toEqual([{ kind: "sold_out", memberId: member.id, actor: asMember() }]);
+    });
+  });
+
+  describe("AC11 — a decline releases the spot", () => {
+    it("AC11 (issue 57): a decline at the charge frees the spot it held, and another member then takes it", async () => {
+      await cappedAt(1);
+      nextCardDeclines();
+      const real = payments.charge.bind(payments);
+      const during: number[] = [];
+      vi.spyOn(payments, "charge").mockImplementationOnce(async (input) => {
+        during.push(await held());
+        return real(input);
+      });
+      expect((await submit()).outcome).toBe("declined");
+      expect(during).toEqual([1]);
+      expect(await held()).toBe(0);
+      expect((await anotherSignsUp()).outcome).toBe("paid");
+      expect(await held()).toBe(1);
+    });
+
+    it("AC11 (issue 57): a card refused at the save holds nothing either, and another member then takes the spot", async () => {
+      await cappedAt(1);
+      vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
+      expect((await submit()).outcome).toBe("declined");
+      expect(await held()).toBe(0);
+      expect((await anotherSignsUp()).outcome).toBe("paid");
+    });
+  });
+
+  describe("AC12 — a declined member resubmits at the cap", () => {
+    it("AC12 (issue 57): they get sold_out, with no second charge attempt, and the row stays as the decline left it", async () => {
+      await cappedAt(1);
+      nextCardDeclines();
+      expect((await submit()).outcome).toBe("declined");
+      expect((await anotherSignsUp()).outcome).toBe("paid");
+      const card = vi.spyOn(payments, "saveCard");
+      card.mockClear();
+      expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("sold_out");
+      expect(card).not.toHaveBeenCalled();
+      expect(payments.charges.filter((charge) => charge.customerId === payments.customers[0]?.id)).toHaveLength(1);
+      expect(await pending()).toMatchObject({ ledgerStatus: "declined", attempt: 1 });
+    });
+  });
+
+  describe('AC13 — "Try again" never meets the cap', () => {
+    it("AC13 (issue 57): the stranded spot is the member's own: at the cap it counts as held, and Try again pays", async () => {
+      await cappedAt(1);
+      chargeGetsNoAnswer(2);
+      await submit();
+      expect(await held()).toBe(1);
+      expect((await retry()).outcome).toBe("paid");
+      expect(await held()).toBe(1);
+      expect(kinds()).not.toContain("sold_out");
+    });
+
+    it("AC13 (issue 57): a normal submit on a stranded row at the cap takes the Try again path, not sold_out", async () => {
+      await cappedAt(1);
+      chargeGetsNoAnswer(2);
+      await submit();
+      const card = vi.spyOn(payments, "saveCard");
+      expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("paid");
+      expect(card).not.toHaveBeenCalled();
+      expect(kinds()).not.toContain("sold_out");
+    });
+
+    it("AC13 (issue 57): declined on Try again, the spot is released, and another member then takes it", async () => {
+      await cappedAt(1);
+      nextCardDeclines();
+      chargeGetsNoAnswer(2);
+      await submit();
+      expect(await held()).toBe(1);
+      expect((await retry()).outcome).toBe("declined");
+      expect(await held()).toBe(0);
+      expect((await anotherSignsUp()).outcome).toBe("paid");
+    });
+  });
+
+  describe("AC14 — a charge Square took always confirms", () => {
+    it("AC14 (issue 57): a payment Try again finds confirms though the count is past the cap", async () => {
+      await cappedAt(1);
+      chargeReplyIsLost(2);
+      await submit();
+      await hasAnActiveSubscription();
+      expect(await held()).toBe(2);
+      expect((await retry()).outcome).toBe("paid");
+      expect(await active()).not.toBeNull();
+      expect(payments.charges).toHaveLength(1);
+    });
+
+    it("AC14 (issue 57): a charge Try again sends confirms though the count is past the cap", async () => {
+      await cappedAt(1);
+      chargeGetsNoAnswer(2);
+      await submit();
+      await hasAnActiveSubscription();
+      expect((await retry()).outcome).toBe("paid");
+      expect(await held()).toBe(2);
+    });
   });
 });
 

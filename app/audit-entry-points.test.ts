@@ -89,11 +89,12 @@ describe("issue 56 — the pay actions are declared", () => {
     return entry && "records" in entry ? [...entry.records].sort() : entry;
   };
 
-  it("AC5: joinSupperClub records the five signup events", () => {
+  it("AC5, AC10 (issue 57): joinSupperClub records the six signup events", () => {
     expect(records("app/supper-club/actions.ts#joinSupperClub")).toEqual([
       "already_subscribed",
       "card_declined",
       "charge_outcome_unknown",
+      "sold_out",
       "square_customer_duplicates",
       "square_customer_linked",
     ]);
@@ -101,6 +102,11 @@ describe("issue 56 — the pay actions are declared", () => {
 
   it("AC10: retrySupperClubPayment declares at least the decline it can record", () => {
     expect(records("app/supper-club/actions.ts#retrySupperClubPayment")).toEqual(expect.arrayContaining(["card_declined"]));
+  });
+
+  it("AC10 (issue 57): sold_out is claimed by joinSupperClub alone: \"Try again\" never meets the cap", () => {
+    const claiming = Object.entries(AUDIT_ENTRY_POINTS).filter(([key, entry]) => key !== "app/supper-club/actions.ts#joinSupperClub" && "records" in entry && (entry.records as string[]).includes("sold_out"));
+    expect(claiming).toEqual([]);
   });
 });
 
