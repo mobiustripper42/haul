@@ -1,6 +1,7 @@
 // Issue 55, AC5, AC8, AC10 and AC16: what /create-account/code itself does — `AccountCodeStep` in a
 // card, given Create Account's pages, its two actions and the search parameters. The step's words, field
 // and buttons are app/sign-in/code-step.test.ts's.
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { en } from "@core/messages/en.js";
@@ -62,9 +63,10 @@ describe("AC5, AC8, AC10, AC16 — /create-account/code", () => {
     expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([en["signIn.invalidCode"]]);
   });
 
-  it("AC5: the page is one Card in the Shell", async () => {
+  it("screen (issue 55): the page is one Card inside the Shell", async () => {
     const { element } = await render();
-    expect(findAll(element, Shell)).toHaveLength(1);
-    expect(findAll(element, Card)).toHaveLength(1);
+    const shells = findAll(element, Shell);
+    expect(shells).toHaveLength(1);
+    expect(findAll(shells[0]?.props.children as ReactNode, Card)).toHaveLength(1);
   });
 });

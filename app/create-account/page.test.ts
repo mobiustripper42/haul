@@ -1,6 +1,7 @@
 // Issue 55, AC4, AC10 and AC12, and issue 77, AC7: what /create-account itself does — `AccountForm` in
 // a card, given the page's action, its link to sign-in and the search parameters. The form's own words,
 // fields, errors, refill and notices are app/create-account/account-form.test.ts's.
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
@@ -66,9 +67,10 @@ describe("AC4, AC10, AC12 — /create-account", () => {
     expect(attributesOf((await render()).html, "a").map((link) => link.href)).toEqual(["/sign-in"]);
   });
 
-  it("AC4: the page is one Card in the Shell", async () => {
+  it("screen (issue 55): the page is one Card inside the Shell", async () => {
     const { element } = await render();
-    expect(findAll(element, Shell)).toHaveLength(1);
-    expect(findAll(element, Card)).toHaveLength(1);
+    const shells = findAll(element, Shell);
+    expect(shells).toHaveLength(1);
+    expect(findAll(shells[0]?.props.children as ReactNode, Card)).toHaveLength(1);
   });
 });
