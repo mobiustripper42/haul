@@ -128,6 +128,7 @@ merged migration is fixed by the next file.
 - **UI classes** — token utilities only, from `app/globals.css`; lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 - **User-facing text** — src/messages/en.ts
+- **Words in tests** — test a word on screen only when it depends on data or state (a branch, a plural, an interpolated value), or a criterion quotes it. A fixed catalog string a screen always renders is not tested: that test restates the line that renders it (Eric, 2026-11-08)
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
 - **Database access** — only `src/adapters/pg-connect.ts` imports `pg`; lint fails anywhere else. It applies TLS to every connection, so a caller gets a pool or client from `createPool` / `createClient` and can't forget it (DEC-001)
