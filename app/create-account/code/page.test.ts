@@ -1,9 +1,14 @@
-// Issue 55, AC5, AC8, AC10 and AC16: /create-account/code, `await CreateAccountCode(props)` rendered
-// through react-dom/server with `next/headers` faked.
+// Issue 55, AC5, AC8, AC10 and AC16: what /create-account/code itself does — `AccountCodeStep` in a
+// card, given Create Account's pages, its two actions and the search parameters. The step's words, field
+// and buttons are app/sign-in/code-step.test.ts's.
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { en } from "@core/messages/en.js";
+import { Card } from "../../../components/ui/card";
+import { Shell } from "../../../components/ui/shell";
 import { emptyRequest } from "../../next-headers-fake";
-import { attributesOf, findAll, screenMarkup, textsOf, utilitiesOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
 import { resendAccountCode, verifyAccountCode } from "../actions";
 import CreateAccountCode from "./page";
 
@@ -29,14 +34,9 @@ vi.mock("../../services", () => ({
   getSiteUrl: () => "https://members.example.test",
 }));
 
-const EMAIL = "ada@example.com";
-const SENT = `We sent a 6-digit code to ${EMAIL}. Enter it to confirm your email. It expires in 10 minutes.`;
-const INVALID =
-  "That code didn't match, or it has expired. Check it and try again, or ask for a new one. After 5 wrong tries, check your email for a sign-in link.";
-
 beforeEach(() => {
   request.current = emptyRequest();
-  request.current.cookies = { ocf_sign_in_email: EMAIL };
+  request.current.cookies = { ocf_sign_in_email: "ada@example.com" };
 });
 
 async function render(searchParams: { error?: string } = {}) {
@@ -44,83 +44,29 @@ async function render(searchParams: { error?: string } = {}) {
   return { element, html: renderToStaticMarkup(element) };
 }
 
-describe("AC5 — the code step", () => {
-  it("AC5: it reads, in order, the link, the heading, the line naming the address, the field, the button, the spam line and the resend", async () => {
-    const { html } = await render();
-    expect(textsOf(html)).toEqual([
-      "Use a different email",
-      "Check your email",
-      SENT,
-      "6-digit code",
-      "Confirm email",
-      "No email? Check your spam folder.",
-      "Send a new code",
-    ]);
+describe("AC5, AC8, AC10, AC16 — /create-account/code", () => {
+  it("AC5: without the email cookie it redirects to /create-account?error=expired", async () => {
+    request.current.cookies = {};
+    expect(await redirectOf(CreateAccountCode({ searchParams: Promise.resolve({}) }))).toBe("/create-account?error=expired");
   });
 
-  it('AC5: "Use a different email" links to /create-account', async () => {
-    const { html } = await render();
-    expect(attributesOf(html, "a")).toEqual([expect.objectContaining({ href: "/create-account" })]);
+  it("AC5: \"Use a different email\" goes to /create-account", async () => {
+    expect(attributesOf((await render()).html, "a").map((link) => link.href)).toEqual(["/create-account"]);
   });
 
-  it("AC5: the address shown is the one in the email cookie", async () => {
-    request.current.cookies = { ocf_sign_in_email: "grace@example.com" };
-    const { html } = await render();
-    expect(textsOf(html).join(" ")).toContain("grace@example.com");
-    expect(html).not.toContain(EMAIL);
-  });
-});
-
-describe("AC8 — the code form", () => {
-  it("AC8: the code field and Confirm email post to verifyAccountCode", async () => {
-    const { element } = await render();
-    expect(findAll(element, "form")[0]?.props.action).toBe(verifyAccountCode);
-  });
-
-  it("AC8: the field is named code, as verifyCodeFor reads it, and the label is for it", async () => {
-    const { html } = await render();
-    const code = attributesOf(html, "input").find((input) => input.name === "code");
-    expect(code?.id).toBeDefined();
-    expect(attributesOf(html, "label").map((label) => label.for)).toEqual([code?.id]);
-  });
-
-  it("AC8: Confirm email is the primary submit", async () => {
-    const { html } = await render();
-    const [button] = attributesOf(html, "button");
-    expect(button).toMatchObject({ type: "submit" });
-    expect(utilitiesOf(button?.class)).toContain("btn-primary");
-    expect(screenMarkup(html)).toMatch(/<button\b[^>]*>Confirm email<\/button>/);
-  });
-});
-
-describe("AC10 — error=invalid", () => {
-  it("AC10: it shows signIn.invalidCode unchanged, in an alert, and the rest of the step", async () => {
-    const { html } = await render({ error: "invalid" });
-    const texts = textsOf(html);
-    expect(texts).toContain(INVALID);
-    expect(texts).toContain("Confirm email");
-    expect(attributesOf(html, "p").filter((p) => p.role === "alert")).toHaveLength(1);
-  });
-
-  it.each(["expired", "Invalid", ""])("AC10: error=%j shows no notice", async (error) => {
-    const { html } = await render({ error });
-    expect(textsOf(html)).toContain("Confirm email");
-    expect(textsOf(html)).not.toContain(INVALID);
-  });
-});
-
-describe("AC16 — Send a new code", () => {
-  it("AC16: it is a form of its own, after the code form, posting to resendAccountCode", async () => {
+  it("AC8, AC16: the first form's action is verifyAccountCode, the second's resendAccountCode", async () => {
     const { element } = await render();
     expect(findAll(element, "form").map((form) => form.props.action)).toEqual([verifyAccountCode, resendAccountCode]);
   });
 
-  it("AC16: it is a quiet submit, and no button sits inside a sentence", async () => {
-    const { html } = await render();
-    const buttons = attributesOf(html, "button");
-    expect(buttons).toHaveLength(2);
-    expect(buttons[1]).toMatchObject({ type: "submit" });
-    expect(utilitiesOf(buttons[1]?.class)).toContain("btn-quiet");
-    expect(screenMarkup(html)).toMatch(/<form\b[^>]*>(?:(?!<\/form>)[\s\S])*<button\b[^>]*>Send a new code<\/button>\s*<\/form>/);
+  it("AC10: the page's error reaches the step's notice", async () => {
+    expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([en["signIn.invalidCode"]]);
+  });
+
+  it("screen (issue 55): the page is one Card inside the Shell", async () => {
+    const { element } = await render();
+    const shells = findAll(element, Shell);
+    expect(shells).toHaveLength(1);
+    expect(findAll(shells[0]?.props.children as ReactNode, Card)).toHaveLength(1);
   });
 });

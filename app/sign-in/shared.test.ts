@@ -1,6 +1,6 @@
 // Issue 9, AC33: the `limited` value a notice shows. `limitedMinutes` is the one home of the rule, for
-// sign-in's form and Create Account's; app/sign-in/sign-in-form.test.ts carries one accepted and one
-// refused case through it. Create Account's tests still repeat the table until issue 108.
+// sign-in's form and Create Account's; app/sign-in/sign-in-form.test.ts and
+// app/create-account/account-form.test.ts each carry one accepted and one refused case through it.
 import { describe, expect, it } from "vitest";
 import { limitedMinutes } from "./shared";
 
