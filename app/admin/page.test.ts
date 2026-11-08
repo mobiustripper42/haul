@@ -185,7 +185,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       expect(findAll(element, MembersList)).toEqual([]);
     };
 
-    it('AC7: the card shows the heading "No members yet" and its line, and no list', async () => {
+    it("AC7: the card shows the empty-state heading and its line, and no list", async () => {
       addSupperClub(services.repo);
       expectEmpty(await Admin());
     });

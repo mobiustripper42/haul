@@ -34,17 +34,16 @@ const render = async () => {
 const NAMES = Object.values(LANGUAGES).map((language) => language.name);
 
 describe("AC6 — LanguageSwitcher", () => {
-  it("AC6: is a form holding one fieldset, whose legend reads language.label", async () => {
-    const { element, html } = await render();
+  it("AC6: is a form holding one fieldset, holding one legend", async () => {
+    const { element } = await render();
     const [form, ...otherForms] = findAll(element, "form");
     expect(otherForms).toEqual([]);
     const [fieldset, ...otherFieldsets] = findAll(form, "fieldset");
     expect(otherFieldsets).toEqual([]);
     expect(findAll(fieldset, "legend")).toHaveLength(1);
-    expect(textsOf(html)[0]).toBe(en["language.label"]);
   });
 
-  it("AC6: after the legend come the buttons, one per language, each named in itself", async () => {
+  it("AC6: the legend reads language.label, then come the buttons, one per language, each named in itself", async () => {
     const { html } = await render();
     expect(textsOf(html)).toEqual([en["language.label"], ...NAMES]);
   });

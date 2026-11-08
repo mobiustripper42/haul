@@ -47,7 +47,7 @@ describe("AC7 — the footer", () => {
     expect((await render()).words).toEqual([en["brand.address"], ...LINKS]);
   });
 
-  it("AC7: the address is the one the criterion spells out", async () => {
+  it("AC7: the address line reads Ohio City Farm · 2304 Bridge Ave, Cleveland, OH", async () => {
     expect((await render()).words[0]).toBe("Ohio City Farm · 2304 Bridge Ave, Cleveland, OH");
   });
 

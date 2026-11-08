@@ -73,7 +73,7 @@ describe("AC3 — the rows", () => {
     expect(tableRows(render([ada]))).toEqual([["", "ada@example.com", "", "2 people · Vegan", "Dec 1", TEXT.active]]);
   });
 
-  it("AC3: the columns are the page's six words, in order: name, email, phone, meal, joined, status", () => {
+  it("AC3: the columns show the six column words it is given, in order: name, email, phone, meal, joined, status", () => {
     const { name, email, phone, meal, joined, status } = TEXT.columns;
     expect(tableHeaders(render([ROSA])).map((header) => header.word)).toEqual([name, email, phone, meal, joined, status]);
   });
@@ -84,7 +84,7 @@ describe("AC5 — the list as it opens", () => {
     expect(tableRows(render([MARCO, ROSA, CHIDI])).map((row) => row[0])).toEqual(["Abara, Chidi", "Bennett, Rosa", "Castillo, Marco"]);
   });
 
-  it("AC5: the search field is empty, labelled, and holds the placeholder", () => {
+  it("AC5: the search field is empty and holds the placeholder, and the label's words are on the page", () => {
     const html = render([ROSA]);
     const [field, ...others] = attributesOf(html, "input").filter((input) => input.type === "search");
     expect(others).toEqual([]);

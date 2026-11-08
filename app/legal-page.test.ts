@@ -3,7 +3,9 @@
 // a stand-in whose every value is its own key in guillemets, so a Spanish render shows which keys the page
 // reads and any English it wrote itself. The stand-in documents and their edits are
 // src/legal-text-test-helpers.ts. AC9, the pages against their mockups, is by hand. SiteHeader is faked: its
-// own markup is the header's tests'; here it is read as the call the page makes.
+// own markup is the header's tests'; here it is read as the call the page makes. AC2's opening paragraph
+// standing before the first heading is `parseLegalDocument`'s (src/legal-documents.test.ts); here the
+// document is checked line for line. The date line is a `Hint` because issue 63's design names it.
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
