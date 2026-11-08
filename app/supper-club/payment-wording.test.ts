@@ -24,7 +24,7 @@ describe("AC4 — the checkbox sentence", () => {
 });
 
 describe("AC5 — what subscriptions.consent_text stores", () => {
-  it("AC5: the whole sentence as shown, in plain words, within the panel and pickup line text", () => {
+  it("AC5: it stores the two price lines, the pickup line and the sentence, joined by spaces", () => {
     const t = createTranslator("en");
     expect(wording().consentText).toBe(
       [

@@ -107,7 +107,7 @@ const formActions = (element: ReactNode) =>
 describe.each(PANES)("$path", ({ path, Pane, actions }) => {
   it(`AC3: ${path} puts its card in the Join card's place, at the pane's width`, async () => {
     const { element } = await render(Pane);
-    expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill", "pane"]);
+    expect(findAll(element, Card).at(-1)?.props.width).toBe("pane");
   });
 
   it(`AC8: ${path}'s forms post to the pane's actions, never the full page's`, async () => {

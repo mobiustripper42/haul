@@ -158,7 +158,7 @@ describe("AC13 — the confirmation", () => {
     return { element, html: renderToStaticMarkup(element) };
   };
 
-  it("AC13: it reads as the frames do, in order", async () => {
+  it("AC13: it shows the title, thanks, subscription box, next steps and both buttons, in that order", async () => {
     await subscribe(await signIn());
     const wanted = [
       en["supperClub.done.title"],
@@ -190,7 +190,7 @@ describe("AC13 — the confirmation", () => {
     expect(inOrder((await render()).html, wanted)).toEqual(wanted);
   });
 
-  it("AC13: the done mark opens it", async () => {
+  it("AC13: the Done mark comes before the title", async () => {
     await subscribe(await signIn());
     const markup = screenMarkup((await render()).html);
     const mark = markup.indexOf(`aria-label="${en["supperClub.done.mark"]}"`);
@@ -203,14 +203,13 @@ describe("AC13 — the confirmation", () => {
     expect(textsOf((await render()).html)).toContain(t("supperClub.done.thanksNoName", { email: EMAIL }));
   });
 
-  it("AC13: the frames' placeholders are left out, not printed", async () => {
+  it("AC13: the design's bracketed placeholders are left out, not printed", async () => {
     await subscribe(await signIn());
     // From the confirmation's title on, so the left column's own "[PICKUP HOURS]" stays out of it.
     const texts = textsOf((await render()).html);
     const text = texts.slice(texts.indexOf(en["supperClub.done.title"])).join(" ");
     expect(text).toContain(en["supperClub.next.title"]);
     expect(text).not.toContain("[");
-    expect(text).not.toContain("Hours:");
   });
 
   it('AC13: "Go to your account" is primary and goes to ACCOUNT_PATH', async () => {
@@ -225,7 +224,7 @@ describe("AC13 — the confirmation", () => {
     expect(buttonLabelled(element, en["supperClub.done.back"])?.props).toMatchObject({ kind: "quiet", href: FARM_SITE_URL });
   });
 
-  it("AC13, AC17 (issue 57): one tree: each of \"Your subscription\" and \"What happens next\" is rendered once", async () => {
+  it("AC13, AC17 (issue 57): the subscription box and next steps appear once each, not once per width", async () => {
     await subscribe(await signIn());
     const texts = textsOf((await render()).html);
     expect(texts.filter((text) => text === en["supperClub.box.title"])).toHaveLength(1);

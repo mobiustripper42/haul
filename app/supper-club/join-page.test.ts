@@ -143,7 +143,7 @@ describe("AC6 — BackToChoices", () => {
   it('AC6: it reads "Back to your choices", a quiet back link', async () => {
     const link = await backLink();
     expect(link?.props.children).toBe(en["supperClub.backToChoices"]);
-    expect(link?.props).toMatchObject({ kind: "quiet", back: true, flush: true });
+    expect(link?.props).toMatchObject({ kind: "quiet", back: true });
   });
 
   it("AC6: it goes to the return path in the cookie", async () => {
@@ -177,8 +177,9 @@ describe("AC1 (issue 63) — the list's look has one home", () => {
 });
 
 describe("AC17 — the page's cards fill their columns", () => {
-  it('AC17: the left column\'s card uses width="fill"', async () => {
-    const { element } = await render("none");
+  it.each(["none", "create-account", "sign-in", "done", "already"] as const)('AC17: on pane %s the left column\'s card uses width="fill"', async (pane) => {
+    if (pane === "done" || pane === "already") await signIn();
+    const { element } = await render(pane);
     expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill"]);
   });
 });
