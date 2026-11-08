@@ -168,12 +168,8 @@ describe("AC2 — the price", () => {
 });
 
 describe("AC3 — the pickup a signup pays for", () => {
-  it("AC3: at 23:59 on Monday 2026-12-28, Cleveland time, the row is for January 3", async () => {
-    await submit({ now: new Date("2026-12-29T04:59:00.000Z") });
-    expect((await repo.findSignupConfirmation(member.id, product.id))?.pickupDate).toBe("2027-01-03");
-  });
-
-  it("AC3: a minute later it is for January 10", async () => {
+  // The cutoff's edge, 23:59 against midnight, is src/pickup-week.test.ts's; this holds that `now` reaches it.
+  it("AC3: at Monday's cutoff (24:00), Cleveland time, the row is for January 10", async () => {
     await submit({ now: new Date("2026-12-29T05:00:00.000Z") });
     expect((await repo.findSignupConfirmation(member.id, product.id))?.pickupDate).toBe("2027-01-10");
   });

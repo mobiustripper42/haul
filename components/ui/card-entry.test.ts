@@ -5,25 +5,27 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
+import { attributesOf, screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { CardEntry } from "./card-entry";
 
-/** The class of the box Square attaches its form to: the one element with nothing in it. */
-function cardBoxClass(): string | undefined {
-  const html = renderToStaticMarkup(
+const render = (testMode: boolean) =>
+  renderToStaticMarkup(
     createElement(CardEntry, {
       label: "Card",
       hint: "Secure card entry by Square.",
       testLabel: "Test card",
       failedText: "The card form didn't load.",
-      testMode: false,
+      testMode,
       applicationId: "sandbox-application",
       locationId: "LOCATION",
       amountCents: 5000,
       billing: { email: "member@example.com" },
     }),
   );
-  return /<div\b[^>]*\bclass="([^"]*)"[^>]*><\/div>/.exec(screenMarkup(html))?.[1];
+
+/** The class of the box Square attaches its form to: the one element with nothing in it. */
+function cardBoxClass(): string | undefined {
+  return /<div\b[^>]*\bclass="([^"]*)"[^>]*><\/div>/.exec(screenMarkup(render(false)))?.[1];
 }
 
 describe("AC1 (issue 56) — CardEntry's box", () => {
@@ -34,5 +36,17 @@ describe("AC1 (issue 56) — CardEntry's box", () => {
 
     // The last height named is the one that holds, whether a class replaces `.field`'s or leaves it out.
     expect(utilities.filter((utility) => utility.startsWith("h-")).at(-1) ?? "h-auto").toBe("h-auto");
+  });
+});
+
+describe("AC1 (issue 56) — CardEntry's test field, for e2e", () => {
+  it("AC1: with testMode it draws one text input named by testLabel, and no box for Square's form", () => {
+    const html = render(true);
+    expect(attributesOf(html, "input").map((input) => input["aria-label"])).toEqual(["Test card"]);
+    expect(screenMarkup(html)).not.toMatch(/<div\b[^>]*><\/div>/);
+  });
+
+  it("AC1: without testMode it draws no input", () => {
+    expect(attributesOf(render(false), "input")).toEqual([]);
   });
 });

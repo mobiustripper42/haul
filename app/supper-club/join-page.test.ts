@@ -11,6 +11,7 @@ import { emptyRequest } from "../next-headers-fake";
 import { attributesOf, findAll, normalMarkup, redirectOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import { BulletList } from "../../components/ui/bullet-list";
+import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
 import { BackToChoices, JoinPage } from "./join-page";
 
@@ -192,6 +193,13 @@ describe("AC1 (issue 63) — the list's look has one home", () => {
     expect(findAll(element, BulletList).map((list) => list.props.items)).toEqual([
       ["Protein main, standard or vegan", "Grain or bread", "Veggie side", "Salad", "Soup or stew"],
     ]);
+  });
+});
+
+describe("AC17 — the page's cards fill their columns", () => {
+  it('AC17: the left column\'s card uses width="fill"', async () => {
+    const { element } = await render("none");
+    expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill"]);
   });
 });
 
