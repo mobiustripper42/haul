@@ -1,31 +1,26 @@
-// Issue 55, AC17 and AC18: the header moved out of app/sign-in/layout.tsx. `await SiteHeader(props)`
-// rendered through react-dom/server with `next/headers` faked, as app/sign-in/layout.test.ts renders it.
-// Issue 77, AC4, AC5 and AC11: the link goes to the sign-in pane, can be marked current, and can be wide-only.
+// Issue 55, AC17 and AC18: the header moved out of app/sign-in/layout.tsx. `await SiteHeader(props)` is read
+// as the tree it returns, and as markup for the order of its words, with `next/headers` faked.
+// Issue 77, AC4 and AC5: the link goes to the sign-in pane and can be marked current.
 // Issue 97, AC3–AC6: the header reads the session itself. Signed out it is as each page sets it with
-// `account`; signed in it shows Admin (admins only) and Sign out, whatever `account` says. A signed-in
-// request is an ocf_session cookie for a member in an InMemoryRepository, the composition root mocked.
+// `account`; signed in it shows Admin (admins only) and Sign out, whatever `account` says.
+// The language switch is faked with a marker, so what is read here is only where the header puts it; its
+// own words and buttons are app/language-switcher.test.ts's. The session is faked as a member or an admin;
+// who counts as signed in is app/session.test.ts's. The wide-only wrapper for issue 77's AC11 ("below `lg`")
+// is measured in the browser, e2e/supper-club.spec.ts.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import type { Role } from "@core/members.js";
-import { signSession } from "@core/sign-in/session.js";
+import { en } from "@core/messages/en.js";
+import { Button } from "../components/ui/button";
 import { SiteBar } from "../components/ui/site-bar";
-import CreateAccountLayout from "./create-account/layout";
-import { setLanguage } from "./language-actions";
 import { emptyRequest } from "./next-headers-fake";
 import { ADMIN_PATH } from "./paths";
-import { attributesOf, findAll, normalMarkup, screenMarkup, textsOf, utilitiesOf } from "./screen-test-helpers";
+import { findAll, textsOf } from "./screen-test-helpers";
 import { SiteHeader } from "./site-header";
 import { signOut } from "./sign-in/actions";
-import SignInLayout from "./sign-in/layout";
-import Terms from "./terms/page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
-const services = vi.hoisted(() => ({
-  repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
-  secret: "test-session-secret-that-is-long-enough-0123456789",
-}));
+const session = vi.hoisted(() => ({ member: null as null | { role: "member" | "admin" } }));
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("./next-headers-fake");
   return {
@@ -35,141 +30,123 @@ vi.mock("next/headers", async () => {
 });
 vi.mock("next/navigation", async () => ({ redirect: (await import("./screen-test-helpers")).throwingRedirect }));
 vi.mock("next/server", () => ({ after: () => {} }));
-vi.mock("./services", () => ({ getRepository: () => services.repo, getSessionSecret: () => services.secret }));
+vi.mock("./services", () => ({ getRepository: () => undefined, getSessionSecret: () => "test-session-secret-that-is-long-enough-0123456789" }));
+vi.mock("./session", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("./session")>()),
+  getSignedInMember: async () => session.member,
+}));
+vi.mock("./language-switcher", () => ({ LanguageSwitcher: async () => createElement("div", null, "the language switch") }));
 
 beforeEach(() => {
   request.current = emptyRequest();
-  services.repo = new InMemoryRepository();
+  session.member = null;
 });
 
-async function signInAs(role: Role): Promise<void> {
-  const member = await services.repo.createMember({ email: "ada@example.com", role });
-  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
-  request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
-}
+const SWITCH = "the language switch";
+const BRAND = [en["brand.name"], en["brand.byline"]];
+const SIGN_IN = en["home.signIn"];
+const SIGN_OUT = en["home.signOut"];
+const ADMIN = en["header.admin"];
 
 type Account = "none" | "sign-in" | "sign-in-current";
 
-const BRAND_AND_SWITCH = ["Ohio City Farm", "by Re:Source Cleveland", "Language", "English", "Español"];
-const render = async (account: Account, wideOnly?: boolean) =>
-  renderToStaticMarkup(await SiteHeader({ account, ...(wideOnly === undefined ? {} : { wideOnly }) }));
-
-/** The one <header> in a page's markup. */
-const headerOf = (html: string) => /<header\b[\s\S]*<\/header>/.exec(html)?.[0] ?? "";
+const header = async (account: Account, current?: "admin") => {
+  const element = await SiteHeader({ account, ...(current === undefined ? {} : { current }) });
+  return { element, words: textsOf(renderToStaticMarkup(element)), buttons: findAll(element, Button) };
+};
 
 describe("AC18 — SiteHeader, account none, is the header the sign-in screens had", () => {
-  it("AC18: it renders one <header> holding the brand link to / and the language switch, and no other link", async () => {
-    const html = await render("none");
-    expect(screenMarkup(html)).toMatch(/^<header\b/);
-    expect(textsOf(html)).toEqual(BRAND_AND_SWITCH);
-    expect(attributesOf(html, "a").map((link) => link.href)).toEqual(["/"]);
+  it("AC18: it holds the farm's name and byline, then the language switch, and no other word", async () => {
+    expect((await header("none")).words).toEqual([...BRAND, SWITCH]);
   });
 
-  it("AC18: the sign-in layout is that header, then its children", async () => {
-    const child = createElement("p", null, "child");
-    const header = await render("none");
-    expect(textsOf(header), "SiteHeader renders nothing yet").toEqual(BRAND_AND_SWITCH);
-    const layout = renderToStaticMarkup(await SignInLayout({ children: child }));
-    expect(normalMarkup(layout)).toBe(normalMarkup(`${header}<p>child</p>`));
+  it("AC18: the farm's name is the one link, and it goes to /", async () => {
+    const { element } = await header("none");
+    expect(findAll(element, "a").map((link) => link.props.href)).toEqual(["/"]);
+  });
+
+  it("AC18: it has no button", async () => {
+    expect((await header("none")).buttons).toEqual([]);
+  });
+});
+
+describe("AC3 (issue 97) — the header's frame", () => {
+  it("AC3: SiteHeader renders through SiteBar, as the header", async () => {
+    const { element } = await header("none");
+    expect(findAll(element, SiteBar).map((bar) => bar.props.as)).toEqual(["header"]);
   });
 });
 
 describe("AC17 — SiteHeader's account link", () => {
   it('AC17, AC4 (issue 77): account "sign-in" adds a secondary "Sign in" link to /supper-club/sign-in after the language switch', async () => {
-    const html = await render("sign-in");
-    expect(textsOf(html)).toEqual([...BRAND_AND_SWITCH, "Sign in"]);
-    const [, link] = attributesOf(html, "a");
-    expect(link?.href).toBe("/supper-club/sign-in");
-    expect(utilitiesOf(link?.class)).toContain("btn-secondary");
-    expect(link).not.toHaveProperty("aria-current");
+    const { words, buttons } = await header("sign-in");
+    expect(words).toEqual([...BRAND, SWITCH, SIGN_IN]);
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: "/supper-club/sign-in" });
+  });
+
+  it("AC17: the Sign in link is not marked as the page showing", async () => {
+    expect((await header("sign-in")).buttons[0]?.props.current).toBeFalsy();
   });
 });
 
 describe('AC5 (issue 77) — account "sign-in-current"', () => {
-  it('AC5: it is the same secondary "Sign in" link, to /supper-club/sign-in, marked aria-current="page"', async () => {
-    const html = await render("sign-in-current");
-    expect(textsOf(html)).toEqual([...BRAND_AND_SWITCH, "Sign in"]);
-    const [, link] = attributesOf(html, "a");
-    expect(link).toMatchObject({ href: "/supper-club/sign-in", "aria-current": "page" });
-    expect(utilitiesOf(link?.class)).toContain("btn-secondary");
-  });
-});
-
-describe("AC11 (issue 77) — wideOnly", () => {
-  it.each(["sign-in", "sign-in-current"] as const)("AC11: with %s the account link sits in the wide-only wrapper, and the language switch does not", async (account) => {
-    const markup = screenMarkup(await render(account, true));
-    expect(markup).toMatch(/<\w+\b[^>]*class="[^"]*(?<![\w-])wide-only(?![\w-])[^"]*"[^>]*>\s*<a\b[^>]*>Sign in<\/a>/);
-    expect(markup.indexOf("wide-only")).toBeGreaterThan(markup.indexOf("</fieldset>"));
-  });
-
-  it("AC11: without it the link is not wide-only", async () => {
-    const html = await render("sign-in");
-    expect(textsOf(html)).toContain("Sign in");
-    expect(html).not.toContain("wide-only");
-  });
-});
-
-describe("AC3 (issue 97) — signed out, the header's frame", () => {
-  it("AC3: SiteHeader renders through SiteBar, as the header", async () => {
-    expect(findAll(await SiteHeader({ account: "none" }), SiteBar).map((bar) => bar.props.as)).toEqual(["header"]);
+  it('AC5: it is the same secondary "Sign in" link, to /supper-club/sign-in, marked as the page showing', async () => {
+    const { words, buttons } = await header("sign-in-current");
+    expect(words).toEqual([...BRAND, SWITCH, SIGN_IN]);
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: "/supper-club/sign-in", current: true });
   });
 });
 
 describe("AC4 (issue 97) — signed in as a member", () => {
-  beforeEach(async () => {
-    await signInAs("member");
+  beforeEach(() => {
+    session.member = { role: "member" };
   });
 
-  it('AC4: after the language switch the header shows Sign out, and no "Your account", no Admin and no Sign in', async () => {
-    expect(textsOf(await render("sign-in"))).toEqual([...BRAND_AND_SWITCH, "Sign out"]);
+  it("AC4: after the language switch the header shows Sign out, and no Admin and no Sign in", async () => {
+    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, SIGN_OUT]);
   });
 
-  it("AC4: Sign out is a submit button alone in a form whose action is signOut, after the switch's form", async () => {
-    const element = await SiteHeader({ account: "sign-in" });
-    expect(findAll(element, "form").map((form) => form.props.action)).toEqual([setLanguage, signOut]);
-    expect(screenMarkup(renderToStaticMarkup(element))).toMatch(
-      /<\/fieldset>\s*<\/form>[\s\S]*<form\b[^>]*>\s*<button\b(?=[^>]*\btype="submit")[^>]*>Sign out<\/button>\s*<\/form>/,
-    );
+  it("AC4: Sign out is a quiet submit button alone in a form whose action is signOut", async () => {
+    const { element } = await header("sign-in");
+    const forms = findAll(element, "form");
+    expect(forms.map((form) => form.props.action)).toEqual([signOut]);
+    const buttons = findAll(forms[0], Button);
+    expect(buttons).toHaveLength(1);
+    expect(buttons[0]?.props).toMatchObject({ kind: "quiet", type: "submit", children: SIGN_OUT });
   });
+
+  it.each(["none", "sign-in", "sign-in-current"] as const)(
+    'AC6 (issue 97): with account "%s" the header shows Sign out and no Sign in: account is only the signed-out state',
+    async (account) => {
+      expect((await header(account)).words).toEqual([...BRAND, SWITCH, SIGN_OUT]);
+    },
+  );
 });
 
 describe("AC5 (issue 97) — signed in as an admin", () => {
-  beforeEach(async () => {
-    await signInAs("admin");
+  beforeEach(() => {
+    session.member = { role: "admin" };
   });
 
   it("AC5: after the language switch the header shows Admin, then Sign out", async () => {
-    expect(textsOf(await render("sign-in"))).toEqual([...BRAND_AND_SWITCH, "Admin", "Sign out"]);
+    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, ADMIN, SIGN_OUT]);
   });
 
-  it("AC5: Admin is a secondary link to ADMIN_PATH, /admin, not marked current when `current` is not given", async () => {
-    const [, link, ...others] = attributesOf(await render("none"), "a");
-    expect(ADMIN_PATH).toBe("/admin");
-    expect(link?.href).toBe(ADMIN_PATH);
-    expect(utilitiesOf(link?.class)).toContain("btn-secondary");
-    expect(link).not.toHaveProperty("aria-current");
-    expect(others).toEqual([]);
+  it("AC5: Admin is a secondary link to ADMIN_PATH, not marked current when `current` is not given", async () => {
+    const [admin, ...others] = (await header("none")).buttons;
+    expect(admin?.props).toMatchObject({ kind: "secondary", href: ADMIN_PATH, children: ADMIN });
+    expect(admin?.props.current).toBeFalsy();
+    expect(others.map((button) => button.props.children)).toEqual([SIGN_OUT]);
   });
 
-  it('AC5: with current "admin", Admin is marked as the page showing, aria-current="page"', async () => {
-    const [, link] = attributesOf(renderToStaticMarkup(await SiteHeader({ account: "none", current: "admin" })), "a");
-    expect(link).toMatchObject({ href: "/admin", "aria-current": "page" });
-  });
-});
-
-describe("AC6 (issue 97) — signed in, every page's header shows the buttons", () => {
-  it.each(["none", "sign-in-current"] as const)('AC6: with account "%s", a member\'s header shows Sign out and no Sign in: account is only the signed-out state', async (account) => {
-    await signInAs("member");
-    expect(textsOf(await render(account))).toEqual([...BRAND_AND_SWITCH, "Sign out"]);
+  it('AC5: with current "admin", Admin is marked as the page showing', async () => {
+    const [admin] = (await header("none", "admin")).buttons;
+    expect(admin?.props).toMatchObject({ href: ADMIN_PATH, current: true });
   });
 
-  it.each([
-    ["the sign-in layout", async () => SignInLayout({ children: createElement("p", null, "child") })],
-    ["the create-account layout", async () => CreateAccountLayout({ children: createElement("p", null, "child") })],
-    ["the Terms page (LegalPage)", async () => Terms()],
-  ])("AC6: on %s, an admin's header shows Admin, then Sign out", async (_page, page) => {
-    await signInAs("admin");
-    const header = headerOf(renderToStaticMarkup(await page()));
-    expect(textsOf(header)).toEqual([...BRAND_AND_SWITCH, "Admin", "Sign out"]);
+  it('AC6 (issue 97): with account "sign-in-current" the header still shows Admin, then Sign out', async () => {
+    expect((await header("sign-in-current")).words).toEqual([...BRAND, SWITCH, ADMIN, SIGN_OUT]);
   });
 });
