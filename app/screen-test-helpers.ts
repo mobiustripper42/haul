@@ -28,7 +28,11 @@ export function textsOf(html: string): string[] {
     .filter((text) => text !== "");
 }
 
-/** The text of each `role="alert"` element, in document order: which notices a screen shows. */
+/**
+ * The text of each `role="alert"` element, in document order: which notices a screen shows. Each ends at
+ * the first closing tag of its own name, so it assumes an alert holds no element of that name — true of
+ * `Notice`, a `<p>`.
+ */
 export function alertTexts(html: string): string[] {
   return [...withoutScripts(html).matchAll(/<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/g)].map((match) =>
     textsOf(match[2] ?? "").join(" "),

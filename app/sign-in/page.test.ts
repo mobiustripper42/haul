@@ -3,6 +3,7 @@
 // are app/sign-in/sign-in-form.test.ts's.
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
@@ -49,6 +50,7 @@ describe("AC33 (issue 9) — /sign-in", () => {
 
   it("AC33: the page's search parameters reach the form's notices", async () => {
     expect(alertTexts((await render({ error: "expired" })).html)).toEqual([en["signIn.stepExpired"]]);
+    expect(alertTexts((await render({ limited: "5" })).html)).toEqual([createTranslator("en")("signIn.limited", { minutes: 5 })]);
   });
 
   it("AC10, AC7 (issue 77): the closing line's link goes to the full /create-account page", async () => {
