@@ -23,7 +23,7 @@ const OPTION_TYPES: ReadonlyArray<{
   options: ReadonlyArray<{ name: string; priceCents: number; position: number }>;
 }> = [
   {
-    name: "How many people?",
+    name: "How many people",
     position: 1,
     options: [
       { name: "3–4 people", priceCents: 8000, position: 1 },
@@ -31,7 +31,7 @@ const OPTION_TYPES: ReadonlyArray<{
     ],
   },
   {
-    name: "Which menu?",
+    name: "Which menu",
     position: 2,
     options: [
       { name: "Standard", priceCents: 0, position: 1 },

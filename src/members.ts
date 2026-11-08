@@ -24,6 +24,12 @@ export type Member = {
   squareCustomerId: string | null;
 };
 
+/** The member's name as a person reads it, "First Last", whichever is stored; `null` with neither. */
+export function memberDisplayName(member: Pick<Member, "firstName" | "lastName">): string | null {
+  const name = [member.firstName, member.lastName].filter((part) => part !== null && part !== "").join(" ");
+  return name === "" ? null : name;
+}
+
 /** Emails are stored and looked up normalized, so one plain unique constraint is case-insensitive. */
 export function normalizeEmail(email: string): string {
   return email.trim().toLowerCase();

@@ -4,12 +4,12 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, textsOf } from "../screen-test-helpers";
+import { limitedText } from "../sign-in/shared";
 import { requestAccountCode } from "./actions";
 import CreateAccount from "./page";
 
@@ -52,7 +52,7 @@ describe("AC4, AC10, AC12 — /create-account", () => {
 
   it("AC12: the page's limited reaches the form's notice", async () => {
     const { html } = await render({ limited: "5" });
-    expect(alertTexts(html)).toEqual([createTranslator("en")("signIn.limited", { minutes: 5 })]);
+    expect(alertTexts(html)).toEqual([limitedText("en", 5)]);
   });
 
   it("AC10: the page's error reaches the form: expired shows its notice", async () => {

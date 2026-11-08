@@ -210,6 +210,13 @@ describe("requestPaneCode", () => {
     expect(await redirectOf(requestPaneCode(form({ email: ADA })))).toBe(`${SIGN_IN}?limited=35`);
     expect(repo.events()).toEqual([REFUSAL]);
   });
+
+  // Issue 101, AC2: the rule is requestCodeFor's (app/sign-in/actions.test.ts); this is the pane's resend through it.
+  it("AC2 (issue 101): with resend=1 it goes on to /supper-club/sign-in/code?sent=1", async () => {
+    await repo.createMember({ email: ADA });
+    const { requestPaneCode } = await load();
+    expect(await redirectOf(requestPaneCode(form({ email: ADA, resend: "1" })))).toBe(`${SIGN_IN}/code?sent=1`);
+  });
 });
 
 describe("requestPaneAccountCode", () => {
@@ -251,6 +258,13 @@ describe("resendPaneAccountCode", () => {
     for (let i = 0; i < 20; i++) await redirectOf(requestPaneAccountCode(details()));
     expect(await redirectOf(resendPaneAccountCode(form({})))).toBe(`${CREATE}?limited=35`);
     expect(repo.events()).toEqual([REFUSAL]);
+  });
+
+  // Issue 101, AC2: the rule is requestCodeFor's (app/sign-in/actions.test.ts); this is the pane's resend through it.
+  it("AC2 (issue 101): with resend=1, a resent code goes back to /supper-club/create-account/code?sent=1", async () => {
+    request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
+    const { resendPaneAccountCode } = await load();
+    expect(await redirectOf(resendPaneAccountCode(form({ resend: "1" })))).toBe(`${CREATE}/code?sent=1`);
   });
 });
 
@@ -583,9 +597,9 @@ describe("issue 56 — the pay actions", () => {
         expect(sent()).toEqual([
           {
             to: ADA,
-            subject: "You're in the Supper Club",
+            subject: "Receipt: you're in the Supper Club",
             text: expect.stringContaining(
-              "How many people?: 3–4 people\nWhich menu?: Vegan\nPaid today: $80\nThen every week, at the cutoff: $80\nFirst pickup: Sunday, January 3\n",
+              "How many people?: 3–4 people\nWhich menu?: Vegan\nCharged Wednesday, October 28: $80, for your first week\nThen every week, at the cutoff: $80\nFirst pickup: Sunday, January 3\n",
             ) as string,
           },
         ]);

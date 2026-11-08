@@ -21,16 +21,19 @@ export function deliverSignupConfirmation(
 ): Promise<EmailReceipt> {
   const t = createTranslator(member.language);
   const weekly = formatUsdWhole(confirmation.weeklyCents);
-  const subject = t("supperClub.done.title");
+  const subject = t("email.signupConfirmation.subject");
   const heading =
-    member.firstName === null ? subject : t("email.signupConfirmation.heading", { firstName: member.firstName });
+    member.firstName === null ? t("supperClub.done.title") : t("email.signupConfirmation.heading", { firstName: member.firstName });
 
   const blocks = [
     heading,
     t("email.signupConfirmation.thanks"),
     [
       ...confirmation.options.map((option) => `${option.typeName}: ${option.optionName}`),
-      `${t("supperClub.box.paidToday")}: ${formatUsdWhole(confirmation.firstChargeCents)}`,
+      t("email.signupConfirmation.charged", {
+        date: formatPickupDate(confirmation.chargedDate, member.language),
+        amount: formatUsdWhole(confirmation.firstChargeCents),
+      }),
       `${t("supperClub.weeklyLabel")}: ${weekly}`,
       t("supperClub.box.firstPickup", { date: formatPickupDate(confirmation.pickupDate, member.language) }),
     ].join("\n"),

@@ -10,6 +10,9 @@ import { getRepository } from "../services";
 import { requireAdmin } from "../session";
 import { SiteHeader } from "../site-header";
 import { MembersList } from "./members-list";
+import { titled } from "../page-title";
+
+export const generateMetadata = titled("admin.members.title");
 
 /**
  * The Supper Club's members: who holds an active subscription, with search and sorting in the browser and a link
@@ -63,7 +66,7 @@ export default async function Admin() {
                   sortBy: t("admin.members.sortBy"),
                   sortLabels: {
                     name: t("admin.members.name"),
-                    joined: t("admin.members.sortJoined"),
+                    joined: t("admin.members.joined"),
                     meal: t("admin.members.meal"),
                     status: t("admin.members.status"),
                   },

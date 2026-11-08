@@ -3,6 +3,9 @@ import { AccountForm } from "../../create-account/account-form";
 import { BackToChoices, JoinPage } from "../join-page";
 import { requestPaneAccountCode } from "../actions";
 import { PANE_SIGN_IN_PAGES } from "../paths";
+import { titled } from "../../page-title";
+
+export const generateMetadata = titled("createAccount.title");
 
 /** Create Account in the Supper Club page's right pane: `/create-account` with its failures kept in the pane. */
 export default async function PaneCreateAccount({

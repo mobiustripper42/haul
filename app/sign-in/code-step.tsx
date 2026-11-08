@@ -17,10 +17,10 @@ import { SIGN_IN_EMAIL_COOKIE } from "../session";
 import type { FlowPages } from "./shared";
 
 type FormAction = (formData: FormData) => Promise<void>;
-type FlowStep = (props: { pages: FlowPages; verify: FormAction; resend: FormAction; error?: string }) => Promise<ReactNode>;
+type FlowStep = (props: { pages: FlowPages; verify: FormAction; resend: FormAction; error?: string; sent?: string }) => Promise<ReactNode>;
 
 /**
- * A code step's card body: the back link, the heading, the sentence, the notice for a wrong code, the
+ * A code step's card body: the back link, the heading, the sentence, the notice for a new code, the notice for a wrong code, the
  * code form, an optional `hint` line, and the resend form. `resendEmail`, when given, rides in the resend
  * form as a hidden `email`, for a resend action that reads it from the form.
  */
@@ -32,6 +32,7 @@ export async function CodeStep({
   resend,
   backHref,
   invalid,
+  sent,
   hint,
   resendEmail,
 }: {
@@ -42,6 +43,7 @@ export async function CodeStep({
   resend: FormAction;
   backHref: string;
   invalid: boolean;
+  sent: boolean;
   hint?: string;
   resendEmail?: string;
 }) {
@@ -55,6 +57,7 @@ export async function CodeStep({
       </p>
       <Heading>{heading}</Heading>
       <p className="text-ink-muted">{sentence}</p>
+      {sent && !invalid && <Notice icon="check">{t("signIn.resent")}</Notice>}
       {invalid && <Notice icon="alert">{t("signIn.invalidCode")}</Notice>}
       <form action={verify} className="flex flex-col gap-6">
         <Field label={t("signIn.codeLabel")} htmlFor="code">
@@ -78,6 +81,7 @@ export async function CodeStep({
       {hint !== undefined && <Hint>{hint}</Hint>}
       <form action={resend}>
         {resendEmail !== undefined && <input type="hidden" name="email" value={resendEmail} />}
+        <input type="hidden" name="resend" value="1" />
         <Button kind="quiet" flush type="submit">
           {t("signIn.resend")}
         </Button>
@@ -87,7 +91,7 @@ export async function CodeStep({
 }
 
 /** Sign-in's code step. With no email cookie the flow's start, expired. The resend form carries the cookie's email. */
-export const SignInCodeStep: FlowStep = async ({ pages, verify, resend, error }) => {
+export const SignInCodeStep: FlowStep = async ({ pages, verify, resend, error, sent }) => {
   const email = (await cookies()).get(SIGN_IN_EMAIL_COOKIE)?.value;
   if (!email) redirect(`${pages.start}?error=expired`);
   const t = await getTranslator();
@@ -99,12 +103,13 @@ export const SignInCodeStep: FlowStep = async ({ pages, verify, resend, error })
     resend,
     backHref: pages.start,
     invalid: error === "invalid",
+    sent: sent === "1",
     resendEmail: email,
   });
 };
 
 /** Create Account's code step, redeemed by sign-in's own flow. Its resend action reads the cookie, so the form carries no email. */
-export const AccountCodeStep: FlowStep = async ({ pages, verify, resend, error }) => {
+export const AccountCodeStep: FlowStep = async ({ pages, verify, resend, error, sent }) => {
   const email = (await cookies()).get(SIGN_IN_EMAIL_COOKIE)?.value;
   if (!email) redirect(`${pages.start}?error=expired`);
   const t = await getTranslator();
@@ -116,6 +121,7 @@ export const AccountCodeStep: FlowStep = async ({ pages, verify, resend, error }
     resend,
     backHref: pages.start,
     invalid: error === "invalid",
+    sent: sent === "1",
     hint: t("createAccount.spam"),
   });
 };

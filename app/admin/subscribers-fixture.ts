@@ -5,7 +5,7 @@ import type { PendingSignup } from "@core/ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME, type ProductInput, type ProductWithOptions } from "@core/products.js";
 
 export const SIZES: ProductInput["optionTypes"][number] = {
-  name: "How many people?",
+  name: "How many people",
   position: 1,
   options: [
     { name: "3–4 people", priceCents: 8000, position: 1 },
@@ -14,7 +14,7 @@ export const SIZES: ProductInput["optionTypes"][number] = {
 };
 
 export const MENUS: ProductInput["optionTypes"][number] = {
-  name: "Which menu?",
+  name: "Which menu",
   position: 2,
   options: [
     { name: "Standard", priceCents: 0, position: 1 },

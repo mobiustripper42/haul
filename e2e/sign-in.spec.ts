@@ -188,3 +188,17 @@ test("AC16, AC4 (issue 97): signed in, the header's Sign out ends the session an
   await expect(page.getByRole("banner").getByRole("button", { name: "English", exact: true })).toBeVisible();
   await expect(headerSignOut(page)).toHaveCount(0);
 });
+
+// Issue 101, AC2: "Send a new code" posts and redirects, so only a browser shows the page coming back with its
+// notice. The notice's words are new in that issue, typed here once; which `sent` shows it is Vitest's
+// (app/sign-in/code-step.test.ts).
+test("AC2 (issue 101): Send a new code brings /sign-in/code back, saying a new code is on its way", async ({ page }) => {
+  await askForCode(page, ERIC);
+  await expect(page).toHaveURL(onPath("/sign-in/code"));
+  await expect(page.getByText("A new code is on its way.")).toHaveCount(0);
+
+  await page.getByRole("button", { name: en["signIn.resend"] }).click();
+
+  await expect(page).toHaveURL((url) => url.pathname === "/sign-in/code" && url.searchParams.get("sent") === "1");
+  await expect(page.getByText("A new code is on its way.", { exact: true })).toBeVisible();
+});

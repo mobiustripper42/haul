@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { resolveChoices } from "@core/choices.js";
 import type { Translator } from "@core/i18n.js";
-import type { Member } from "@core/members.js";
+import { memberDisplayName, type Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { firstPickup } from "@core/pickup-week.js";
 import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
@@ -22,8 +22,19 @@ import { paymentWording } from "./payment-wording";
 import { PaymentSection } from "./payment-section";
 import { PAY_ERROR_SOLD_OUT, SUPPER_CLUB_ALREADY_PATH } from "./paths";
 import { SoldOutCard } from "./sold-out-card";
+import { titled } from "../page-title";
 
 const PAY_ERRORS = ["consent", "declined", "error"] as const;
+
+export const generateMetadata = titled("supperClub.joinTitle");
+
+/** Step 3's line: who is signed in, by name where the member has one. */
+function signedInText(t: Translator, member: Member): string {
+  const name = memberDisplayName(member);
+  return name === null
+    ? t("supperClub.signedInAs", { email: member.email })
+    : t("supperClub.signedInAsNamed", { name, email: member.email });
+}
 
 /** Every price the picks can come to: the sum of one option from each type. */
 function pricesOf(product: ProductWithOptions): number[] {
@@ -81,7 +92,7 @@ async function paymentSection({
         consentError: t("supperClub.consentError"),
         declined: t("supperClub.payDeclined"),
         error: t("supperClub.payError"),
-        capHint: t("supperClub.capHint", { cap: product.cap }),
+        capHint: t("supperClub.capHint"),
       }}
       card={{
         // CardEntry's test field stands in for Square's script on the e2e server alone, as the dev outbox does.
@@ -143,7 +154,7 @@ export default async function SupperClub({
         {member && stranded ? (
           <>
             {accountLegend}
-            <p>{t("supperClub.signedInAs", { email: member.email })}</p>
+            <p>{signedInText(t, member)}</p>
             <Notice icon="alert">{t("supperClub.retryNotice")}</Notice>
             {query.payError === "error" && <Notice icon="alert">{t("supperClub.payError")}</Notice>}
             <PricePanel
@@ -175,7 +186,7 @@ export default async function SupperClub({
               <Hint>{t("supperClub.switchHelp")}</Hint>
               {accountLegend}
               {member ? (
-                <p>{t("supperClub.signedInAs", { email: member.email })}</p>
+                <p>{signedInText(t, member)}</p>
               ) : (
                 <>
                   <p>{t("supperClub.signedOutPrompt")}</p>

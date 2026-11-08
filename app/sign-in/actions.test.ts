@@ -215,6 +215,30 @@ describe("AC26 (issue 9) — requestCode", () => {
   });
 });
 
+// Issue 101, AC2: "Send a new code" posts the code step's hidden resend=1, and requestCodeFor, the one home of
+// the rule, answers with the code page and ?sent=1. Create Account's and the panes' resends carry one case each.
+describe("AC2 (issue 101) — requestCode from the resend form", () => {
+  it.each([
+    ["a member's", "ada@example.com"],
+    ["a stranger's", STRANGER],
+  ])("AC2: with resend=1, %s email redirects to /sign-in/code?sent=1, the same for both", async (_who, entered) => {
+    const { requestCode } = await load();
+    expect(await redirectOf(requestCode(form({ email: entered, resend: "1" })))).toBe("/sign-in/code?sent=1");
+  });
+
+  it("AC2: with resend=1 the email cookie is set as for any request", async () => {
+    const { requestCode } = await load();
+    await redirectOf(requestCode(form({ email: "ada@example.com", resend: "1" })));
+    expect(setsNamed(SIGN_IN_EMAIL).map((cookie) => cookie.value)).toEqual(["ada@example.com"]);
+  });
+
+  it("AC2: limited, a resend still goes back to /sign-in?limited=<minutes>", async () => {
+    const { requestCode } = await load();
+    for (let i = 0; i < 20; i++) await redirectOf(requestCode(form({ email: STRANGER })));
+    expect(await redirectOf(requestCode(form({ email: STRANGER, resend: "1" })))).toBe("/sign-in?limited=35");
+  });
+});
+
 describe("AC27 (issue 9) — requestCode issues and sends after the response", () => {
   it("AC27: for a member's email it schedules one after() callback and has stored and sent nothing yet", async () => {
     const { requestCode } = await load();

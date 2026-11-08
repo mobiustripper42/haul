@@ -247,9 +247,10 @@ export class InMemoryRepository implements Repository {
       .filter((s) => s.memberId === memberId && s.productId === productId && s.status === "active")
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     const ledger = subscription && this.ledgerOf(subscription.id);
-    if (!subscription || !ledger) return null;
+    if (!subscription || !ledger?.paidAt) return null;
     return {
       pickupDate: ledger.pickupDate,
+      chargedDate: clevelandDate(ledger.paidAt),
       firstChargeCents: subscription.firstChargeCents,
       weeklyCents: subscription.weeklyCents,
       options: this.optionsOf(subscription),

@@ -4,7 +4,6 @@
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import { Button } from "../../components/ui/button";
 import { Hint } from "../../components/ui/hint";
@@ -12,6 +11,7 @@ import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, inOrder } from "../screen-test-helpers";
+import { limitedText } from "./shared";
 import { SignInForm } from "./sign-in-form";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -23,10 +23,9 @@ vi.mock("next/headers", async () => {
   };
 });
 
-const t = createTranslator("en");
 const action: (formData: FormData) => Promise<void> = async () => {};
 const BACK = "back here";
-const limited = (minutes: number) => t("signIn.limited", { minutes });
+const limited = (minutes: number) => limitedText("en", minutes);
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -122,5 +121,11 @@ describe("the notices (issue 9, AC33; issue 22, AC22)", () => {
 
   it("AC33: with both, the limited notice comes before the expired one", async () => {
     expect(alertTexts((await render({ limited: "5", error: "expired" })).html)).toEqual([limited(5), en["signIn.stepExpired"]]);
+  });
+});
+
+describe("AC5 (issue 101) — the limited notice's words are limitedText's", () => {
+  it("AC5: limited=1 shows limitedText at one minute, the singular", async () => {
+    expect(alertTexts((await render({ limited: "1" })).html)).toEqual([limitedText("en", 1)]);
   });
 });

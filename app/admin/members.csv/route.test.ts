@@ -43,7 +43,7 @@ async function signInAs(role: Role): Promise<void> {
   request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
 }
 
-const HEADER = ["Last name", "First name", "Email", "Phone", "How many people?", "Which menu?", "Joined"];
+const HEADER = ["Last name", "First name", "Email", "Phone", "How many people", "Which menu", "Joined"];
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -123,7 +123,7 @@ describe("AC9 — the columns come from the product", () => {
 
   it("AC9: the columns follow the option types' positions, not their names", async () => {
     addSupperClub(services.repo, { optionTypes: [{ ...MENUS, position: 1 }, { ...SIZES, position: 2 }] });
-    expect(parseCsv(await (await get()).text())[0]).toEqual(["Last name", "First name", "Email", "Phone", "Which menu?", "How many people?", "Joined"]);
+    expect(parseCsv(await (await get()).text())[0]).toEqual(["Last name", "First name", "Email", "Phone", "Which menu", "How many people", "Joined"]);
   });
 });
 

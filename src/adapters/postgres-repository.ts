@@ -107,6 +107,9 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
 // The shape Postgres accepts for a uuid parameter, any version.
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A timestamptz column as its day in Cleveland, `YYYY-MM-DD`. Only ever given a column name written in this file. */
+const clevelandDay = (column: string): string => `to_char(${column} at time zone 'America/New_York', 'YYYY-MM-DD')`;
+
 /**
  * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the
  * row holds an unused code, or an unused link, created less than `waitMs` before `now`. Empty
@@ -461,8 +464,15 @@ export class PostgresRepository implements Repository {
 
   async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
     if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
-    const found = await this.db.query<{ id: string; pickup_date: string; first_charge_cents: number; weekly_cents: number }>(
-      `select s.id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, s.first_charge_cents, s.weekly_cents
+    const found = await this.db.query<{
+      id: string;
+      pickup_date: string;
+      charged_date: string;
+      first_charge_cents: number;
+      weekly_cents: number;
+    }>(
+      `select s.id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, ${clevelandDay("l.paid_at")} as charged_date,
+              s.first_charge_cents, s.weekly_cents
          from subscriptions s
          join ledger l on l.subscription_id = s.id
         where s.member_id = $1 and s.product_id = $2 and s.status = 'active'
@@ -474,6 +484,7 @@ export class PostgresRepository implements Repository {
     if (!row) return null;
     return {
       pickupDate: row.pickup_date,
+      chargedDate: row.charged_date,
       firstChargeCents: row.first_charge_cents,
       weeklyCents: row.weekly_cents,
       options: (await this.optionsOf([row.id])).get(row.id) ?? [],
@@ -496,7 +507,7 @@ export class PostgresRepository implements Repository {
       joined: string;
     }>(
       `select s.id, m.first_name, m.last_name, m.email, m.phone,
-              to_char(paid.first_paid_at at time zone 'America/New_York', 'YYYY-MM-DD') as joined
+              ${clevelandDay("paid.first_paid_at")} as joined
          from subscriptions s
          join members m on m.id = s.member_id
          join lateral (

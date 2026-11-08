@@ -16,7 +16,7 @@ import { Notice } from "../../components/ui/notice";
 import { Select } from "../../components/ui/select";
 import { getLanguage, getTranslator } from "../language";
 import { ACCOUNT_DRAFT_COOKIE } from "../session";
-import { limitedMinutes } from "../sign-in/shared";
+import { limitedMinutes, limitedText } from "../sign-in/shared";
 
 const ERROR_KEYS = {
   firstName: "createAccount.error.firstName",
@@ -71,7 +71,7 @@ export async function AccountForm({
 
   return (
     <>
-      {minutes !== null && <Notice icon="lock">{t("signIn.limited", { minutes })}</Notice>}
+      {minutes !== null && <Notice icon="lock">{limitedText(language, minutes)}</Notice>}
       {error === "expired" && <Notice icon="clock">{t("signIn.stepExpired")}</Notice>}
       {back}
       <Heading>{t("createAccount.title")}</Heading>

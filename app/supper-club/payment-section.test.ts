@@ -8,6 +8,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
+import { en } from "@core/messages/en.js";
 import { alertTexts, attributesOf, inOrder, screenMarkup, textsOf } from "../screen-test-helpers";
 import { paymentWording } from "./payment-wording";
 import { PaymentSection, type PaymentText } from "./payment-section";
@@ -29,7 +30,8 @@ const TEXT: PaymentText = {
   consentError: t("supperClub.consentError"),
   declined: t("supperClub.payDeclined"),
   error: t("supperClub.payError"),
-  capHint: t("supperClub.capHint", { cap: 50 }),
+  // Read raw, not through `t`: the hint takes no value (issue 101, AC10), and the section shows what it is given.
+  capHint: en["supperClub.capHint"],
 };
 
 const PRICES = [

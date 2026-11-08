@@ -19,6 +19,8 @@ import { e2eDatabaseUrl } from "./database";
 import { expect, headerSignOut, outboxCount, test, waitForSignInCode } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
+// The `members` seed's name for ERIC (db/seeds/members.ts).
+const ERIC_NAME = "Eric Stoffer";
 const NEWCOMER = "new@ocf.xx";
 
 const CREATE_PANE = "/supper-club/create-account";
@@ -88,7 +90,7 @@ async function enterSignInCode(page: Page, code: string): Promise<void> {
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
 }
 
-const signedInAs = (email: string) => t("supperClub.signedInAs", { email });
+const signedInAs = (name: string, email: string) => t("supperClub.signedInAsNamed", { name, email });
 const testCard = (page: Page) => page.getByRole("textbox", { name: en["supperClub.testCard"] });
 const consent = (page: Page) => page.getByRole("checkbox");
 const joinAndPay = (page: Page, price: string) => page.getByRole("button", { name: t("supperClub.joinAndPay", { price }), exact: true });
@@ -174,7 +176,7 @@ test("AC1, AC9: Create an account opens the pane, a confirmed code lands back on
   await page.getByRole("button", { name: en["createAccount.confirm"], exact: true }).click();
 
   await expectChoicesKept(page);
-  await expect(page.getByText(t("supperClub.signedInAs", { email: NEWCOMER }))).toBeVisible();
+  await expect(page.getByText(signedInAs("New Comer", NEWCOMER))).toBeVisible();
 });
 
 test("AC2, AC9: Sign in opens the pane, a code lands back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
@@ -185,7 +187,7 @@ test("AC2, AC9: Sign in opens the pane, a code lands back on the Supper Club pag
   await enterSignInCode(page, await askForCode(page, request));
 
   await expectChoicesKept(page);
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(page.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
 });
 
 test("AC4: the header's Sign in goes to the pane, and a code confirmed with no return path lands on /supper-club", async ({ page, request }) => {
@@ -196,18 +198,18 @@ test("AC4: the header's Sign in goes to the pane, and a code confirmed with no r
   await enterSignInCode(page, await askForCode(page, request));
 
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(page.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(page.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
 });
 
 test("AC3: at lg the pane stands where the Join card stood, at its width, beside the left column", async ({ page, request }, testInfo) => {
   desktopOnly(testInfo);
   await pickChoices(page);
   const join = (await joinCard(page).boundingBox())!;
-  const left = page.getByText(LEFT_COLUMN_TITLE);
+  const left = page.getByRole("heading", { name: LEFT_COLUMN_TITLE });
 
   const expectInPlace = async (card: Locator) => {
     await expect(left).toBeVisible();
-    await expect(page.getByText(en["supperClub.joinTitle"])).toHaveCount(0);
+    await expect(page.getByText(en["supperClub.joinTitle"], { exact: true })).toHaveCount(0);
     const box = await card.boundingBox();
     expect(box?.x).toBeCloseTo(join.x, 0);
     expect(box?.width).toBeCloseTo(join.width, 0);
@@ -296,9 +298,9 @@ test("AC8: a resent code and a wrong code stay in the pane", async ({ page }) =>
   await expect(page.getByText(en["signIn.invalidCode"])).toBeVisible();
 
   // The whole URL, not onPath, which ignores the query: resend redirects to the path it is already on, so
-  // `?error=invalid` going is the only sign it finished.
+  // the query, `?error=invalid` gone and `?sent=1` come (issue 101, AC2), is the only sign it finished.
   await page.getByRole("button", { name: en["signIn.resend"] }).click();
-  await expect(page).toHaveURL(`${CREATE_PANE}/code`);
+  await expect(page).toHaveURL(`${CREATE_PANE}/code?sent=1`);
   await expect(page.getByText(en["signIn.invalidCode"])).toHaveCount(0);
 });
 
@@ -314,7 +316,7 @@ test("AC11: below lg a pane page is the card alone, centred at card width, with 
     ] as const) {
       await page.goto(path);
       await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
-      await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeHidden();
+      await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
       await expect(page.getByText(BACK_TO_CHOICES)).toBeHidden();
       await expect(headerSignIn(page)).toBeHidden();
       await expect(page.getByRole("banner").getByRole("button", { name: LANGUAGES.en.name })).toBeVisible();
@@ -329,14 +331,14 @@ test("AC11: below lg a pane page is the card alone, centred at card width, with 
 test("AC11: below lg the Supper Club page itself keeps its left column and header Sign in", async ({ page }, testInfo) => {
   phoneOnly(testInfo);
   await page.goto("/supper-club");
-  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
   await expect(headerSignIn(page)).toBeVisible();
 });
 
 test("AC1 (issue 56): signed in, section 4 sits in the same card under section 3, the checkbox unticked", async ({ page, request }) => {
   await signedIn(page, request);
   const card = joinCard(page);
-  await expect(card.getByText(signedInAs(ERIC))).toBeVisible();
+  await expect(card.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
   await expect(card.getByText(t("supperClub.paymentLegend", { n: 4 }))).toBeVisible();
   await expect(card.getByText(en["supperClub.todayLabel"])).toBeVisible();
   await expect(consent(page)).not.toBeChecked();
@@ -509,8 +511,8 @@ test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the ri
   await pay(page);
 
   await expect(page).toHaveURL(onPath("/supper-club/done"));
-  await expect(page.getByText(DONE_TITLE)).toBeVisible();
-  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  await expect(page.getByRole("heading", { name: DONE_TITLE })).toBeVisible();
+  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
   const box = (await page.locator("section").filter({ hasText: DONE_TITLE }).last().boundingBox())!;
   expect(box.x).toBeCloseTo(join.x, 0);
   await expect(headerSignOut(page)).toBeVisible();
@@ -522,8 +524,8 @@ test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone"
   await pay(page);
 
   await expect(page).toHaveURL(onPath("/supper-club/done"));
-  await expect(page.getByText(DONE_TITLE)).toBeVisible();
-  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeHidden();
+  await expect(page.getByRole("heading", { name: DONE_TITLE })).toBeVisible();
+  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
   await expect(headerSignOut(page)).toBeVisible();
 });
 
@@ -549,8 +551,8 @@ test("AC3, AC9 (issue 57): the last spot goes while a member is on the page: pay
   await expect(page).toHaveURL((url) => url.pathname === "/supper-club" && url.searchParams.get("payError") === "soldout");
   await expect(page.getByText(en["supperClub.soldOut.notice"])).toBeVisible();
   await expect(page.getByText(SOLD_OUT_TITLE, { exact: true })).toBeVisible();
-  await expect(page.getByText(en["supperClub.joinTitle"])).toHaveCount(0);
-  await expect(page.getByText(LEFT_COLUMN_TITLE)).toBeVisible();
+  await expect(page.getByText(en["supperClub.joinTitle"], { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
   const card = (await cardHolding(page, SOLD_OUT_TITLE).boundingBox())!;
   expect(card.x).toBeCloseTo(join.x, 0);
   expect(card.width).toBeCloseTo(join.width, 0);

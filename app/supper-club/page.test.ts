@@ -291,12 +291,6 @@ describe("issue 56 — the payment section", () => {
     expect(sectionOf((await render()).element)?.text.legend).toBe(t("supperClub.paymentLegend", { n: 5 }));
   });
 
-  it("AC1: the hint names the product's cap", async () => {
-    stock([SIZE, PREFERENCE], 30);
-    await signIn();
-    expect(sectionOf((await render()).element)?.text.capHint).toBe(t("supperClub.capHint", { cap: 30 }));
-  });
-
   it("AC2: it gets a wording for every price the picks can come to, made by paymentWording", async () => {
     await signIn();
     const wordings: SectionProps["wordings"] = sectionOf((await render()).element)?.wordings ?? {};
@@ -534,5 +528,56 @@ describe("AC17 — the page's cards fill their columns", () => {
 describe("issue 77 — the page opens on JoinPage's frame", () => {
   it("AC3: it stays on the page shell, not the pane's", async () => {
     expect(findAll((await render()).element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
+  });
+});
+
+// Issue 101, AC7: the pickers ask with a question mark that is the catalog's (`supperClub.pickerLegend`),
+// over option types stored without one (DEC-027).
+describe("AC7 (issue 101) — the pickers' legends ask", () => {
+  it('AC7: option types stored as "How many people" and "Which menu" read "1. How many people?" and "2. Which menu?"', async () => {
+    stock([
+      { ...SIZE, name: "How many people" },
+      { ...PREFERENCE, name: "Which menu" },
+    ]);
+    const { element } = await render();
+    expect(pickersOf(element).map((picker) => picker.legend)).toEqual(["1. How many people?", "2. Which menu?"]);
+  });
+});
+
+// Issue 101, AC10: the payment section's hint advertises no cap.
+describe("AC10 (issue 101) — the payment section's hint", () => {
+  it('AC10: it is "Limited supply of subscriptions. No sales tax.", whatever the cap', async () => {
+    stock([SIZE, PREFERENCE], 30);
+    await signIn();
+    expect(sectionOf((await render()).element)?.text.capHint).toBe("Limited supply of subscriptions. No sales tax.");
+  });
+});
+
+// Issue 101, AC9: step 3 names a member who has a name, in the normal and the retry state. Which name is
+// `memberDisplayName`'s (src/members.test.ts); a member with none still reads "Signed in as {email}." (AC3, AC10 above).
+describe("AC9 (issue 101) — step 3 names the member", () => {
+  const PAULA = "paid@example.com";
+  const SIGNED_IN_AS_PAULA = "Signed in as Paula Paid, paid@example.com.";
+
+  const signInPaula = async () => {
+    const member = await services.repo.saveAccount({ email: PAULA, firstName: "Paula", lastName: "Paid", phone: "216-555-0105", language: "en" });
+    await services.repo.confirmMemberEmail(member.id, new Date());
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    request.current.cookies = { ocf_session: signSession({ subjectId: member.id, expiresAt }, services.secret) };
+    return member;
+  };
+
+  it('AC9: in the normal state, section 3 reads "Signed in as Paula Paid, paid@example.com.", then section 4', async () => {
+    await signInPaula();
+    const order = [accountLegend(3), SIGNED_IN_AS_PAULA, t("supperClub.paymentLegend", { n: 4 })];
+    expect(inCard((await render()).html, order)).toEqual(order);
+  });
+
+  it("AC9: in the retry state it reads the same line, before the notice", async () => {
+    const member = await signInPaula();
+    const signup = await services.repo.savePendingSignup(rowsFor(member.id));
+    await services.repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+    const order = [accountLegend(3), SIGNED_IN_AS_PAULA, t("supperClub.retryNotice")];
+    expect(inOrder((await render()).html, order)).toEqual(order);
   });
 });

@@ -84,7 +84,7 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
             <Select
               id={SORT_BY_ID}
               name={SORT_BY_ID}
-              defaultValue={OPENING_SORT.key}
+              value={sort.key}
               options={SORT_CHOICES.map((choice) => ({ value: choice.key, label: text.sortLabels[choice.key] }))}
               onChange={(event) => {
                 const choice = SORT_CHOICES.find((candidate) => candidate.key === event.target.value);

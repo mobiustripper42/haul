@@ -13,6 +13,7 @@ import { createTranslator } from "@core/i18n.js";
 import { en, type MessageKey } from "@core/messages/en.js";
 import { Button } from "../../components/ui/button";
 import { Input } from "../../components/ui/input";
+import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, inOrder, redirectOf } from "../screen-test-helpers";
 import { AccountCodeStep, SignInCodeStep } from "./code-step";
@@ -168,15 +169,6 @@ describe("the code field and the buttons (issue 9, AC34; issue 19, AC8 and AC9; 
 });
 
 describe("the code page's wording (issue 22, AC23 and AC24)", () => {
-  it("AC24: the line under the heading names the email and says a new code can be sent once this one expires", async () => {
-    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
-    const order = [
-      en["signIn.codeTitle"],
-      `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes, and a new one can be sent after that.`,
-    ];
-    expect(inOrder(html, order)).toEqual(order);
-  });
-
   it("AC23: the wrong-code notice tells the member to check their email after 5 wrong tries", async () => {
     const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend, error: "invalid" }));
     expect(alertTexts(html)).toEqual([
@@ -190,12 +182,70 @@ describe("resendEmail, the one difference in what the resend form carries", () =
     const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
     expect(attributesOf(html, "input").filter((input) => input.type === "hidden")).toEqual([
       expect.objectContaining({ name: "email", value: EMAIL }),
+      expect.objectContaining({ name: "resend", value: "1" }),
     ]);
   });
 
   it("AC13: AccountCodeStep's resend form carries none: resendAccountCode reads the cookie", async () => {
     const html = renderToStaticMarkup(await AccountCodeStep({ pages: PAGES, verify, resend }));
-    expect(attributesOf(html, "input").filter((input) => input.type === "hidden")).toEqual([]);
+    expect(attributesOf(html, "input").filter((input) => input.type === "hidden")).toEqual([
+      expect.objectContaining({ name: "resend", value: "1" }),
+    ]);
+  });
+});
+
+// Issue 101, AC4: the sign-in code step's sentence, which no longer promises a code once this one expires.
+describe("AC4 (issue 101) — the sign-in code step's sentence", () => {
+  it('AC4: it reads "If {email} has an account, a 6-digit code is on its way. It expires in {minutes} minutes.", under the heading', async () => {
+    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
+    const order = [en["signIn.codeTitle"], `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes.`];
+    expect(inOrder(html, order)).toEqual(order);
+  });
+});
+
+// Issue 101, AC2 and AC3: after "Send a new code" the step comes back with `sent` "1" and says a new code is
+// on its way, in a check Notice where the wrong-code notice stands. The words name no email, so they are the
+// same for a member and a stranger. These are the notice's one home; the four pages' tests only hand `sent` on.
+const RESENT = "A new code is on its way.";
+
+describe.each(STEPS)("AC2, AC3 (issue 101) — %s after a resend", (name, Step, [, sentenceKey]) => {
+  const render = async (props: { error?: string; sent?: string } = {}) => {
+    const element = await Step({ pages: PAGES, verify, resend, ...props });
+    return { element, html: renderToStaticMarkup(element) };
+  };
+  const sentence = t(sentenceKey, { email: EMAIL, minutes: 10 });
+
+  it(`AC2: ${name} with sent="1" shows "${RESENT}" after the sentence and above the code field`, async () => {
+    const { html } = await render({ sent: "1" });
+    expect(alertTexts(html)).toEqual([RESENT]);
+    expect(inOrder(html, [sentence, RESENT, en["signIn.codeLabel"]])).toEqual([sentence, RESENT, en["signIn.codeLabel"]]);
+  });
+
+  it(`AC2: ${name}'s notice is the same words whatever the email: it names none`, async () => {
+    request.current.cookies = { ocf_sign_in_email: "nobody@example.com" };
+    expect(alertTexts((await render({ sent: "1" })).html)).toEqual([RESENT]);
+  });
+
+  it(`AC3: ${name}'s resent notice is a check Notice`, async () => {
+    expect(findAll((await render({ sent: "1" })).element, Notice).map((notice) => notice.props.icon)).toEqual(["check"]);
+  });
+
+  it(`AC2: ${name} with sent="1" and error=invalid shows the wrong-code notice alone`, async () => {
+    const { element, html } = await render({ sent: "1", error: "invalid" });
+    expect(alertTexts(html)).toEqual([en["signIn.invalidCode"]]);
+    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["alert"]);
+  });
+
+  it.each(["0", "", "true", "11"])(`AC2: ${name} with sent=%j shows no resent notice`, async (sent) => {
+    expect(alertTexts((await render({ sent })).html)).toEqual([]);
+  });
+
+  it(`AC2: ${name}'s resend form, and not the code form, carries resend=1`, async () => {
+    const [codeForm, resendForm] = findAll((await render()).element, "form");
+    const resendFields = (form: unknown) =>
+      findAll(form as ReactElement, "input").filter((input) => input.props.name === "resend").map((input) => [input.props.type, String(input.props.value)]);
+    expect(resendFields(resendForm)).toEqual([["hidden", "1"]]);
+    expect(resendFields(codeForm)).toEqual([]);
   });
 });
 

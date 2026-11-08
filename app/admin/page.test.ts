@@ -127,7 +127,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
         sortBy: en["admin.members.sortBy"],
         sortLabels: {
           name: en["admin.members.name"],
-          joined: en["admin.members.sortJoined"],
+          joined: en["admin.members.joined"],
           meal: en["admin.members.meal"],
           status: en["admin.members.status"],
         },

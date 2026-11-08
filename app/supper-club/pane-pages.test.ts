@@ -9,14 +9,15 @@ import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { Notice } from "../../components/ui/notice";
 import { setLanguage } from "../language-actions";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, findAll, redirectOf, textsOf } from "../screen-test-helpers";
+import { limitedText } from "../sign-in/shared";
 import { requestPaneAccountCode, requestPaneCode, resendPaneAccountCode, verifyPaneAccountCode, verifyPaneCode } from "./actions";
 import PaneCreateAccountCode from "./create-account/code/page";
 import PaneCreateAccount from "./create-account/page";
@@ -47,15 +48,14 @@ vi.mock("../services", () => ({
   getFarmContactEmail: () => undefined,
 }));
 
-type Params = { limited?: string; error?: string };
+type Params = { limited?: string; error?: string; sent?: string };
 type Page = (props: { searchParams: Promise<Params> }) => Promise<ReactNode>;
 
 const EMAIL = "ada@example.com";
 const EMAIL_COOKIE = "ocf_sign_in_email";
 const RETURN_TO = "ocf_return_to";
 const PICKS = "/supper-club?size=four&menu=vegan";
-const t = createTranslator("en");
-const LIMITED = t("signIn.limited", { minutes: 5 });
+const LIMITED = limitedText("en", 5);
 const EXPIRED = en["signIn.stepExpired"];
 
 const PANES: Array<{ path: string; Pane: Page; actions: unknown[] }> = [
@@ -183,5 +183,18 @@ describe("AC8, AC11 — failures show in the pane: the page's search parameters 
   ])("AC8: %s code step with the email cookie gone redirects to its pane, expired", async (_step, { Pane }, to) => {
     request.current.cookies = {};
     expect(await redirectOf(Pane({ searchParams: Promise.resolve({}) }))).toBe(to);
+  });
+});
+
+// Issue 101, AC2: the notice's words and rules (which `sent` shows it, never beside a wrong code) are
+// app/sign-in/code-step.test.ts's; here, that each pane's code step hands `sent` on.
+describe("AC2 (issue 101) — a resent code shows in the pane", () => {
+  it.each([
+    ["Create Account's", CREATE_CODE],
+    ["sign-in's", SIGN_IN_CODE],
+  ])("AC2: %s code step with sent=1 shows the resent notice, and without it none", async (_step, { Pane }) => {
+    const icons = async (params: Params) => findAll((await render(Pane, params)).element, Notice).map((notice) => notice.props.icon);
+    expect(await icons({ sent: "1" })).toEqual(["check"]);
+    expect(await icons({})).toEqual([]);
   });
 });
