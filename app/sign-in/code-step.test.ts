@@ -1,14 +1,20 @@
 // Issue 77, AC13: every code step renders through one component. `SignInCodeStep` and `AccountCodeStep`
 // are read with a made-up page set, so nothing here leans on the real paths; the four pages' own tests
 // (app/sign-in/code/page.test.ts, app/create-account/code/page.test.ts,
-// app/supper-club/pane-pages.test.ts) hold what each passes in.
+// app/supper-club/pane-pages.test.ts) hold what each passes in. The code field and the buttons — issue 9's
+// AC34, issue 19's AC8 and AC9, issue 22's AC23 to AC25 — are written here, so they are tested here.
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import type { ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator } from "@core/i18n.js";
+import { en, type MessageKey } from "@core/messages/en.js";
+import { Button } from "../../components/ui/button";
+import { Input } from "../../components/ui/input";
 import { emptyRequest } from "../next-headers-fake";
-import { attributesOf, findAll, redirectOf, textsOf } from "../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, inOrder, redirectOf } from "../screen-test-helpers";
 import { AccountCodeStep, SignInCodeStep } from "./code-step";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -32,59 +38,56 @@ vi.mock("../services", () => ({
   getSiteUrl: () => "https://members.example.test",
 }));
 
+const t = createTranslator("en");
 const EMAIL = "ada@example.com";
 const PAGES = { start: "/flow", code: "/flow/code", done: "/done" };
 const verify: (formData: FormData) => Promise<void> = async () => {};
 const resend: (formData: FormData) => Promise<void> = async () => {};
-const INVALID =
-  "That code didn't match, or it has expired. Check it and try again, or ask for a new one. After 5 wrong tries, check your email for a sign-in link.";
 
+/** Each step's own words: heading, sentence, button and, for Create Account, the hint under the form. */
 const STEPS = [
-  [
-    "SignInCodeStep",
-    SignInCodeStep,
-    [
-      "Use a different email",
-      "Enter your code",
-      `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes, and a new one can be sent after that.`,
-      "6-digit code",
-      "Sign in",
-      "Send a new code",
-    ],
-  ],
+  ["SignInCodeStep", SignInCodeStep, ["signIn.codeTitle", "signIn.codeSent", "signIn.submitCode"], []],
   [
     "AccountCodeStep",
     AccountCodeStep,
-    [
-      "Use a different email",
-      "Check your email",
-      `We sent a 6-digit code to ${EMAIL}. Enter it to confirm your email. It expires in 10 minutes.`,
-      "6-digit code",
-      "Confirm email",
-      "No email? Check your spam folder.",
-      "Send a new code",
-    ],
+    ["createAccount.codeTitle", "createAccount.codeSent", "createAccount.confirm"],
+    ["createAccount.spam"],
   ],
-] as const;
+] as const satisfies ReadonlyArray<
+  readonly [string, unknown, readonly [MessageKey, MessageKey, MessageKey], readonly MessageKey[]]
+>;
 
 beforeEach(() => {
   request.current = emptyRequest();
   request.current.cookies = { ocf_sign_in_email: EMAIL };
 });
 
-describe.each(STEPS)("%s", (name, Step, texts) => {
+const buttonLabelled = (element: unknown, label: string): ReactElement<Record<string, unknown>> | undefined =>
+  findAll(element as ReactElement, Button).find((button) => button.props.children === label);
+
+describe.each(STEPS)("%s", (name, Step, [headingKey, sentenceKey, buttonKey], hintKeys) => {
   const render = async (error?: string) => {
     const element = await Step({ pages: PAGES, verify, resend, ...(error === undefined ? {} : { error }) });
     return { element, html: renderToStaticMarkup(element) };
   };
+  const sentence = t(sentenceKey, { email: EMAIL, minutes: 10 });
 
   it(`AC13: ${name} with no email cookie redirects to the flow's start with error=expired`, async () => {
     request.current.cookies = {};
     expect(await redirectOf(Step({ pages: PAGES, verify, resend }))).toBe("/flow?error=expired");
   });
 
-  it(`AC13: ${name} reads, in order, as in Screen`, async () => {
-    expect(textsOf((await render()).html)).toEqual(texts);
+  it(`AC13: ${name} reads back link, heading, sentence, code field, button, any hint, resend — as in Screen`, async () => {
+    const order = [
+      en["signIn.differentEmail"],
+      en[headingKey],
+      sentence,
+      en["signIn.codeLabel"],
+      en[buttonKey],
+      ...hintKeys.map((key) => en[key]),
+      en["signIn.resend"],
+    ];
+    expect(inOrder((await render()).html, order)).toEqual(order);
   });
 
   it(`AC13: ${name}'s "Use a different email" goes to the flow's start`, async () => {
@@ -97,12 +100,88 @@ describe.each(STEPS)("%s", (name, Step, texts) => {
 
   it(`AC13: ${name} with error=invalid shows the notice after the sentence and marks the field invalid`, async () => {
     const { html } = await render("invalid");
-    expect(textsOf(html)).toEqual([...texts.slice(0, 3), INVALID, ...texts.slice(3)]);
+    expect(alertTexts(html)).toEqual([en["signIn.invalidCode"]]);
+    expect(inOrder(html, [sentence, en["signIn.invalidCode"], en["signIn.codeLabel"]])).toEqual([
+      sentence,
+      en["signIn.invalidCode"],
+      en["signIn.codeLabel"],
+    ]);
     expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
   });
 
-  it(`AC13: ${name} with any other error shows no notice`, async () => {
-    expect(textsOf((await render("expired")).html)).toEqual(texts);
+  it.each(["expired", "Invalid", ""])(`AC13: ${name} with error=%j shows no notice and leaves the field valid`, async (error) => {
+    const { html } = await render(error);
+    expect(alertTexts(html)).toEqual([]);
+    expect(attributesOf(html, "input").find((input) => input.name === "code")).not.toHaveProperty("aria-invalid");
+  });
+});
+
+describe("the code field and the buttons (issue 9, AC34; issue 19, AC8 and AC9; issue 22, AC25)", () => {
+  const render = async () => {
+    const element = await SignInCodeStep({ pages: PAGES, verify, resend });
+    return { element, html: renderToStaticMarkup(element) };
+  };
+
+  it("AC34: the code input is labelled and set up for a one-time code", async () => {
+    const { html } = await render();
+    expect(attributesOf(html, "label")).toEqual([expect.objectContaining({ for: "code" })]);
+    const [code] = attributesOf(html, "input");
+    expect(code).toMatchObject({
+      id: "code",
+      name: "code",
+      inputmode: "numeric",
+      autocomplete: "one-time-code",
+      pattern: "[0-9]*",
+      maxlength: "6",
+    });
+    expect(code).toHaveProperty("required");
+    expect(code).toHaveProperty("autofocus");
+    expect(code).not.toHaveProperty("placeholder");
+  });
+
+  it("AC9: the code input is an Input in the code style", async () => {
+    expect(findAll((await render()).element, Input).map((input) => input.props.code)).toEqual([true]);
+  });
+
+  it("AC34: both buttons submit", async () => {
+    expect(attributesOf((await render()).html, "button")).toEqual([
+      expect.objectContaining({ type: "submit" }),
+      expect.objectContaining({ type: "submit" }),
+    ]);
+  });
+
+  it("AC8, AC25: the back link is a quiet Button marked back and flush", async () => {
+    const back = buttonLabelled((await render()).element, en["signIn.differentEmail"]);
+    expect(back?.props).toMatchObject({ kind: "quiet", back: true, flush: true });
+  });
+
+  it("AC8: the submit is a full-width primary Button", async () => {
+    const submit = buttonLabelled((await render()).element, en["signIn.submitCode"]);
+    expect(submit?.props).toMatchObject({ kind: "primary", full: true });
+  });
+
+  it("AC25: the resend is a quiet Button, flush and not full width", async () => {
+    const resendButton = buttonLabelled((await render()).element, en["signIn.resend"]);
+    expect(resendButton?.props).toMatchObject({ kind: "quiet", flush: true });
+    expect(resendButton?.props.full).toBeUndefined();
+  });
+});
+
+describe("the code page's wording (issue 22, AC23 and AC24)", () => {
+  it("AC24: the line under the heading names the email and says a new code can be sent once this one expires", async () => {
+    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
+    const order = [
+      en["signIn.codeTitle"],
+      `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes, and a new one can be sent after that.`,
+    ];
+    expect(inOrder(html, order)).toEqual(order);
+  });
+
+  it("AC23: the wrong-code notice tells the member to check their email after 5 wrong tries", async () => {
+    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend, error: "invalid" }));
+    expect(alertTexts(html)).toEqual([
+      "That code didn't match, or it has expired. Check it and try again, or ask for a new one. After 5 wrong tries, check your email for a sign-in link.",
+    ]);
   });
 });
 
@@ -116,7 +195,6 @@ describe("resendEmail, the one difference in what the resend form carries", () =
 
   it("AC13: AccountCodeStep's resend form carries none: resendAccountCode reads the cookie", async () => {
     const html = renderToStaticMarkup(await AccountCodeStep({ pages: PAGES, verify, resend }));
-    expect(textsOf(html)).toContain("Send a new code");
     expect(attributesOf(html, "input").filter((input) => input.type === "hidden")).toEqual([]);
   });
 });
