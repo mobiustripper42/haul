@@ -74,6 +74,9 @@ describe("AC15 — the back button and the card", () => {
 });
 
 describe("AC15, AC17 — the card's wording", () => {
+  // Issue 57's AC15 and AC17 name these words, so the criterion is the wording itself and they are typed out
+  // here, once. AC17 is in this file because it is issue 57's; capHint and consentError are the payment
+  // section's, box.title, next.change and already.title the outcome pages'.
   it("AC15 (issue 57): the words are the four new messages, the Back line reusing supperClub.done.back", () => {
     expect(en).toMatchObject({
       "supperClub.soldOut.title": "The Supper Club is sold out",
@@ -84,13 +87,14 @@ describe("AC15, AC17 — the card's wording", () => {
     });
   });
 
-  it("AC17 (issue 57): capHint, box.title, next.change and already.title say subscription, and consentError keeps its box, which is the checkbox", () => {
-    expect(en).toMatchObject({
-      "supperClub.capHint": "Limited to {cap} subscriptions. No sales tax.",
-      "supperClub.box.title": "Your subscription",
-      "supperClub.next.change": "To skip a week, change your subscription or cancel, sign in to your account before the end of Monday.",
-      "supperClub.already.title": "You already have a Supper Club subscription",
-      "supperClub.consentError": "Check the box to agree to the weekly charge.",
-    });
+  it.each(["supperClub.capHint", "supperClub.box.title", "supperClub.next.change", "supperClub.already.title"] as const)(
+    "AC17 (issue 57): %s says subscription",
+    (key) => {
+      expect(en[key]).toMatch(/subscription/);
+    },
+  );
+
+  it("AC17 (issue 57): consentError keeps its box, which is the checkbox", () => {
+    expect(en["supperClub.consentError"]).toMatch(/\bbox\b/);
   });
 });

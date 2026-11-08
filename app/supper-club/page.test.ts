@@ -277,9 +277,10 @@ describe("issue 56 — the payment section", () => {
     expect(sectionOf((await render()).element)).toBeUndefined();
   });
 
-  it("AC1: signed in, it is its own form after the pickers' GET form, so Enter on a radio can never pay", async () => {
+  it("AC1: signed in, it stands outside the pickers' GET form, so Enter on a radio can never pay", async () => {
     await signIn();
     const { element } = await render();
+    expect(joinForm(element)).toBeDefined();
     expect(findAll(joinForm(element), PaymentSection)).toEqual([]);
     expect(findAll(element, PaymentSection)).toHaveLength(1);
   });
@@ -309,7 +310,7 @@ describe("issue 56 — the payment section", () => {
     expect(sectionOf(element)?.choices).toEqual({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
   });
 
-  it("AC3: a minute after Monday's cutoff the first pickup it is given is January 10", async () => {
+  it("AC3: at Monday's cutoff (24:00), Cleveland time, the first pickup it is given is January 10", async () => {
     vi.setSystemTime(new Date("2026-12-29T05:00:00.000Z"));
     await signIn();
     expect(sectionOf((await render()).element)?.wordings["5000"]?.pickupLine).toBe(
