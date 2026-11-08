@@ -1,14 +1,15 @@
 // Issue 19, AC6: the one language switcher, `await LanguageSwitcher()` rendered through
-// react-dom/server with `next/headers` faked, and the two places that call it inline.
-import { createElement } from "react";
+// react-dom/server with `next/headers` faked. That the header calls it, and where, is
+// app/site-header.test.ts's.
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { LANGUAGES } from "@core/i18n.js";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { createTranslator, LANGUAGES } from "@core/i18n.js";
+import { en } from "@core/messages/en.js";
 import { Button } from "../components/ui/button";
 import { setLanguage } from "./language-actions";
 import { LanguageSwitcher } from "./language-switcher";
 import { emptyRequest } from "./next-headers-fake";
-import { attributesOf, findAll, screenMarkup } from "./screen-test-helpers";
+import { attributesOf, findAll, textsOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -30,40 +31,40 @@ const render = async () => {
   return { element, html: renderToStaticMarkup(element) };
 };
 
-const classesOf = (attributes: Record<string, string> | undefined): string[] =>
-  (attributes?.class ?? "").split(/\s+/).filter(Boolean);
+const NAMES = Object.values(LANGUAGES).map((language) => language.name);
 
 describe("AC6 — LanguageSwitcher", () => {
-  it("AC6: is a form holding one fieldset: a legend reading language.label, then one button per language, named in itself", async () => {
-    const { html } = await render();
-    expect(screenMarkup(html).trim()).toMatch(
-      new RegExp(
-        "^<form\\b[^>]*>\\s*<fieldset\\b[^>]*>\\s*<legend\\b[^>]*>Language</legend>\\s*" +
-          "<button\\b[^>]*>English</button>\\s*<button\\b[^>]*>Español</button>\\s*</fieldset>\\s*</form>$",
-      ),
-    );
+  it("AC6: is a form holding one fieldset, whose legend reads language.label", async () => {
+    const { element, html } = await render();
+    const [form, ...otherForms] = findAll(element, "form");
+    expect(otherForms).toEqual([]);
+    const [fieldset, ...otherFieldsets] = findAll(form, "fieldset");
+    expect(otherFieldsets).toEqual([]);
+    expect(findAll(fieldset, "legend")).toHaveLength(1);
+    expect(textsOf(html)[0]).toBe(en["language.label"]);
   });
 
-  it("AC6: in Spanish the legend reads Idioma, and the buttons keep their own names", async () => {
+  it("AC6: after the legend come the buttons, one per language, each named in itself", async () => {
+    const { html } = await render();
+    expect(textsOf(html)).toEqual([en["language.label"], ...NAMES]);
+  });
+
+  it("AC6: in Spanish the legend reads the Spanish label, and the buttons keep their own names", async () => {
     request.current.cookies = { lang: "es" };
     const { html } = await render();
-    expect(screenMarkup(html)).toMatch(
-      /<legend\b[^>]*>Idioma<\/legend>\s*<button\b[^>]*>English<\/button>\s*<button\b[^>]*>Español<\/button>/,
-    );
+    expect(textsOf(html)).toEqual([createTranslator("es")("language.label"), ...NAMES]);
   });
 
   it("AC6: the legend is visually hidden with sr-only", async () => {
-    const { html } = await render();
-    const legends = attributesOf(html, "legend");
+    const { element } = await render();
+    const legends = findAll(element, "legend");
     expect(legends).toHaveLength(1);
-    expect(classesOf(legends[0])).toContain("sr-only");
+    expect(String(legends[0]?.props.className).split(/\s+/)).toContain("sr-only");
   });
 
   it("AC6: the form's action is setLanguage", async () => {
     const { element } = await render();
-    const forms = findAll(element, "form");
-    expect(forms).toHaveLength(1);
-    expect(forms[0]?.props.action).toBe(setLanguage);
+    expect(findAll(element, "form").map((form) => form.props.action)).toEqual([setLanguage]);
   });
 
   it('AC6: each button submits name="language" with its LANGUAGES code as value', async () => {
@@ -84,30 +85,5 @@ describe("AC6 — LanguageSwitcher", () => {
       if (button.value === current) expect(button["aria-current"], button.value).toBe("true");
       else expect(button, button.value).not.toHaveProperty("aria-current");
     }
-  });
-});
-
-// The sign-in header must call this component, not carry its own copy: with the module mocked to a
-// marker, the marker is what it renders where the switcher goes. The home page's case went with
-// issue 97, where `/` became a bare redirect.
-describe("AC6 — the sign-in header uses LanguageSwitcher", () => {
-  const marker = () => createElement("div", { id: "switcher-marker" });
-
-  afterEach(() => {
-    vi.doUnmock("./language-switcher");
-    vi.resetModules();
-  });
-
-  async function withMockedSwitcher<T>(load: () => Promise<T>): Promise<T> {
-    vi.resetModules();
-    vi.doMock("./language-switcher", () => ({ LanguageSwitcher: async () => marker() }));
-    return load();
-  }
-
-  it("AC6: the sign-in header renders LanguageSwitcher and no switcher of its own", async () => {
-    const { default: SignInLayout } = await withMockedSwitcher(() => import("./sign-in/layout"));
-    const html = renderToStaticMarkup(await SignInLayout({ children: createElement("main", null) }));
-    expect(html).toMatch(/<header\b[^>]*>[\s\S]*<div id="switcher-marker"><\/div>[\s\S]*<\/header>/);
-    expect(html).not.toMatch(/<fieldset\b|<legend\b/);
   });
 });

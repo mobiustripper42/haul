@@ -1,7 +1,7 @@
 // Issue 59, AC1 and AC8–AC11 at the route: `GET` with `next/headers` faked and the composition root
 // mocked, as app/admin/page.test.ts renders the page. The columns' and cells' own rules are proved on
 // `subscribersCsv` in src/member-export.test.ts; these prove the route gives it what the product and
-// the repository hold.
+// the repository hold. A third option type adding a column is `subscribersCsv`'s (AC9 there), not asked again here.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { parseCsv } from "@core/member-export-test-helpers.js";
@@ -119,18 +119,6 @@ describe("AC9 — the columns come from the product", () => {
   it("AC9: with no active subscription the file is the header row alone", async () => {
     addSupperClub(services.repo);
     expect(parseCsv(await (await get()).text())).toEqual([HEADER]);
-  });
-
-  it("AC9: a third option type on the product adds a column with no code change", async () => {
-    const product = addSupperClub(services.repo, {
-      optionTypes: [SIZES, MENUS, { name: "Which pickup?", position: 3, options: [{ name: "Sunday", priceCents: 0, position: 1 }] }],
-    });
-    await activeSubscriber(services.repo, product, { email: "rosa@example.com", firstName: "Rosa", lastName: "Bennett", phone: "216-555-0187" }, ["2 people", "Vegan", "Sunday"]);
-
-    expect(parseCsv(await (await get()).text())).toEqual([
-      ["Last name", "First name", "Email", "Phone", "How many people?", "Which menu?", "Which pickup?", "Joined"],
-      ["Bennett", "Rosa", "rosa@example.com", "216-555-0187", "2 people", "Vegan", "Sunday", "2026-12-01"],
-    ]);
   });
 
   it("AC9: the columns follow the option types' positions, not their names", async () => {

@@ -1,12 +1,12 @@
 // AC13: `await RootLayout({ children })` rendered through react-dom/server with `next/headers` faked.
-// Issue 97, AC7: the root layout ends every page with the footer.
+// Issue 97, AC7: the root layout ends every page with the footer. SiteFooter's own markup is the footer's
+// tests'; here it is faked, so what is read is the one thing the layout decides: where it goes.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import RootLayout from "./layout";
 import { emptyRequest } from "./next-headers-fake";
-import { normalMarkup, screenMarkup } from "./screen-test-helpers";
-import { SiteFooter } from "./site-footer";
+import { textsOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -18,6 +18,7 @@ vi.mock("next/headers", async () => {
 });
 // Issue 19: `localFont` throws when called outside Next's compiler, so the layout's fonts are mocked.
 vi.mock("./fonts", () => ({ fontVariables: "font-variables" }));
+vi.mock("./site-footer", () => ({ SiteFooter: async () => createElement("footer", null, "the footer") }));
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -53,20 +54,10 @@ describe("AC13 — <html lang> follows the resolved language", () => {
 });
 
 describe("AC7 (issue 97) — every page ends with the footer", () => {
-  beforeEach(() => {
-    vi.stubEnv("FARM_CONTACT_EMAIL", "farm@ohiocityfarm.test");
-  });
-
-  afterEach(() => {
-    vi.unstubAllEnvs();
-  });
-
-  it("AC7: <body> holds the page, then SiteFooter's <footer>, and nothing after it", async () => {
+  it("AC7: <body> holds the page, then the footer, and nothing after it", async () => {
     const markup = renderToStaticMarkup(await RootLayout({ children: createElement("p", null, "child") }));
     const body = /<body\b[^>]*>([\s\S]*)<\/body>/.exec(markup)?.[1];
     if (body === undefined) throw new Error(`no <body> element in: ${markup}`);
-    const footer = renderToStaticMarkup(await SiteFooter());
-    expect(screenMarkup(footer)).toMatch(/^<footer\b[\s\S]*<\/footer>$/);
-    expect(normalMarkup(body)).toBe(normalMarkup(`<p>child</p>${footer}`));
+    expect(textsOf(body)).toEqual(["child", "the footer"]);
   });
 });

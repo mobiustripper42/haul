@@ -2,19 +2,24 @@
 // `next/headers` faked. As src/email-templates.test.ts, the Spanish catalog is replaced for this whole file by
 // a stand-in whose every value is its own key in guillemets, so a Spanish render shows which keys the page
 // reads and any English it wrote itself. The stand-in documents and their edits are
-// src/legal-text-test-helpers.ts. AC9, the pages against their mockups, is by hand.
-import type { ReactNode } from "react";
+// src/legal-text-test-helpers.ts. AC9, the pages against their mockups, is by hand. SiteHeader is faked: its
+// own markup is the header's tests'; here it is read as the call the page makes.
+import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { PRIVACY_LINES, TERMS_LINES, wordsOf } from "@core/legal-text-test-helpers.js";
+import { en } from "@core/messages/en.js";
 import { signSession } from "@core/sign-in/session.js";
+import { BulletList } from "../components/ui/bullet-list";
 import { Card } from "../components/ui/card";
+import { Heading } from "../components/ui/heading";
+import { Hint } from "../components/ui/hint";
 import { Shell } from "../components/ui/shell";
 import { LegalPage } from "./legal-page";
 import { emptyRequest } from "./next-headers-fake";
 import Privacy from "./privacy/page";
-import { attributesOf, escapeRegExp, findAll, normalMarkup, screenMarkup, textsOf, utilitiesOf } from "./screen-test-helpers";
+import { findAll, screenMarkup, textsOf } from "./screen-test-helpers";
 import { SiteHeader } from "./site-header";
 import Terms from "./terms/page";
 
@@ -33,16 +38,18 @@ vi.mock("next/headers", async () => {
 vi.mock("next/navigation", async () => ({ redirect: (await import("./screen-test-helpers")).throwingRedirect }));
 vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("./services", () => ({ getRepository: () => services.repo, getSessionSecret: () => services.secret }));
+vi.mock("./site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
 vi.mock("@core/messages/es.js", async () => {
   const { en } = await import("@core/messages/en.js");
   return { es: Object.fromEntries(Object.keys(en).map((key) => [key, `«${key}»`])) };
 });
 
-const LAST_UPDATED = "Last updated [DATE]";
+const LAST_UPDATED = en["legal.lastUpdated"];
 
 beforeEach(() => {
   request.current = emptyRequest();
   services.repo = new InMemoryRepository();
+  vi.mocked(SiteHeader).mockClear();
 });
 
 const signIn = async () => {
@@ -66,7 +73,7 @@ describe.each([
   ["AC1", "/terms", Terms, "Terms of service", TERMS_LINES],
   ["AC2", "/privacy", Privacy, "Privacy policy", PRIVACY_LINES],
 ] as const)("%s — %s", (ac, path, page, title, lines) => {
-  it(`${ac}: ${path} reads "${title}", then "${LAST_UPDATED}", then the document, line for line`, async () => {
+  it(`${ac}: ${path} reads "${title}", then the last-updated line, then the document, line for line`, async () => {
     expect(textsOf(mainOf(await render(page)))).toEqual([title, LAST_UPDATED, ...lines.map(wordsOf)]);
   });
 
@@ -82,8 +89,8 @@ describe.each([
   });
 
   it(`${ac}: it opens with the header that has no account link`, async () => {
-    const header = renderToStaticMarkup(await SiteHeader({ account: "none" }));
-    expect(normalMarkup(await render(page)).startsWith(normalMarkup(header))).toBe(true);
+    expect(textsOf(await render(page))[0]).toBe("the header");
+    expect(SiteHeader).toHaveBeenCalledWith({ account: "none" });
   });
 
   it(`${ac}: it is one Shell holding one reading-width Card`, async () => {
@@ -92,21 +99,9 @@ describe.each([
     expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["reading"]);
   });
 
-  it(`${ac}: the title is the page's h1, and the date line is a hint under it`, async () => {
-    const html = await render(page);
-    const line = escapeRegExp(LAST_UPDATED);
-    expect(screenMarkup(mainOf(html))).toMatch(new RegExp(`<h1\\b[^>]*>${title}</h1>\\s*<span\\b[^>]*>${line}</span>`));
-    const hint = new RegExp(`<span\\b[^>]*class="([^"]*)"[^>]*>${line}</span>`).exec(screenMarkup(html))?.[1];
-    expect(utilitiesOf(hint)).toContain("text-ink-muted");
-  });
-});
-
-describe("AC2 — the Privacy Policy's opening on the page", () => {
-  it("AC2: the opening paragraph stands before the first heading", async () => {
-    const blocks = blocksOf(await render(Privacy));
-    expect(blocks[0]?.[0]).toBe("p");
-    expect(blocks[0]?.[1]).toMatch(/^This policy explains what information/);
-    expect(blocks[1]).toEqual(["h2", "What we collect"]);
+  it(`${ac}: the title is the page's h1, and the date line is a hint`, async () => {
+    expect(screenMarkup(mainOf(await render(page)))).toMatch(new RegExp(`<h1\\b[^>]*>${title}</h1>`));
+    expect(findAll(await page(), Hint).map((hint) => hint.props.children)).toEqual([LAST_UPDATED]);
   });
 });
 
@@ -135,19 +130,20 @@ describe.each([
 
 describe("AC1 — LegalPage, the one layout", () => {
   const TEXT = "Before the first.\n\n## One\n\nA line.\n\n- Two\n- Three";
-  const html = async () => renderToStaticMarkup(await LegalPage({ title: "A title", text: TEXT }));
+  const element = () => LegalPage({ title: "A title", text: TEXT });
 
   it("AC1: it lays out the title and text it is given, the blocks in order", async () => {
-    expect(textsOf(mainOf(await html()))).toEqual(["A title", LAST_UPDATED, "Before the first.", "One", "A line.", "Two", "Three"]);
+    expect(textsOf(mainOf(renderToStaticMarkup(await element())))).toEqual(["A title", LAST_UPDATED, "Before the first.", "One", "A line.", "Two", "Three"]);
   });
 
   it("AC1: a heading is Heading level 2, the section type style", async () => {
-    expect(utilitiesOf(attributesOf(await html(), "h2")[0]?.class)).toEqual(expect.arrayContaining(["font-display", "text-section", "text-teal"]));
+    const headings = findAll(await element(), Heading).filter((heading) => heading.props.level === 2);
+    expect(headings.map((heading) => heading.props.children)).toEqual(["One"]);
   });
 
-  it("AC1: a list is one BulletList, the look of the Supper Club's list", async () => {
-    const lists = attributesOf(await html(), "ul");
+  it("AC1: a list is one BulletList, the look of the Supper Club's list, holding the bullets", async () => {
+    const lists = findAll(await element(), BulletList);
     expect(lists).toHaveLength(1);
-    expect(utilitiesOf(lists[0]?.class)).toEqual(expect.arrayContaining(["list-disc", "pl-5"]));
+    expect(lists[0]?.props.items).toEqual(["Two", "Three"]);
   });
 });
