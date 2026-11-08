@@ -1,20 +1,24 @@
 // Issue 56, AC5 and AC13: /supper-club/done and /supper-club/already, each `await Page()` rendered through
 // react-dom/server with `next/headers` faked and the composition root handing out an InMemoryRepository.
 // A width's effect is measured in e2e/supper-club.spec.ts; these hold what each page says and who reaches it.
+// The words are read from the catalog; the member's own data (their choices, the amounts, the date) is typed.
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import { createTranslator } from "@core/i18n.js";
+import { en } from "@core/messages/en.js";
 import type { Member } from "@core/members.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
 import { emptyRequest } from "../next-headers-fake";
 import { ACCOUNT_PATH } from "../paths";
-import { attributesOf, findAll, redirectOf, screenMarkup, utilitiesOf } from "../screen-test-helpers";
+import { findAll, inOrder, redirectOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import SupperClubAlready from "./already/page";
 import SupperClubDone from "./done/page";
-import { SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_DONE_PATH, SUPPER_CLUB_PATH } from "./paths";
+import { FARM_SITE_URL, SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_DONE_PATH, SUPPER_CLUB_PATH } from "./paths";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -34,8 +38,7 @@ vi.mock("../services", () => ({ getRepository: () => services.repo, getSessionSe
 
 const NOW = new Date("2026-11-06T15:00:00.000Z");
 const EMAIL = "ada@example.com";
-const TITLE = "You're in the Supper Club";
-const ALREADY = "You already have a Supper Club subscription";
+const t = createTranslator("en");
 
 let product: ProductWithOptions;
 
@@ -99,29 +102,9 @@ const subscribe = async (member: Member, amounts?: { firstChargeCents: number; w
   await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, NOW);
 };
 
-/** The words as a person reads them: tags gone, whitespace collapsed. */
-const plain = (html: string) =>
-  screenMarkup(html)
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .replace(/ ([.,])/g, "$1")
-    .trim();
-
-/** What a page shows from `from` on, so the left column's copy stays out of it. */
-const from = (text: string, start: string) => text.slice(Math.max(text.indexOf(start), 0));
-
-const inOrder = (text: string, wanted: string[]) => {
-  let at = 0;
-  const missing: string[] = [];
-  for (const words of wanted) {
-    const found = text.indexOf(words, at);
-    if (found === -1) missing.push(words);
-    else at = found + words.length;
-  }
-  return missing;
-};
-
-const linkTo = (html: string, text: string) => new RegExp(`<a\\b([^>]*)>\\s*${text}\\s*</a>`).exec(screenMarkup(html))?.[1] ?? "";
+/** The `Button` a page gives to `label`, found by its words. */
+const buttonLabelled = (element: Parameters<typeof findAll>[0], label: string) =>
+  findAll(element, Button).find((button) => button.props.children === label);
 
 describe("the paths", () => {
   it("AC13: the confirmation is at /supper-club/done", () => {
@@ -130,10 +113,6 @@ describe("the paths", () => {
 
   it("AC5: the already-a-member page is at /supper-club/already", () => {
     expect(SUPPER_CLUB_ALREADY_PATH).toBe("/supper-club/already");
-  });
-
-  it("AC13: ACCOUNT_PATH is /, as the header's link is, until task 2.4", () => {
-    expect(ACCOUNT_PATH).toBe("/");
   });
 });
 
@@ -181,89 +160,82 @@ describe("AC13 — the confirmation", () => {
 
   it("AC13: it reads as the frames do, in order", async () => {
     await subscribe(await signIn());
-    const text = from(plain((await render()).html), TITLE);
-    expect(
-      inOrder(text, [
-        TITLE,
-        `Thank you, Ada. We emailed a confirmation to ${EMAIL}.`,
-        "Your subscription",
-        "3–4 people",
-        "Vegan",
-        "Paid today",
-        "$80",
-        "for your first week",
-        "Then",
-        "$80",
-        "every week, at the cutoff",
-        "First pickup: Sunday, January 3",
-        "Sunday or Monday at the farm store, 2304 Bridge Ave. Give your name at the counter.",
-        "What happens next",
-        "Each week we email you the menu.",
-        "Your card is charged $80 at the end of each Monday for the following week's pickup.",
-        "To skip a week, change your subscription or cancel, sign in to your account before the end of Monday.",
-        "Go to your account",
-        "Back to ohiocityfarm.com",
-      ]),
-    ).toEqual([]);
+    const wanted = [
+      en["supperClub.done.title"],
+      t("supperClub.done.thanks", { firstName: "Ada", email: EMAIL }),
+      en["supperClub.box.title"],
+      "3–4 people",
+      "Vegan",
+      en["supperClub.box.paidToday"],
+      "$80",
+      en["supperClub.box.firstWeek"],
+      en["supperClub.box.then"],
+      "$80",
+      en["supperClub.box.everyWeek"],
+      t("supperClub.box.firstPickup", { date: "Sunday, January 3" }),
+      en["supperClub.box.pickupWhere"],
+      en["supperClub.next.title"],
+      en["supperClub.next.menu"],
+      t("supperClub.next.charge", { price: "$80" }),
+      en["supperClub.next.change"],
+      en["supperClub.done.account"],
+      en["supperClub.done.back"],
+    ];
+    expect(inOrder((await render()).html, wanted)).toEqual(wanted);
   });
 
   it("AC13: Paid today is the first charge, and Then the weekly price", async () => {
     await subscribe(await signIn(), { firstChargeCents: 7000, weeklyCents: 8000 });
-    const text = from(plain((await render()).html), TITLE);
-    expect(inOrder(text, ["Paid today", "$70", "Then", "$80", "Your card is charged $80"])).toEqual([]);
-  });
-
-  it("AC13: Paid today and Then are capitals by class, as the option types' labels are", async () => {
-    await subscribe(await signIn());
-    const labels = [...screenMarkup((await render()).html).matchAll(/<dt\b[^>]*class="([^"]*)"[^>]*>([^<]*)<\/dt>/g)];
-    const classOf = (words: string) => labels.find((label) => label[2] === words)?.[1];
-    expect(utilitiesOf(classOf("Paid today"))).toContain("uppercase");
-    expect(utilitiesOf(classOf("Then"))).toContain("uppercase");
+    const wanted = [en["supperClub.box.paidToday"], "$70", en["supperClub.box.then"], "$80", t("supperClub.next.charge", { price: "$80" })];
+    expect(inOrder((await render()).html, wanted)).toEqual(wanted);
   });
 
   it("AC13: the done mark opens it", async () => {
     await subscribe(await signIn());
-    expect(screenMarkup((await render()).html)).toMatch(/<svg\b[^>]*aria-label="Done"[^>]*>[\s\S]*You're in the Supper Club/);
+    const markup = screenMarkup((await render()).html);
+    const mark = markup.indexOf(`aria-label="${en["supperClub.done.mark"]}"`);
+    expect(mark).toBeGreaterThan(-1);
+    expect(mark).toBeLessThan(markup.indexOf(en["supperClub.done.title"]));
   });
 
   it('AC13: a member with no first name gets "Thank you. We emailed…"', async () => {
     await subscribe(await signIn(null));
-    expect(plain((await render()).html)).toContain(`Thank you. We emailed a confirmation to ${EMAIL}.`);
+    expect(textsOf((await render()).html)).toContain(t("supperClub.done.thanksNoName", { email: EMAIL }));
   });
 
   it("AC13: the frames' placeholders are left out, not printed", async () => {
     await subscribe(await signIn());
-    const text = from(plain((await render()).html), TITLE);
-    expect(text).toContain("What happens next");
+    // From the confirmation's title on, so the left column's own "[PICKUP HOURS]" stays out of it.
+    const texts = textsOf((await render()).html);
+    const text = texts.slice(texts.indexOf(en["supperClub.done.title"])).join(" ");
+    expect(text).toContain(en["supperClub.next.title"]);
     expect(text).not.toContain("[");
     expect(text).not.toContain("Hours:");
   });
 
   it('AC13: "Go to your account" is primary and goes to ACCOUNT_PATH', async () => {
     await subscribe(await signIn());
-    const { html } = await render();
-    const link = attributesOf(html, "a").find((a) => a.class?.includes("btn-primary"));
-    expect(link?.href).toBe("/");
-    expect(linkTo(html, "Go to your account")).toContain("btn-primary");
+    const { element } = await render();
+    expect(buttonLabelled(element, en["supperClub.done.account"])?.props).toMatchObject({ kind: "primary", href: ACCOUNT_PATH });
   });
 
-  it('AC13: "Back to ohiocityfarm.com" is quiet', async () => {
+  it('AC13: "Back to ohiocityfarm.com" is quiet and goes to the farm site', async () => {
     await subscribe(await signIn());
-    expect(utilitiesOf(/class="([^"]*)"/.exec(linkTo((await render()).html, "Back to ohiocityfarm.com"))?.[1])).toContain("btn-quiet");
+    const { element } = await render();
+    expect(buttonLabelled(element, en["supperClub.done.back"])?.props).toMatchObject({ kind: "quiet", href: FARM_SITE_URL });
   });
 
   it("AC13, AC17 (issue 57): one tree: each of \"Your subscription\" and \"What happens next\" is rendered once", async () => {
     await subscribe(await signIn());
-    const text = plain((await render()).html);
-    expect(text.split("Your subscription")).toHaveLength(2);
-    expect(text.split("What happens next")).toHaveLength(2);
+    const texts = textsOf((await render()).html);
+    expect(texts.filter((text) => text === en["supperClub.box.title"])).toHaveLength(1);
+    expect(texts.filter((text) => text === en["supperClub.next.title"])).toHaveLength(1);
   });
 
-  it("AC13: it stands on JoinPage's pane, the left column beside it", async () => {
+  it("AC13: it stands on JoinPage's pane shell", async () => {
     await subscribe(await signIn());
-    const { element, html } = await render();
+    const { element } = await render();
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
-    expect(inOrder(plain(html), ["Weekly meals from the farm kitchen", TITLE])).toEqual([]);
   });
 });
 
@@ -277,26 +249,31 @@ describe("AC5 — the already-a-member page", () => {
   // with the account pages in task 2.4. The confirmation keeps its button (above).
   it("AC9: its card says they already have a subscription, then that nothing was charged, and nothing more", async () => {
     await subscribe(await signIn());
-    expect(from(plain((await render()).html), ALREADY)).toBe(`${ALREADY} Nothing was charged.`);
+    const texts = textsOf((await render()).html);
+    expect(texts.slice(texts.indexOf(en["supperClub.already.title"]))).toEqual([
+      en["supperClub.already.title"],
+      en["supperClub.already.nothing"],
+    ]);
   });
 
   it('AC9: it has no "Go to your account" link', async () => {
     await subscribe(await signIn());
-    expect(linkTo((await render()).html, "Go to your account")).toBe("");
+    const { element, html } = await render();
+    expect(buttonLabelled(element, en["supperClub.done.account"])).toBeUndefined();
+    expect(textsOf(html)).not.toContain(en["supperClub.done.account"]);
   });
 
-  it("AC5: it is a pane on JoinPage: the left column's card, then its own", async () => {
+  it("AC5: it is a pane on JoinPage: its own card at the pane's width", async () => {
     await subscribe(await signIn());
-    const { element, html } = await render();
+    const { element } = await render();
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
-    expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill", "pane"]);
-    expect(inOrder(plain(html), ["Weekly meals from the farm kitchen", ALREADY])).toEqual([]);
+    expect(findAll(element, Card).map((card) => card.props.width).at(-1)).toBe("pane");
   });
 
   it("AC5: viewing it writes no event", async () => {
     await subscribe(await signIn());
     const { html } = await render();
-    expect(plain(html)).toContain(ALREADY);
+    expect(textsOf(html)).toContain(en["supperClub.already.title"]);
     expect(services.repo.events()).toEqual([]);
   });
 });

@@ -4,13 +4,15 @@
 // the translator it is handed, and the rest of the sentence falls back to English.
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
+import { en } from "@core/messages/en.js";
 import { paymentWording } from "./payment-wording";
 
 vi.mock("@core/messages/es.js", () => ({
   es: { "supperClub.consentTerms": "«terms»", "supperClub.consentPrivacy": "«privacy»" },
 }));
 
-const SENTENCE = "I agree to a weekly charge of $85.50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
+// AC4's criterion is the sentence itself, so its words are typed here, once; AC5 and AC6 build on it.
+const SENTENCE ="I agree to a weekly charge of $85.50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
 
 const wording = (language: "en" | "es" = "en") =>
   paymentWording(createTranslator(language), { priceCents: 8550, firstPickup: "2027-01-03", language });
@@ -23,22 +25,25 @@ describe("AC4 — the checkbox sentence", () => {
 
 describe("AC5 — what subscriptions.consent_text stores", () => {
   it("AC5: the whole sentence as shown, in plain words, within the panel and pickup line text", () => {
+    const t = createTranslator("en");
     expect(wording().consentText).toBe(
-      "Today, for your first week: $85.50. Then every week, at the cutoff: $85.50. " +
-        "First pickup: Sunday, January 3. After that, your card is charged $85.50 at the end of each Monday for the following week's pickup, until you cancel. " +
+      [
+        `${en["supperClub.todayLabel"]}: $85.50.`,
+        `${en["supperClub.weeklyLabel"]}: $85.50.`,
+        t("supperClub.pickupLine", { date: "Sunday, January 3", price: "$85.50" }),
         SENTENCE,
+      ].join(" "),
     );
   });
 });
 
 describe("AC6 — the sentence in pieces", () => {
-  it("AC6: sentenceParts is the sentence, with Terms and Privacy Policy as links to their pages", () => {
-    expect(wording().sentenceParts).toEqual([
-      "I agree to a weekly charge of $85.50 until I cancel, and to the ",
-      { href: "/terms", text: "Terms" },
-      " and ",
-      { href: "/privacy", text: "Privacy Policy" },
-      ". To cancel, sign in to your account before the end of Monday.",
+  it("AC6: sentenceParts reads as the sentence, with Terms and Privacy Policy as links to their pages", () => {
+    const { sentence, sentenceParts } = wording();
+    expect(sentenceParts.map((part) => (typeof part === "string" ? part : part.text)).join("")).toBe(sentence);
+    expect(sentenceParts.filter((part) => typeof part !== "string")).toEqual([
+      { href: "/terms", text: en["supperClub.consentTerms"] },
+      { href: "/privacy", text: en["supperClub.consentPrivacy"] },
     ]);
   });
 
