@@ -1,16 +1,21 @@
 // Issue 59: what only a browser can show on /admin, on desktop and mobile: typing filters, a search
 // matching nothing, a click on a header, and the download. The rows come from the `subscribers` seed, read
 // back here, so these say nothing about who the seed holds; what search and sort do with a row is
-// proved in src/member-list.test.ts. Controls are found by role and wording, never by class or test id.
+// proved in src/member-list.test.ts. Controls are found by role and the catalog's wording (`en`, and `t` for
+// strings with values), never by class or test id.
 import { readFile } from "node:fs/promises";
 import type { Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
+import { createTranslator } from "../src/i18n.js";
+import { en } from "../src/messages/en.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { compareNames, filterSubscribers, sortSubscribers, subscriberName, type Sort } from "../src/member-list.js";
 import type { Subscriber } from "../src/ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
 import { expect, signIn, test } from "./fixtures";
+
+const t = createTranslator("en");
 
 const LENNY = "lenny@ocf.xx";
 const ERIC = "eric@ocf.xx";
@@ -32,8 +37,9 @@ async function seededSubscribers(): Promise<Subscriber[]> {
   }
 }
 
-const search = (page: Page) => page.getByLabel("Search", { exact: true });
-const header = (page: Page, word: string) => page.getByRole("columnheader", { name: new RegExp(`^${word}`, "i") });
+const search = (page: Page) => page.getByLabel(en["admin.members.search"], { exact: true });
+const COLUMNS = { name: en["admin.members.name"], joined: en["admin.members.joined"], meal: en["admin.members.meal"], status: en["admin.members.status"] } as const;
+const header = (page: Page, column: keyof typeof COLUMNS) => page.getByRole("columnheader", { name: new RegExp(`^${COLUMNS[column].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i") });
 const shownNames = (page: Page) => page.getByRole("table").locator("tbody tr > :first-child");
 const shown = (page: Page, text: string) => page.getByText(text).filter({ visible: true });
 
@@ -101,7 +107,7 @@ test.describe("the members list", () => {
   test('AC7: a search matching nothing shows No members match "{q}"', async ({ page }) => {
     await search(page).pressSequentially("zzzzqq");
 
-    await expect(shown(page, 'No members match "zzzzqq".')).toHaveCount(1);
+    await expect(shown(page, t("admin.members.noMatch", { q: "zzzzqq" }))).toHaveCount(1);
     for (const row of rows) await expect(shown(page, row.email)).toHaveCount(0);
   });
 
@@ -148,7 +154,7 @@ test.describe("the members list", () => {
     await search(page).pressSequentially(rows[0]?.email ?? "");
     await expect(shown(page, rows[1]?.email ?? "")).toHaveCount(0);
 
-    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: "Download spreadsheet" }).click()]);
+    const [download] = await Promise.all([page.waitForEvent("download"), page.getByRole("link", { name: en["admin.members.download"] }).click()]);
 
     expect(download.suggestedFilename()).toMatch(/\.csv$/);
     const lines = (await readFile(await download.path(), "utf8")).trim().split(/\r?\n/);
