@@ -38,6 +38,9 @@ Write nothing. Check the spec against the code and return:
 ### Reuse check
 - <a new thing the spec introduces> — exists at <path:line>
 - <a thing the spec describes in more than one place> — described at <place>, <place>, …; no shared home named
+
+### Removal check
+- <a thing the spec removes or renames> — used by <path:line> (<test name>) | used by no test
 ```
 
 Empty lists are written as `None`. An Interfaces entry that is NOT FOUND and not marked new is
@@ -62,10 +65,19 @@ named home. The test-side form of this finding is a rule the criteria ask to be 
 than one layer — the same boundary at the function, the action and the page. Report it with the
 layer that owns the rule, so the spec can say the others only check that they use it.
 
+**The removal check.** For each thing the spec removes or renames — an export, constant, copy or
+config key, route, page or file, whether Interfaces lists it under Removes or a criterion implies
+it — search every test, fixture, helper, snapshot and test config for a use of it, and list each
+use with its path, line and test name. For a copy key, search for its current wording too, since a
+test may type the text instead of reading the key. A rename removes the old name. A thing no test uses is listed as `used by no test`,
+so the operator can see it was searched. A use the Removes line already lists is not reported
+again. A test that uses a removed thing passes today and fails once the code is gone, and a test is
+locked before that happens — which is why this section is not filtered by what could fail one.
+
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
   other way and fail your test. One the spec already permits, where either choice would pass, is
-  not worth the operator's time. The interface and reuse checks are not filtered.
+  not worth the operator's time. The interface, reuse and removal checks are not filtered.
 - **Not hand checks.** Skip any acceptance criterion marked `(by hand)`. The `Proof` slot cannot
   test it, so there is nothing here to read back. The reuse check is the exception: a `(by hand)`
   criterion still counts as a place that describes something.
@@ -104,6 +116,13 @@ What to report:
    `fails: <column> does not exist (new in this task)`. A changed signature on existing code keeps
    its implementation and gets no stub: the test calls the new shape and fails on what the code does
    today. Never work around either.
+8. Edit the existing tests Interfaces lists under Removes, and no other existing test. Each line
+   says what happens to its test: deleted, or retargeted to what replaces the removed thing. List
+   every such file under Files. A retargeted test keeps its name and needs no criterion id, and
+   item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
+   the stubs. Report it under Against the stubs as `retargeted: <replacement>`. An existing test
+   that uses something removed and is not listed under Removes is a question, not an edit: stop
+   and return it.
 
 **What a test asserts.** A test that breaks when nothing a user or caller can see has changed is
 a cost with no catch. These rules govern what you add on your own judgement. A criterion that
@@ -137,7 +156,7 @@ Return:
 ## Tests — issue #<N>
 
 ### Files
-- <path> — every test, fixture, helper, snapshot or test config file you created or edited (stubs go under Stubs, not here)
+- <path> — every test, fixture, helper, snapshot or test config file you created, edited or deleted (stubs go under Stubs, not here)
 
 ### Stubs
 - <path> — <the signatures stubbed>
@@ -148,7 +167,7 @@ Return:
 | AC1 | <test names> |
 
 ### Against the stubs
-- <test name> — fails: <the assertion that failed> | passes: guards <what>, partner <failing test>
+- <test name> — fails: <the assertion that failed> | passes: guards <what>, partner <failing test> | retargeted: <replacement>
 
 ### Proof output
 <the run against the stubs>
