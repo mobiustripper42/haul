@@ -127,6 +127,7 @@ merged migration is fixed by the next file.
 - **UI components** — every look a screen uses is one component in `components/ui/` (`ls components/ui/*.tsx`); a button's kind is a TypeScript prop, not a class; lint fails a raw `<button>`, `<input>`, `<label>`, `<h1>`–`<h6>` or `<main>`, and a component's class in a class string, outside that folder (DEC-024)
 - **UI classes** — token utilities only, from `app/globals.css`; lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
+- **User-facing text** — src/messages/en.ts
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
 - **Database access** — only `src/adapters/pg-connect.ts` imports `pg`; lint fails anywhere else. It applies TLS to every connection, so a caller gets a pool or client from `createPool` / `createClient` and can't forget it (DEC-001)

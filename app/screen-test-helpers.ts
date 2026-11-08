@@ -28,6 +28,25 @@ export function textsOf(html: string): string[] {
     .filter((text) => text !== "");
 }
 
+/**
+ * The text of each `role="alert"` element, in document order: which notices a screen shows. Each ends at
+ * the first closing tag of its own name, so it assumes an alert holds no element of that name — true of
+ * `Notice`, a `<p>`.
+ */
+export function alertTexts(html: string): string[] {
+  return [...withoutScripts(html).matchAll(/<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/g)].map((match) =>
+    textsOf(match[2] ?? "").join(" "),
+  );
+}
+
+/**
+ * Of `wanted`, the texts the screen shows, in the order it shows them, so a test can say "A comes
+ * before B" without naming everything else on the page: `expect(inOrder(html, [a, b])).toEqual([a, b])`.
+ */
+export function inOrder(html: string, wanted: readonly string[]): string[] {
+  return textsOf(html).filter((text) => wanted.includes(text));
+}
+
 /** The attributes of every `<tag>` in document order, names lowercased, values decoded. */
 export function attributesOf(html: string, tag: string): Array<Record<string, string>> {
   const found: Array<Record<string, string>> = [];
