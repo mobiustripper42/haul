@@ -1,22 +1,33 @@
-// Issue 55, AC1–AC3 and AC14: /supper-club, `await SupperClub(props)` rendered through react-dom/server
-// with `next/headers` faked and the composition root handing out an InMemoryRepository. The left
-// column's copy is AC15's, by hand; these read the pickers and section 3. Issue 77: the page calls
-// JoinPage, which adds the header and its language switch, so the form, legend and button helpers here
-// read the Join card's and leave the switch's out. Issue 56: section 4, the retry state and the redirect
-// of a member who already has a box. A changed pick updating the words is a browser's, in
-// e2e/supper-club.spec.ts; these read what the server renders first.
+// Issue 55, AC1–AC3 and AC14, issue 56 (the payment section's place, the retry state, the redirect of a member
+// who already has a subscription) and issue 57 (the sold-out card's place): /supper-club,
+// `await SupperClub(props)` rendered through react-dom/server with `next/headers` faked and the composition
+// root handing out an InMemoryRepository. This file holds what the page decides and what it passes in: the
+// pickers, the form and its target, which of the Join card, the retry state and the sold-out card shows, and
+// what `PaymentSection` and `SoldOutCard` are given. Their own words are payment-section.test.ts and
+// sold-out-card.test.ts; `OptionPicker`'s radios are components/ui/option-picker.test.ts; the frame around
+// the page is join-page.test.ts; `resolveChoices`'s edge cases are src/choices.test.ts. A changed pick
+// updating the words is a browser's, in e2e/supper-club.spec.ts.
+import type { ComponentProps, ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { en } from "@core/messages/en.js";
+import { createTranslator } from "@core/i18n.js";
 import type { PendingSignupInput } from "@core/ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
-import { emptyRequest } from "../next-headers-fake";
-import { attributesOf, findAll, redirectOf, screenMarkup, textsOf, utilitiesOf } from "../screen-test-helpers";
+import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { Notice } from "../../components/ui/notice";
+import { OptionPicker } from "../../components/ui/option-picker";
+import { PricePanel } from "../../components/ui/price-panel";
 import { Shell } from "../../components/ui/shell";
+import { emptyRequest } from "../next-headers-fake";
+import { findAll, inOrder, redirectOf, textsOf } from "../screen-test-helpers";
+import { retrySupperClubPayment } from "./actions";
 import SupperClub from "./page";
+import { paymentWording } from "./payment-wording";
+import { PaymentSection } from "./payment-section";
+import { SoldOutCard } from "./sold-out-card";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -39,14 +50,8 @@ vi.mock("../services", () => ({
   isProduction: () => process.env.NODE_ENV === "production",
   getFarmContactEmail: () => services.farmEmail,
 }));
-// A plain function renders as a form with no action or method; what Next gives a server action renders
-// them, so a test can read which action a form posts to.
-vi.mock("./actions", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("./actions")>()),
-  retrySupperClubPayment: Object.assign(async () => {}, {
-    $$FORM_ACTION: () => ({ action: "/test/retry", method: "POST", encType: null, name: null, target: null, data: null }),
-  }),
-}));
+
+const t = createTranslator("en");
 
 const SIZE = {
   name: "Size",
@@ -64,21 +69,25 @@ const PREFERENCE = {
     { name: "Vegan", priceCents: 0, position: 2 },
   ],
 };
-const productOf = (optionTypes: ProductInput["optionTypes"]): ProductInput => ({
+const SPICE = { name: "Spice", position: 3, options: [{ name: "Mild", priceCents: 0, position: 1 }] };
+const productOf = (optionTypes: ProductInput["optionTypes"], cap = 50): ProductInput => ({
   name: "Supper Club",
-  cap: 50,
+  cap,
   firstPickupDate: "2027-01-03",
   cutoffWeekday: 1,
   cutoffTime: "24:00:00",
   optionTypes,
 });
 
+// Friday 2026-11-06, 10:00 in Cleveland: before the first cutoff, whenever this suite runs.
+const SIGNUP_DAY = new Date("2026-11-06T15:00:00.000Z");
+
 let product: ProductWithOptions;
 
 /** A fresh repository holding only this product. */
-const stock = (optionTypes: ProductInput["optionTypes"]) => {
+const stock = (optionTypes: ProductInput["optionTypes"], cap = 50) => {
   services.repo = new InMemoryRepository();
-  product = services.repo.addProduct(productOf(optionTypes));
+  product = services.repo.addProduct(productOf(optionTypes, cap));
 };
 
 // An id the product lacks reads as a string that matches nothing, so a test fails on what it asserts.
@@ -86,8 +95,15 @@ const typeId = (type: number) => product.optionTypes[type]?.id ?? "no such optio
 const optionId = (type: number, option: number) => product.optionTypes[type]?.options[option]?.id ?? "no such option";
 
 beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"], now: SIGNUP_DAY });
   request.current = emptyRequest();
+  services.farmEmail = undefined;
   stock([SIZE, PREFERENCE]);
+});
+
+afterEach(() => {
+  vi.useRealTimers();
+  vi.unstubAllEnvs();
 });
 
 const signIn = async (email = "ada@example.com") => {
@@ -98,123 +114,143 @@ const signIn = async (email = "ada@example.com") => {
   return member;
 };
 
-const render = async (query: Record<string, string | string[] | undefined> = {}) =>
-  renderToStaticMarkup(await SupperClub({ searchParams: Promise.resolve(query) }));
+const render = async (query: Record<string, string | string[] | undefined> = {}) => {
+  const element = await SupperClub({ searchParams: Promise.resolve(query) });
+  return { element, html: renderToStaticMarkup(element) };
+};
 
-const legendsOf = (html: string) =>
-  [...screenMarkup(html).matchAll(/<legend\b[^>]*>([^<]*)<\/legend>/g)].map((m) => m[1]).filter((legend) => legend !== "Language");
-const joinForms = (html: string) => attributesOf(html, "form").filter((form) => form.method === "get");
-const joinButtons = (html: string) => attributesOf(html, "button").filter((button) => button.name !== "language");
-const radiosOf = (html: string) => attributesOf(html, "input").filter((input) => input.type === "radio");
-const checkedOf = (html: string) => radiosOf(html).filter((radio) => "checked" in radio).map((radio) => radio.value);
+type SectionProps = ComponentProps<typeof PaymentSection>;
+const sectionOf = (element: ReactNode) => findAll(element, PaymentSection)[0]?.props as unknown as SectionProps | undefined;
+const soldOutCardOf = (element: ReactNode) => findAll(element, SoldOutCard)[0]?.props as unknown as ComponentProps<typeof SoldOutCard> | undefined;
+const pickersOf = (element: ReactNode) => findAll(element, OptionPicker).map((picker) => picker.props as unknown as ComponentProps<typeof OptionPicker>);
+/** The page's own forms, inside the shell: the header's language switch and Sign out are SiteHeader's. */
+const formsOf = (element: ReactNode) => findAll(findAll(element, Shell), "form");
+const joinForm = (element: ReactNode) => formsOf(element).find((form) => form.props.method === "get");
+const noticesOf = (element: ReactNode) => findAll(element, Notice).map((notice) => notice.props.children);
 
-/** The words from the right card on, so the marketing column's copy stays AC15's. */
-const joinCard = (html: string) => {
+/** The words from the Join card's title on, so the left column's copy stays join-page.test.ts's. */
+const inCard = (html: string, wanted: readonly string[]) => {
   const texts = textsOf(html);
-  return texts.slice(texts.indexOf("Join the Supper Club"));
+  return texts.slice(texts.indexOf(t("supperClub.joinTitle"))).filter((text) => wanted.includes(text));
+};
+
+const legend = (n: number, name: string) => t("supperClub.pickerLegend", { n, name });
+const accountLegend = (n: number) => t("supperClub.accountLegend", { n });
+
+/** The rows a member's pending signup leaves: 3–4 person and Vegan, $80 a week. */
+const rowsFor = (memberId: string): PendingSignupInput => ({
+  memberId,
+  productId: product.id,
+  choices: { [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) },
+  firstChargeCents: 8000,
+  weeklyCents: 8000,
+  pickupDate: "2027-01-03",
+  consentText: "I agree.",
+  consentAt: SIGNUP_DAY,
+});
+
+/** A signup that charged and heard nothing: the ledger row pending, the card stored unless `card` is false. */
+const stranded = async (over: { card?: boolean; declined?: boolean } = {}) => {
+  const member = await signIn();
+  const signup = await services.repo.savePendingSignup(rowsFor(member.id));
+  if (over.card !== false) await services.repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+  if (over.declined) await services.repo.recordSignupDecline(signup.ledgerId);
+  return signup;
+};
+
+/** Another member's pending rows with a card on them and the charge unanswered: a held spot. */
+const holdASpot = async (email = "grace@example.com") => {
+  const other = await services.repo.createMember({ email });
+  const row = await services.repo.savePendingSignup(rowsFor(other.id));
+  await services.repo.saveSubscriptionCard(row.subscriptionId, `ccof:${other.id}`);
 };
 
 describe("AC1 — one picker per option type, in stored order", () => {
   it('AC1: each picker\'s legend is "{n}. {option type name}", n counting from 1 in stored order', async () => {
-    expect(legendsOf(await render())).toEqual(["1. Size", "2. Preference"]);
-  });
-
-  it("AC1: order is position, then name", async () => {
-    stock([
-      { name: "Zebra", position: 1, options: [{ name: "One", priceCents: 0, position: 1 }] },
-      { name: "Apple", position: 2, options: [{ name: "One", priceCents: 0, position: 1 }] },
-      { name: "Mango", position: 1, options: [{ name: "One", priceCents: 0, position: 1 }] },
-    ]);
-    expect(legendsOf(await render())).toEqual(["1. Mango", "2. Zebra", "3. Apple"]);
+    const { element } = await render();
+    expect(pickersOf(element).map((picker) => picker.legend)).toEqual([legend(1, "Size"), legend(2, "Preference")]);
   });
 
   it("AC1: an option type added in data adds a picker, with no code change", async () => {
-    stock([SIZE, PREFERENCE, { name: "Spice", position: 3, options: [{ name: "Mild", priceCents: 0, position: 1 }] }]);
-    const html = await render();
-    expect(legendsOf(html)).toEqual(["1. Size", "2. Preference", "3. Spice"]);
-    expect(textsOf(html)).toContain("Mild");
-    expect(attributesOf(html, "fieldset").length).toBeGreaterThanOrEqual(3);
+    stock([SIZE, PREFERENCE, SPICE]);
+    const { element } = await render();
+    expect(pickersOf(element).map((picker) => picker.legend)).toEqual([legend(1, "Size"), legend(2, "Preference"), legend(3, "Spice")]);
+    expect(pickersOf(element)[2]?.options.map((option) => option.label)).toEqual(["Mild"]);
   });
 
-  it('AC1: "Your account" is numbered one past the last type: 3. with two types', async () => {
-    expect(joinCard(await render())).toContain("3. Your account");
+  it.each([
+    ["two option types", [SIZE, PREFERENCE], 3],
+    ["three option types", [SIZE, PREFERENCE, SPICE], 4],
+  ])('AC1: "Your account" is numbered one past the last type: %s', async (_what, types, n) => {
+    stock(types);
+    const { element, html } = await render();
+    expect(findAll(element, "p").map((p) => p.props.children)).toContain(accountLegend(n));
+    expect(inCard(html, [accountLegend(n - 1), accountLegend(n)])).toEqual([accountLegend(n)]);
   });
 
-  it('AC1: "Your account" is numbered one past the last type: 4. with three types', async () => {
-    stock([SIZE, PREFERENCE, { name: "Spice", position: 3, options: [{ name: "Mild", priceCents: 0, position: 1 }] }]);
-    const card = joinCard(await render());
-    expect(card).toContain("4. Your account");
-    expect(card).not.toContain("3. Your account");
+  it("AC1: an option is named for its option type's id, valued with its own id, and priced above $0 with its detail", async () => {
+    const { element } = await render();
+    expect(pickersOf(element).map((picker) => picker.name)).toEqual([typeId(0), typeId(1)]);
+    expect(pickersOf(element)[0]?.options).toEqual([
+      { value: optionId(0, 0), label: "2 person", detail: t("supperClub.price", { price: "$50" }) },
+      { value: optionId(0, 1), label: "3–4 person", detail: t("supperClub.price", { price: "$80" }) },
+    ]);
   });
 
-  it('AC1: an option above $0 shows its name and "{price} a week", in whole dollars when it is whole', async () => {
-    const card = joinCard(await render());
-    expect(card.slice(card.indexOf("2 person"), card.indexOf("2 person") + 2)).toEqual(["2 person", "$50 a week"]);
-    expect(card.slice(card.indexOf("3–4 person"), card.indexOf("3–4 person") + 2)).toEqual(["3–4 person", "$80 a week"]);
-  });
-
-  it("AC1: an option's cents are kept when it is not whole dollars", async () => {
-    stock([{ name: "Size", position: 1, options: [{ name: "Small", priceCents: 1125, position: 1 }] }]);
-    expect(joinCard(await render())).toContain("$11.25 a week");
-  });
-
-  it("AC1: an option priced $0 shows its name and no price", async () => {
-    const card = joinCard(await render());
-    expect(card.slice(card.indexOf("Standard"), card.indexOf("Standard") + 2)).toEqual(["Standard", "Vegan"]);
-    expect(card.join(" ")).not.toContain("$0");
+  it("AC1: an option priced $0 has no detail", async () => {
+    const { element } = await render();
+    expect(pickersOf(element)[1]?.options).toEqual([
+      { value: optionId(1, 0), label: "Standard" },
+      { value: optionId(1, 1), label: "Vegan" },
+    ]);
   });
 });
 
 describe("AC2 — signed out, the pickers and both buttons are one GET form", () => {
   it("AC2: the page holds one form, method get, to /supper-club/continue", async () => {
-    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
-  });
-
-  it("AC2: each option is a radio named for its option type's id, valued with its own id", async () => {
-    expect(radiosOf(await render()).map(({ name, value }) => ({ name, value }))).toEqual([
-      { name: typeId(0), value: optionId(0, 0) },
-      { name: typeId(0), value: optionId(0, 1) },
-      { name: typeId(1), value: optionId(1, 0) },
-      { name: typeId(1), value: optionId(1, 1) },
-    ]);
+    const { element } = await render();
+    expect(formsOf(element).map((form) => [form.props.method, form.props.action])).toEqual([["get", "/supper-club/continue"]]);
   });
 
   it("AC2: the right card reads, in order, its title, the pickers, the help line, section 3 and the two buttons", async () => {
-    expect(joinCard(await render())).toEqual([
-      "Join the Supper Club",
-      "1. Size",
-      "2 person",
-      "$50 a week",
-      "3–4 person",
-      "$80 a week",
-      "2. Preference",
-      "Standard",
-      "Vegan",
-      "You can switch size or menu any week before the cutoff.",
-      "3. Your account",
-      "Sign in or create an account to join.",
-      "Create an account",
-      "Sign in",
+    const order = [
+      t("supperClub.joinTitle"),
+      legend(1, "Size"),
+      legend(2, "Preference"),
+      t("supperClub.switchHelp"),
+      accountLegend(3),
+      t("supperClub.signedOutPrompt"),
+      t("supperClub.createAccount"),
+      t("home.signIn"),
+    ];
+    const { html } = await render();
+    expect(inCard(html, order)).toEqual(order);
+  });
+
+  it("AC2: both buttons are submits named next, valued create-account and sign-in, Create an account primary and Sign in secondary", async () => {
+    const { element } = await render();
+    const buttons = findAll(joinForm(element), Button);
+    expect(buttons.map(({ props }) => [props.children, props.kind, props.type, props.name, props.value])).toEqual([
+      [t("supperClub.createAccount"), "primary", "submit", "next", "create-account"],
+      [t("home.signIn"), "secondary", "submit", "next", "sign-in"],
     ]);
   });
 
-  it('AC2: the buttons are submits named next, valued create-account and sign-in, "Create an account" primary and "Sign in" secondary', async () => {
-    const buttons = joinButtons(await render());
-    expect(buttons.map(({ type, name, value }) => ({ type, name, value }))).toEqual([
-      { type: "submit", name: "next", value: "create-account" },
-      { type: "submit", name: "next", value: "sign-in" },
-    ]);
-    expect(utilitiesOf(buttons[0]?.class)).toContain("btn-primary");
-    expect(utilitiesOf(buttons[1]?.class)).toContain("btn-secondary");
-  });
-
-  it("AC2: the pickers and both buttons sit inside the form", async () => {
-    expect(screenMarkup(await render())).toMatch(/<form\b[\s\S]*type="radio"[\s\S]*Create an account[\s\S]*Sign in<\/button>[\s\S]*<\/form>/);
+  it("AC2: the pickers sit inside the form", async () => {
+    const { element } = await render();
+    expect(findAll(joinForm(element), OptionPicker)).toHaveLength(2);
   });
 
   it("AC2: a return path's choices are picked when the page loads", async () => {
-    const html = await render({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
-    expect(checkedOf(html)).toEqual([optionId(0, 1), optionId(1, 1)]);
+    const { element } = await render({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
+    expect(pickersOf(element).map((picker) => picker.selected)).toEqual([optionId(0, 1), optionId(1, 1)]);
+  });
+});
+
+describe("AC14 — a choice that is missing or not an option", () => {
+  it("AC14: a choice that is not one of the type's options leaves the first picked, and the other type's choice stands", async () => {
+    const { element } = await render({ [typeId(0)]: "not-an-option", [typeId(1)]: optionId(1, 1) });
+    expect(pickersOf(element).map((picker) => picker.selected)).toEqual([optionId(0, 0), optionId(1, 1)]);
   });
 });
 
@@ -224,690 +260,278 @@ describe("AC3 — signed in", () => {
   });
 
   it('AC3: section 3 reads "Signed in as {email}." with its period, then section 4', async () => {
-    const card = joinCard(await render());
-    expect(card.slice(card.indexOf("3. Your account"), card.indexOf("3. Your account") + 3)).toEqual([
-      "3. Your account",
-      "Signed in as ada@example.com.",
-      "4. Payment",
+    const order = [accountLegend(3), t("supperClub.signedInAs", { email: "ada@example.com" }), t("supperClub.paymentLegend", { n: 4 })];
+    const { html } = await render();
+    expect(inCard(html, order)).toEqual(order);
+  });
+
+  it("AC3: the pickers stay, in a GET form to this page", async () => {
+    const { element } = await render();
+    expect(formsOf(element).map((form) => [form.props.method, form.props.action])).toContainEqual(["get", "/supper-club"]);
+    expect(findAll(joinForm(element), OptionPicker)).toHaveLength(2);
+  });
+});
+
+describe("issue 56 — the payment section", () => {
+  it("AC1: a signed-out visitor does not get it", async () => {
+    expect(sectionOf((await render()).element)).toBeUndefined();
+  });
+
+  it("AC1: signed in, it is its own form after the pickers' GET form, so Enter on a radio can never pay", async () => {
+    await signIn();
+    const { element } = await render();
+    expect(findAll(joinForm(element), PaymentSection)).toEqual([]);
+    expect(findAll(element, PaymentSection)).toHaveLength(1);
+  });
+
+  it("AC1: its number is one past Your account's", async () => {
+    stock([SIZE, PREFERENCE, SPICE]);
+    await signIn();
+    expect(sectionOf((await render()).element)?.text.legend).toBe(t("supperClub.paymentLegend", { n: 5 }));
+  });
+
+  it("AC1: the hint names the product's cap", async () => {
+    stock([SIZE, PREFERENCE], 30);
+    await signIn();
+    expect(sectionOf((await render()).element)?.text.capHint).toBe(t("supperClub.capHint", { cap: 30 }));
+  });
+
+  it("AC2: it gets a wording for every price the picks can come to, made by paymentWording", async () => {
+    await signIn();
+    const wordings: SectionProps["wordings"] = sectionOf((await render()).element)?.wordings ?? {};
+    expect(Object.keys(wordings).sort()).toEqual(["5000", "8000"]);
+    expect(wordings["8000"]).toEqual(paymentWording(t, { priceCents: 8000, firstPickup: "2027-01-03", language: "en" }));
+  });
+
+  it("AC2: it gets the picks in the query", async () => {
+    await signIn();
+    const { element } = await render({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
+    expect(sectionOf(element)?.choices).toEqual({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
+  });
+
+  it("AC3: a minute after Monday's cutoff the first pickup it is given is January 10", async () => {
+    vi.setSystemTime(new Date("2026-12-29T05:00:00.000Z"));
+    await signIn();
+    expect(sectionOf((await render()).element)?.wordings["5000"]?.pickupLine).toBe(
+      t("supperClub.pickupLine", { date: "Sunday, January 10", price: "$50" }),
+    );
+  });
+
+  it.each(["consent", "declined", "error"])("AC4, AC9, AC10a: ?payError=%s reaches it", async (payError) => {
+    await signIn();
+    expect(sectionOf((await render({ payError })).element)?.payError).toBe(payError);
+  });
+
+  it.each(["unknown", "soldout"])("AC10: ?payError=%s on the normal form is not passed on: the URL alone shows nothing", async (payError) => {
+    await signIn();
+    expect(sectionOf((await render({ payError })).element)?.payError).toBeUndefined();
+  });
+
+  it.each([
+    ["on the e2e server", "1", "test", true],
+    ["anywhere else", "", "test", false],
+    ["in production, even with E2E set", "1", "production", false],
+  ])("AC1: CardEntry's test field is on %s: %s", async (_where, e2e, nodeEnv, testMode) => {
+    vi.stubEnv("E2E", e2e);
+    vi.stubEnv("NODE_ENV", nodeEnv);
+    await signIn();
+    expect(sectionOf((await render()).element)?.card.testMode).toBe(testMode);
+  });
+});
+
+describe("AC5 — a member who already has a subscription", () => {
+  const paidUp = async (cap = 50) => {
+    stock([SIZE, PREFERENCE], cap);
+    const member = await signIn();
+    const { ledgerId, amountCents } = await services.repo.savePendingSignup(rowsFor(member.id));
+    await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, SIGNUP_DAY);
+  };
+
+  it("AC5: opening the page redirects to /supper-club/already", async () => {
+    await paidUp();
+    expect(await redirectOf(render())).toBe("/supper-club/already");
+  });
+
+  it("AC5: straight after a code, with picks in the query, the picks are discarded", async () => {
+    await paidUp();
+    expect(await redirectOf(render({ [typeId(0)]: optionId(0, 1) }))).toBe("/supper-club/already");
+  });
+
+  it("AC5: viewing writes no event", async () => {
+    await paidUp();
+    await redirectOf(render());
+    expect(services.repo.events()).toEqual([]);
+  });
+
+  it("AC4 (issue 57): at the cap they still go to the already page", async () => {
+    await paidUp(1);
+    expect(await redirectOf(render())).toBe("/supper-club/already");
+  });
+});
+
+describe("AC10 — the retry state", () => {
+  it("AC10: a pending row with a card shows the notice, the box and amount from the row, and Try again, in order, with no query", async () => {
+    await stranded();
+    const { element, html } = await render();
+    const order = [
+      t("supperClub.signedInAs", { email: "ada@example.com" }),
+      t("supperClub.retryNotice"),
+      "3–4 person · Vegan",
+      t("supperClub.todayLabel"),
+      "$80",
+      t("supperClub.tryAgain"),
+    ];
+    expect(inOrder(html, order)).toEqual(order);
+    expect(findAll(element, PricePanel).map((panel) => [panel.props.summary, panel.props.rows])).toEqual([
+      ["3–4 person · Vegan", [{ label: t("supperClub.todayLabel"), value: "$80" }]],
     ]);
   });
 
-  it("AC3: the pickers stay, in the AC2 form", async () => {
-    const html = await render();
-    expect(legendsOf(html)).toEqual(["1. Size", "2. Preference"]);
-    expect(joinForms(html)).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
-  });
-});
-
-describe("AC3 — the form's target follows the session", () => {
-  it('AC3: signed out the form stays method="get" to /supper-club/continue; signed in it is method="get" to /supper-club', async () => {
-    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club/continue" })]);
-    await signIn();
-    expect(joinForms(await render())).toEqual([expect.objectContaining({ method: "get", action: "/supper-club" })]);
-  });
-});
-
-// Friday 2026-11-06, 10:00 in Cleveland: before the first cutoff, whenever this suite runs.
-const SIGNUP_DAY = new Date("2026-11-06T15:00:00.000Z");
-
-describe("issue 56 — the payment section", () => {
-  const TODAY = "Today, for your first week";
-  const WEEKLY = "Then every week, at the cutoff";
-  const DECLINED = "Your card was declined. Nothing was charged. Check the card details or try another card.";
-  const ERROR = "Something went wrong and nothing was charged. Try again.";
-  const CHECK_THE_BOX = "Check the box to agree to the weekly charge.";
-  const RETRY_NOTICE = "We couldn't confirm your payment. Try again and you won't be charged twice.";
-
-  const sentence = (price: string) => `I agree to a weekly charge of ${price} until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.`;
-  const pickupLine = (date: string, price: string) =>
-    `First pickup: ${date}. After that, your card is charged ${price} at the end of each Monday for the following week's pickup, until you cancel.`;
-
-  /** The words from section 4 on, with the links in the checkbox sentence read as part of its one run of text. */
-  const section4 = (html: string) => {
-    const card = joinCard(html.replace(/<\/?a\b[^>]*>/g, ""));
-    return card.slice(Math.max(card.indexOf("4. Payment"), 0));
-  };
-
-  const hidden = (html: string) => attributesOf(html, "input").filter((input) => input.type === "hidden");
-  const checkbox = (html: string) => attributesOf(html, "input").filter((input) => input.type === "checkbox");
-  const formsHolding = (html: string, words: string) => [...screenMarkup(html).matchAll(/<form\b[\s\S]*?<\/form>/g)].map((form) => form[0]).filter((form) => form.includes(words));
-  const buttonNamed = (html: string, name: string) => new RegExp(`<button\\b([^>]*)>\\s*${name}\\s*</button>`).exec(screenMarkup(html))?.[1] ?? "";
-
-  beforeEach(() => {
-    vi.useFakeTimers({ toFake: ["Date"], now: SIGNUP_DAY });
+  it("AC10: it replaces the pickers and the payment section", async () => {
+    await stranded();
+    const { element } = await render();
+    expect(pickersOf(element)).toEqual([]);
+    expect(sectionOf(element)).toBeUndefined();
+    expect(joinForm(element)).toBeUndefined();
   });
 
-  afterEach(() => {
-    vi.useRealTimers();
-    vi.unstubAllEnvs();
+  it('AC10: "Try again" is the primary button of a form posting to retrySupperClubPayment', async () => {
+    await stranded();
+    const { element } = await render();
+    const tryAgain = findAll(element, Button).find((button) => button.props.children === t("supperClub.tryAgain"));
+    expect(tryAgain?.props).toMatchObject({ kind: "primary", type: "submit" });
+    expect(formsOf(element).map((form) => form.props.action)).toEqual([retrySupperClubPayment]);
   });
 
-  describe("AC1 — what a signed-in member sees", () => {
-    beforeEach(async () => {
-      await signIn();
-    });
-
-    it("AC1: section 4 reads, in order, the card field, the price panel, the checkbox, the button and the hint", async () => {
-      expect(section4(await render())).toEqual([
-        "4. Payment",
-        "Card",
-        "Secure card entry by Square. Your card is saved for the weekly charge.",
-        TODAY,
-        "$50",
-        WEEKLY,
-        "$50",
-        pickupLine("Sunday, January 3", "$50"),
-        sentence("$50"),
-        "Join and pay $50",
-        "Limited to 50 subscriptions. No sales tax.",
-      ]);
-    });
-
-    it("AC1: its number is one past Your account's", async () => {
-      stock([SIZE, PREFERENCE, { name: "Spice", position: 3, options: [{ name: "Mild", priceCents: 0, position: 1 }] }]);
-      await signIn();
-      expect(joinCard(await render())).toContain("5. Payment");
-    });
-
-    it("AC1: the hint names the product's cap", async () => {
-      services.repo = new InMemoryRepository();
-      services.repo.addProduct({ ...productOf([SIZE, PREFERENCE]), cap: 30 });
-      await signIn();
-      expect(section4(await render())).toContain("Limited to 30 subscriptions. No sales tax.");
-    });
-
-    it('AC1: the inert "Continue to payment" is gone', async () => {
-      const html = await render();
-      expect(joinCard(html)).toContain("4. Payment");
-      expect(joinCard(html)).not.toContain("Continue to payment");
-    });
-
-    it("AC1: the consent checkbox is named consent, and unticked", async () => {
-      const boxes = checkbox(await render());
-      expect(boxes).toHaveLength(1);
-      expect(boxes[0]?.name).toBe("consent");
-      expect(boxes[0]).not.toHaveProperty("checked");
-    });
-
-    it("AC1: the checkbox's sentence is its label", async () => {
-      expect(screenMarkup(await render())).toMatch(/<label\b[^>]*>(?:(?!<\/label>)[\s\S])*I agree to a weekly charge of \$50/);
-    });
-
-    it("AC1: the card entry is drawn as a field", async () => {
-      expect(screenMarkup(await render())).toMatch(/<\w+\b[^>]*class="(?:[^"]*\s)?field(?:\s[^"]*)?"/);
-    });
-
-    it("AC1: the price panel is the grey one, with no title", async () => {
-      const markup = screenMarkup(await render());
-      expect(markup).toMatch(new RegExp(`class="[^"]*(?<![\\w-])bg-surface-alt(?![\\w-])[^"]*"[^>]*>\\s*(<[^>]*>\\s*)*${TODAY}`));
-    });
-
-    it('AC1: "Join and pay" is the primary button', async () => {
-      expect(utilitiesOf(/class="([^"]*)"/.exec(buttonNamed(await render(), "Join and pay \\$50"))?.[1])).toContain("btn-primary");
-    });
-
-    it("AC1: pay is its own form after the pickers' GET form, so Enter on a radio can never pay", async () => {
-      const html = await render();
-      const [pay, ...others] = formsHolding(html, "Join and pay");
-      expect(others).toEqual([]);
-      expect(pay).toBeDefined();
-      expect(pay).not.toMatch(/<form\b[^>]*method="get"/);
-      expect(pay).not.toContain('type="radio"');
-      const [pickers] = formsHolding(html, 'type="radio"');
-      expect(pickers).not.toContain("Join and pay");
-      const markup = screenMarkup(html);
-      expect(markup.indexOf(pickers ?? "no form")).toBeLessThan(markup.indexOf(pay ?? ""));
-    });
-
-    it("AC1: the pay form carries the picks in hidden fields named by option type id", async () => {
-      const html = await render({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
-      const fields = hidden(formsHolding(html, "Join and pay")[0] ?? "").filter((input) => input.name === typeId(0) || input.name === typeId(1));
-      expect(fields.map(({ name, value }) => ({ name, value }))).toEqual([
-        { name: typeId(0), value: optionId(0, 1) },
-        { name: typeId(1), value: optionId(1, 1) },
-      ]);
-    });
+  it("AC10: it shows when they come back later with other picks in the query: the row decides, not the URL", async () => {
+    await stranded();
+    const { element } = await render({ [typeId(0)]: optionId(0, 0) });
+    expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
+    expect(findAll(element, PricePanel)[0]?.props.rows).toEqual([{ label: t("supperClub.todayLabel"), value: "$80" }]);
   });
 
-  it("AC1: a signed-out visitor does not see it, which guards the signed-in section above", async () => {
-    const html = await render();
-    expect(joinCard(html)).not.toContain("4. Payment");
-    expect(joinCard(html).join(" ")).not.toContain("Join and pay");
-    expect(checkbox(html)).toEqual([]);
+  it('AC10: when "Try again" comes back error, the error notice shows above the price panel, and only then', async () => {
+    await stranded();
+    const { element, html } = await render({ payError: "error" });
+    expect(noticesOf(element)).toEqual([t("supperClub.retryNotice"), t("supperClub.payError")]);
+    const order = [t("supperClub.payError"), "3–4 person · Vegan"];
+    expect(inOrder(html, order)).toEqual(order);
+    expect(noticesOf((await render()).element)).toEqual([t("supperClub.retryNotice")]);
   });
 
-  describe("issue 63 — the checkbox sentence", () => {
-    /** The markup inside the label that holds the checkbox. */
-    const consentLabel = (html: string) =>
-      [...screenMarkup(html).matchAll(/<label\b[^>]*>([\s\S]*?)<\/label>/g)].map((label) => label[1] ?? "").find((label) => label.includes('type="checkbox"')) ?? "";
-
-    beforeEach(async () => {
-      await signIn();
-    });
-
-    it("AC4 (issue 63): the label reads the whole sentence, the links' words in their places", async () => {
-      expect(consentLabel(await render()).replace(/<[^>]*>/g, "")).toBe(sentence("$50"));
-    });
-
-    it('AC6 (issue 63): "Terms" and "Privacy Policy" are the label\'s two links, to /terms and /privacy', async () => {
-      const label = consentLabel(await render());
-      expect([...label.matchAll(/<a\b[^>]*>([^<]*)<\/a>/g)].map((link) => link[1])).toEqual(["Terms", "Privacy Policy"]);
-      expect(attributesOf(label, "a").map((link) => link.href)).toEqual(["/terms", "/privacy"]);
-    });
-
-    it("AC6 (issue 63): each opens in a new tab", async () => {
-      for (const link of attributesOf(consentLabel(await render()), "a")) {
-        expect(link).toMatchObject({ target: "_blank", rel: "noopener noreferrer" });
-      }
-      expect(attributesOf(consentLabel(await render()), "a")).toHaveLength(2);
-    });
-
-    it("AC6 (issue 63): each reads as a link: underlined and teal", async () => {
-      const links = attributesOf(consentLabel(await render()), "a");
-      expect(links).toHaveLength(2);
-      for (const link of links) expect(utilitiesOf(link.class)).toEqual(expect.arrayContaining(["underline", "text-teal"]));
-    });
-
-    it("AC6 (issue 63): the links follow the pick's price in the sentence around them", async () => {
-      const label = consentLabel(await render({ [typeId(0)]: optionId(0, 1) }));
-      expect(label.replace(/<[^>]*>/g, "")).toBe(sentence("$80"));
-      expect(attributesOf(label, "a")).toHaveLength(2);
-    });
-  });
-
-  describe("AC2 — the price follows the pick", () => {
-    it("AC2: the panel, the sentence and the button all carry the sum of the picks in the query", async () => {
-      await signIn();
-      expect(section4(await render({ [typeId(0)]: optionId(0, 1) }))).toEqual(expect.arrayContaining([pickupLine("Sunday, January 3", "$80"), sentence("$80"), "Join and pay $80"]));
-    });
-
-    it("AC2: a price with cents keeps them", async () => {
-      stock([{ name: "Size", position: 1, options: [{ name: "Small", priceCents: 1125, position: 1 }] }]);
-      await signIn();
-      expect(section4(await render())).toEqual(expect.arrayContaining([sentence("$11.25"), "Join and pay $11.25"]));
-    });
-  });
-
-  describe("AC3 — the first pickup on the page", () => {
-    it("AC3: at 23:59 on Monday 2026-12-28, Cleveland time, the panel says January 3", async () => {
-      vi.setSystemTime(new Date("2026-12-29T04:59:00.000Z"));
-      await signIn();
-      expect(section4(await render())).toContain(pickupLine("Sunday, January 3", "$50"));
-    });
-
-    it("AC3: a minute later it says January 10", async () => {
-      vi.setSystemTime(new Date("2026-12-29T05:00:00.000Z"));
-      await signIn();
-      expect(section4(await render())).toContain(pickupLine("Sunday, January 10", "$50"));
-    });
-  });
-
-  describe("AC4, AC9, AC10a — what a failed pay shows", () => {
-    beforeEach(async () => {
-      await signIn();
-    });
-
-    it("AC4: ?payError=consent shows the field error after the checkbox, before the button", async () => {
-      const words = section4(await render({ payError: "consent" }));
-      expect(words.indexOf(CHECK_THE_BOX)).toBeGreaterThan(words.indexOf(sentence("$50")));
-      expect(words.indexOf(CHECK_THE_BOX)).toBeLessThan(words.indexOf("Join and pay $50"));
-      expect(words.indexOf(sentence("$50"))).toBeGreaterThan(-1);
-    });
-
-    it("AC9: ?payError=declined shows the notice above the button, and the picks stay", async () => {
-      const html = await render({ payError: "declined", [typeId(0)]: optionId(0, 1) });
-      const words = section4(html);
-      expect(words.indexOf(DECLINED)).toBeGreaterThan(words.indexOf(sentence("$80")));
-      expect(words.indexOf(DECLINED)).toBeLessThan(words.indexOf("Join and pay $80"));
-      expect(checkedOf(html)).toEqual([optionId(0, 1), optionId(1, 0)]);
-    });
-
-    it("AC9: the notice has the alert icon", async () => {
-      const html = await render({ payError: "declined" });
-      expect(attributesOf(html, "p").find((p) => p.role === "alert")?.class).toContain("notice-alert");
-    });
-
-    it("AC10a: ?payError=error shows its notice above the button, on the normal form", async () => {
-      const words = section4(await render({ payError: "error" }));
-      expect(words.indexOf(ERROR)).toBeGreaterThan(words.indexOf(sentence("$50")));
-      expect(words.indexOf(ERROR)).toBeLessThan(words.indexOf("Join and pay $50"));
-    });
-
-    it("AC4: with no payError it shows none of them, which guards the three above", async () => {
-      const words = section4(await render());
-      expect(words).toContain("4. Payment");
-      for (const notice of [CHECK_THE_BOX, DECLINED, ERROR]) expect(words).not.toContain(notice);
-    });
-  });
-
-  describe("AC5 — a member who already has a box", () => {
-    const paidUp = async () => {
-      const member = await signIn();
-      const [size, menu] = product.optionTypes;
-      const { ledgerId, amountCents } = await services.repo.savePendingSignup({
-        memberId: member.id,
-        productId: product.id,
-        choices: { [size?.id ?? ""]: size?.options[0]?.id ?? "", [menu?.id ?? ""]: menu?.options[0]?.id ?? "" },
-        firstChargeCents: 5000,
-        weeklyCents: 5000,
-        pickupDate: "2027-01-03",
-        consentText: "I agree.",
-        consentAt: SIGNUP_DAY,
-      });
-      await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, SIGNUP_DAY);
-    };
-
-    it("AC5: opening the page redirects to /supper-club/already", async () => {
-      await paidUp();
-      expect(await redirectOf(SupperClub({ searchParams: Promise.resolve({}) }))).toBe("/supper-club/already");
-    });
-
-    it("AC5: straight after a code, with picks in the query, the picks are discarded", async () => {
-      await paidUp();
-      const query = { [typeId(0)]: optionId(0, 1) };
-      expect(await redirectOf(SupperClub({ searchParams: Promise.resolve(query) }))).toBe("/supper-club/already");
-    });
-
-    it("AC5: viewing writes no event", async () => {
-      await paidUp();
-      expect(await redirectOf(SupperClub({ searchParams: Promise.resolve({}) }))).toBe("/supper-club/already");
-      expect(services.repo.events()).toEqual([]);
-    });
-  });
-
-  describe("AC10 — the retry state", () => {
-    /** A signup that charged and heard nothing: the ledger row pending, the card stored. */
-    const stranded = async (over: { card?: boolean; declined?: boolean } = {}) => {
-      const member = await signIn();
-      const choices = { [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) };
-      const signup = await services.repo.savePendingSignup({
-        memberId: member.id,
-        productId: product.id,
-        choices,
-        firstChargeCents: 8000,
-        weeklyCents: 8000,
-        pickupDate: "2027-01-03",
-        consentText: "I agree.",
-        consentAt: SIGNUP_DAY,
-      });
-      if (over.card !== false) await services.repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
-      if (over.declined) await services.repo.recordSignupDecline(signup.ledgerId);
-    };
-
-    /** The words after "Signed in as…": the part the retry state replaces. */
-    const afterAccount = (html: string) => {
-      const words = textsOf(html);
-      return words.slice(words.indexOf("Signed in as ada@example.com.") + 1);
-    };
-
-    it("AC10: a pending row with a card shows the notice, the box and amount from the row, and Try again, in order, with no query", async () => {
-      await stranded();
-      const words = afterAccount(await render());
-      expect(words[0]).toBe(RETRY_NOTICE);
-      const joined = words.join(" ");
-      expect(joined.indexOf("3–4 person")).toBeGreaterThan(-1);
-      expect(joined.indexOf("Vegan")).toBeGreaterThan(-1);
-      expect(words.indexOf(TODAY)).toBeGreaterThan(0);
-      expect(words[words.indexOf(TODAY) + 1]).toBe("$80");
-      expect(words.at(-1)).toBe("Try again");
-    });
-
-    it("AC10: it replaces the pickers and the payment section: no card form, picks or checkbox", async () => {
-      await stranded();
-      const html = await render();
-      expect(textsOf(html)).toContain(RETRY_NOTICE);
-      expect(radiosOf(html)).toEqual([]);
-      expect(checkbox(html)).toEqual([]);
-      expect(textsOf(html)).not.toContain("4. Payment");
-      expect(textsOf(html)).not.toContain("Card");
-      expect(textsOf(html).join(" ")).not.toContain("Join and pay");
-    });
-
-    it('AC10: when "Try again" comes back error, the error notice shows above the price panel, and only then', async () => {
-      await stranded();
-      const html = await render({ payError: "error" });
-      const words = afterAccount(html);
-      expect(words).toContain(ERROR);
-      expect(words.indexOf(ERROR)).toBeLessThan(words.findIndex((word) => word.includes("3–4 person")));
-      expect(attributesOf(html, "p").filter((p) => p.role === "alert" && p.class?.includes("notice-alert"))).toHaveLength(2);
-      expect(afterAccount(await render())).not.toContain(ERROR);
-    });
-
-    it("AC10: it shows when they come back later with other picks in the query: the row decides, not the URL", async () => {
-      await stranded();
-      const words = afterAccount(await render({ [typeId(0)]: optionId(0, 0) }));
-      expect(words[0]).toBe(RETRY_NOTICE);
-      expect(words[words.indexOf(TODAY) + 1]).toBe("$80");
-    });
-
-    it('AC10: "Try again" is the primary button of a form posting to retrySupperClubPayment', async () => {
-      await stranded();
-      const html = await render();
-      expect(utilitiesOf(/class="([^"]*)"/.exec(buttonNamed(html, "Try again"))?.[1])).toContain("btn-primary");
-      const [form] = formsHolding(html, "Try again");
-      expect(attributesOf(form ?? "", "form")[0]).toMatchObject({ action: "/test/retry", method: "POST" });
-    });
-
-    it("AC10: ?payError=unknown with no pending row is the normal form: the URL alone shows nothing", async () => {
-      await signIn();
-      const words = section4(await render({ payError: "unknown" }));
-      expect(words).toContain("4. Payment");
-      expect(words).not.toContain(RETRY_NOTICE);
-    });
-
-    it("AC10: a pending row with no card is the normal form, so a failed saveCard never shows the retry state", async () => {
-      await stranded({ card: false });
-      const words = textsOf(await render());
-      expect(words).toContain("4. Payment");
-      expect(words).not.toContain(RETRY_NOTICE);
-    });
-
-    it("AC10: a declined row is the normal form, even with its card still stored", async () => {
-      await stranded({ declined: true });
-      const words = textsOf(await render());
-      expect(words).toContain("4. Payment");
-      expect(words).not.toContain(RETRY_NOTICE);
-    });
-  });
-
-  describe("AC1 — CardEntry's test field, for e2e", () => {
-    const textInputs = (html: string) => attributesOf(html, "input").filter((input) => input.type === "text" || input.type === undefined);
-
-    it('AC1: on the e2e server it renders a text input named "Test card"', async () => {
-      vi.stubEnv("E2E", "1");
-      await signIn();
-      const html = await render();
-      expect(textInputs(html)).toHaveLength(1);
-      expect(html).toContain("Test card");
-    });
-
-    it("AC1: anywhere else it does not, which guards the e2e field above", async () => {
-      vi.stubEnv("E2E", "");
-      await signIn();
-      const html = await render();
-      expect(joinCard(html)).toContain("4. Payment");
-      expect(html).not.toContain("Test card");
-    });
-
-    it("AC1: in production it does not, even with E2E set", async () => {
-      vi.stubEnv("E2E", "1");
-      vi.stubEnv("NODE_ENV", "production");
-      await signIn();
-      const html = await render();
-      expect(joinCard(html)).toContain("4. Payment");
-      expect(html).not.toContain("Test card");
-    });
+  it.each([
+    ["?payError=unknown with no pending row", async () => signIn(), { payError: "unknown" }],
+    ["a pending row with no card, so a failed saveCard never shows it", async () => stranded({ card: false }), {}],
+    ["a declined row, even with its card still stored", async () => stranded({ declined: true }), {}],
+  ])("AC10: %s is the normal form", async (_what, setUp, query) => {
+    await setUp();
+    const { element } = await render(query);
+    expect(sectionOf(element)).toBeDefined();
+    expect(noticesOf(element)).toEqual([]);
   });
 });
 
 describe("issue 57 — the sold-out card", () => {
-  const NOTICE = "The Supper Club sold out before your payment went through. Nothing was charged.";
-  const TITLE = "The Supper Club is sold out";
-  const BODY = "All the subscriptions are taken right now. A subscription will open when a member cancels, so check back.";
-  const BACK = "Back to ohiocityfarm.com";
-  const FARM_EMAIL = "farm@ohiocityfarm.com";
-  const QUESTIONS = `Questions? Email the farm at ${FARM_EMAIL}.`;
-  const JOIN_TITLE = "Join the Supper Club";
-  const TRY_AGAIN = "Try again";
-  const RETRY_NOTICE = "We couldn't confirm your payment. Try again and you won't be charged twice.";
-  const DAY = new Date("2026-11-06T15:00:00.000Z");
-
-  /** A fresh repository holding only this product, at `cap`. */
-  const stockAt = (cap: number) => {
-    services.repo = new InMemoryRepository();
-    product = services.repo.addProduct({ ...productOf([SIZE, PREFERENCE]), cap });
-  };
-
-  const rowsFor = (memberId: string): PendingSignupInput => ({
-    memberId,
-    productId: product.id,
-    choices: { [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 0) },
-    firstChargeCents: 8000,
-    weeklyCents: 8000,
-    pickupDate: "2027-01-03",
-    consentText: "I agree.",
-    consentAt: DAY,
-  });
-
-  /** A member's rows with a card on them and the charge unanswered: a held spot, and for that member the retry state. */
-  const holdASpot = async (memberId: string) => {
-    const row = await services.repo.savePendingSignup(rowsFor(memberId));
-    await services.repo.saveSubscriptionCard(row.subscriptionId, `ccof:${memberId}`);
-    return row;
-  };
-
-  /** The Supper Club at a cap of one, with another member holding that spot. */
   const soldOut = async () => {
-    stockAt(1);
-    await holdASpot((await services.repo.createMember({ email: "grace@example.com" })).id);
+    stock([SIZE, PREFERENCE], 1);
+    await holdASpot();
   };
-
-  /** The sold-out card's words, the notice with them when it shows; nothing when the card does not. */
-  const cardWords = (html: string) => {
-    const words = textsOf(html);
-    const title = words.indexOf(TITLE);
-    if (title === -1) return [];
-    return words.slice(words[title - 1] === NOTICE ? title - 1 : title);
-  };
-
-  beforeEach(() => {
-    services.farmEmail = undefined;
-  });
 
   describe("AC3 — at the cap the card stands in place of the form", () => {
-    it("AC3 (issue 57): a visitor sees the card, and no form, picker or Join card", async () => {
+    it("AC3: a visitor sees the card, and no form, picker or Join card", async () => {
       await soldOut();
-      const html = await render();
-      expect(cardWords(html)).toEqual([TITLE, BODY, BACK]);
-      expect(joinForms(html)).toEqual([]);
-      expect(radiosOf(html)).toEqual([]);
-      expect(textsOf(html)).not.toContain(JOIN_TITLE);
+      const { element, html } = await render();
+      expect(findAll(element, SoldOutCard)).toHaveLength(1);
+      expect(pickersOf(element)).toEqual([]);
+      expect(formsOf(element)).toEqual([]);
+      expect(textsOf(html)).not.toContain(t("supperClub.joinTitle"));
     });
 
-    it("AC3 (issue 57): a signed-in member who holds no spot sees the card, and no payment section", async () => {
+    it("AC3: a signed-in member who holds no spot sees the card, and no payment section", async () => {
       await soldOut();
       await signIn();
-      const html = await render();
-      expect(cardWords(html)).toEqual([TITLE, BODY, BACK]);
-      expect(textsOf(html)).not.toContain(JOIN_TITLE);
-      expect(textsOf(html).join(" ")).not.toContain("Join and pay");
+      const { element } = await render();
+      expect(findAll(element, SoldOutCard)).toHaveLength(1);
+      expect(sectionOf(element)).toBeUndefined();
     });
 
     it.each([
       ["with no card", false],
       ["declined", true],
-    ])("AC3 (issue 57): a member whose own pending row is %s holds no spot, and sees the card", async (_what, declined) => {
+    ])("AC3: a member whose own pending row is %s holds no spot, and sees the card", async (_what, declined) => {
       await soldOut();
       const member = await signIn();
       const row = await services.repo.savePendingSignup(rowsFor(member.id));
       if (declined) await services.repo.recordSignupDecline(row.ledgerId);
-      expect(cardWords(await render())).toEqual([TITLE, BODY, BACK]);
+      expect(findAll((await render()).element, SoldOutCard)).toHaveLength(1);
     });
 
-    it("AC3 (issue 57): the card is a Card that fills the right column, on the page's shell, the farm's copy before it", async () => {
-      await soldOut();
-      const element = await SupperClub({ searchParams: Promise.resolve({}) });
-      const html = renderToStaticMarkup(element);
-      expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
-      expect(screenMarkup(html)).toMatch(new RegExp(`<section class="card-fill">(?:(?!</section>)[\\s\\S])*${TITLE}`));
-      const words = textsOf(html);
-      expect(words.indexOf(TITLE)).toBeGreaterThan(words.indexOf("Weekly meals from the farm kitchen"));
-    });
-
-    it("AC3 (issue 57): the header's Sign in stays, so a member with a stranded payment can reach Try again", async () => {
-      await soldOut();
-      const html = await render();
-      expect(cardWords(html)).toContain(TITLE);
-      expect(screenMarkup(html)).toMatch(/<header\b[\s\S]*<a\b[^>]*href="\/supper-club\/sign-in"[^>]*>Sign in<\/a>[\s\S]*<\/header>/);
-    });
-
-    it("AC3 (issue 57): one spot short of the cap the form stands, which guards the card above", async () => {
-      stockAt(2);
-      await holdASpot((await services.repo.createMember({ email: "grace@example.com" })).id);
-      const html = await render();
-      expect(textsOf(html)).toContain(JOIN_TITLE);
-      expect(cardWords(html)).toEqual([]);
+    it("AC3: one spot short of the cap the form stands, which the card replaces", async () => {
+      stock([SIZE, PREFERENCE], 2);
+      await holdASpot();
+      const { element } = await render();
+      expect(findAll(element, SoldOutCard)).toEqual([]);
+      expect(pickersOf(element)).toHaveLength(2);
     });
   });
 
   describe("AC4 — a member the cap does not stop", () => {
-    it("AC4 (issue 57): a member with an active subscription still goes to the already page at the cap", async () => {
-      stockAt(1);
-      const member = await signIn();
-      const { ledgerId, amountCents } = await services.repo.savePendingSignup(rowsFor(member.id));
-      await services.repo.confirmSignupRows(ledgerId, "PAYMENT_1", amountCents, DAY);
-      expect(await redirectOf(SupperClub({ searchParams: Promise.resolve({}) }))).toBe("/supper-club/already");
-    });
-
-    it('AC4 (issue 57): a member with a stranded payment still sees "Try again" at the cap, and no sold-out card', async () => {
-      stockAt(1);
-      await holdASpot((await signIn()).id);
-      const html = await render();
-      expect(textsOf(html)).toEqual(expect.arrayContaining([RETRY_NOTICE, TRY_AGAIN]));
-      expect(cardWords(html)).toEqual([]);
+    it('AC4: a member with a stranded payment still sees "Try again" at the cap, and no sold-out card', async () => {
+      stock([SIZE, PREFERENCE], 1);
+      await stranded();
+      const { element, html } = await render();
+      expect(textsOf(html)).toEqual(expect.arrayContaining([t("supperClub.retryNotice"), t("supperClub.tryAgain")]));
+      expect(findAll(element, SoldOutCard)).toEqual([]);
     });
   });
 
   describe("AC5 — the state comes from the count, never the URL", () => {
-    it("AC5 (issue 57): payError=soldout with spots open is the normal form for a visitor, with no notice", async () => {
-      const html = await render({ payError: "soldout" });
-      expect(textsOf(html)).toContain(JOIN_TITLE);
-      expect(textsOf(html)).not.toContain(NOTICE);
-      expect(cardWords(html)).toEqual([]);
+    it("AC5: payError=soldout with spots open is the normal form for a visitor, with no notice", async () => {
+      const { element } = await render({ payError: "soldout" });
+      expect(findAll(element, SoldOutCard)).toEqual([]);
+      expect(pickersOf(element)).toHaveLength(2);
+      expect(noticesOf(element)).toEqual([]);
     });
 
-    it("AC5 (issue 57): payError=soldout with spots open is the normal form for a member, with no notice", async () => {
-      await signIn();
-      const words = textsOf(await render({ payError: "soldout" }));
-      expect(words).toContain("4. Payment");
-      expect(words).not.toContain(NOTICE);
-      expect(words).not.toContain(TITLE);
-    });
-
-    it('AC5 (issue 57): payError=soldout on a stranded payment is "Try again", with no notice', async () => {
-      stockAt(1);
-      await holdASpot((await signIn()).id);
-      const words = textsOf(await render({ payError: "soldout" }));
-      expect(words).toContain(TRY_AGAIN);
-      expect(words).not.toContain(NOTICE);
+    it('AC5: payError=soldout on a stranded payment is "Try again", with no sold-out card', async () => {
+      stock([SIZE, PREFERENCE], 1);
+      await stranded();
+      const { element } = await render({ payError: "soldout" });
+      expect(findAll(element, SoldOutCard)).toEqual([]);
+      expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
     });
   });
 
-  describe("AC9, AC15 — the notice", () => {
-    it("AC9, AC15 (issue 57): payError=soldout at the cap puts the notice first on the card, with the alert icon", async () => {
+  describe("AC9, AC15, AC16 — what the card is given", () => {
+    it("AC9: payError=soldout at the cap gives the card its notice", async () => {
       await soldOut();
-      await signIn();
-      const html = await render({ payError: "soldout" });
-      expect(cardWords(html)).toEqual([NOTICE, TITLE, BODY, BACK]);
-      expect(attributesOf(html, "p").find((p) => p.role === "alert")?.class).toContain("notice-alert");
+      expect(soldOutCardOf((await render({ payError: "soldout" })).element)?.notice).toBe(true);
     });
 
-    it("AC9, AC15 (issue 57): the notice shows on PAY_ERROR_SOLD_OUT's value alone: another payError shows the card without it", async () => {
+    it("AC9: the notice shows on payError=soldout alone: another payError gives the card none", async () => {
       await soldOut();
-      expect(cardWords(await render({ payError: "declined" }))).toEqual([TITLE, BODY, BACK]);
-    });
-  });
-
-  describe("AC15, AC16 — the card's words and looks", () => {
-    it("AC15 (issue 57): the words are the four new messages, the Back line reusing supperClub.done.back", () => {
-      expect(en).toMatchObject({
-        "supperClub.soldOut.title": TITLE,
-        "supperClub.soldOut.body": BODY,
-        "supperClub.soldOut.contact": "Questions? Email the farm at {email}.",
-        "supperClub.soldOut.notice": NOTICE,
-        "supperClub.done.back": BACK,
-      });
+      expect(soldOutCardOf((await render({ payError: "declined" })).element)?.notice).toBe(false);
     });
 
-    it("AC15 (issue 57): the title has the already page's look", async () => {
+    it("AC16: the farm's email, when set, is what the card is given; unset it is given none", async () => {
       await soldOut();
-      const classes = new RegExp(`<p\\b[^>]*class="([^"]*)"[^>]*>${TITLE}</p>`).exec(screenMarkup(await render()))?.[1];
-      expect(utilitiesOf(classes)).toEqual(expect.arrayContaining(["font-display", "text-heading", "text-teal"]));
-    });
-
-    it('AC15 (issue 57): "Back to ohiocityfarm.com" is a secondary button to the farm\'s site', async () => {
-      await soldOut();
-      const link = attributesOf(await render(), "a").find((a) => a.href === "https://ohiocityfarm.com");
-      expect(utilitiesOf(link?.class)).toContain("btn-secondary");
-    });
-
-    it('AC16 (issue 57): with an email set, the "Questions?" line stands between the paragraph and the button, as a hint', async () => {
-      await soldOut();
-      services.farmEmail = FARM_EMAIL;
-      const html = await render();
-      expect(cardWords(html)).toEqual([TITLE, BODY, QUESTIONS, BACK]);
-      expect(utilitiesOf(new RegExp(`<span\\b[^>]*class="([^"]*)"[^>]*>${QUESTIONS.replace("?", "\\?")}</span>`).exec(screenMarkup(html))?.[1])).toContain("text-ink-muted");
-    });
-
-    it("AC16 (issue 57): with the notice and an email, all five read in order", async () => {
-      await soldOut();
-      services.farmEmail = FARM_EMAIL;
-      expect(cardWords(await render({ payError: "soldout" }))).toEqual([NOTICE, TITLE, BODY, QUESTIONS, BACK]);
-    });
-  });
-
-  describe("AC17 — the four strings say subscription", () => {
-    it("AC17 (issue 57): capHint, box.title, next.change and already.title do, and consentError keeps its box, which is the checkbox", () => {
-      expect(en).toMatchObject({
-        "supperClub.capHint": "Limited to {cap} subscriptions. No sales tax.",
-        "supperClub.box.title": "Your subscription",
-        "supperClub.next.change": "To skip a week, change your subscription or cancel, sign in to your account before the end of Monday.",
-        "supperClub.already.title": "You already have a Supper Club subscription",
-        "supperClub.consentError": "Check the box to agree to the weekly charge.",
-      });
+      expect(soldOutCardOf((await render()).element)?.email).toBeUndefined();
+      services.farmEmail = "farm@ohiocityfarm.com";
+      expect(soldOutCardOf((await render()).element)?.email).toBe("farm@ohiocityfarm.com");
     });
   });
 });
 
 describe("AC17 — the page's cards fill their columns", () => {
-  it('AC17: both cards use width="fill"', async () => {
-    const element = await SupperClub({ searchParams: Promise.resolve({}) });
-    expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill", "fill"]);
+  it('AC17: the Join card uses width="fill"', async () => {
+    const { element } = await render();
+    const joinCards = findAll(element, Card).filter((card) => textsOf(renderToStaticMarkup(card)).includes(t("supperClub.joinTitle")));
+    expect(joinCards.map((card) => card.props.width)).toEqual(["fill"]);
   });
 });
 
 describe("issue 77 — the page opens on JoinPage's frame", () => {
-  it('AC4: signed out, its header is the one header, and "Sign in" there goes to /supper-club/sign-in', async () => {
-    const html = await render();
-    expect(attributesOf(html, "header")).toHaveLength(1);
-    expect(screenMarkup(html)).toMatch(/<header\b[\s\S]*<a\b[^>]*href="\/supper-club\/sign-in"[^>]*>Sign in<\/a>[\s\S]*<\/header>/);
-  });
-
-  it('AC3: it stays on the page shell, its left column first and its "Join the Supper Club" card second', async () => {
-    const element = await SupperClub({ searchParams: Promise.resolve({}) });
-    expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
-    const texts = textsOf(renderToStaticMarkup(element));
-    expect(texts.indexOf("Weekly meals from the farm kitchen")).toBeLessThan(texts.indexOf("Join the Supper Club"));
-  });
-});
-
-describe("AC14 — a choice that is missing or not an option", () => {
-  it("AC14: with no query each picker has its first option checked", async () => {
-    expect(checkedOf(await render())).toEqual([optionId(0, 0), optionId(1, 0)]);
-  });
-
-  it("AC14: a choice that is not one of the type's options leaves the first checked, and the other type's choice stands", async () => {
-    const html = await render({ [typeId(0)]: "not-an-option", [typeId(1)]: optionId(1, 1) });
-    expect(checkedOf(html)).toEqual([optionId(0, 0), optionId(1, 1)]);
-  });
-
-  it("AC14: the first option is by position, then name", async () => {
-    stock([
-      {
-        name: "Size",
-        position: 1,
-        options: [
-          { name: "Large", priceCents: 0, position: 2 },
-          { name: "Medium", priceCents: 0, position: 1 },
-          { name: "Bigger", priceCents: 0, position: 1 },
-        ],
-      },
-    ]);
-    expect(checkedOf(await render())).toEqual([optionId(0, 0)]);
-    expect(textsOf(await render()).filter((text) => ["Large", "Medium", "Bigger"].includes(text))).toEqual(["Bigger", "Medium", "Large"]);
-  });
-
-  it("AC14: of an array value the first entry is what counts", async () => {
-    expect(checkedOf(await render({ [typeId(0)]: [optionId(0, 1), optionId(0, 0)] }))).toEqual([optionId(0, 1), optionId(1, 0)]);
+  it("AC3: it stays on the page shell, not the pane's", async () => {
+    expect(findAll((await render()).element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
   });
 });
