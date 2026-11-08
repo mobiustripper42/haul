@@ -475,7 +475,7 @@ export class PostgresRepository implements Repository {
               s.first_charge_cents, s.weekly_cents
          from subscriptions s
          join ledger l on l.subscription_id = s.id
-        where s.member_id = $1 and s.product_id = $2 and s.status = 'active'
+        where s.member_id = $1 and s.product_id = $2 and s.status = 'active' and l.paid_at is not null
         order by s.created_at desc, l.pickup_date
         limit 1`,
       [memberId, productId],

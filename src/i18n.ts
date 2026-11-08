@@ -85,7 +85,7 @@ export function translate<K extends string>(
 
 /**
  * The plural key for `count` (DEC-015): `${base}.one` or `${base}.other` by `Intl.PluralRules` under the
- * language's locale, a category with no key falling back to `.other`.
+ * language's locale: every category but `one` (`few`, `many`, …) uses `.other`, without looking up which keys exist.
  */
 export function pluralKey<B extends string>(language: Language, base: B, count: number): `${B}.one` | `${B}.other` {
   const category = new Intl.PluralRules(LANGUAGES[language].locale).select(count);
