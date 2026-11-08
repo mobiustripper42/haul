@@ -3,7 +3,7 @@
 // only a browser can show lives here: the pane's place and width, what each width hides. Each test
 // starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
 // `supper-club` seed. Controls are found by role and the catalog's wording (`en`, and `t` for strings with values); the
-// seed's own names (AC14) and the paths a criterion names stay typed. Issue 56: a pick changing the words, the
+// seed's own names (AC14, and `menu`'s "Vegan") and the paths a criterion names stay typed. Issue 56: a pick changing the words, the
 // client stopping an unticked pay, a card refused before it is sent, and a paid signup, on the fake,
 // through CardEntry's test field; a decline is proven in Vitest, because e2e cannot force one from the
 // browser (DEC-023).
@@ -352,7 +352,8 @@ test("AC2 (issue 56): a changed pick updates the price panel, the checkbox sente
   const consentSentence = t("supperClub.consent", { price: "$80", terms: en["supperClub.consentTerms"], privacy: en["supperClub.consentPrivacy"] });
   await expect(page.getByText(consentSentence)).toBeVisible();
   // The pickup line holds a date this test does not choose: the words after it carry the price.
-  const afterTheDate = t("supperClub.pickupLine", { date: DATE_MARK, price: "$80" }).split(DATE_MARK)[1] ?? "";
+  const afterTheDate = t("supperClub.pickupLine", { date: DATE_MARK, price: "$80" }).split(DATE_MARK)[1];
+  if (!afterTheDate) throw new Error("supperClub.pickupLine holds no {date} to cut around");
   await expect(page.getByText(afterTheDate)).toBeVisible();
   expect(page.url()).toBe(url);
 });

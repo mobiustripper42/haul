@@ -39,7 +39,7 @@ async function seededSubscribers(): Promise<Subscriber[]> {
 
 const search = (page: Page) => page.getByLabel(en["admin.members.search"], { exact: true });
 const COLUMNS = { name: en["admin.members.name"], joined: en["admin.members.joined"], meal: en["admin.members.meal"], status: en["admin.members.status"] } as const;
-const header = (page: Page, column: keyof typeof COLUMNS) => page.getByRole("columnheader", { name: new RegExp(`^${COLUMNS[column]}`, "i") });
+const header = (page: Page, column: keyof typeof COLUMNS) => page.getByRole("columnheader", { name: new RegExp(`^${COLUMNS[column].replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`, "i") });
 const shownNames = (page: Page) => page.getByRole("table").locator("tbody tr > :first-child");
 const shown = (page: Page, text: string) => page.getByText(text).filter({ visible: true });
 
