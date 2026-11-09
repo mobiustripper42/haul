@@ -9,6 +9,7 @@ import { en } from "@core/messages/en.js";
 import { es } from "@core/messages/es.js";
 import { emptyRequest } from "./next-headers-fake";
 import { titled } from "./page-title";
+import { redirectOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -76,12 +77,15 @@ const pageFiles = (dir: string): string[] =>
 const HEADINGS = new Set<string>(Object.values(en));
 
 describe("AC1 — every page's title", () => {
-  it("AC1: each untitled page is still a page", () => {
-    expect(pageFiles(APP)).toEqual(expect.arrayContaining(UNTITLED));
+  it.each(UNTITLED)("AC1: %s is exempt only while it is a redirect with no title of its own", async (file) => {
+    expect(pageFiles(APP)).toContain(file);
+    const page = (await import(join(APP, file))) as { default: () => unknown; generateMetadata?: unknown };
+    expect(page.generateMetadata).toBeUndefined();
+    await expect(redirectOf((async () => page.default())())).resolves.toEqual(expect.any(String));
   });
 
   it.each(pageFiles(APP).filter((file) => !UNTITLED.includes(file)))(
-    'AC1: %s is titled "<a catalog heading> · Ohio City Farm"',
+    'AC1: %s is titled "<a catalog string> · Ohio City Farm"',
     async (file) => {
       const { generateMetadata } = (await import(join(APP, file))) as { generateMetadata?: () => Promise<{ title?: unknown }> };
       expect(typeof generateMetadata).toBe("function");
