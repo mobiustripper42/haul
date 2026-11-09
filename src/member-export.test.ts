@@ -157,6 +157,22 @@ describe("AC10 — a formula", () => {
     expectNeutralised(out["Which menu?"], typed);
   });
 
+  // Issue 102, AC11: U+FF1D, U+FF0B, U+FF0D, U+FF20, each beside the ASCII start it stands for.
+  it.each([
+    ["＝1+1", "=1+1"],
+    ["＋1+1", "+1+1"],
+    ["－1+1", "-1+1"],
+    ["＠SUM(1)", "@SUM(1)"],
+  ])("AC11: the fullwidth %j gets the same leading apostrophe as %j", (fullwidth, ascii) => {
+    const out = cells({ lastName: fullwidth, firstName: ascii });
+    expect(out["First name"]).toBe(`'${ascii}`);
+    expect(out["Last name"]).toBe(`'${fullwidth}`);
+  });
+
+  it("AC11: a phone starting with a fullwidth ＋ is not a phone number as typed, so it gets the apostrophe", () => {
+    expect(cells({ phone: "＋1 216 555 0142" }).Phone).toBe("'＋1 216 555 0142");
+  });
+
   it("AC10: a cell needing both is neutralised and escaped, and stays one cell", () => {
     const typed = '=1,"2"';
     const out = cells({ lastName: typed });

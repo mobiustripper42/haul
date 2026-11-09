@@ -2,6 +2,7 @@ import { DEFAULT_LANGUAGE, isLanguage, type Language } from "./i18n.js";
 import type { Member } from "./members.js";
 import type { Repository } from "./ports/repository.js";
 import { issueSignInCode, type IssueOutcome } from "./sign-in/code.js";
+import { cleanTypedText } from "./typed-text.js";
 
 export type AccountField = "firstName" | "lastName" | "email" | "phone";
 
@@ -23,7 +24,7 @@ function isValidEmail(email: string): boolean {
   return labels.length >= 2 && labels.every((label) => label !== "");
 }
 
-/** The details step's whole rule: each value trimmed, the failing fields in form order. */
+/** The details step's whole rule: each value cleaned (`cleanTypedText`) and trimmed, the failing fields in form order. */
 export function validateAccountDetails(input: {
   firstName: string;
   lastName: string;
@@ -31,10 +32,10 @@ export function validateAccountDetails(input: {
   phone: string;
   language: string;
 }): { ok: true; details: AccountDetails } | { ok: false; errors: AccountField[] } {
-  const firstName = input.firstName.trim();
-  const lastName = input.lastName.trim();
-  const email = input.email.trim();
-  const phone = input.phone.trim();
+  const firstName = cleanTypedText(input.firstName);
+  const lastName = cleanTypedText(input.lastName);
+  const email = cleanTypedText(input.email);
+  const phone = cleanTypedText(input.phone);
   const language = input.language.trim();
 
   const errors: AccountField[] = [];

@@ -4,8 +4,8 @@ import type { Subscriber } from "./ports/repository.js";
 /** A phone number as typed: digits, spaces and `+ - ( ) .` only. The Phone column's one exception to the formula rule. */
 const PHONE_AS_TYPED = /^[\d\s+\-().]+$/;
 
-/** A cell a spreadsheet would run as a formula starts with one of these. */
-const FORMULA_START = /^[=+\-@]/;
+/** A cell a spreadsheet would run as a formula starts with one of these, or with the fullwidth form of one (＝ ＋ － ＠), which some spreadsheets read as the ASCII character. */
+const FORMULA_START = /^[=+\-@＝＋－＠]/;
 
 /** `value` as one CSV cell: a formula start is neutralised with a leading apostrophe, then RFC 4180 quoting. */
 function cell(value: string, { asTyped = false }: { asTyped?: boolean } = {}): string {

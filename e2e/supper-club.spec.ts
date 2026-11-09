@@ -37,10 +37,10 @@ const onPath = (path: string) => (url: URL) => url.pathname === path;
 // Stands where a date goes while a sentence is cut around it; no sentence holds a private-use character.
 const DATE_MARK = "\uE000";
 
-// 2 people, which is not the default now that the seed puts 3–4 people first.
+// Portioned for 2, which is not the default: the seed puts Portioned for 4 first.
 // The prices are the seed's; "a week" is the catalog's.
 const aWeek = (price: string) => t("supperClub.price", { price });
-const size = (page: Page) => page.getByRole("radio", { name: aWeek("$50") });
+const size = (page: Page) => page.getByRole("radio", { name: aWeek("$42") });
 const menu = (page: Page) => page.getByRole("radio", { name: /Vegan/ });
 
 const pressCreateAccount = (page: Page) => page.getByRole("button", { name: en["supperClub.createAccount"], exact: true }).click();
@@ -111,7 +111,7 @@ async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
 async function pay(page: Page, card: string = SQUARE_SANDBOX_VALUES.cardNonceOk): Promise<void> {
   await testCard(page).fill(card);
   await consent(page).check();
-  await joinAndPay(page, "$50").click();
+  await joinAndPay(page, "$42").click();
 }
 
 /** Counts the pay form's POSTs from here on; pay stopping in the browser leaves it at 0. */
@@ -136,9 +136,9 @@ async function theLastSpotGoes(): Promise<void> {
       memberId: other.id,
       productId: product.id,
       choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no option"])),
-      firstChargeCents: 8000,
-      weeklyCents: 8000,
-      pickupDate: "2027-01-03",
+      firstChargeCents: 7400,
+      weeklyCents: 7400,
+      pickupDate: "2027-01-10",
       consentText: "I agree.",
       consentAt: new Date(),
     });
@@ -154,11 +154,19 @@ test.beforeEach(async () => {
   await runSeed("supper-club", e2eDatabaseUrl());
 });
 
-test('AC14: the Supper Club page shows the seed\'s new names: "How many people?", "2 people", "3–4 people", "Which menu?"', async ({ page }) => {
+test('AC14: the Supper Club page shows the seed\'s names: "How many people?", "Portioned for 2", "Portioned for 4", "Which menu?"', async ({ page }) => {
   await page.goto("/supper-club");
   for (const name of ["1. How many people?", "2. Which menu?"]) await expect(page.getByRole("group", { name })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /^2 people/ })).toBeVisible();
-  await expect(page.getByRole("radio", { name: /^3–4 people/ })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^Portioned for 2/ })).toBeVisible();
+  await expect(page.getByRole("radio", { name: /^Portioned for 4/ })).toBeVisible();
+});
+
+// Issue 102, AC6: Lenny's sizes and prices reach the page through the seed alone.
+test('AC6 (issue 102): the size choices read "Portioned for 2" at $42 a week and "Portioned for 4" at $74 a week', async ({ page }) => {
+  await page.goto("/supper-club");
+  const sizeAt = (name: RegExp, price: string) => page.getByRole("radio", { name }).and(page.getByRole("radio", { name: aWeek(price) }));
+  await expect(sizeAt(/^Portioned for 2/, "$42")).toBeVisible();
+  await expect(sizeAt(/^Portioned for 4/, "$74")).toBeVisible();
 });
 
 test("AC1, AC9: Create an account opens the pane, a confirmed code lands back on the Supper Club page, signed in, the choices still picked", async ({ page, request }) => {
@@ -342,19 +350,19 @@ test("AC1 (issue 56): signed in, section 4 sits in the same card under section 3
   await expect(card.getByText(t("supperClub.paymentLegend", { n: 4 }))).toBeVisible();
   await expect(card.getByText(en["supperClub.todayLabel"])).toBeVisible();
   await expect(consent(page)).not.toBeChecked();
-  await expect(joinAndPay(page, "$50")).toBeVisible();
+  await expect(joinAndPay(page, "$42")).toBeVisible();
 });
 
 test("AC2 (issue 56): a changed pick updates the price panel, the checkbox sentence and the button, with no new page", async ({ page, request }) => {
   await signedIn(page, request);
   const url = page.url();
-  await page.getByRole("radio", { name: aWeek("$80") }).check();
+  await page.getByRole("radio", { name: aWeek("$74") }).check();
 
-  await expect(joinAndPay(page, "$80")).toBeVisible();
-  const consentSentence = t("supperClub.consent", { price: "$80", terms: en["supperClub.consentTerms"], privacy: en["supperClub.consentPrivacy"] });
+  await expect(joinAndPay(page, "$74")).toBeVisible();
+  const consentSentence = t("supperClub.consent", { price: "$74", terms: en["supperClub.consentTerms"], privacy: en["supperClub.consentPrivacy"] });
   await expect(page.getByText(consentSentence)).toBeVisible();
   // The pickup line holds a date this test does not choose: the words after it carry the price.
-  const afterTheDate = t("supperClub.pickupLine", { date: DATE_MARK, price: "$80" }).split(DATE_MARK)[1];
+  const afterTheDate = t("supperClub.pickupLine", { date: DATE_MARK, price: "$74" }).split(DATE_MARK)[1];
   if (!afterTheDate) throw new Error("supperClub.pickupLine holds no {date} to cut around");
   await expect(page.getByText(afterTheDate)).toBeVisible();
   expect(page.url()).toBe(url);
@@ -413,7 +421,7 @@ for (const [name, path, title] of LEGAL_LINKS) {
 test("AC4 (issue 56): pay with the box unticked stays on the page and says why", async ({ page, request }) => {
   await signedIn(page, request);
   await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
-  await joinAndPay(page, "$50").click();
+  await joinAndPay(page, "$42").click();
 
   await expect(page.getByText(en["supperClub.consentError"])).toBeVisible();
   await expect(page).toHaveURL(onPath("/supper-club"));
@@ -438,7 +446,7 @@ test("AC11 (issue 56): pay is disabled while the action runs, so a double-click 
     await route.continue();
   });
 
-  const button = joinAndPay(page, "$50");
+  const button = joinAndPay(page, "$42");
   try {
     await button.dblclick();
     await expect(button).toBeDisabled();
@@ -457,7 +465,7 @@ test("AC1 (issue 56): a card form that gives no token shows the failure in the f
   await consent(page).check();
   const posts = countPayPosts(page);
 
-  await joinAndPay(page, "$50").click();
+  await joinAndPay(page, "$42").click();
 
   await expect(page.getByText(CARD_FORM_FAILED)).toBeVisible();
   await expect(testCard(page)).toHaveCount(0);

@@ -14,7 +14,11 @@ import { errorFields, recordEventAs } from "./record-event.js";
  * runs under the member.
  */
 
-export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date };
+/**
+ * `now` is the request's start: the consent moment and the first pickup are worked out from it. `clock` is
+ * read for a moment after the start, the one the paid answer came back.
+ */
+export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date; clock: () => Date };
 
 /**
  * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
@@ -227,7 +231,7 @@ async function recordDecline(repo: Repository, actor: Actor, memberId: string, l
  * is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
  */
 async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promise<SignupResult> {
-  const { repo, payments, now } = deps;
+  const { repo, payments, clock } = deps;
   const actor: Actor = { member: memberId };
   const { row } = charge;
   const unknown: AuditEventDetail = { ledgerId: row.ledgerId };
@@ -242,8 +246,10 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     }
     // What Square took, not what was asked: it must be the ledger's amount before anything turns active.
     const chargedCents = found ? found.amountCents : row.amountCents;
+    // The paid answer is back: this is the moment `paid_at` records.
+    const paidAt = clock();
     const confirmed = await repo.withActor(actor, (scoped) =>
-      confirmSignup(scoped, { ledgerId: row.ledgerId, paymentId: result.paymentId, amountCents: chargedCents, now }),
+      confirmSignup(scoped, { ledgerId: row.ledgerId, paymentId: result.paymentId, amountCents: chargedCents, now: paidAt }),
     );
     if (confirmed === "mismatch") {
       unknown.chargedCents = chargedCents;

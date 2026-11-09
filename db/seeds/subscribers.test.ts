@@ -58,15 +58,29 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
     for (const row of rows) expect(row, row.email).toMatchObject({ status: "active", paid: 1 });
   });
 
-  it("AC12 (seed): the rows cover all four option mixes", async () => {
+  it("AC12 (seed), AC5 (issue 102): the rows cover all four option mixes, in the new size names", async () => {
     await runSeed("subscribers", url);
 
     expect([...new Set((await subscriptions()).map((row) => row.meal))].sort()).toEqual([
-      "2 people · Standard",
-      "2 people · Vegan",
-      "3–4 people · Standard",
-      "3–4 people · Vegan",
+      "Portioned for 2 · Standard",
+      "Portioned for 2 · Vegan",
+      "Portioned for 4 · Standard",
+      "Portioned for 4 · Vegan",
     ]);
+  });
+
+  it("AC5 (issue 102): every member's first pickup is 2027-01-10", async () => {
+    await runSeed("subscribers", url);
+
+    const { rows } = await pool.query<{ pickup_date: string }>(
+      `select l.pickup_date::text as pickup_date
+         from ledger l
+         join subscriptions s on s.id = l.subscription_id
+         join products p on p.id = s.product_id
+        where p.name = 'Supper Club'`,
+    );
+    expect(rows).toHaveLength(12);
+    expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2027-01-10"]);
   });
 
   it("AC12 (seed): none of the members has a Square customer", async () => {

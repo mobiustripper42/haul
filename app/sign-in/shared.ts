@@ -19,6 +19,7 @@ import {
 } from "@core/sign-in/code.js";
 import { limitKeyFor } from "@core/sign-in/rate-limit.js";
 import type { RateLimitStore } from "@core/sign-in/store.js";
+import { cleanTypedText } from "@core/typed-text.js";
 import { RETURN_TO_COOKIE, SIGN_IN_EMAIL_COOKIE, startSession } from "../session";
 import { getEmail, getRepository, getSessionSecret, getSiteUrl } from "../services";
 
@@ -109,7 +110,7 @@ export async function finishSignIn(subjectId: string, done: string): Promise<nev
 
 /** Asks for a code. A member's email and a stranger's get the same cookie and the same redirect. */
 export async function requestCodeFor(formData: FormData, pages: FlowPages): Promise<void> {
-  const email = textField(formData, "email");
+  const email = cleanTypedText(textField(formData, "email"));
   if (email === "") redirect(pages.start);
 
   // Read before anything is counted or stored, so a misconfigured production fails the same way for

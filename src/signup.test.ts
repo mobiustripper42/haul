@@ -72,7 +72,8 @@ const picks = (size = 0, menu = 0): Record<string, string> => {
   };
 };
 
-const deps = (now: Date) => ({ repo, payments, now });
+/** The request's start, and a clock that reads it too unless a test hands one that moves. */
+const deps = (now: Date, clock: () => Date = () => now) => ({ repo, payments, now, clock });
 
 type Submit = { choices: Record<string, string>; sourceId: string; consentText: string; now: Date };
 
@@ -428,6 +429,60 @@ describe("AC8 — a paid result", () => {
   it("AC8: it records no event", async () => {
     expect((await submit()).outcome).toBe("paid");
     expect(repo.events()).toEqual([]);
+  });
+});
+
+describe("AC1, AC2 (issue 102) — paid_at is when the paid answer came back", () => {
+  /** A clock that reads `before` until `turn` is called and `after` from then on, however often it is read. */
+  const turningClock = (before: Date, after: Date) => {
+    let turned = false;
+    return {
+      clock: () => (turned ? after : before),
+      turn: () => {
+        turned = true;
+      },
+    };
+  };
+
+  it("AC1: a charge that comes back paid confirms the rows at the clock's reading once it is back, and consent_at stays the request's start", async () => {
+    const charging = new Date("2026-11-06T15:00:01.000Z");
+    const answered = new Date("2026-11-06T15:00:03.000Z");
+    const { clock, turn } = turningClock(charging, answered);
+    const real = payments.charge.bind(payments);
+    vi.spyOn(payments, "charge").mockImplementation(async (input) => {
+      const result = await real(input);
+      turn();
+      return result;
+    });
+    const save = vi.spyOn(repo, "savePendingSignup");
+    const confirm = vi.spyOn(repo, "confirmSignupRows");
+
+    const result = await signUp(deps(NOW, clock), { memberId: member.id, choices: picks(), sourceId: SOURCE, consentText: CONSENT });
+
+    expect(result.outcome).toBe("paid");
+    expect(confirm.mock.calls.map((call) => call[3])).toEqual([answered]);
+    expect(save.mock.calls.map(([input]) => input.consentAt)).toEqual([NOW]);
+  });
+
+  it("AC2: Try again that finds the payment Square took confirms the rows at the clock's reading once the lookup is back, not the retry's start", async () => {
+    const charge = chargeReplyIsLost(2);
+    await submit();
+    charge.mockClear();
+    const looking = new Date("2026-11-06T15:20:01.000Z");
+    const found = new Date("2026-11-06T15:20:04.000Z");
+    const { clock, turn } = turningClock(looking, found);
+    const real = payments.findPaymentByReference.bind(payments);
+    vi.spyOn(payments, "findPaymentByReference").mockImplementation(async (input) => {
+      const payment = await real(input);
+      turn();
+      return payment;
+    });
+    const confirm = vi.spyOn(repo, "confirmSignupRows");
+
+    expect((await retrySignup(deps(LATER, clock), { memberId: member.id })).outcome).toBe("paid");
+
+    expect(charge).not.toHaveBeenCalled();
+    expect(confirm.mock.calls.map((call) => call[3])).toEqual([found]);
   });
 });
 
