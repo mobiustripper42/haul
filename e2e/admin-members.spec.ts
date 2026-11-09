@@ -162,4 +162,25 @@ test.describe("the members list", () => {
     expect(lines).toHaveLength(inOrder.length + 1);
     inOrder.forEach((row, at) => expect(lines[at + 1]).toContain(row.email));
   });
+
+  // Issue 101, AC8: the header sorts at 720px and wider, the select below it; only a browser can click one and
+  // then narrow the window onto the other. The select names the key in effect, never its direction.
+  test("AC8 (issue 101): after a click on Joined at 720px or wider, narrowing the window shows Joined in the Sort by select, whichever way it runs", async ({ page }, testInfo) => {
+    desktopOnly(testInfo);
+    const desktop = page.viewportSize();
+    if (!desktop) throw new Error("the desktop project has no viewport size");
+    const sortBy = page.getByLabel(en["admin.members.sortBy"], { exact: true });
+
+    for (const sort of [{ key: "joined", direction: "desc" }, { key: "joined", direction: "asc" }] as const) {
+      await page.setViewportSize(desktop);
+      await header(page, "joined").getByRole("button").click();
+      await expectSorted(page, rows, sort);
+
+      await page.setViewportSize({ width: 375, height: 800 });
+
+      await expect(sortBy).toBeVisible();
+      await expect(sortBy).toHaveValue("joined");
+      await expect(sortBy.locator("option:checked")).toHaveText(en["admin.members.joined"]);
+    }
+  });
 });

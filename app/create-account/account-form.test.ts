@@ -7,13 +7,14 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ACCOUNT_LIMITS } from "@core/create-account.js";
-import { LANGUAGES, createTranslator } from "@core/i18n.js";
+import { LANGUAGES } from "@core/i18n.js";
 import { en, type MessageKey } from "@core/messages/en.js";
 import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { ACCOUNT_DRAFT_COOKIE } from "../session";
 import { alertTexts, attributesOf, blocksInsideParagraphs, escapeRegExp, findAll, inOrder, screenMarkup } from "../screen-test-helpers";
+import { limitedText } from "../sign-in/shared";
 import { AccountForm } from "./account-form";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -25,10 +26,9 @@ vi.mock("next/headers", async () => {
   };
 });
 
-const t = createTranslator("en");
 const action: (formData: FormData) => Promise<void> = async () => {};
 const BACK = "back here";
-const limited = (minutes: number) => t("signIn.limited", { minutes });
+const limited = (minutes: number) => limitedText("en", minutes);
 const ENTERED = { firstName: "Ada", lastName: "Lovelace", email: "ada@example", phone: "216-555-0100", language: "es" };
 
 const FIELD_ERROR_KEYS = {
@@ -249,5 +249,11 @@ describe("AC10, AC12 — the notices", () => {
 
   it("AC10, AC12: with both, the limited notice comes before the expired one", async () => {
     expect(alertTexts((await render({ limited: "5", error: "expired" })).html)).toEqual([limited(5), en["signIn.stepExpired"]]);
+  });
+});
+
+describe("AC5 (issue 101) — the limited notice's words are limitedText's", () => {
+  it("AC5: limited=1 shows limitedText at one minute, the singular", async () => {
+    expect(alertTexts((await render({ limited: "1" })).html)).toEqual([limitedText("en", 1)]);
   });
 });

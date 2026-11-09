@@ -3,6 +3,9 @@ import { SignInForm } from "../../sign-in/sign-in-form";
 import { requestPaneCode } from "../actions";
 import { BackToChoices, JoinPage } from "../join-page";
 import { PANE_CREATE_PAGES } from "../paths";
+import { titled } from "../../page-title";
+
+export const generateMetadata = titled("signIn.title");
 
 /** Sign-in in the Supper Club page's right pane: `/sign-in` with its failures kept in the pane. */
 export default async function PaneSignIn({

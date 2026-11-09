@@ -9,6 +9,9 @@ import { getSignedInMember } from "../../session";
 import { JoinPage } from "../join-page";
 import { FARM_SITE_URL, SUPPER_CLUB_PATH } from "../paths";
 import { SignupBox } from "../signup-box";
+import { titled } from "../../page-title";
+
+export const generateMetadata = titled("supperClub.done.title");
 
 /**
  * The signup confirmation, in the Supper Club page's right pane at `lg` and wider and alone below it.

@@ -93,14 +93,14 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
           where p.name = 'Supper Club'
           order by t.position, t.name`,
       );
-      expect(rows.map((r) => r.name)).toEqual(["How many people?", "Which menu?"]);
+      expect(rows.map((r) => r.name)).toEqual(["How many people", "Which menu"]);
       expect(new Set(rows.map((r) => r.position)).size).toBe(rows.length);
     });
 
     it(`AC14: "How many people?" has, by position, 3${EN_DASH}4 people (an en dash) at 8000 cents then 2 people at 5000, at distinct positions`, async () => {
       await seed();
 
-      const rows = await optionsOf("How many people?");
+      const rows = await optionsOf("How many people");
       expect(rows.map(({ name, price_cents }) => ({ name, price_cents }))).toEqual([
         { name: `3${EN_DASH}4 people`, price_cents: 8000 },
         { name: "2 people", price_cents: 5000 },
@@ -111,7 +111,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     it('AC14 (issue 77): "Which menu?" has, by position, Standard then Vegan, both at 0 cents, at distinct positions', async () => {
       await seed();
 
-      const rows = await optionsOf("Which menu?");
+      const rows = await optionsOf("Which menu");
       expect(rows.map(({ name, price_cents }) => ({ name, price_cents }))).toEqual([
         { name: "Standard", price_cents: 0 },
         { name: "Vegan", price_cents: 0 },
@@ -123,19 +123,19 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
   it("AC3: with cap edited to 10 and 2 people to 5500 cents at position 9, a re-run puts back cap 50, 5000 and position 2, and keeps both ids", async () => {
     await seed();
     const [product] = await supperClub();
-    const [twoPerson] = (await optionsOf("How many people?")).filter((o) => o.name === "2 people");
+    const [twoPerson] = (await optionsOf("How many people")).filter((o) => o.name === "2 people");
     expect(product).toBeDefined();
     expect(twoPerson).toBeDefined();
 
     await pool.query("update products set cap = 10 where name = 'Supper Club'");
     await pool.query("update options set price_cents = 5500, position = 9 where id = $1", [twoPerson?.id]);
     expect((await supperClub())[0]?.cap).toBe(10);
-    expect((await optionsOf("How many people?")).find((o) => o.name === "2 people")).toMatchObject({ price_cents: 5500, position: 9 });
+    expect((await optionsOf("How many people")).find((o) => o.name === "2 people")).toMatchObject({ price_cents: 5500, position: 9 });
 
     await seed();
 
     expect(await supperClub()).toEqual([expect.objectContaining({ id: product?.id, cap: 50 })]);
-    expect((await optionsOf("How many people?")).filter((o) => o.name === "2 people")).toEqual([
+    expect((await optionsOf("How many people")).filter((o) => o.name === "2 people")).toEqual([
       { id: twoPerson?.id, name: "2 people", price_cents: 5000, position: 2 },
     ]);
   });
@@ -159,7 +159,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
       `insert into options (option_type_id, name, price_cents, position)
        select t.id, 'Spicy', 0, 3
          from option_types t join products p on p.id = t.product_id
-        where p.name = 'Supper Club' and t.name = 'Which menu?'
+        where p.name = 'Supper Club' and t.name = 'Which menu'
        returning id`,
     );
     expect(spicy.rows).toHaveLength(1);
@@ -178,5 +178,18 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     await seed();
 
     expect(await rows()).toEqual(before);
+  });
+
+  // Issue 101, AC6: the names are data, in the farm's words; the picker's question mark is the catalog's (DEC-027).
+  it("AC6 (issue 101): the seed stores the option types as \"How many people\" and \"Which menu\", neither with a question mark", async () => {
+    await seed();
+
+    const { rows } = await pool.query<{ name: string }>(
+      `select t.name
+         from option_types t join products p on p.id = t.product_id
+        where p.name = 'Supper Club'
+        order by t.position, t.name`,
+    );
+    expect(rows.map((r) => r.name)).toEqual(["How many people", "Which menu"]);
   });
 });

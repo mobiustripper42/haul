@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { LANGUAGES, MissingValueError, resolveLanguage, translate, type Catalogs } from "./i18n.js";
+import { LANGUAGES, MissingValueError, pluralKey, resolveLanguage, translate, type Catalogs } from "./i18n.js";
 
 describe("AC1 — resolveLanguage: member, then cookie, then Accept-Language, then English", () => {
   it.each([
@@ -152,5 +152,29 @@ describe("AC6 — every language's locale formats US dollars as $12.34", () => {
     expect(typeof language.locale).toBe("string");
     const usd = new Intl.NumberFormat(language.locale, { style: "currency", currency: "USD" });
     expect(usd.format(12.34)).toBe("$12.34");
+  });
+});
+
+// Issue 101, AC5: the plural keys of DEC-015, first used by the rate-limit notice. `pluralKey` is the one home
+// of the choice; app/sign-in/shared.test.ts reads the notice's words through it.
+describe("AC5 (issue 101) — pluralKey", () => {
+  it.each([
+    ["en", 1, "signIn.limited.one"],
+    ["en", 0, "signIn.limited.other"],
+    ["en", 2, "signIn.limited.other"],
+    ["en", 60, "signIn.limited.other"],
+    ["es", 1, "signIn.limited.one"],
+    ["es", 5, "signIn.limited.other"],
+  ] as const)("AC5: in %s, %d is %s", (language, count, key) => {
+    expect(pluralKey(language, "signIn.limited", count)).toBe(key);
+  });
+
+  it("AC5: a category with no key falls back to .other: Spanish's many, for a million", () => {
+    expect(new Intl.PluralRules(LANGUAGES.es.locale).select(1_000_000)).toBe("many");
+    expect(pluralKey("es", "signIn.limited", 1_000_000)).toBe("signIn.limited.other");
+  });
+
+  it("AC5: the base is the one given", () => {
+    expect(pluralKey("en", "some.base", 1)).toBe("some.base.one");
   });
 });

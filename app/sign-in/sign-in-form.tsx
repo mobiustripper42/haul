@@ -8,8 +8,8 @@ import { Heading } from "../../components/ui/heading";
 import { Hint } from "../../components/ui/hint";
 import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
-import { getTranslator } from "../language";
-import { limitedMinutes } from "./shared";
+import { getLanguage, getTranslator } from "../language";
+import { limitedMinutes, limitedText } from "./shared";
 
 export async function SignInForm({
   action,
@@ -24,14 +24,14 @@ export async function SignInForm({
   createHref: string;
   back?: ReactNode;
 }) {
-  const t = await getTranslator();
+  const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const minutes = limitedMinutes(limited);
   const noticeKey = error === "expired" ? "signIn.stepExpired" : error === "link" ? "signIn.linkFailed" : null;
   return (
     <>
       {back}
       <Heading>{t("signIn.title")}</Heading>
-      {minutes !== null && <Notice icon="lock">{t("signIn.limited", { minutes })}</Notice>}
+      {minutes !== null && <Notice icon="lock">{limitedText(language, minutes)}</Notice>}
       {noticeKey && <Notice icon="clock">{t(noticeKey)}</Notice>}
       <form action={action} className="flex flex-col gap-6">
         <Field label={t("signIn.emailLabel")} htmlFor="email">

@@ -78,8 +78,10 @@ export type PendingSignupInput = {
   consentAt: Date;
 };
 
+/** `chargedDate` is the day the first charge was paid, `YYYY-MM-DD` in America/New_York. */
 export type SignupConfirmation = {
   pickupDate: string;
+  chargedDate: string;
   firstChargeCents: number;
   weeklyCents: number;
   options: { typeName: string; optionName: string }[];

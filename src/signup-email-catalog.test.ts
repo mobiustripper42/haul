@@ -14,7 +14,7 @@ vi.mock("./messages/es.js", async () => {
   return {
     es: Object.fromEntries(
       Object.keys(en)
-        .filter((key) => key !== "supperClub.box.paidToday")
+        .filter((key) => key !== "email.signupConfirmation.charged")
         .map((key) => [key, `«${key}»`]),
     ),
   };
@@ -37,6 +37,7 @@ const CONFIRMATION = {
   pickupDate: "2027-01-03",
   firstChargeCents: 5000,
   weeklyCents: 8550,
+  chargedDate: "2026-11-07",
   options: [
     { typeName: "How many people?", optionName: "2 people" },
     { typeName: "Which menu?", optionName: "Standard" },
@@ -59,7 +60,7 @@ const body = (heading: string): string =>
     "",
     "How many people?: 2 people",
     "Which menu?: Standard",
-    "Paid today: $50",
+    "Charged sábado, 7 de noviembre: $50, for your first week",
     "«supperClub.weeklyLabel»: $85.50",
     "«supperClub.box.firstPickup»",
     "",
@@ -89,7 +90,7 @@ describe("AC6 (issue 58) — the email through the stand-in catalog", () => {
   });
 
   it("AC4, AC6: the subject is the done page's title", async () => {
-    expect((await sent("Ada")).subject).toBe("«supperClub.done.title»");
+    expect((await sent("Ada")).subject).toBe("«email.signupConfirmation.subject»");
   });
 
   it("AC5, AC6: with no first name the heading is the done page's title", async () => {

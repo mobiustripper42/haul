@@ -3,6 +3,9 @@ import { Shell } from "../../components/ui/shell";
 import { SIGN_IN_PAGES } from "../paths";
 import { AccountForm } from "./account-form";
 import { requestAccountCode } from "./actions";
+import { titled } from "../page-title";
+
+export const generateMetadata = titled("createAccount.title");
 
 export default async function CreateAccount({
   searchParams,

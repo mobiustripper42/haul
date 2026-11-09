@@ -3,6 +3,7 @@
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { after } from "next/server";
+import { createTranslator, pluralKey, type Language } from "@core/i18n.js";
 import { deliverSignInCode, deliverSignInLink, signInLinkUrl } from "@core/sign-in-email.js";
 import type { Repository } from "@core/ports/repository.js";
 import { errorFields, recordEventAs } from "@core/record-event.js";
@@ -45,6 +46,10 @@ export const limitedMinutes = (value: string | undefined): number | null => {
   const minutes = Number(value);
   return minutes <= 60 ? minutes : null;
 };
+
+/** The `limited` notice's words for `minutes`, singular or plural by the language's rules. */
+export const limitedText = (language: Language, minutes: number): string =>
+  createTranslator(language)(pluralKey(language, "signIn.limited", minutes), { minutes });
 
 /** The minutes a refused request is told to wait: the time left in the window, rounded up, at least one. */
 export const limitedRedirectMinutes = (retryAfterMs: number): number => Math.max(1, Math.ceil(retryAfterMs / 60_000));
@@ -138,7 +143,7 @@ export async function requestCodeFor(formData: FormData, pages: FlowPages): Prom
   }
 
   await setFlowCookie(SIGN_IN_EMAIL_COOKIE, email);
-  redirect(pages.code);
+  redirect(textField(formData, "resend") === "1" ? `${pages.code}?sent=1` : pages.code);
 }
 
 /** Redeems the code on a flow's code step. One failure for every reason, as sign-in has always had. */

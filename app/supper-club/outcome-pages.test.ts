@@ -276,3 +276,27 @@ describe("AC5 — the already-a-member page", () => {
     expect(services.repo.events()).toEqual([]);
   });
 });
+
+// Issue 101, AC7: the question mark is the pickers' (`supperClub.pickerLegend`), not the stored name's, so the
+// confirmation's labels show the name as stored. The labels are drawn in capitals by their class.
+describe("AC7 (issue 101) — the confirmation's labels are the stored names", () => {
+  it('AC7: option types stored as "How many people" and "Which menu" label the box with those names, no question mark', async () => {
+    services.repo = new InMemoryRepository();
+    product = services.repo.addProduct({
+      name: "Supper Club",
+      cap: 50,
+      firstPickupDate: "2027-01-03",
+      cutoffWeekday: 1,
+      cutoffTime: "24:00:00",
+      optionTypes: [
+        { name: "How many people", position: 1, options: [{ name: "3–4 people", priceCents: 8000, position: 1 }] },
+        { name: "Which menu", position: 2, options: [{ name: "Standard", priceCents: 0, position: 1 }, { name: "Vegan", priceCents: 0, position: 2 }] },
+      ],
+    });
+    await subscribe(await signIn());
+    const html = renderToStaticMarkup(await SupperClubDone());
+    const box = ["How many people", "3–4 people", "Which menu", "Vegan"];
+    expect(inOrder(html, box)).toEqual(box);
+    expect(inOrder(html, ["How many people?", "Which menu?"])).toEqual([]);
+  });
+});

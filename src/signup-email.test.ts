@@ -7,6 +7,10 @@ import type { Member } from "./members.js";
 import type { SignupConfirmation } from "./ports/repository.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
+// Issue 101, AC11: the email is the first week's receipt. Its subject and charged line are new words, typed once here.
+const SUBJECT = "Receipt: you're in the Supper Club";
+const charged = (date: string, amount: string): string => `Charged ${date}: ${amount}, for your first week`;
+
 const ACCOUNT_URL = "https://members.example.test/";
 const SITE_URL = "https://members.example.test";
 
@@ -28,6 +32,7 @@ const confirmation = (over: Partial<SignupConfirmation> = {}): SignupConfirmatio
   pickupDate: "2027-01-03",
   firstChargeCents: 5000,
   weeklyCents: 5000,
+  chargedDate: "2026-11-07",
   options: [
     { typeName: "How many people?", optionName: "2 people" },
     { typeName: "Which menu?", optionName: "Standard" },
@@ -44,7 +49,7 @@ async function sent(subject: Member = member(), details: SignupConfirmation = co
 }
 
 /** The approved wording under the issue's Screen section, whole, with the seed's rows. */
-const body = (heading: string, firstPickup: string): string =>
+const body = (heading: string, firstPickup: string, chargedOn = "Saturday, November 7"): string =>
   [
     heading,
     "",
@@ -52,7 +57,7 @@ const body = (heading: string, firstPickup: string): string =>
     "",
     "How many people?: 2 people",
     "Which menu?: Standard",
-    "Paid today: $50",
+    charged(chargedOn, "$50"),
     "Then every week, at the cutoff: $50",
     `First pickup: ${firstPickup}`,
     "",
@@ -87,7 +92,7 @@ describe("AC1 (issue 58) — the send", () => {
 
 describe("AC4 (issue 58) — the wording, in order", () => {
   it(`AC4: the subject is "You're in the Supper Club"`, async () => {
-    expect((await sent()).subject).toBe("You're in the Supper Club");
+    expect((await sent()).subject).toBe(SUBJECT);
   });
 
   it("AC4: the body is the wording under Screen, block by block, with the member's name in the heading", async () => {
@@ -96,7 +101,7 @@ describe("AC4 (issue 58) — the wording, in order", () => {
 
   it("AC4: the first charge and the weekly charge are each their own amount, without .00 when whole", async () => {
     const { text } = await sent(member(), confirmation({ firstChargeCents: 8000, weeklyCents: 8550 }));
-    expect(text).toContain("Paid today: $80\nThen every week, at the cutoff: $85.50\n");
+    expect(text).toContain(`${charged("Saturday, November 7", "$80")}\nThen every week, at the cutoff: $85.50\n`);
     expect(text).toContain("Your card is charged $85.50 at the end of each Monday");
   });
 
@@ -107,7 +112,7 @@ describe("AC4 (issue 58) — the wording, in order", () => {
       { typeName: "Add a loaf", optionName: "Rye" },
     ];
     expect((await sent(member(), confirmation({ options }))).text).toContain(
-      "signed up for.\n\nSize: 3–4 people\nWhich menu?: Vegan\nAdd a loaf: Rye\nPaid today: $50\n",
+      `signed up for.\n\nSize: 3–4 people\nWhich menu?: Vegan\nAdd a loaf: Rye\n${charged("Saturday, November 7", "$50")}\n`,
     );
   });
 
@@ -155,7 +160,33 @@ describe("AC5 (issue 58) — a member with no first name", () => {
 describe("AC6 (issue 58) — the member's stored language", () => {
   it("AC6: a member stored as es gets the English words, the translator's fallback, with the date in Spanish", async () => {
     const message = await sent(member({ language: "es" }));
-    expect(message.subject).toBe("You're in the Supper Club");
-    expect(message.text).toBe(body("You're in the Supper Club, Ada", "domingo, 3 de enero"));
+    expect(message.subject).toBe(SUBJECT);
+    expect(message.text).toBe(body("You're in the Supper Club, Ada", "domingo, 3 de enero", "sábado, 7 de noviembre"));
+  });
+});
+
+describe("AC11 (issue 101) — the email is the first week's receipt", () => {
+  it('AC11: the money rows open with "Charged {date}: {amount}, for your first week", the date the first charge was paid, written as a pickup date is', async () => {
+    const { text } = await sent(member(), confirmation({ chargedDate: "2026-12-28", firstChargeCents: 8000 }));
+    expect(text).toContain(`\nWhich menu?: Standard\n${charged("Monday, December 28", "$80")}\nThen every week, at the cutoff: $50\n`);
+    expect(text).not.toContain("Paid today");
+  });
+
+  it(`AC11: the subject is "${SUBJECT}" with or without a first name; without one only the heading stays "You're in the Supper Club"`, async () => {
+    const named = await sent();
+    const nameless = await sent(member({ firstName: null }));
+    expect([named.subject, nameless.subject]).toEqual([SUBJECT, SUBJECT]);
+    expect(nameless.text.split("\n")[0]).toBe("You're in the Supper Club");
+  });
+});
+
+// Issue 101, AC7: the question mark is the pickers' alone; the email shows the option type's name as stored.
+describe("AC7 (issue 101) — the email's option lines", () => {
+  it('AC7: option types stored as "How many people" and "Which menu" read so, with no question mark', async () => {
+    const options = [
+      { typeName: "How many people", optionName: "2 people" },
+      { typeName: "Which menu", optionName: "Standard" },
+    ];
+    expect((await sent(member(), confirmation({ options }))).text).toContain("signed up for.\n\nHow many people: 2 people\nWhich menu: Standard\n");
   });
 });

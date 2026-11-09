@@ -670,3 +670,14 @@ describe("AC16 — resendAccountCode", () => {
     expect(repo.events()).toEqual([{ kind: "rate_limit_refusal", bucket: "sign-in-request", key: ADDRESS, windowStart: HOUR_START, actor: null }]);
   });
 });
+
+// Issue 101, AC2: the rule is requestCodeFor's (app/sign-in/actions.test.ts); this is Create Account's resend
+// through it. A form without resend still comes back to the bare code page (AC16 above).
+describe("AC2 (issue 101) — resendAccountCode from the code step's resend form", () => {
+  it("AC2: with resend=1 it redirects to /create-account/code?sent=1", async () => {
+    await repo.createMember({ email: ADA });
+    request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
+    const { resendAccountCode } = await load();
+    expect(await redirectOf(resendAccountCode(form({ resend: "1" })))).toBe(`${CODE_PAGE}?sent=1`);
+  });
+});

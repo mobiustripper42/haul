@@ -7,6 +7,9 @@ import { getRepository } from "../../services";
 import { getSignedInMember } from "../../session";
 import { JoinPage } from "../join-page";
 import { SUPPER_CLUB_PATH } from "../paths";
+import { titled } from "../../page-title";
+
+export const generateMetadata = titled("supperClub.already.title");
 
 /**
  * What a member who already has a box is told, in the Supper Club page's right pane (no mockup: it is the

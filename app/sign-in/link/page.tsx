@@ -5,6 +5,9 @@ import { Heading } from "../../../components/ui/heading";
 import { Shell } from "../../../components/ui/shell";
 import { getTranslator } from "../../language";
 import { signInWithLink } from "../actions";
+import { titled } from "../../page-title";
+
+export const generateMetadata = titled("signIn.title");
 
 /**
  * Where the emailed link lands. Opening it redeems nothing, so a mail scanner that fetches the link

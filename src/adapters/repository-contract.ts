@@ -750,6 +750,7 @@ export function runSignupContract(
           pickupDate: "2027-01-03",
           firstChargeCents: 7000,
           weeklyCents: 8000,
+          chargedDate: "2026-11-06",
           options: [
             { typeName: "How many people?", optionName: "3–4 people" },
             { typeName: "Which menu?", optionName: "Vegan" },
@@ -773,6 +774,16 @@ export function runSignupContract(
         await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         expect(await repo.findSignupConfirmation(memberId, product.id)).toBeNull();
         expect(await repo.findSignupConfirmation(memberId, crate.id)).toMatchObject({ firstChargeCents: 5000 });
+      });
+
+      // Issue 101, AC11: the receipt's "Charged {date}" is the day the first charge was paid, on Cleveland's clock.
+      it.each([
+        ["at 22:30 on November 7 in Cleveland, already November 8 in UTC", "2026-11-08T03:30:00.000Z", "2026-11-07"],
+        ["at 23:30 on June 30 in Cleveland, summer time, already July 1 in UTC", "2026-07-01T03:30:00.000Z", "2026-06-30"],
+      ])("AC11 (issue 101): chargedDate is the day the first charge was paid, YYYY-MM-DD in Cleveland: paid %s", async (_when, paidAt, chargedDate) => {
+        const signup = await saved();
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, new Date(paidAt));
+        expect((await repo.findSignupConfirmation(memberId, product.id))?.chargedDate).toBe(chargedDate);
       });
     });
 

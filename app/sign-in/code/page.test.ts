@@ -5,6 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { en } from "@core/messages/en.js";
 import { Card } from "../../../components/ui/card";
+import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { emptyRequest } from "../../next-headers-fake";
 import { alertTexts, attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
@@ -37,7 +38,7 @@ beforeEach(() => {
   request.current.cookies = { ocf_sign_in_email: "Ada@Example.com" };
 });
 
-async function render(searchParams: { error?: string }) {
+async function render(searchParams: { error?: string; sent?: string }) {
   const element = await SignInCode({ searchParams: Promise.resolve(searchParams) });
   return { element, html: renderToStaticMarkup(element) };
 }
@@ -59,6 +60,15 @@ describe("AC34 (issue 9) — /sign-in/code", () => {
 
   it("AC34: the page's search parameters reach the step's notice", async () => {
     expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([en["signIn.invalidCode"]]);
+  });
+});
+
+// Issue 101, AC2: the notice's words and rules are app/sign-in/code-step.test.ts's; here, that the page hands `sent` on.
+describe("AC2 (issue 101) — /sign-in/code after a resend", () => {
+  it("AC2: the page's sent=1 reaches the step: it shows the resent notice, and without it none", async () => {
+    const icons = async (searchParams: { sent?: string }) => findAll((await render(searchParams)).element, Notice).map((notice) => notice.props.icon);
+    expect(await icons({ sent: "1" })).toEqual(["check"]);
+    expect(await icons({})).toEqual([]);
   });
 });
 

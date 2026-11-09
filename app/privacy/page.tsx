@@ -1,5 +1,8 @@
 import { LegalPage } from "../legal-page";
 import { getTranslator } from "../language";
+import { titled } from "../page-title";
+
+export const generateMetadata = titled("legal.privacy.title");
 
 /** `/privacy`: the Privacy policy, open to everyone. */
 export default async function Privacy() {
