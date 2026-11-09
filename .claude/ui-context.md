@@ -21,7 +21,7 @@ Every look a screen uses is one component in `components/ui/` (DEC-024): `ls com
 
 ## Languages
 
-English. The Spanish pass waits for task 1.11.
+Every language the switcher offers (`LANGUAGES`, `src/i18n.ts:10`), not a fixed list: a screen is reviewed in each.
 
 ## Screen files and routes
 
