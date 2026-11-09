@@ -1,11 +1,15 @@
 // Issue 101, AC1: every page route's `document.title` is its screen's heading, then " · Ohio City Farm",
-// translated. `titled` owns the shape and the language; each page's own `generateMetadata` is read here
-// for the heading it names. The headings are the catalog's (`en`); the shape is the criterion's own words.
+// translated. `titled` owns the shape and the language; every `page.tsx` under app/ is found and read here
+// for a title in that shape (issue 121). Which heading a page names is its own one line, not tested.
+import { readdirSync } from "node:fs";
+import { join, relative, sep } from "node:path";
+import { fileURLToPath } from "node:url";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { en, type MessageKey } from "@core/messages/en.js";
+import { en } from "@core/messages/en.js";
 import { es } from "@core/messages/es.js";
 import { emptyRequest } from "./next-headers-fake";
 import { titled } from "./page-title";
+import { redirectOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -57,30 +61,38 @@ describe("AC1 — titled", () => {
   });
 });
 
-/** Each page route, its module, and the heading its title reuses. */
-const PAGES: ReadonlyArray<readonly [string, () => Promise<{ generateMetadata?: unknown }>, MessageKey]> = [
-  ["/sign-in", () => import("./sign-in/page"), "signIn.title"],
-  ["/supper-club/sign-in", () => import("./supper-club/sign-in/page"), "signIn.title"],
-  ["/sign-in/code", () => import("./sign-in/code/page"), "signIn.codeTitle"],
-  ["/supper-club/sign-in/code", () => import("./supper-club/sign-in/code/page"), "signIn.codeTitle"],
-  ["/sign-in/link", () => import("./sign-in/link/page"), "signIn.title"],
-  ["/create-account", () => import("./create-account/page"), "createAccount.title"],
-  ["/supper-club/create-account", () => import("./supper-club/create-account/page"), "createAccount.title"],
-  ["/create-account/code", () => import("./create-account/code/page"), "createAccount.codeTitle"],
-  ["/supper-club/create-account/code", () => import("./supper-club/create-account/code/page"), "createAccount.codeTitle"],
-  ["/supper-club", () => import("./supper-club/page"), "supperClub.joinTitle"],
-  ["/supper-club/done", () => import("./supper-club/done/page"), "supperClub.done.title"],
-  ["/supper-club/already", () => import("./supper-club/already/page"), "supperClub.already.title"],
-  ["/admin", () => import("./admin/page"), "admin.members.title"],
-  ["/terms", () => import("./terms/page"), "legal.terms.title"],
-  ["/privacy", () => import("./privacy/page"), "legal.privacy.title"],
-];
+const APP = fileURLToPath(new URL(".", import.meta.url));
 
-describe("AC1 — each page's title", () => {
-  it.each(PAGES)("AC1: %s is titled with its heading", async (_route, load, key) => {
-    const { generateMetadata } = await load();
-    expect(typeof generateMetadata).toBe("function");
-    const metadata = await (generateMetadata as () => Promise<unknown>)();
-    expect(metadata).toEqual({ title: `${en[key]} · ${en["brand.name"]}` });
+/** `/` only redirects to the Supper Club (`page.tsx`), so it has no screen and no heading to title. */
+const UNTITLED = ["page.tsx"];
+
+/** Every page route's file under app/, by path from app/. */
+const pageFiles = (dir: string): string[] =>
+  readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return pageFiles(path);
+    return entry.name === "page.tsx" ? [relative(APP, path).split(sep).join("/")] : [];
   });
+
+const HEADINGS = new Set<string>(Object.values(en));
+
+describe("AC1 — every page's title", () => {
+  it.each(UNTITLED)("AC1: %s is exempt only while it is a redirect with no title of its own", async (file) => {
+    expect(pageFiles(APP)).toContain(file);
+    const page = (await import(join(APP, file))) as { default: () => unknown; generateMetadata?: unknown };
+    expect(page.generateMetadata).toBeUndefined();
+    await expect(redirectOf((async () => page.default())())).resolves.toEqual(expect.any(String));
+  });
+
+  it.each(pageFiles(APP).filter((file) => !UNTITLED.includes(file)))(
+    'AC1: %s is titled "<a catalog string> · Ohio City Farm"',
+    async (file) => {
+      const { generateMetadata } = (await import(join(APP, file))) as { generateMetadata?: () => Promise<{ title?: unknown }> };
+      expect(typeof generateMetadata).toBe("function");
+      const { title } = await generateMetadata!();
+      const suffix = ` · ${en["brand.name"]}`;
+      expect(String(title).endsWith(suffix)).toBe(true);
+      expect(HEADINGS.has(String(title).slice(0, -suffix.length))).toBe(true);
+    },
+  );
 });
