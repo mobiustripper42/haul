@@ -71,7 +71,7 @@ describe("no pane: the Supper Club page", () => {
     expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 
-  it("AC3: it is the page shell, with the slot last (the left column's card: AC17 below)", async () => {
+  it("AC3: it is the page shell, and the slot comes last", async () => {
     const { element, html } = await render("none");
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
     expect(textsOf(html).slice(-1)).toEqual(["child"]);
@@ -79,7 +79,7 @@ describe("no pane: the Supper Club page", () => {
 });
 
 describe.each(["create-account", "sign-in"] as const)("pane %s", (pane) => {
-  it(`AC3: ${pane} is the pane shell, with the slot last (the left column's card: AC17 below)`, async () => {
+  it(`AC3: ${pane} is the pane shell, and the slot comes last`, async () => {
     const { element, html } = await render(pane);
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
     expect(textsOf(html).slice(-1)).toEqual(["child"]);
@@ -102,7 +102,7 @@ describe.each(["done", "already"] as const)("issue 56 — pane %s", (pane) => {
     expect(textsOf((await render(pane)).html).slice(-1)).toEqual(["child"]);
   });
 
-  it(`AC13: ${pane} is the pane shell, with the slot last (the left column's card: AC17 below)`, async () => {
+  it(`AC13: ${pane} is the pane shell, and the slot comes last`, async () => {
     await signIn();
     const { element, html } = await render(pane);
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);

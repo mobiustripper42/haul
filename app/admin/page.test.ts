@@ -105,7 +105,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       expect(rows.map((row) => row.email)).toEqual(["rosa@example.com"]);
     });
 
-    it("AC7, AC12: the list gets its no-match line and its sort words from the catalog", async () => {
+    it("AC7, AC12: the list gets its no-match line, its joined line and its sort words from the catalog", async () => {
       const product = addSupperClub(services.repo);
       await activeSubscriber(services.repo, product, ROSA, PICKS);
 
@@ -120,6 +120,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
           meal: en["admin.members.meal"],
           status: en["admin.members.status"],
         },
+        joinedLine: en["admin.members.joinedLine"],
       });
     });
   });
