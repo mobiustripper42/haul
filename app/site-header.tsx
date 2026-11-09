@@ -25,7 +25,10 @@ export async function SiteHeader({
   current?: "admin";
 }) {
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
-  const switcher = await LanguageSwitcher();
+  // The quiet button that ends the row is pulled flush with the gutter (issue 84): the switch when nothing
+  // follows it, or when Sign in is hidden below `lg`; signed in, Sign out.
+  const switchFlush = member ? undefined : account === "none" ? "end" : wideOnly ? "end-narrow" : undefined;
+  const switcher = await LanguageSwitcher(switchFlush ? { flush: switchFlush } : {});
   const signIn = (
     <Button kind="secondary" href={PANE_SIGN_IN_PAGES.start} current={account === "sign-in-current"}>
       {t("home.signIn")}
@@ -46,7 +49,7 @@ export async function SiteHeader({
             </Button>
           )}
           <form action={signOut}>
-            <Button kind="quiet" type="submit">
+            <Button kind="quiet" type="submit" flush="end">
               {t("home.signOut")}
             </Button>
           </form>

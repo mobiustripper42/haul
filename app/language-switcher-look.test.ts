@@ -1,7 +1,8 @@
 // Issue 38, AC11: the language switcher's buttons are `Button kind="quiet"` carrying only btn-quiet,
 // and app/globals.css draws the current language from aria-current. The CSS is read through
-// Tailwind's own compiler, as app/theme.test.ts reads it: each rule must compile to what
-// `@apply font-semibold` and `@apply text-teal-muted` compile to.
+// Tailwind's own compiler, as app/theme.test.ts reads it: the current option's rule must compile to what
+// `@apply font-semibold` compiles to. Issue 84: the other option has no rule, so it keeps btn-quiet's teal
+// (teal-muted is for 14px and up, and the switch is 12px).
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -70,7 +71,7 @@ async function loadStylesheet(id: string, base: string): Promise<{ path: string;
 
 /** app/globals.css, with two probe rules appended, compiled with no candidates. */
 async function compiled(): Promise<string> {
-  const source = `${readFileSync(GLOBALS, "utf8")}\n.probe-current { @apply font-semibold; }\n.probe-other { @apply text-teal-muted; }\n`;
+  const source = `${readFileSync(GLOBALS, "utf8")}\n.probe-current { @apply font-semibold; }\n`;
   const compiler = await compile(source, {
     base: dirname(GLOBALS),
     loadStylesheet,
@@ -98,13 +99,15 @@ function rulesFor(css: string, wanted: string): string[] | undefined {
 }
 
 describe("AC11 — app/globals.css draws the current language from aria-current", () => {
-  it.each([
-    ['.lang-switch > button[aria-current="true"]', "font-semibold", ".probe-current"],
-    ['.lang-switch > button:not([aria-current="true"])', "text-teal-muted", ".probe-other"],
-  ])("AC11: %s compiles to what @apply %s gives", async (rule, _utility, probe) => {
+  it('AC11: .lang-switch > button[aria-current="true"] compiles to what @apply font-semibold gives', async () => {
+    const rule = '.lang-switch > button[aria-current="true"]';
     const css = await compiled();
-    const expected = rulesFor(css, probe);
-    expect(expected, `the probe ${probe} compiled to nothing`).toBeDefined();
+    const expected = rulesFor(css, ".probe-current");
+    expect(expected, "the probe .probe-current compiled to nothing").toBeDefined();
     expect(rulesFor(css, rule), `no rule for ${rule} in app/globals.css`).toEqual(expected);
+  });
+
+  it("issue 84: the option that is not current has no rule of its own, so it stays btn-quiet's teal", async () => {
+    expect(rulesFor(await compiled(), '.lang-switch > button:not([aria-current="true"])')).toBeUndefined();
   });
 });

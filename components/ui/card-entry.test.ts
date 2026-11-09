@@ -2,6 +2,7 @@
 // it grows to fit it and never covers the hint below. Square's form exists only with Square's script in a
 // browser, and e2e draws the test field in its place (DEC-023), so this reads the box's classes, as
 // components/ui/card.test.ts does. The box drawn around the real form is AC15, by hand.
+// Issue 84: Square's form draws its own box, so ours draws none — no border, no padding — and Square's shows alone.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -29,13 +30,17 @@ function cardBoxClass(): string | undefined {
 }
 
 describe("AC1 (issue 56) — CardEntry's box", () => {
-  it("AC1: the box around Square's form has no fixed height, keeps the field's look, and the text fields stay 40px", () => {
+  it("AC1: the box around Square's form has no fixed height, and the text fields stay 40px", () => {
     const utilities = utilitiesOf(cardBoxClass());
-    expect(utilities).toEqual(expect.arrayContaining(["rounded-sm", "border", "border-border", "bg-surface"]));
     expect(utilitiesOf("field")).toContain("h-field");
 
     // The last height named is the one that holds, whether a class replaces `.field`'s or leaves it out.
     expect(utilities.filter((utility) => utility.startsWith("h-")).at(-1) ?? "h-auto").toBe("h-auto");
+  });
+
+  it("AC1 (issue 84): the box draws no border and no padding of its own, so Square's box is the only one", () => {
+    const utilities = utilitiesOf(cardBoxClass());
+    expect(utilities.filter((utility) => /^border(-|$)/.test(utility) || /^p[xytrbl]?-/.test(utility))).toEqual([]);
   });
 });
 

@@ -23,6 +23,13 @@ describe("AC17 — Hint", () => {
     expect(openingTag(html)).not.toContain(" id=");
   });
 
+  it("issue 84: `below` sets it 8px under the field above it, past the focus ring's 4px; without it, no top margin", () => {
+    const classOf = (below: boolean) =>
+      utilitiesOf(/class="([^"]*)"/.exec(openingTag(renderToStaticMarkup(createElement(Hint, { below, children: "Help" }))))?.[1]);
+    expect(classOf(true)).toContain("mt-2");
+    expect(classOf(false).filter((utility) => utility.startsWith("mt-"))).toEqual([]);
+  });
+
   it("AC17: it is small and muted", () => {
     const utilities = utilitiesOf(/class="([^"]*)"/.exec(openingTag(render()))?.[1]);
     expect(utilities).toContain("text-small");

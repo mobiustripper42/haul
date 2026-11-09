@@ -4,7 +4,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { attributesOf, normalMarkup } from "../../app/screen-test-helpers";
+import { attributesOf, normalMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { Button, type ButtonKind, type ButtonProps } from "./button";
 
 const KINDS: ButtonKind[] = ["primary", "secondary", "quiet"];
@@ -25,6 +25,14 @@ describe("AC7 — Button", () => {
     ["full and flush, given flush first", "btn-primary w-full btn-flush", { flush: true, full: true }],
   ])("AC7: %s gives the class %j, in that order after the kind", (_what, cls, extra) => {
     expect(normalMarkup(render({ kind: "primary", ...extra }))).toBe(normalMarkup(`<button class="${cls}">Go</button>`));
+  });
+
+  it.each([
+    ['flush "end"', "btn-quiet btn-flush-end", { flush: "end" }, "-mr-2"],
+    ['flush "end-narrow"', "btn-quiet btn-flush-end-narrow", { flush: "end-narrow" }, "max-lg:-mr-2"],
+  ])("issue 84: %s gives the class %j, which pulls the text flush with the right edge", (_what, cls, extra, pull) => {
+    expect(normalMarkup(render({ kind: "quiet", ...extra }))).toBe(normalMarkup(`<button class="${cls}">Go</button>`));
+    expect(utilitiesOf(cls)).toContain(pull);
   });
 
   it("AC7: full={false} and flush={false} add nothing", () => {

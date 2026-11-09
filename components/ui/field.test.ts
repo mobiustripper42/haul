@@ -24,8 +24,8 @@ describe("AC17 (issue 55) — Field's help", () => {
   const render = () =>
     renderToStaticMarkup(createElement(Field, { label: "Phone", htmlFor: "phone", help: HELP, children: createElement("input", { id: "phone" }) }));
 
-  it("AC17: with help it renders Hint, with the id <htmlFor>-help, after its children", () => {
-    const hint = renderToStaticMarkup(createElement(Hint, { id: "phone-help", children: HELP }));
+  it("AC17, issue 84: with help it renders Hint, with the id <htmlFor>-help, set below its children", () => {
+    const hint = renderToStaticMarkup(createElement(Hint, { id: "phone-help", below: true, children: HELP }));
     const html = render();
     expect(textsOf(html)).toEqual(["Phone", HELP]);
     expect(normalMarkup(html)).toBe(

@@ -35,11 +35,18 @@ vi.mock("./session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session")>()),
   getSignedInMember: async () => session.member,
 }));
-vi.mock("./language-switcher", () => ({ LanguageSwitcher: async () => createElement("div", null, "the language switch") }));
+const switcher = vi.hoisted(() => ({ calls: [] as unknown[] }));
+vi.mock("./language-switcher", () => ({
+  LanguageSwitcher: async (...args: unknown[]) => {
+    switcher.calls.push(args[0]);
+    return createElement("div", null, "the language switch");
+  },
+}));
 
 beforeEach(() => {
   request.current = emptyRequest();
   session.member = null;
+  switcher.calls = [];
 });
 
 const SWITCH = "the language switch";
@@ -50,10 +57,13 @@ const ADMIN = en["header.admin"];
 
 type Account = "none" | "sign-in" | "sign-in-current";
 
-const header = async (account: Account, current?: "admin") => {
-  const element = await SiteHeader({ account, ...(current === undefined ? {} : { current }) });
+const header = async (account: Account, current?: "admin", wideOnly?: boolean) => {
+  const element = await SiteHeader({ account, ...(current === undefined ? {} : { current }), ...(wideOnly ? { wideOnly } : {}) });
   return { element, words: textsOf(renderToStaticMarkup(element)), buttons: findAll(element, Button) };
 };
+
+/** The `flush` the header gave the language switch, or undefined. */
+const switchFlush = () => (switcher.calls.at(-1) as { flush?: string } | undefined)?.flush;
 
 describe("AC18 — SiteHeader, account none, is the header the sign-in screens had", () => {
   it("AC18: it holds the farm's name and byline, then the language switch, and no other word", async () => {
@@ -148,5 +158,35 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
 
   it('AC6 (issue 97): with account "sign-in-current" the header still shows Admin, then Sign out', async () => {
     expect((await header("sign-in-current")).words).toEqual([...BRAND, SWITCH, ADMIN, SIGN_OUT]);
+  });
+});
+
+// Issue 84: a quiet button's text ends 8px inside its tap area, so the one that ends the header's row is
+// pulled flush with the gutter. A secondary button has its own border and is not.
+describe("issue 84 — the quiet button that ends the header is flush with the gutter", () => {
+  it('account "none": the language switch ends the row, so it is flush at every width', async () => {
+    await header("none");
+    expect(switchFlush()).toBe("end");
+  });
+
+  it("a pane page: Sign in is hidden below lg, so the switch is flush below lg only", async () => {
+    await header("sign-in", undefined, true);
+    expect(switchFlush()).toBe("end-narrow");
+  });
+
+  it.each(["sign-in", "sign-in-current"] as const)('account "%s": Sign in ends the row, so the switch is not flush', async (account) => {
+    await header(account);
+    expect(switchFlush()).toBeUndefined();
+  });
+
+  it.each(["member", "admin"] as const)("signed in as %s: Sign out ends the row and is flush; the switch is not", async (role) => {
+    session.member = { role };
+    const { buttons } = await header("none", undefined, true);
+    expect(switchFlush()).toBeUndefined();
+    const signOutButton = buttons.find((button) => button.props.children === SIGN_OUT);
+    expect(signOutButton?.props.flush).toBe("end");
+    expect(buttons.filter((button) => button !== signOutButton).map((button) => button.props.flush)).toEqual(
+      buttons.filter((button) => button !== signOutButton).map(() => undefined),
+    );
   });
 });

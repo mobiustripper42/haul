@@ -127,6 +127,10 @@
       font-size: 93.75%;
     }
   }
+  /* The scrollbar's space is kept when a page is too short to scroll, so filtering a list moves nothing sideways (issue 84). */
+  html {
+    scrollbar-gutter: stable;
+  }
   /* 2px teal, a 2px gap: set once for every control. */
   :focus-visible {
     outline: 2px solid var(--color-teal);
@@ -246,6 +250,11 @@
   .search-box .field {
     @apply pl-10;
   }
+  /* The browser's clear button, in the icon's teal and line weight instead of its own blue (issue 84). Firefox draws none. */
+  .search-box .field::-webkit-search-cancel-button {
+    @apply size-5 cursor-pointer appearance-none bg-teal;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7L7 17'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
 
   /* A sortable header: the whole cell is the button, and the sorted one shows its direction (from the th's aria-sort). */
   .sort-button {
@@ -256,6 +265,11 @@
   }
   th[aria-sort="descending"] .sort-button::after {
     content: "\2193";
+  }
+  /* An unsorted header holds the arrow's space, hidden, so sorting moves no column (issue 84). */
+  th[aria-sort="none"] .sort-button::after {
+    content: "\2191";
+    visibility: hidden;
   }
 
   /* The stacked rows: shown below 720px only (see the media query after the layers). */
@@ -295,6 +309,13 @@
   .btn-flush {
     @apply -ml-2 -my-3;
   }
+  /* The same at the right edge, for the quiet button that ends the header's row (issue 84); `-narrow` below lg only. */
+  .btn-flush-end {
+    @apply -mr-2;
+  }
+  .btn-flush-end-narrow {
+    @apply max-lg:-mr-2;
+  }
 
   /* "Use a different email": the quiet button with the frame's back chevron before it. */
   .back-link::before {
@@ -307,11 +328,9 @@
   .lang-switch {
     @apply flex min-w-0 items-center gap-1;
   }
+  /* The current language is set apart by weight; both stay teal, since teal-muted is for 14px and up (issue 84). */
   .lang-switch > button[aria-current="true"] {
     @apply font-semibold;
-  }
-  .lang-switch > button:not([aria-current="true"]) {
-    @apply text-teal-muted;
   }
   .lang-switch > button + button {
     @apply relative;
