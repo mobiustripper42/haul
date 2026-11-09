@@ -24,13 +24,13 @@ Estos términos cubren el uso que usted hace del OCF Member Portal en members.oh
 - Una porción de la CSA se paga por completo al comprarla y cubre toda la temporada.
 - Una CSA es un compromiso compartido entre los miembros y la granja. El clima, las plagas y las estaciones afectan lo que cultivamos, por lo que el contenido y el tamaño de la porción de cada semana variarán. Hacemos todo lo posible por ofrecer un valor justo durante la temporada, pero no podemos garantizar cultivos ni cantidades específicas.
 - Las porciones de la CSA no se pueden cancelar ni reembolsar una vez compradas.
-- Si no puede usar la porción de una semana, puede presionar “donar esta semana” en su cuenta. Las porciones que se donan, o que no se recogen antes de que termine el período de recogida, van al Programa de Despensa para Recién Llegados de Re:Source Cleveland.
+- Si no puede usar la porción de una semana, puede presionar “donar esta semana” en su cuenta. Las porciones que se donan, o que no se recogen antes de que termine el período de recogida, van al Pantry Program for Newcomers (programa de despensa para recién llegados) de Re:Source Cleveland.
 
 ## Entrega a domicilio
 
 - La entrega a domicilio es un complemento de una porción de la CSA, disponible solo para direcciones dentro de nuestra zona de entrega. La tarifa semanal de entrega se muestra al agregarla.
 - La tarifa de entrega se cobra cada semana en la fecha límite, y usted puede omitir una semana o cambiar entre entrega y recogida antes de la fecha límite.
-- Dejamos las entregas en la dirección que figura en su cuenta. No somos responsables de una porción una vez entregada, así que le pedimos que la entre a su casa sin demora.
+- Dejamos las entregas en la dirección que figura en su cuenta. No somos responsables de una porción una vez entregada, así que le pedimos que la meta a su casa sin demora.
 
 ## Recogida
 
