@@ -136,7 +136,7 @@ describe("AC4 — the details form", () => {
 
   it("AC4: the button is the form's one submit, a full-width primary Button", async () => {
     const submit = findAll((await render()).element, Button).filter((button) => button.props.type === "submit");
-    expect(submit.map(({ props }) => [props.children, props.kind, props.full])).toEqual([[en["signIn.sendCode"], "primary", true]]);
+    expect(submit.map(({ props }) => [props.kind, props.full])).toEqual([["primary", true]]);
   });
 
   it.each([

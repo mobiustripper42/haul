@@ -71,22 +71,18 @@ describe("no pane: the Supper Club page", () => {
     expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 
-  it("AC3: it is the page shell, with the left column and then the slot", async () => {
+  it("AC3: it is the page shell, with the slot last (the left column's card: AC17 below)", async () => {
     const { element, html } = await render("none");
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["page"]);
-    const texts = textsOf(html);
-    expect(texts.indexOf(en["supperClub.title"])).toBeGreaterThan(-1);
-    expect(texts.slice(-1)).toEqual(["child"]);
+    expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 });
 
 describe.each(["create-account", "sign-in"] as const)("pane %s", (pane) => {
-  it(`AC3: ${pane} is the pane shell, with the left column and then the slot`, async () => {
+  it(`AC3: ${pane} is the pane shell, with the slot last (the left column's card: AC17 below)`, async () => {
     const { element, html } = await render(pane);
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
-    const texts = textsOf(html);
-    expect(texts.indexOf(en["supperClub.title"])).toBeGreaterThan(-1);
-    expect(texts.slice(-1)).toEqual(["child"]);
+    expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 
   it(`AC11: ${pane} asks for a header whose Sign in is wide-only`, async () => {
@@ -106,13 +102,11 @@ describe.each(["done", "already"] as const)("issue 56 — pane %s", (pane) => {
     expect(textsOf((await render(pane)).html).slice(-1)).toEqual(["child"]);
   });
 
-  it(`AC13: ${pane} is the pane shell, with the left column and then the slot`, async () => {
+  it(`AC13: ${pane} is the pane shell, with the slot last (the left column's card: AC17 below)`, async () => {
     await signIn();
     const { element, html } = await render(pane);
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
-    const texts = textsOf(html);
-    expect(texts.indexOf(en["supperClub.title"])).toBeGreaterThan(-1);
-    expect(texts.slice(-1)).toEqual(["child"]);
+    expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 
   it(`AC4 (issue 97): ${pane}'s header shows at every width`, async () => {

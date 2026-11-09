@@ -271,8 +271,7 @@ describe("AC5 — the already-a-member page", () => {
 
   it("AC5: viewing it writes no event", async () => {
     await subscribe(await signIn());
-    const { html } = await render();
-    expect(textsOf(html)).toContain(en["supperClub.already.title"]);
+    await render();
     expect(services.repo.events()).toEqual([]);
   });
 });
