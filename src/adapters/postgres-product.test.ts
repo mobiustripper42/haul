@@ -74,9 +74,9 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
     await runSeed("supper-club", url);
 
     const found = await repo.findProductByName(SUPPER_CLUB_PRODUCT_NAME);
-    expect(found).toMatchObject({ name: "Supper Club", cap: 50, firstPickupDate: "2027-01-03", cutoffWeekday: 1, cutoffTime: "24:00:00" });
+    expect(found).toMatchObject({ name: "Supper Club", cap: 50, firstPickupDate: "2027-01-10", cutoffWeekday: 1, cutoffTime: "24:00:00" });
     expect(found?.optionTypes.map((type) => [type.name, type.options.map((option) => [option.name, option.priceCents])])).toEqual([
-      ["How many people", [["3–4 people", 8000], ["2 people", 5000]]],
+      ["How many people", [["Portioned for 4", 7400], ["Portioned for 2", 4200]]],
       ["Which menu", [["Standard", 0], ["Vegan", 0]]],
     ]);
   });
@@ -130,7 +130,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         )
       ).rows;
 
-    const deps = (payments: FakePayments): SignupDeps => ({ repo, payments, now: NOW });
+    const deps = (payments: FakePayments): SignupDeps => ({ repo, payments, now: NOW, clock: () => NOW });
 
     /** Resolves "waiting" once a query is blocked on a lock in this database, or "no lock" when none has been for a while. */
     const blockedOnALock = async (): Promise<"waiting" | "no lock"> => {

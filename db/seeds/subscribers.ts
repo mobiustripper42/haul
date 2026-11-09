@@ -24,22 +24,19 @@ type Subscriber = {
 };
 
 const SUBSCRIBERS: readonly Subscriber[] = [
-  { email: "chidi.abara@example.com", firstName: "Chidi", lastName: "Abara", phone: "(216) 555-0142", picks: ["3–4 people", "Standard"], joined: "2026-12-01" },
-  { email: "rosa.bennett@example.com", firstName: "Rosa", lastName: "Bennett", phone: "(216) 555-0187", picks: ["2 people", "Vegan"], joined: "2026-12-01" },
-  { email: "marco.castillo@example.com", firstName: "Marco", lastName: "Castillo", phone: "(440) 555-0123", picks: ["3–4 people", "Standard"], joined: "2026-12-02" },
-  { email: "linh.dang@example.com", firstName: "Linh", lastName: "Dang", phone: "(216) 555-0166", picks: ["2 people", "Standard"], joined: "2026-12-02" },
-  { email: "grace.ellison@example.com", firstName: "Grace", lastName: "Ellison", phone: "(216) 555-0119", picks: ["2 people", "Vegan"], joined: "2026-12-03" },
-  { email: "yusuf.farah@example.com", firstName: "Yusuf", lastName: "Farah", phone: "(216) 555-0158", picks: ["3–4 people", "Standard"], joined: "2026-12-04" },
-  { email: "ana.gutierrez@example.com", firstName: "Ana", lastName: "Gutierrez", phone: "(440) 555-0171", picks: ["3–4 people", "Vegan"], joined: "2026-12-05" },
-  { email: "rami.haddad@example.com", firstName: "Rami", lastName: "Haddad", phone: "(216) 555-0134", picks: ["2 people", "Standard"], joined: "2026-12-07" },
-  { email: "ben.kowalski@example.com", firstName: "Ben", lastName: "Kowalski", phone: "(216) 555-0149", picks: ["2 people", "Standard"], joined: "2026-12-08" },
-  { email: "thandi.mbeki@example.com", firstName: "Thandi", lastName: "Mbeki", phone: "(216) 555-0195", picks: ["3–4 people", "Standard"], joined: "2026-12-09" },
-  { email: "tam.nguyen@example.com", firstName: "Tam", lastName: "Nguyen", phone: "(216) 555-0110", picks: ["2 people", "Vegan"], joined: "2026-12-11" },
-  { email: "ada.okafor@example.com", firstName: "Ada", lastName: "Okafor", phone: "(440) 555-0182", picks: ["3–4 people", "Standard"], joined: "2026-12-12" },
+  { email: "chidi.abara@example.com", firstName: "Chidi", lastName: "Abara", phone: "(216) 555-0142", picks: ["Portioned for 4", "Standard"], joined: "2026-12-01" },
+  { email: "rosa.bennett@example.com", firstName: "Rosa", lastName: "Bennett", phone: "(216) 555-0187", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-01" },
+  { email: "marco.castillo@example.com", firstName: "Marco", lastName: "Castillo", phone: "(440) 555-0123", picks: ["Portioned for 4", "Standard"], joined: "2026-12-02" },
+  { email: "linh.dang@example.com", firstName: "Linh", lastName: "Dang", phone: "(216) 555-0166", picks: ["Portioned for 2", "Standard"], joined: "2026-12-02" },
+  { email: "grace.ellison@example.com", firstName: "Grace", lastName: "Ellison", phone: "(216) 555-0119", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-03" },
+  { email: "yusuf.farah@example.com", firstName: "Yusuf", lastName: "Farah", phone: "(216) 555-0158", picks: ["Portioned for 4", "Standard"], joined: "2026-12-04" },
+  { email: "ana.gutierrez@example.com", firstName: "Ana", lastName: "Gutierrez", phone: "(440) 555-0171", picks: ["Portioned for 4", "Vegan"], joined: "2026-12-05" },
+  { email: "rami.haddad@example.com", firstName: "Rami", lastName: "Haddad", phone: "(216) 555-0134", picks: ["Portioned for 2", "Standard"], joined: "2026-12-07" },
+  { email: "ben.kowalski@example.com", firstName: "Ben", lastName: "Kowalski", phone: "(216) 555-0149", picks: ["Portioned for 2", "Standard"], joined: "2026-12-08" },
+  { email: "thandi.mbeki@example.com", firstName: "Thandi", lastName: "Mbeki", phone: "(216) 555-0195", picks: ["Portioned for 4", "Standard"], joined: "2026-12-09" },
+  { email: "tam.nguyen@example.com", firstName: "Tam", lastName: "Nguyen", phone: "(216) 555-0110", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-11" },
+  { email: "ada.okafor@example.com", firstName: "Ada", lastName: "Okafor", phone: "(440) 555-0182", picks: ["Portioned for 4", "Standard"], joined: "2026-12-12" },
 ];
-
-/** The first Sunday a signup pays for, which is the Supper Club seed's first pickup date. */
-const FIRST_PICKUP = "2027-01-03";
 
 /** A fixed subscription id for the nth subscriber, so a second run finds the row it made. */
 const subscriptionId = (n: number): string => `5eed0000-0000-4000-8000-${String(n + 1).padStart(12, "0")}`;
@@ -55,8 +52,15 @@ export async function seed(db: Client): Promise<void> {
       where p.name = $1`,
     [SUPPER_CLUB_PRODUCT_NAME],
   );
-  const productId = (await db.query<{ id: string }>("select id from products where name = $1", [SUPPER_CLUB_PRODUCT_NAME])).rows[0]?.id;
-  if (productId === undefined) throw new Error("subscribers seed: the Supper Club product is missing");
+  // The first Sunday a signup pays for is the Supper Club product's first pickup date, which has one home: its seed.
+  const product = (
+    await db.query<{ id: string; first_pickup: string }>(
+      "select id, to_char(first_pickup_date, 'YYYY-MM-DD') as first_pickup from products where name = $1",
+      [SUPPER_CLUB_PRODUCT_NAME],
+    )
+  ).rows[0];
+  if (product === undefined) throw new Error("subscribers seed: the Supper Club product is missing");
+  const { id: productId, first_pickup: firstPickup } = product;
   const optionNamed = (name: string) => {
     const found = options.find((option) => option.name === name);
     if (!found) throw new Error(`subscribers seed: the Supper Club has no option "${name}"`);
@@ -118,7 +122,7 @@ export async function seed(db: Client): Promise<void> {
              attempt = excluded.attempt,
              square_payment_id = excluded.square_payment_id,
              paid_at = excluded.paid_at`,
-      [id, FIRST_PICKUP, cents, `SEED_PAYMENT_${n + 1}`, paidAt],
+      [id, firstPickup, cents, `SEED_PAYMENT_${n + 1}`, paidAt],
     );
   }
 }

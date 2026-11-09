@@ -2,7 +2,7 @@
  * The `supper-club` seed (issue #53): the Supper Club product, its two option types and four
  * options. Each row is upserted on its unique name and puts back only the columns it names, so an
  * `id` survives a second run and a row the seed doesn't name (another product, another option) is
- * left alone. Values are placeholders until the farm answers (`docs/SPEC.md` §6.1, §9).
+ * left alone. Names, prices and the first pickup are Lenny's answers (`docs/sources/2026-11-07-lenny-answers.md`).
  *
  * Cutoff is Monday (ISO weekday 1) at `24:00`, the end of the day, in America/New_York (DEC-017).
  */
@@ -12,7 +12,7 @@ import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 const PRODUCT = {
   name: SUPPER_CLUB_PRODUCT_NAME,
   cap: 50,
-  firstPickupDate: "2027-01-03",
+  firstPickupDate: "2027-01-10",
   cutoffWeekday: 1,
   cutoffTime: "24:00",
 };
@@ -26,8 +26,8 @@ const OPTION_TYPES: ReadonlyArray<{
     name: "How many people",
     position: 1,
     options: [
-      { name: "3–4 people", priceCents: 8000, position: 1 },
-      { name: "2 people", priceCents: 5000, position: 2 },
+      { name: "Portioned for 4", priceCents: 7400, position: 1 },
+      { name: "Portioned for 2", priceCents: 4200, position: 2 },
     ],
   },
   {

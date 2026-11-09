@@ -76,6 +76,53 @@ describe("AC4 — validateAccountDetails", () => {
     const entered = { firstName: "", lastName: ofLength("lastName", 101), email: "nope", phone: ofLength("phone", 41), language: "en" };
     expect(validateAccountDetails(entered)).toEqual({ ok: false, errors: ["firstName", "lastName", "email", "phone"] });
   });
+
+  // Issue 102: the rule's edge cases are cleanTypedText's (src/typed-text.test.ts); these hold that each field
+  // goes through it, with one value it changes and one it leaves alone.
+  describe("issue 102 — each field is cleaned before it is validated", () => {
+    it.each([
+      ["firstName", "Ana\nMaría", "Ana María"],
+      ["lastName", "Ruiz\tde la Peña", "Ruiz de la Peña"],
+      ["phone", "216\r555-0100", "216 555-0100"],
+    ] as const)("AC7: a %s holding a tab, LF or CR is stored with a space in its place", (field, typed, stored) => {
+      expect(validateAccountDetails({ ...VALID, [field]: typed })).toEqual({ ok: true, details: { ...VALID, [field]: stored } });
+    });
+
+    it.each([
+      ["firstName", "Ana María"],
+      ["lastName", "Ruiz de la Peña"],
+      ["phone", "+1 (216) 555-0100"],
+      ["email", "ana.maria@example.com"],
+    ] as const)("AC7: with nothing to clean, %s is stored as typed", (field, typed) => {
+      expect(validateAccountDetails({ ...VALID, [field]: typed })).toEqual({ ok: true, details: { ...VALID, [field]: typed } });
+    });
+
+    it("AC7: an email holding a control character has it removed, and is valid", () => {
+      expect(validateAccountDetails({ ...VALID, email: "ada@exa\u0000mple.com‮" })).toEqual({ ok: true, details: VALID });
+    });
+
+    it("AC7: an email holding a tab inside gets the email error, as today", () => {
+      expect(validateAccountDetails({ ...VALID, email: "ada@exa\tmple.com" })).toEqual({ ok: false, errors: ["email"] });
+    });
+
+    it("AC9: a first name made only of control characters comes out empty and gets the first-name error", () => {
+      expect(validateAccountDetails({ ...VALID, firstName: "\u0000\u0007‮\u009f" })).toEqual({ ok: false, errors: ["firstName"] });
+    });
+
+    /** `value` with control characters and overrides between its characters, which the limit must not count. */
+    const dirtied = (value: string) => `${value.slice(0, 1)}\u0000\u0007‮⁦\u009f${value.slice(1)}`;
+
+    it.each([
+      ["firstName", 100],
+      ["lastName", 100],
+      ["email", 254],
+      ["phone", 40],
+    ] as const)("AC9: %s's limit of %i is measured on the cleaned value", (field, limit) => {
+      const atLimit = ofLength(field, limit);
+      expect(validateAccountDetails({ ...VALID, [field]: dirtied(atLimit) })).toEqual({ ok: true, details: { ...VALID, [field]: atLimit } });
+      expect(validateAccountDetails({ ...VALID, [field]: dirtied(ofLength(field, limit + 1)) })).toEqual({ ok: false, errors: [field] });
+    });
+  });
 });
 
 const T0 = new Date("2026-10-28T14:25:30.000Z");

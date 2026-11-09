@@ -526,6 +526,54 @@ describe("issue 56 — the pay actions", () => {
     });
   });
 
+  // Issue 102, AC1 and AC2: what signUp and retrySignup do with the clock is src/signup.test.ts; these hold that
+  // each action hands them one that reads the time when it is read, by moving the faked Date inside Square's answer.
+  describe("AC1, AC2 (issue 102) — paid_at is when the paid answer came back", () => {
+    it("AC1: joinSupperClub confirms the rows at the time the charge came back, and consent_at stays the request's start", async () => {
+      const answered = new Date("2026-10-28T14:25:33.000Z");
+      signIn();
+      const real = services.payments.charge.bind(services.payments);
+      vi.spyOn(services.payments, "charge").mockImplementationOnce(async (input) => {
+        const result = await real(input);
+        vi.setSystemTime(answered);
+        return result;
+      });
+      const save = vi.spyOn(repo, "savePendingSignup");
+      const confirm = vi.spyOn(repo, "confirmSignupRows");
+
+      expect(await join(pay())).toBe("/supper-club/done");
+      expect(confirm.mock.calls.map((call) => call[3])).toEqual([answered]);
+      expect(save.mock.calls.map(([input]) => input.consentAt)).toEqual([T0]);
+    });
+
+    it("AC2: retrySupperClubPayment, finding the payment Square took, confirms the rows at the time the lookup came back, not the retry's start", async () => {
+      const retried = new Date("2026-10-28T14:26:00.000Z");
+      const found = new Date("2026-10-28T14:26:04.000Z");
+      signIn();
+      const real = services.payments.charge.bind(services.payments);
+      const replyLost = async (input: Parameters<typeof real>[0]) => {
+        await real(input);
+        throw noAnswer();
+      };
+      vi.spyOn(services.payments, "charge").mockImplementationOnce(replyLost).mockImplementationOnce(replyLost);
+      await join(pay());
+
+      vi.setSystemTime(retried);
+      signIn();
+      const lookup = services.payments.findPaymentByReference.bind(services.payments);
+      vi.spyOn(services.payments, "findPaymentByReference").mockImplementationOnce(async (input) => {
+        const payment = await lookup(input);
+        vi.setSystemTime(found);
+        return payment;
+      });
+      const confirm = vi.spyOn(repo, "confirmSignupRows");
+
+      expect(await retry()).toBe("/supper-club/done");
+      expect(services.payments.charges).toHaveLength(1);
+      expect(confirm.mock.calls.map((call) => call[3])).toEqual([found]);
+    });
+  });
+
   // The email's words are src/signup-email.test.ts; this holds whether it goes, when, and what a failure does.
   describe("issue 58 — the confirmation email", () => {
     const DONE = "/supper-club/done";

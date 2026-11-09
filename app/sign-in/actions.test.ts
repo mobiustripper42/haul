@@ -239,6 +239,22 @@ describe("AC2 (issue 101) — requestCode from the resend form", () => {
   });
 });
 
+// Issue 102, AC10: the rule is cleanTypedText's (src/typed-text.test.ts); this holds that requestCodeFor uses it
+// at the read, with one email it changes and one it leaves alone.
+describe("AC10 (issue 102) — requestCode cleans the email it reads", () => {
+  it.each([
+    ["holding control characters and an override", "‮ada@exa\u0000mple.com\u0007"],
+    ["with nothing to clean", "ada@example.com"],
+  ])("AC10: an email %s is looked up and stored in ocf_sign_in_email cleaned", async (_what, entered) => {
+    const { requestCode } = await load();
+    expect(await redirectOf(requestCode(form({ email: entered })))).toBe("/sign-in/code");
+    expect(setsNamed(SIGN_IN_EMAIL).map((cookie) => cookie.value)).toEqual(["ada@example.com"]);
+    await runScheduled();
+    expect(email.sent.map((message) => message.to)).toEqual(["ada@example.com"]);
+    expect(await repo.getSignInCode(ada.id)).not.toBeNull();
+  });
+});
+
 describe("AC27 (issue 9) — requestCode issues and sends after the response", () => {
   it("AC27: for a member's email it schedules one after() callback and has stored and sent nothing yet", async () => {
     const { requestCode } = await load();
