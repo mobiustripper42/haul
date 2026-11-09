@@ -126,7 +126,10 @@ export async function retrySupperClubPayment(): Promise<void> {
   if (!member) redirect(PANE_SIGN_IN_PAGES.start);
 
   const repo = getRepository();
-  const result = await retrySignup({ repo, payments: getPayments(), now: new Date(), clock: () => new Date() },{ memberId: member.id });
+  const result = await retrySignup(
+    { repo, payments: getPayments(), now: new Date(), clock: () => new Date() },
+    { memberId: member.id },
+  );
   sendConfirmationAfterResponse(repo, member.id, result);
   // A decline shows the normal form again, with the picks the pending row holds.
   const kept = result.outcome === "declined" || result.outcome === "error" ? await picksOf(repo, member.id) : null;
