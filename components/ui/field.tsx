@@ -3,7 +3,7 @@ import { Hint } from "./hint";
 
 /**
  * A labelled field: the caller gives the `Input` the same `id` as `htmlFor` (issue 38, AC4). `help` is
- * a `Hint` after the field with the id `<htmlFor>-help`, which the caller names in the input's
+ * a `Hint` 8px below the field with the id `<htmlFor>-help`, which the caller names in the input's
  * `aria-describedby`.
  */
 export function Field({
@@ -23,7 +23,11 @@ export function Field({
         {label}
       </label>
       {children}
-      {help !== undefined && <Hint id={`${htmlFor}-help`}>{help}</Hint>}
+      {help !== undefined && (
+        <Hint id={`${htmlFor}-help`} below>
+          {help}
+        </Hint>
+      )}
     </p>
   );
 }

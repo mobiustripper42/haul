@@ -26,8 +26,8 @@ beforeEach(() => {
   request.current = emptyRequest();
 });
 
-const render = async () => {
-  const element = await LanguageSwitcher();
+const render = async (props?: Parameters<typeof LanguageSwitcher>[0]) => {
+  const element = await LanguageSwitcher(props);
   return { element, html: renderToStaticMarkup(element) };
 };
 
@@ -84,5 +84,20 @@ describe("AC6 — LanguageSwitcher", () => {
       if (button.value === current) expect(button["aria-current"], button.value).toBe("true");
       else expect(button, button.value).not.toHaveProperty("aria-current");
     }
+  });
+});
+
+// Issue 84: the header passes `flush` when the switch ends its row; only the last option meets the gutter.
+describe("issue 84 — LanguageSwitcher's flush", () => {
+  it.each(["end", "end-narrow"] as const)('with flush "%s" the last option alone carries it', async (flush) => {
+    const { element } = await render({ flush });
+    const flushes = findAll(element, Button).map((button) => button.props.flush);
+    expect(flushes.at(-1)).toBe(flush);
+    expect(flushes.slice(0, -1)).toEqual(flushes.slice(0, -1).map(() => undefined));
+  });
+
+  it("without flush no option carries one", async () => {
+    const { element } = await render();
+    expect(findAll(element, Button).map((button) => button.props.flush)).toEqual(Object.keys(LANGUAGES).map(() => undefined));
   });
 });

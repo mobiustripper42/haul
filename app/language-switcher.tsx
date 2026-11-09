@@ -1,15 +1,17 @@
 import { LANGUAGES } from "@core/i18n.js";
-import { Button } from "../components/ui/button";
+import { Button, type ButtonFlush } from "../components/ui/button";
 import { getLanguage, getTranslator } from "./language";
 import { setLanguage } from "./language-actions";
 
 /**
  * The language switch, one option per language, each named in itself. Called inline,
  * `{await LanguageSwitcher()}`, never as `<LanguageSwitcher />`: a test renders the page through
- * react-dom/server, which cannot render an async component written as JSX.
+ * react-dom/server, which cannot render an async component written as JSX. `flush` goes to the last
+ * option, for a header whose row the switch ends (issue 84).
  */
-export async function LanguageSwitcher() {
+export async function LanguageSwitcher({ flush }: { flush?: Extract<ButtonFlush, string> } = {}) {
   const [t, current] = await Promise.all([getTranslator(), getLanguage()]);
+  const codes = Object.keys(LANGUAGES);
   return (
     <form action={setLanguage}>
       <fieldset className="lang-switch">
@@ -23,6 +25,7 @@ export async function LanguageSwitcher() {
             value={code}
             lang={code}
             aria-current={code === current ? "true" : undefined}
+            {...(flush && code === codes.at(-1) ? { flush } : {})}
           >
             {name}
           </Button>

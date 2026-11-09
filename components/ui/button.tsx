@@ -2,7 +2,13 @@ import type { ButtonHTMLAttributes, ReactNode } from "react";
 
 export type ButtonKind = "primary" | "secondary" | "quiet";
 
-export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: boolean; children: ReactNode } & (
+/** `true` lines the text up with the left edge; `"end"` with the right; `"end-narrow"` with the right below `lg` only. */
+export type ButtonFlush = boolean | "end" | "end-narrow";
+
+const FLUSH_CLASS = { start: "btn-flush", end: "btn-flush-end", "end-narrow": "btn-flush-end-narrow" } as const;
+const flushClass = (flush: ButtonFlush | undefined) => (flush === true ? FLUSH_CLASS.start : flush ? FLUSH_CLASS[flush] : false);
+
+export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlush; children: ReactNode } & (
   | { href: string; back?: boolean; current?: boolean }
   | (Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "style" | "children"> & {
       href?: never;
@@ -18,14 +24,14 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: boolean; c
 export function Button(props: ButtonProps) {
   const { kind, full, flush, children, href, back, current, ...rest } = props;
   if (href !== undefined) {
-    const className = [`btn-${kind}`, back && "back-link", full && "w-full", flush && "btn-flush"].filter(Boolean).join(" ");
+    const className = [`btn-${kind}`, back && "back-link", full && "w-full", flushClass(flush)].filter(Boolean).join(" ");
     return (
       <a href={href} className={className} {...(current ? { "aria-current": "page" as const } : {})}>
         {children}
       </a>
     );
   }
-  const className = [`btn-${kind}`, full && "w-full", flush && "btn-flush"].filter(Boolean).join(" ");
+  const className = [`btn-${kind}`, full && "w-full", flushClass(flush)].filter(Boolean).join(" ");
   return (
     <button {...rest} className={className}>
       {children}

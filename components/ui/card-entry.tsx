@@ -44,8 +44,8 @@ function loadSquare(applicationId: string): Promise<SquareGlobal> {
 }
 
 /**
- * Square's card form, in a box that keeps the field's look and grows to fit it (Square's form is taller
- * than a 40px field), with its label and hint. It is the page's first client code:
+ * Square's card form, which draws its own box, in a plain block that grows to fit it (Square's form is
+ * taller than a 40px field), with its label and hint. It is the page's first client code:
  * it loads Square's script, and `ref.tokenize()` turns what was typed into a single-use token, for the
  * form to post as `sourceId`. The token is asked for as a card to store and charge
  * (`CHARGE_AND_STORE`, the customer present), with the amount and the member as the billing contact; no
@@ -153,8 +153,8 @@ export function CardEntry({
       ) : testMode ? (
         <Input name="sourceId" aria-label={testLabel} value={testValue} onChange={(event) => setTestValue(event.target.value)} />
       ) : (
-        // h-auto is a utility, so it beats `.field`'s h-field (components layer) whatever the order.
-        <div ref={container} className="field h-auto" />
+        // No border or padding: Square's form draws its own box, and ours around it made two (issue 84).
+        <div ref={container} className="w-full" />
       )}
       {refused && !failed && <FieldError id="card-refused">{refusedText}</FieldError>}
       <Hint>{hint}</Hint>
