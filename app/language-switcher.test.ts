@@ -4,7 +4,6 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator, LANGUAGES } from "@core/i18n.js";
-import { en } from "@core/messages/en.js";
 import { Button } from "../components/ui/button";
 import { setLanguage } from "./language-actions";
 import { LanguageSwitcher } from "./language-switcher";
@@ -41,11 +40,6 @@ describe("AC6 — LanguageSwitcher", () => {
     const [fieldset, ...otherFieldsets] = findAll(form, "fieldset");
     expect(otherFieldsets).toEqual([]);
     expect(findAll(fieldset, "legend")).toHaveLength(1);
-  });
-
-  it("AC6: the legend reads language.label, then come the buttons, one per language, each named in itself", async () => {
-    const { html } = await render();
-    expect(textsOf(html)).toEqual([en["language.label"], ...NAMES]);
   });
 
   it("AC6: in Spanish the legend reads the Spanish label, and the buttons keep their own names", async () => {

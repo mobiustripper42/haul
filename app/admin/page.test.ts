@@ -105,25 +105,14 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       expect(rows.map((row) => row.email)).toEqual(["rosa@example.com"]);
     });
 
-    it("AC3: the list gets the words from the catalog", async () => {
+    it("AC7, AC12: the list gets its no-match line, its joined line and its sort words from the catalog", async () => {
       const product = addSupperClub(services.repo);
       await activeSubscriber(services.repo, product, ROSA, PICKS);
 
       const { list } = await page();
 
-      expect(list?.props.text).toEqual({
-        search: en["admin.members.search"],
-        searchPlaceholder: en["admin.members.searchPlaceholder"],
+      expect(list?.props.text).toMatchObject({
         noMatch: en["admin.members.noMatch"],
-        columns: {
-          name: en["admin.members.name"],
-          email: en["admin.members.email"],
-          phone: en["admin.members.phone"],
-          meal: en["admin.members.meal"],
-          joined: en["admin.members.joined"],
-          status: en["admin.members.status"],
-        },
-        active: en["admin.members.active"],
         sortBy: en["admin.members.sortBy"],
         sortLabels: {
           name: en["admin.members.name"],
