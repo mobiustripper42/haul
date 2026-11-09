@@ -38,8 +38,7 @@ beforeEach(() => {
   request.current = emptyRequest();
 });
 
-// The one Spanish string the catalog holds today; a heading Spanish lacks falls back to English, so only this
-// key can show the title following the language.
+// A key whose Spanish differs from its English, so the title is seen following the language.
 const SPANISH_KEY = "language.label";
 
 describe("AC1 — titled", () => {

@@ -67,6 +67,9 @@ export class MissingValueError extends Error {
   }
 }
 
+/** The `{name}` token `translate` fills. Global, so read it with `replace` or `matchAll`, never `test` or `exec`. */
+export const PLACEHOLDER = /\{(\w+)\}/g;
+
 /** The string for `key` in `language`, English where that language lacks it, placeholders filled. */
 export function translate<K extends string>(
   catalogs: Catalogs<K>,
@@ -76,7 +79,7 @@ export function translate<K extends string>(
 ): string {
   const catalog: Readonly<Partial<Record<K, string>>> = catalogs[language];
   const text = catalog[key] ?? catalogs.en[key];
-  return text.replace(/\{(\w+)\}/g, (_match, name: string) => {
+  return text.replace(PLACEHOLDER, (_match, name: string) => {
     const value = values !== undefined && Object.hasOwn(values, name) ? values[name] : undefined;
     if (value === undefined) throw new MissingValueError(key, name);
     return String(value);

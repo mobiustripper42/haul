@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import type { EmailPort } from "@core/ports/email.js";
 import { PaymentsError } from "@core/ports/payments.js";
@@ -807,7 +808,7 @@ describe("issue 56 — the pay actions", () => {
         signIn();
         await join(pay());
         await runScheduled();
-        expect(onlyText()).toMatch(/^You're in the Supper Club, Ana\n\n/);
+        expect(onlyText().split("\n\n")[0]).toBe(createTranslator("es")("email.signupConfirmation.heading", { firstName: "Ana" }));
       });
 
       it("AC6: a member stored as es gets their pickup date in Spanish", async () => {
@@ -815,7 +816,7 @@ describe("issue 56 — the pay actions", () => {
         signIn();
         await join(pay());
         await runScheduled();
-        expect(onlyText()).toContain("\nFirst pickup: domingo, 3 de enero\n");
+        expect(onlyText()).toContain("domingo, 3 de enero");
       });
     });
 
