@@ -75,7 +75,7 @@ export function firstPickup(product: ProductWithOptions, now: Date, changed: Cha
   return pickupWeek(sunday, byWeek.get(sunday) ?? null);
 }
 
-/** A date's weekday as a word, capitalised: "Saturday", "Sábado". */
+/** A date's weekday as a word, as the locale writes it: "Saturday", "sábado". `pickupWhereLine` capitalises the line. */
 function weekdayName(date: string, language: Language): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, { weekday: "long", timeZone: "UTC" });
 }

@@ -3,7 +3,7 @@ schema: 1
 id: DEC-031
 title: "A pickup week is named by its ordinary Sunday, moved or not"
 topic: "Data model"
-status: "draft"
+status: "active"
 date: "2026-11-10"
 ruling: "A pickup week is keyed by its ordinary Sunday; ledger.pickup_date holds that key even when the week's days are moved, and only the words on screen and in the email show the moved days."
 claims:
