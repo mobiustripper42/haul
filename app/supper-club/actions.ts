@@ -5,7 +5,7 @@
 import { redirect } from "next/navigation";
 import { choicesQuery, resolveChoices } from "@core/choices.js";
 import { siteLink } from "@core/email-templates.js";
-import { firstPickup } from "@core/pickup-week.js";
+import { clevelandDate, firstPickup } from "@core/pickup-week.js";
 import { priceOfChoices, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { Repository } from "@core/ports/repository.js";
 import { retrySignup, signUp, type SignupResult } from "@core/signup.js";
@@ -109,7 +109,7 @@ export async function joinSupperClub(formData: FormData): Promise<void> {
   const now = new Date();
   const wording = paymentWording(await getTranslator(), {
     priceCents: priceOfChoices(product, choices),
-    firstPickup: firstPickup(product, now),
+    firstPickup: firstPickup(product, now, await repo.listChangedWeeks(product.id, clevelandDate(now))).firstDay,
     language: await getLanguage(),
   });
   const result = await signUp(

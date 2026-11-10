@@ -1,6 +1,7 @@
 import type { AccountDetails } from "../create-account.js";
 import type { Language } from "../i18n.js";
 import type { Member, Role } from "../members.js";
+import type { ChangedWeek } from "../pickup-week.js";
 import type { ProductWithOptions } from "../products.js";
 import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
 import type { RateLimitStore, SignInStore } from "../sign-in/store.js";
@@ -78,9 +79,14 @@ export type PendingSignupInput = {
   consentAt: Date;
 };
 
-/** `chargedDate` is the day the first charge was paid, `YYYY-MM-DD` in America/New_York. */
+/**
+ * `chargedDate` is the day the first charge was paid, `YYYY-MM-DD` in America/New_York. `pickupDate` is the week's
+ * Sunday key; `firstDay` and `lastDay` are its days as `pickup_weeks` holds them now.
+ */
 export type SignupConfirmation = {
   pickupDate: string;
+  firstDay: string;
+  lastDay: string;
   chargedDate: string;
   firstChargeCents: number;
   weeklyCents: number;
@@ -147,6 +153,10 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   confirmSignupRows(ledgerId: string, paymentId: string, amountCents: number, now: Date): Promise<"confirmed" | "already" | "mismatch">;
   findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null>;
+  /** The product's changed weeks with `weekOf >= from`, ordered by `weekOf`. */
+  listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]>;
+  /** Saves a week's row: an upsert on product and week that replaces every column. */
+  savePickupWeek(productId: string, week: ChangedWeek): Promise<void>;
   /** A product's active subscriptions only, unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;

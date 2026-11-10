@@ -119,6 +119,8 @@ export const en = {
   "supperClub.box.everyWeek": "every week, at the cutoff",
   "supperClub.box.firstPickup": "First pickup: {date}",
   "supperClub.box.pickupWhere": "Sunday or Monday at the farm store, 2304 Bridge Ave. Give your name at the counter.",
+  "supperClub.box.pickupWhereMoved": "{first} or {last} at the farm store, 2304 Bridge Ave. Give your name at the counter.",
+  "supperClub.box.pickupWhereMovedOneDay": "{day} at the farm store, 2304 Bridge Ave. Give your name at the counter.",
   "supperClub.next.title": "What happens next",
   "supperClub.next.menu": "Each week we email you the menu.",
   "supperClub.next.charge": "Your card is charged {price} at the end of each Monday for the following week's pickup.",

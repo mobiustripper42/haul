@@ -123,6 +123,8 @@ export const es = {
   "supperClub.box.everyWeek": "cada semana, en la fecha límite",
   "supperClub.box.firstPickup": "Primera recogida: {date}",
   "supperClub.box.pickupWhere": "Domingo o lunes en la tienda de la granja, 2304 Bridge Ave. Diga su nombre en el mostrador.",
+  "supperClub.box.pickupWhereMoved": "{first} o {last} en la tienda de la granja, 2304 Bridge Ave. Diga su nombre en el mostrador.",
+  "supperClub.box.pickupWhereMovedOneDay": "{day} en la tienda de la granja, 2304 Bridge Ave. Diga su nombre en el mostrador.",
   "supperClub.next.title": "Qué sigue",
   "supperClub.next.menu": "Cada semana le enviamos el menú por correo.",
   "supperClub.next.charge": "Se cobra {price} a su tarjeta al final de cada lunes para la recogida de la semana siguiente.",

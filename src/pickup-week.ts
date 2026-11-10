@@ -1,5 +1,11 @@
-import { LANGUAGES, type Language } from "./i18n.js";
+import { LANGUAGES, type Language, type Translator } from "./i18n.js";
 import type { ProductWithOptions } from "./products.js";
+
+/** A pickup week: its ordinary Sunday, the week's key (DEC-031), and the days it is picked up, all `YYYY-MM-DD`. */
+export type PickupWeek = { weekOf: string; firstDay: string; lastDay: string };
+
+/** A week an admin changed (`pickup_weeks`): closed when `closedAt` is set, moved when `firstDay`/`lastDay` are. */
+export type ChangedWeek = { weekOf: string; closedAt: Date | null; note: string | null; firstDay: string | null; lastDay: string | null };
 
 /** Cutoffs and pickup days are Cleveland's wall clock (DEC-017). */
 const ZONE = "America/New_York";
@@ -38,11 +44,21 @@ function clevelandInstant(date: string, time: string): number {
 const addDays = (date: string, days: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 
 /**
- * The local date of the first Sunday on or after the product's first pickup date whose cutoff has not
- * passed (docs/SPEC.md §7.2, §7.3). A Sunday's cutoff is the product's cutoff weekday and time, on the
- * latest such weekday on or before it.
+ * A Sunday key and its changed row as a week: an ordinary week is its Sunday and the Monday after, a moved week
+ * its `firstDay` and `lastDay`. The one home for that default; callers never add a day themselves.
  */
-export function firstPickup(product: ProductWithOptions, now: Date): string {
+export function pickupWeek(weekOf: string, changed: ChangedWeek | null): PickupWeek {
+  if (changed?.firstDay != null && changed.lastDay != null) return { weekOf, firstDay: changed.firstDay, lastDay: changed.lastDay };
+  return { weekOf, firstDay: weekOf, lastDay: addDays(weekOf, 1) };
+}
+
+/**
+ * The first Sunday on or after the product's first pickup date whose cutoff has not passed (docs/SPEC.md §7.2,
+ * §7.3), and that is not closed in `changed`, as a week. A Sunday's cutoff is the product's cutoff weekday and
+ * time, on the latest such weekday on or before it. The cutoff is the ordinary Sunday's whatever `changed` says:
+ * a week closed or moved after its cutoff has passed was already skipped by the cutoff.
+ */
+export function firstPickup(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): PickupWeek {
   const first = product.firstPickupDate;
   const isoWeekday = new Date(`${first}T00:00:00Z`).getUTCDay() || 7;
   let sunday = addDays(first, (7 - isoWeekday) % 7);
@@ -53,7 +69,34 @@ export function firstPickup(product: ProductWithOptions, now: Date): string {
   if (weeksBehind > 0) sunday = addDays(sunday, weeksBehind * 7);
 
   while (now.getTime() >= cutoffOf(sunday)) sunday = addDays(sunday, 7);
-  return sunday;
+
+  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
+  while (byWeek.get(sunday)?.closedAt != null) sunday = addDays(sunday, 7);
+  return pickupWeek(sunday, byWeek.get(sunday) ?? null);
+}
+
+/** A date's weekday as a word, capitalised: "Saturday", "Sábado". */
+function weekdayName(date: string, language: Language): string {
+  return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, { weekday: "long", timeZone: "UTC" });
+}
+
+/**
+ * The done box's and the email's "where and when" line: today's line for an ordinary week, and a line naming
+ * the days for a moved one (one day, or two).
+ */
+export function pickupWhereLine(t: Translator, week: PickupWeek, language: Language): string {
+  if (week.firstDay === week.weekOf && week.lastDay === addDays(week.weekOf, 1)) return t("supperClub.box.pickupWhere");
+  const line =
+    week.firstDay === week.lastDay
+      ? t("supperClub.box.pickupWhereMovedOneDay", { day: weekdayName(week.firstDay, language) })
+      : t("supperClub.box.pickupWhereMoved", { first: weekdayName(week.firstDay, language), last: weekdayName(week.lastDay, language) });
+  // Spanish weekday names come lowercase, and the line starts with one.
+  return line.charAt(0).toLocaleUpperCase(LANGUAGES[language].locale) + line.slice(1);
+}
+
+/** "First pickup: {date}", with the week's first day: the one home for the done box and the email. */
+export function firstPickupLine(t: Translator, week: PickupWeek, language: Language): string {
+  return t("supperClub.box.firstPickup", { date: formatPickupDate(week.firstDay, language) });
 }
 
 /** A pickup date as words: "Sunday, January 3". */

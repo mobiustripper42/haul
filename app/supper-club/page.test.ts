@@ -312,6 +312,29 @@ describe("issue 56 — the payment section", () => {
     );
   });
 
+  // Issue 133: the edges of a closed or moved week are src/pickup-week.test.ts's; these hold that the page reads them.
+  it("AC1 (issue 133): with January 3 closed, the first pickup it is given is January 10", async () => {
+    await services.repo.savePickupWeek(product.id, {
+      weekOf: "2027-01-03",
+      closedAt: new Date("2026-11-01T12:00:00.000Z"),
+      note: "Farm closed",
+      firstDay: null,
+      lastDay: null,
+    });
+    await signIn();
+    expect(sectionOf((await render()).element)?.wordings["5000"]?.pickupLine).toBe(
+      t("supperClub.pickupLine", { date: "Sunday, January 10", price: "$50" }),
+    );
+  });
+
+  it("AC3 (issue 133): with January 3 moved to Saturday and Sunday, the first pickup it names is Saturday, January 2", async () => {
+    await services.repo.savePickupWeek(product.id, { weekOf: "2027-01-03", closedAt: null, note: "Moved", firstDay: "2027-01-02", lastDay: "2027-01-03" });
+    await signIn();
+    expect(sectionOf((await render()).element)?.wordings["5000"]?.pickupLine).toBe(
+      t("supperClub.pickupLine", { date: "Saturday, January 2", price: "$50" }),
+    );
+  });
+
   it.each(["consent", "declined", "error"])("AC4, AC9, AC10a: ?payError=%s reaches it", async (payError) => {
     await signIn();
     expect(sectionOf((await render({ payError })).element)?.payError).toBe(payError);

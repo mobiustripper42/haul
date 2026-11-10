@@ -3,7 +3,10 @@
 // and when, is app/supper-club/actions.test.ts.
 import { describe, expect, it } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
+import { createTranslator } from "./i18n.js";
 import type { Member } from "./members.js";
+import { en } from "./messages/en.js";
+import { pickupWhereLine } from "./pickup-week.js";
 import type { SignupConfirmation } from "./ports/repository.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
@@ -30,6 +33,8 @@ const member = (over: Partial<Member> = {}): Member => ({
 
 const confirmation = (over: Partial<SignupConfirmation> = {}): SignupConfirmation => ({
   pickupDate: "2027-01-03",
+  firstDay: "2027-01-03",
+  lastDay: "2027-01-04",
   firstChargeCents: 5000,
   weeklyCents: 5000,
   chargedDate: "2026-11-07",
@@ -123,7 +128,22 @@ describe("AC4 (issue 58) — the wording, in order", () => {
   });
 
   it("AC4: the first pickup is the confirmation's date", async () => {
-    expect((await sent(member(), confirmation({ pickupDate: "2027-01-10" }))).text).toContain("\nFirst pickup: Sunday, January 10\n");
+    expect(
+      (await sent(member(), confirmation({ pickupDate: "2027-01-10", firstDay: "2027-01-10", lastDay: "2027-01-11" }))).text,
+    ).toContain("\nFirst pickup: Sunday, January 10\n");
+  });
+});
+
+// Issue 133: the moved lines' words are src/pickup-week.test.ts's; this holds that the email uses them, in their places.
+describe("AC4 (issue 133) — a moved first week", () => {
+  const MOVED = { weekOf: "2027-01-03", firstDay: "2027-01-02", lastDay: "2027-01-03" };
+  const t = createTranslator("en");
+
+  it('AC4: "First pickup:" is the first moved day, and the pickup line names the moved days in place of "Sunday or Monday"', async () => {
+    const { text } = await sent(member(), confirmation({ firstDay: MOVED.firstDay, lastDay: MOVED.lastDay }));
+    expect(text).toContain("\nThen every week, at the cutoff: $50\nFirst pickup: Saturday, January 2\n\nPickup\n");
+    expect(text).toContain(`\nPickup\n${pickupWhereLine(t, MOVED, "en")}\n\nEach week\n`);
+    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
   });
 });
 

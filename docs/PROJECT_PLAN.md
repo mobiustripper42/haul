@@ -87,8 +87,11 @@ pickup.
 
 | # | Task | Points | Notes |
 |---|------|--------|-------|
-| 2.1 | Calendar: weeks, cutoff, closed weeks, moved windows, admin week closure, week credit after a late closure | 13 | [#133](https://github.com/mobiustripper42/haul/issues/133) · Week credit added and re-pointed from 8 on 2026-10-26 (DEC-005); split at spec |
+| 2.1a | Calendar: weeks from the rule, the `pickup_weeks` table, signup skips closed weeks and shows moved days | 5 | [#133](https://github.com/mobiustripper42/haul/issues/133) · Split from 2.1 (13) on 2026-11-10 into 2.1a, 2.1b and 2.2b; nothing seeded (spec §7.2) |
+| 2.1b | Admin calendar: close with a note, reopen before cutoff, move pickup days, week credit grant | 8 | [#149](https://github.com/mobiustripper42/haul/issues/149) · Split from 2.1 on 2026-11-10; menu assignment joins this screen in 2.8 |
+| 2.1c | Email members when a week closes | 3 | [#151](https://github.com/mobiustripper42/haul/issues/151) · Added 2026-11-10 with the split; after 2.1b |
 | 2.2 | Charge run against the ledger | 8 | [#134](https://github.com/mobiustripper42/haul/issues/134) · **@architect pass.** Split at spec if it reads as 13. Also picks up stranded signup payments: a `pending` ledger row with a saved card whose charge got no answer (task 1.4, AC10). Also the receipt email for each successful charge (`docs/SPEC.md` §7.3, Eric 2026-11-07); re-point if it grows |
+| 2.2b | Spend a week credit in the charge run | — | [#150](https://github.com/mobiustripper42/haul/issues/150) · Split from 2.1 on 2026-11-10; after 2.2. Points set at its spec walk |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | [#135](https://github.com/mobiustripper42/haul/issues/135) |
 | 2.4 | Account pages: subscription, upcoming weeks, history, contact details | 5 | [#136](https://github.com/mobiustripper42/haul/issues/136) · Email change re-verifies |
 | 2.5 | Skip one or more weeks | 3 | [#137](https://github.com/mobiustripper42/haul/issues/137) · Cutoff enforced on the server |
@@ -104,7 +107,7 @@ pickup.
 | 2.15 | Admin handbook for Lenny, with phone screenshots | 3 | [#147](https://github.com/mobiustripper42/haul/issues/147) · Written last; linked from the admin area |
 | 2.16 | Rehearsal week in production with real early members | 3 | [#148](https://github.com/mobiustripper42/haul/issues/148) · Eric, Annabel, Lenny as real subscriptions starting that week — no test flag (spec §7.10). After 2.1–2.15. Needs one real Monday cutoff before the first January charge (date pending spec open questions 1, 2, 5); real charges, refunded by hand; fixes it finds are extra |
 
-**Phase 2 total: 82 pts**
+**Phase 2 total: 85 pts + 2.2b** (2.1's 13 re-split as 5 + 8 on 2026-11-10, 2.1c's 3 added; 2.2b unpointed)
 
 **Ejection point:** a January week runs end to end — menu out, charges in, pick list ready — with
 nobody touching it.
