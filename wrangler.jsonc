@@ -1,0 +1,31 @@
+// Issue 126: the Workers trial. A preview Worker on workers.dev, not production.
+{
+	"$schema": "node_modules/wrangler/config-schema.json",
+	"main": ".open-next/worker.js",
+	"name": "haul-trial",
+	"compatibility_date": "2026-11-01",
+	"compatibility_flags": [
+		"nodejs_compat",
+		"global_fetch_strictly_public"
+	],
+	"assets": {
+		"directory": ".open-next/assets",
+		"binding": "ASSETS"
+	},
+	"services": [
+		{
+			// Self-reference service binding; the service name must match the worker name
+			"binding": "WORKER_SELF_REFERENCE",
+			"service": "haul-trial"
+		}
+	],
+	"hyperdrive": [
+		{
+			"binding": "HYPERDRIVE",
+			"id": "aedee8d9b93242dca50a59618fd28816",
+			// What a local Worker (wrangler dev, OpenNext's deploy step) uses in Hyperdrive's place:
+			// the docker dev database, the same URL as app/services.ts. Never deployed.
+			"localConnectionString": "postgres://haul:haul@localhost:5434/haul_dev"
+		}
+	]
+}

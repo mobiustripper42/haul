@@ -48,9 +48,11 @@
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",
     "typescript-eslint": "^8.72.0",
-    "vitest": "^5.0.5"
+    "vitest": "^5.0.5",
+    "wrangler": "^4.159.0"
   },
   "dependencies": {
+    "@opennextjs/cloudflare": "^1.20.16",
     "next": "^16.4.3",
     "pg": "^8.23.1",
     "react": "^19.3.1",

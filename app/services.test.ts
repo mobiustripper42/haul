@@ -181,6 +181,48 @@ describe("AC32 (issue 9) — getRepository", () => {
   });
 });
 
+// Issue 126: on Cloudflare Workers the database is reached through the Hyperdrive binding, and a
+// socket belongs to the request that opened it, so no repository outlives a call. OpenNext keeps
+// the Worker's context on this global symbol; `getCloudflareContext` reads it.
+describe("issue 126 — getRepository on Workers", () => {
+  const contextSymbol = Symbol.for("__cloudflare-context__");
+  const kept = globalThis as Record<symbol, unknown>;
+  const HYPERDRIVE_URL = "postgres://user:pw@aedee8d9.hyperdrive.local:5432/haul";
+
+  afterEach(() => {
+    delete kept[contextSymbol];
+    vi.doUnmock("@core/adapters/postgres-repository.js");
+  });
+
+  async function loadOnWorkers() {
+    const urls: string[] = [];
+    vi.doMock("@core/adapters/postgres-repository.js", () => ({
+      PostgresRepository: class {
+        constructor(url: string) {
+          urls.push(url);
+        }
+      },
+    }));
+    kept[contextSymbol] = { env: { HYPERDRIVE: { connectionString: HYPERDRIVE_URL } }, cf: undefined, ctx: {} };
+    const { services } = await load({ NODE_ENV: "production", ...RESEND, DATABASE_URL: "postgres://ignored@db.example.com/haul" });
+    return { services, urls };
+  }
+
+  it("builds the repository from the Hyperdrive binding's connection string, not DATABASE_URL", async () => {
+    const { services, urls } = await loadOnWorkers();
+    services.getRepository();
+    expect(urls).toEqual([HYPERDRIVE_URL]);
+  });
+
+  it("builds a new repository on every call", async () => {
+    const { services, urls } = await loadOnWorkers();
+    const first = services.getRepository();
+    const second = services.getRepository();
+    expect(second).not.toBe(first);
+    expect(urls).toHaveLength(2);
+  });
+});
+
 describe("AC8 (issue 56) — getPayments", () => {
   const SQUARE = { SQUARE_ACCESS_TOKEN: "EAAA-test-token", SQUARE_LOCATION_ID: "LOCATION_MAIN" };
   const NAMES = ["NODE_ENV", "SQUARE_ENVIRONMENT", "SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID"] as const;

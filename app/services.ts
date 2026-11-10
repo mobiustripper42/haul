@@ -7,6 +7,7 @@ import type { EmailPort } from "@core/ports/email.js";
 import type { PaymentsPort } from "@core/ports/payments.js";
 import type { Repository } from "@core/ports/repository.js";
 import { sessionSecret } from "@core/sign-in/session.js";
+import { getCloudflareContext } from "@opennextjs/cloudflare";
 
 // The app's one composition root: the only place that picks an adapter. Tests mock this module.
 
@@ -19,8 +20,25 @@ let repository: Repository | undefined;
 let email: EmailPort | undefined;
 let payments: PaymentsPort | undefined;
 
-/** One `PostgresRepository` per server process, built on first call. */
+/** The Hyperdrive binding's connection string when running on Cloudflare Workers; undefined under Node. */
+function hyperdriveUrl(): string | undefined {
+  try {
+    const env = getCloudflareContext().env as { HYPERDRIVE?: { connectionString: string } };
+    return env.HYPERDRIVE?.connectionString;
+  } catch {
+    // Not on Workers: OpenNext's context is only set inside the Worker. Nothing to log.
+    return undefined;
+  }
+}
+
+/**
+ * On Workers, a new `PostgresRepository` per call over Hyperdrive (issue 126): a socket belongs to
+ * the request that opened it, and Hyperdrive keeps the pool. Under Node, one per server process,
+ * built on first call.
+ */
 export function getRepository(): Repository {
+  const hyperdrive = hyperdriveUrl();
+  if (hyperdrive) return new PostgresRepository(hyperdrive);
   if (!repository) {
     const url = process.env.DATABASE_URL || (isProduction() ? undefined : DEV_DATABASE_URL);
     if (!url) throw new Error("DATABASE_URL must be set in production");
