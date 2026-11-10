@@ -1,6 +1,6 @@
-// Issue 9, AC31: a signed-in member's stored language wins over the lang cookie and
-// Accept-Language. Signed out, issue 7's order holds — app/page.test.ts and app/layout.test.ts
-// prove that, unchanged.
+// Issue 130, AC1 and AC2: a signed-in member's page comes out in the language the request asks for,
+// not their saved one. One case each through getLanguage; the cookie-then-browser edge cases are
+// src/i18n.test.ts's.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { Language } from "@core/i18n.js";
@@ -40,18 +40,18 @@ async function signIn(language: Language): Promise<void> {
   request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
 }
 
-describe("AC31 (issue 9) — getLanguage with a signed-in member", () => {
-  it("AC31: a member whose language is es gets es over a lang cookie of en and an Accept-Language of en", async () => {
-    await signIn("es");
-    request.current.cookies.lang = "en";
-    request.current.headers = { "accept-language": "en-US,en;q=0.9" };
-    expect(await getLanguage()).toBe("es");
-  });
-
-  it("AC31: a member whose language is en gets en over a lang cookie of es and an Accept-Language of es", async () => {
+describe("AC1 (issue 130) — the lang cookie picks a signed-in member's page", () => {
+  it("AC1: a member saved as en, with a lang cookie of es, gets es", async () => {
     await signIn("en");
     request.current.cookies.lang = "es";
-    request.current.headers = { "accept-language": "es-MX" };
+    expect(await getLanguage()).toBe("es");
+  });
+});
+
+describe("AC2 (issue 130) — with no cookie, the browser picks a signed-in member's page", () => {
+  it("AC2: a member saved as es, with no lang cookie and an Accept-Language of en, gets en", async () => {
+    await signIn("es");
+    request.current.headers = { "accept-language": "en-US,en;q=0.9" };
     expect(await getLanguage()).toBe("en");
   });
 });
