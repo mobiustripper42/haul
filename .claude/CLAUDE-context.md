@@ -92,6 +92,7 @@ npm run check:decisions
 | Configuration is edited with SQL and seeds | A default builds admin CRUD for every table. Here an admin screen exists only where the farm must act without the developer (DEC-007) |
 | Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither, and a week closed after its cutoff is a week credit, not a refund (DEC-005; `docs/SPEC.md` §7.3) |
 | Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
+| A pull request's "Verify by hand" setup is the dev server | The only written recipe for reaching a screen is `@ui-reviewer`'s (`.claude/ui-context.md` § Reaching a screen: port 4100, the e2e database, an env-variable line), so a default copies it into the plan for Eric (PR #152). His setup is `npm run db:up`, `npm run db:migrate`, the seeds the task needs, `npm run dev` on port 4000 — no URLs, no env line, no port 4100 |
 
 ## Blast-Radius Triggers
 
