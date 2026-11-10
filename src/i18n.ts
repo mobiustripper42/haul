@@ -41,13 +41,8 @@ function fromAcceptLanguage(header: string): Language | null {
   return best?.language ?? null;
 }
 
-/** The member's preference, else the cookie, else `Accept-Language`, else English. */
-export function resolveLanguage(input: {
-  member?: Language | null;
-  cookie?: string | null;
-  acceptLanguage?: string | null;
-}): Language {
-  if (input.member) return input.member;
+/** The cookie (the language last chosen with the switch), else `Accept-Language`, else English. */
+export function resolveLanguage(input: { cookie?: string | null; acceptLanguage?: string | null }): Language {
   if (isLanguage(input.cookie)) return input.cookie;
   if (input.acceptLanguage) {
     const match = fromAcceptLanguage(input.acceptLanguage);

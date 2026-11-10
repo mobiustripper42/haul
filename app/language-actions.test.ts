@@ -1,9 +1,17 @@
 // AC14: the switcher's server action, with `next/headers` faked. Each test re-imports the action
 // after stubbing NODE_ENV, so it holds whether the action reads NODE_ENV per call or at load.
+// Issue 130, AC3: the switch, pressed by a signed-in member, leaves their saved language alone.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import type { Language } from "@core/i18n.js";
+import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "./next-headers-fake";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
+const services = vi.hoisted(() => ({
+  repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
+  secret: "test-session-secret-that-is-long-enough-0123456789",
+}));
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("./next-headers-fake");
   return {
@@ -11,11 +19,27 @@ vi.mock("next/headers", async () => {
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
+vi.mock("./services", () => ({
+  getRepository: () => services.repo,
+  getEmail: () => {
+    throw new Error("setLanguage has no reason to send email");
+  },
+  getSessionSecret: () => services.secret,
+}));
 
 beforeEach(() => {
   request.current = emptyRequest();
+  services.repo = new InMemoryRepository();
   vi.resetModules();
 });
+
+/** A signed-in member saved as `language`; returns their id. */
+async function signIn(language: Language): Promise<string> {
+  const member = await services.repo.createMember({ email: "ada@example.com", language });
+  const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
+  request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
+  return member.id;
+}
 
 afterEach(() => {
   vi.unstubAllEnvs();
@@ -78,5 +102,13 @@ describe("AC14 — setLanguage", () => {
   ])("AC14: %s sets no cookie and does not throw", async (_what, fields) => {
     await submit("development", fields);
     expect(request.current.sets).toEqual([]);
+  });
+});
+
+describe("AC3 (issue 130) — the switch never changes a member's saved language", () => {
+  it("AC3: a member saved as en who presses Español is still saved as en", async () => {
+    const id = await signIn("en");
+    await submit("development", { language: "es" });
+    expect((await services.repo.findMemberById(id))?.language).toBe("en");
   });
 });
