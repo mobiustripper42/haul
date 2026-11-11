@@ -32,6 +32,8 @@ export const es = {
   "account.weeks.skipped": "Omitida: sin cargo.",
   "account.weeks.skip": "Omitir",
   "account.weeks.unskip": "Reanudar",
+  "account.weeks.skipWeek": "Omitir {week}",
+  "account.weeks.unskipWeek": "Reanudar {week}",
   "account.weeks.cutoffPassed": "La fecha límite de esa semana ya pasó, así que no se puede cambiar.",
   "account.history.title": "Historial",
   "account.history.intro": "Cada semana desde su primera recogida, la más reciente primero.",

@@ -12,6 +12,7 @@ import { Shell } from "../../../components/ui/shell";
 import { WeekList } from "../../../components/ui/week-list";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
+import { ACCOUNT_WEEKS_CUTOFF_ERROR } from "../../paths";
 import { SiteHeader } from "../../site-header";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
@@ -29,14 +30,18 @@ function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
   return t("account.marker.paid");
 }
 
-/** A row's Skip or Unskip: a form of its own posting the week; null when the week has no button. */
-function actionOf(row: UpcomingRow, t: Translator) {
+/**
+ * A row's Skip or Unskip: a form of its own posting the week; null when the week has no button. The visible text
+ * stays short; the accessible name adds the week's title, since up to 11 of these sit on one page.
+ */
+function actionOf(row: UpcomingRow, t: Translator, language: Language) {
   if (row.action === null) return null;
+  const skipping = row.action === "skip";
   return (
-    <form action={row.action === "skip" ? skipWeek : unskipWeek}>
+    <form action={skipping ? skipWeek : unskipWeek}>
       <input type="hidden" name="week" value={row.week.weekOf} />
-      <Button kind="secondary" type="submit">
-        {t(row.action === "skip" ? "account.weeks.skip" : "account.weeks.unskip")}
+      <Button kind="secondary" type="submit" aria-label={t(skipping ? "account.weeks.skipWeek" : "account.weeks.unskipWeek", { week: listedWeekTitle(t, row.week, language) })}>
+        {t(skipping ? "account.weeks.skip" : "account.weeks.unskip")}
       </Button>
     </form>
   );
@@ -58,7 +63,7 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     title: listedWeekTitle(t, row.week, language),
     lines: [lineOf(row, t, language)],
     badge: <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
-    action: actionOf(row, t),
+    action: actionOf(row, t, language),
   }));
 
   return (
@@ -68,7 +73,7 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.weeks.title")}</Heading>
           <Hint>{t("account.weeks.intro")}</Hint>
-          {query?.error === "cutoff" && <Notice icon="alert">{t("account.weeks.cutoffPassed")}</Notice>}
+          {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <Notice icon="alert">{t("account.weeks.cutoffPassed")}</Notice>}
           <Card width="fill">
             <WeekList rows={rows} />
           </Card>

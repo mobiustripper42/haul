@@ -28,6 +28,8 @@ export const en = {
   "account.weeks.skipped": "Skipped: not charged.",
   "account.weeks.skip": "Skip",
   "account.weeks.unskip": "Unskip",
+  "account.weeks.skipWeek": "Skip {week}",
+  "account.weeks.unskipWeek": "Unskip {week}",
   "account.weeks.cutoffPassed": "The cutoff for that week has passed, so it can't be changed.",
   "account.history.title": "History",
   "account.history.intro": "Every week since your first pickup, newest first.",

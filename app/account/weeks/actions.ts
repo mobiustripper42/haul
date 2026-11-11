@@ -10,11 +10,11 @@ import type { UpcomingRow } from "@core/account-weeks.js";
 import { cutoffInstant, isDate } from "@core/pickup-week.js";
 import { getRepository } from "../../services";
 import { textField } from "../../sign-in/shared";
-import { ACCOUNT_WEEKS_PATH } from "../../paths";
+import { ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH } from "../../paths";
 import { requireSubscriber } from "../subscriber";
 import { loadUpcomingRows } from "./rows";
 
-const CUTOFF_PASSED_PATH = `${ACCOUNT_WEEKS_PATH}?error=cutoff`;
+const CUTOFF_PASSED_PATH = `${ACCOUNT_WEEKS_PATH}?error=${ACCOUNT_WEEKS_CUTOFF_ERROR}`;
 
 /** The one flow of both actions: only `action` and the repository call differ. */
 async function changeWeek(formData: FormData, action: NonNullable<UpcomingRow["action"]>): Promise<never> {
