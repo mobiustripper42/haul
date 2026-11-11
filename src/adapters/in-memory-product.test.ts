@@ -1,6 +1,6 @@
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runProductContract } from "./product-contract.js";
-import { runSignupContract } from "./repository-contract.js";
+import { runSignupContract } from "./signup-contract.js";
 
 // Issue 55, AC1: findProductByName against the fake, its products stored through the test seam.
 let repo: InMemoryRepository;

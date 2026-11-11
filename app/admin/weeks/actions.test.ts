@@ -1,7 +1,7 @@
 // Issue 149: the weeks screen's server actions, through an InMemoryRepository with `next/headers` faked and
 // `redirect` throwing as the real one does. Who may call them is app/admin/admin-guard.test.ts's (AC13); the
 // move check's and the cutoff's edges are src/pickup-week-calendar.test.ts's, and the week credits' are the
-// repository contract's (src/adapters/repository-contract.ts). These hold what each action does with them.
+// repository contract's (src/adapters/week-credit-contract.ts). These hold what each action does with them.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { ChangedWeek } from "@core/pickup-week.js";

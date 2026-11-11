@@ -8,7 +8,8 @@ import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
-import { runRepositoryContract, runWeekCreditContract } from "./repository-contract.js";
+import { runRepositoryContract } from "./repository-contract.js";
+import { runWeekCreditContract } from "./week-credit-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });

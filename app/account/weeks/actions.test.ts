@@ -1,7 +1,7 @@
 // Issue 137: Skip and Unskip on Upcoming weeks, through an InMemoryRepository with `next/headers` faked and `redirect`
 // throwing as the real one does, as app/admin/weeks/actions.test.ts drives the admin's. Which week offers which button
 // is upcomingRows' (src/account-weeks.test.ts), what the repository writes and refuses is its contract's
-// (src/adapters/repository-contract.ts), and what the page says after is ./page.test.ts's. These hold what each action
+// (src/adapters/week-credit-contract.ts), and what the page says after is ./page.test.ts's. These hold what each action
 // does with them: the gate, the cutoff read at the request, the match against the week's button, and where the
 // member is sent back.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

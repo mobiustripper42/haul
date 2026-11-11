@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
-import { runRepositoryContract, runWeekCreditContract } from "./repository-contract.js";
+import { runRepositoryContract } from "./repository-contract.js";
+import { runWeekCreditContract } from "./week-credit-contract.js";
 
 // Issue 71, AC5: the fake reads its event actors from events().
 let contractRepo: InMemoryRepository;
