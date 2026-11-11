@@ -27,4 +27,9 @@ describe("AC2, AC7 (issue 155) — WeekList", () => {
     const row: WeekListRow = { id: "2027-02-07", title: "February 7 and 8", lines: ["Paid"], badge: createElement(Badge, { kind: "success", children: "Paid" }) };
     expect(rowsOf([row])).toEqual([["February 7 and 8", "Paid", "Paid"]]);
   });
+
+  it("AC3: a row with no badge is its title and its line", () => {
+    const row: WeekListRow = { id: "2027-03-07", title: "March 7 and 8", lines: ["Charged at the end of Monday, March 1"] };
+    expect(rowsOf([row])).toEqual([["March 7 and 8", "Charged at the end of Monday, March 1"]]);
+  });
 });

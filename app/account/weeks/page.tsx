@@ -26,7 +26,7 @@ function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
 
 /**
  * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
- * week, each marked Paid, Coming, Closed or Week credit. Read only.
+ * week, each marked Paid, Closed or Week credit, or coming with no badge. Read only.
  */
 export default async function UpcomingWeeks() {
   const { product, confirmation } = await requireSubscriber();
@@ -42,7 +42,7 @@ export default async function UpcomingWeeks() {
     id: row.week.weekOf,
     title: listedWeekTitle(t, row.week, language),
     lines: [lineOf(row, t, language)],
-    badge: <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
+    badge: row.marker === "coming" ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
   }));
 
   return (

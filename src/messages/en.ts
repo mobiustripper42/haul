@@ -30,7 +30,6 @@ export const en = {
   "account.history.signup": "Paid at signup",
   "account.history.closedPaid": "Closed after it was paid: a week credit covers a later week.",
   "account.marker.paid": "Paid",
-  "account.marker.coming": "Coming",
   "account.marker.closed": "Closed",
   "account.marker.weekCredit": "Week credit",
   "account.marker.noMeal": "No meal",
