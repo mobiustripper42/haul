@@ -15,6 +15,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountDetails } from "../create-account.js";
 import { LANGUAGES, type Language } from "../i18n.js";
 import { DuplicateEmailError, ROLES, type Role } from "../members.js";
+import type { ChangedWeek } from "../pickup-week.js";
 import type { Actor, PendingSignup, PendingSignupInput, Repository } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 
@@ -748,6 +749,8 @@ export function runSignupContract(
         await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         expect(await repo.findSignupConfirmation(memberId, product.id)).toEqual({
           pickupDate: "2027-01-03",
+          firstDay: "2027-01-03",
+          lastDay: "2027-01-04",
           firstChargeCents: 7000,
           weeklyCents: 8000,
           chargedDate: "2026-11-06",
@@ -784,6 +787,74 @@ export function runSignupContract(
         const signup = await saved();
         await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, new Date(paidAt));
         expect((await repo.findSignupConfirmation(memberId, product.id))?.chargedDate).toBe(chargedDate);
+      });
+    });
+
+    // Issue 133: the weeks an admin changed. BOX's cutoff is Monday, so each moved first_day here is after the
+    // Monday before its week, as pickup_weeks requires (db/pickup-weeks.test.ts).
+    describe("issue 133 — pickup weeks", () => {
+      const CLOSED_AT = new Date("2026-11-01T12:00:00.000Z");
+      const closed = (weekOf: string, note: string | null = "Farm closed"): ChangedWeek => ({
+        weekOf,
+        closedAt: CLOSED_AT,
+        note,
+        firstDay: null,
+        lastDay: null,
+      });
+      const moved = (weekOf: string, firstDay: string, lastDay: string): ChangedWeek => ({
+        weekOf,
+        closedAt: null,
+        note: "Moved for the holiday",
+        firstDay,
+        lastDay,
+      });
+
+      const confirmed = async () => {
+        const signup = await saved();
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
+      };
+
+      it("AC1: listChangedWeeks reads back a saved week, whole", async () => {
+        await repo.savePickupWeek(product.id, closed("2027-01-03"));
+        expect(await repo.listChangedWeeks(product.id, "2027-01-03")).toEqual([closed("2027-01-03")]);
+      });
+
+      it("AC1: it gives the product's weeks from the date on, ordered by week, and no other product's", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        await repo.savePickupWeek(product.id, closed("2027-01-17"));
+        await repo.savePickupWeek(product.id, closed("2026-12-27"));
+        await repo.savePickupWeek(product.id, moved("2027-01-10", "2027-01-09", "2027-01-10"));
+        await repo.savePickupWeek(product.id, closed("2027-01-03", null));
+        await repo.savePickupWeek(crate.id, closed("2027-01-24"));
+        expect(await repo.listChangedWeeks(product.id, "2027-01-03")).toEqual([
+          closed("2027-01-03", null),
+          moved("2027-01-10", "2027-01-09", "2027-01-10"),
+          closed("2027-01-17"),
+        ]);
+      });
+
+      it("AC1: a second save of the same week replaces every column: closedAt null reopens it and note null clears it", async () => {
+        await repo.savePickupWeek(product.id, closed("2027-01-03"));
+        const reopened: ChangedWeek = { weekOf: "2027-01-03", closedAt: null, note: null, firstDay: "2027-01-02", lastDay: "2027-01-03" };
+        await repo.savePickupWeek(product.id, reopened);
+        expect(await repo.listChangedWeeks(product.id, "2027-01-03")).toEqual([reopened]);
+      });
+
+      it("AC4: a week moved after the signup reads with its moved days; pickupDate stays its Sunday", async () => {
+        await confirmed();
+        await repo.savePickupWeek(product.id, moved("2027-01-03", "2027-01-02", "2027-01-03"));
+        expect(await repo.findSignupConfirmation(memberId, product.id)).toMatchObject({
+          pickupDate: "2027-01-03",
+          firstDay: "2027-01-02",
+          lastDay: "2027-01-03",
+        });
+      });
+
+      it("AC4: another product's change to the same week does not move this product's", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        await confirmed();
+        await repo.savePickupWeek(crate.id, moved("2027-01-03", "2027-01-02", "2027-01-02"));
+        expect(await repo.findSignupConfirmation(memberId, product.id)).toMatchObject({ firstDay: "2027-01-03", lastDay: "2027-01-04" });
       });
     });
 

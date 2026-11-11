@@ -3,7 +3,7 @@ import { resolveChoices } from "@core/choices.js";
 import type { Translator } from "@core/i18n.js";
 import { memberDisplayName, type Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
-import { firstPickup } from "@core/pickup-week.js";
+import { clevelandDate, firstPickup } from "@core/pickup-week.js";
 import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import { Button } from "../../components/ui/button";
@@ -68,7 +68,8 @@ async function paymentSection({
 }) {
   const language = await getLanguage();
   const payError = PAY_ERRORS.find((known) => known === query.payError);
-  const pickup = firstPickup(product, new Date());
+  const now = new Date();
+  const pickup = firstPickup(product, now, await getRepository().listChangedWeeks(product.id, clevelandDate(now)));
   return (
     <PaymentSection
       prices={product.optionTypes.map((type) => ({
@@ -77,7 +78,7 @@ async function paymentSection({
       }))}
       choices={choices}
       wordings={Object.fromEntries(
-        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickup, language })]),
+        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickup.firstDay, language })]),
       )}
       payError={payError}
       text={{

@@ -12,7 +12,7 @@ import {
   type SignupConfirmation,
   type Subscriber,
 } from "../ports/repository.js";
-import { clevelandDate } from "../pickup-week.js";
+import { clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -50,6 +50,8 @@ export class InMemoryRepository implements Repository {
   private readonly subscriptions = new Map<string, StoredSubscription>();
   private readonly ledger = new Map<string, StoredLedger>();
   private readonly products: ProductWithOptions[] = [];
+  /** `<product id>|<week_of>` → the changed week. Replaced, never mutated, like the maps above. */
+  private readonly pickupWeeks = new Map<string, ChangedWeek>();
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
   private readonly recorded: RecordedEvent[] = [];
@@ -248,13 +250,28 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     const ledger = subscription && this.ledgerOf(subscription.id);
     if (!subscription || !ledger?.paidAt) return null;
+    const week = pickupWeek(ledger.pickupDate, this.pickupWeeks.get(weekKey(subscription.productId, ledger.pickupDate)) ?? null);
     return {
       pickupDate: ledger.pickupDate,
+      firstDay: week.firstDay,
+      lastDay: week.lastDay,
       chargedDate: clevelandDate(ledger.paidAt),
       firstChargeCents: subscription.firstChargeCents,
       weeklyCents: subscription.weeklyCents,
       options: this.optionsOf(subscription),
     };
+  }
+
+  async listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]> {
+    return [...this.pickupWeeks.entries()]
+      .filter(([key, week]) => key === weekKey(productId, week.weekOf) && week.weekOf >= from)
+      .map(([, week]) => copyWeek(week))
+      .sort((a, b) => a.weekOf.localeCompare(b.weekOf));
+  }
+
+  /** Replaces every column. It does not copy the table's refusals: 2.1b's calendar validates before it writes. */
+  async savePickupWeek(productId: string, week: ChangedWeek): Promise<void> {
+    this.pickupWeeks.set(weekKey(productId, week.weekOf), copyWeek(week));
   }
 
   async listSubscribers(productId: string): Promise<Subscriber[]> {
@@ -330,6 +347,7 @@ export class InMemoryRepository implements Repository {
     const members = new Map(this.members);
     const subscriptions = new Map(this.subscriptions);
     const ledger = new Map(this.ledger);
+    const pickupWeeks = new Map(this.pickupWeeks);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
 
@@ -345,6 +363,8 @@ export class InMemoryRepository implements Repository {
       for (const [id, subscription] of subscriptions) this.subscriptions.set(id, subscription);
       this.ledger.clear();
       for (const [id, row] of ledger) this.ledger.set(id, row);
+      this.pickupWeeks.clear();
+      for (const [key, week] of pickupWeeks) this.pickupWeeks.set(key, week);
       this.signIn.restore(signIn);
       this.recorded.splice(0, this.recorded.length, ...recorded);
       throw error;
@@ -391,6 +411,10 @@ const copy = (member: Member): Member => ({
   createdAt: new Date(member.createdAt),
   emailConfirmedAt: member.emailConfirmedAt && new Date(member.emailConfirmedAt),
 });
+
+const weekKey = (productId: string, weekOf: string): string => `${productId}|${weekOf}`;
+
+const copyWeek = (week: ChangedWeek): ChangedWeek => ({ ...week, closedAt: week.closedAt && new Date(week.closedAt) });
 
 /** The order `findProductByName` promises for option types and options. */
 const byPositionThenName = (a: { position: number; name: string }, b: { position: number; name: string }): number =>

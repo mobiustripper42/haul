@@ -35,6 +35,8 @@ const member = (firstName: string | null): Member => ({
 
 const CONFIRMATION = {
   pickupDate: "2027-01-03",
+  firstDay: "2027-01-03",
+  lastDay: "2027-01-04",
   firstChargeCents: 5000,
   weeklyCents: 8550,
   chargedDate: "2026-11-07",

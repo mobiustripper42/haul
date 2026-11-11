@@ -1,6 +1,6 @@
 import type { Language, Translator } from "@core/i18n.js";
 import { formatUsdWhole } from "@core/money.js";
-import { formatPickupDate } from "@core/pickup-week.js";
+import { firstPickupLine, pickupWhereLine } from "@core/pickup-week.js";
 import type { SignupConfirmation } from "@core/ports/repository.js";
 
 /**
@@ -11,6 +11,7 @@ import type { SignupConfirmation } from "@core/ports/repository.js";
 export function SignupBox({ t, language, confirmation }: { t: Translator; language: Language; confirmation: SignupConfirmation }) {
   const first = formatUsdWhole(confirmation.firstChargeCents);
   const weekly = formatUsdWhole(confirmation.weeklyCents);
+  const week = { weekOf: confirmation.pickupDate, firstDay: confirmation.firstDay, lastDay: confirmation.lastDay };
   const label = "text-label text-teal-muted";
   return (
     <>
@@ -37,10 +38,8 @@ export function SignupBox({ t, language, confirmation }: { t: Translator; langua
           </div>
         </dl>
         <div className="flex flex-col gap-1 border-t border-divider pt-5">
-          <p className="font-semibold">
-            {t("supperClub.box.firstPickup", { date: formatPickupDate(confirmation.pickupDate, language) })}
-          </p>
-          <p>{t("supperClub.box.pickupWhere")}</p>
+          <p className="font-semibold">{firstPickupLine(t, week, language)}</p>
+          <p>{pickupWhereLine(t, week, language)}</p>
         </div>
       </section>
       <section className="pane-next">

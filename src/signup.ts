@@ -1,6 +1,6 @@
 import { matchCustomer, sha256Key } from "./customer-match.js";
 import type { Member } from "./members.js";
-import { firstPickup } from "./pickup-week.js";
+import { clevelandDate, firstPickup } from "./pickup-week.js";
 import { isCardRefusal, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
@@ -103,6 +103,7 @@ async function prepare(
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 
   const priceCents = priceOfChoices(product, input.choices);
+  const changed = await repo.listChangedWeeks(product.id, clevelandDate(now));
   let row: PendingSignup;
   try {
     row = await repo.withActor(actor, (scoped) =>
@@ -112,7 +113,7 @@ async function prepare(
         choices: input.choices,
         firstChargeCents: priceCents,
         weeklyCents: priceCents,
-        pickupDate: firstPickup(product, now),
+        pickupDate: firstPickup(product, now, changed).weekOf,
         consentText: input.consentText,
         consentAt: now,
       }),

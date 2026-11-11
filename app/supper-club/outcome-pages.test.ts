@@ -8,6 +8,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import type { Member } from "@core/members.js";
+import { pickupWhereLine } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
@@ -235,6 +236,19 @@ describe("AC13 — the confirmation", () => {
     await subscribe(await signIn());
     const { element } = await render();
     expect(findAll(element, Shell).map((shell) => shell.props.width)).toEqual(["pane"]);
+  });
+
+  // Issue 133: the moved lines' words are src/pickup-week.test.ts's; this holds that the box uses them, in their places.
+  it("AC4 (issue 133): a week moved after signup to Saturday and Sunday: First pickup is Saturday, January 2, and the line after names the moved days", async () => {
+    await subscribe(await signIn());
+    const week = { weekOf: "2027-01-03", firstDay: "2027-01-02", lastDay: "2027-01-03" };
+    await services.repo.savePickupWeek(product.id, { ...week, closedAt: null, note: "Moved" });
+    const { html } = await render();
+    const texts = textsOf(html);
+    const first = texts.indexOf(t("supperClub.box.firstPickup", { date: "Saturday, January 2" }));
+    expect(first).toBeGreaterThan(-1);
+    expect(texts[first + 1]).toBe(pickupWhereLine(t, week, "en"));
+    expect(texts).not.toContain(en["supperClub.box.pickupWhere"]);
   });
 });
 

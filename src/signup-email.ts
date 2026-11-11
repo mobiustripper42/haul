@@ -2,7 +2,7 @@ import { legalFooter, withSignOff } from "./email-templates.js";
 import { createTranslator } from "./i18n.js";
 import type { Member } from "./members.js";
 import { formatUsdWhole } from "./money.js";
-import { formatPickupDate } from "./pickup-week.js";
+import { firstPickupLine, formatPickupDate, pickupWhereLine } from "./pickup-week.js";
 import type { EmailPort, EmailReceipt } from "./ports/email.js";
 import type { SignupConfirmation } from "./ports/repository.js";
 
@@ -21,6 +21,7 @@ export function deliverSignupConfirmation(
 ): Promise<EmailReceipt> {
   const t = createTranslator(member.language);
   const weekly = formatUsdWhole(confirmation.weeklyCents);
+  const week = { weekOf: confirmation.pickupDate, firstDay: confirmation.firstDay, lastDay: confirmation.lastDay };
   const subject = t("email.signupConfirmation.subject");
   const heading =
     member.firstName === null ? t("supperClub.done.title") : t("email.signupConfirmation.heading", { firstName: member.firstName });
@@ -35,9 +36,9 @@ export function deliverSignupConfirmation(
         amount: formatUsdWhole(confirmation.firstChargeCents),
       }),
       `${t("supperClub.weeklyLabel")}: ${weekly}`,
-      t("supperClub.box.firstPickup", { date: formatPickupDate(confirmation.pickupDate, member.language) }),
+      firstPickupLine(t, week, member.language),
     ].join("\n"),
-    `${t("email.signupConfirmation.pickup")}\n${t("supperClub.box.pickupWhere")}`,
+    `${t("email.signupConfirmation.pickup")}\n${pickupWhereLine(t, week, member.language)}`,
     `${t("email.signupConfirmation.eachWeek")}\n${[
       t("supperClub.next.menu"),
       t("supperClub.next.charge", { price: weekly }),

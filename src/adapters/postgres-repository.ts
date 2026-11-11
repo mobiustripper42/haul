@@ -11,6 +11,7 @@ import {
   type SignupConfirmation,
   type Subscriber,
 } from "../ports/repository.js";
+import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
@@ -470,11 +471,15 @@ export class PostgresRepository implements Repository {
       charged_date: string;
       first_charge_cents: number;
       weekly_cents: number;
+      first_day: string | null;
+      last_day: string | null;
     }>(
       `select s.id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, ${clevelandDay("l.paid_at")} as charged_date,
-              s.first_charge_cents, s.weekly_cents
+              s.first_charge_cents, s.weekly_cents,
+              to_char(w.first_day, 'YYYY-MM-DD') as first_day, to_char(w.last_day, 'YYYY-MM-DD') as last_day
          from subscriptions s
          join ledger l on l.subscription_id = s.id
+         left join pickup_weeks w on w.product_id = s.product_id and w.week_of = l.pickup_date
         where s.member_id = $1 and s.product_id = $2 and s.status = 'active' and l.paid_at is not null
         order by s.created_at desc, l.pickup_date
         limit 1`,
@@ -482,13 +487,46 @@ export class PostgresRepository implements Repository {
     );
     const row = found.rows[0];
     if (!row) return null;
+    const week = pickupWeek(row.pickup_date, { weekOf: row.pickup_date, closedAt: null, note: null, firstDay: row.first_day, lastDay: row.last_day });
     return {
       pickupDate: row.pickup_date,
+      firstDay: week.firstDay,
+      lastDay: week.lastDay,
       chargedDate: row.charged_date,
       firstChargeCents: row.first_charge_cents,
       weeklyCents: row.weekly_cents,
       options: (await this.optionsOf([row.id])).get(row.id) ?? [],
     };
+  }
+
+  async listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const { rows } = await this.db.query<{
+      week_of: string;
+      closed_at: Date | null;
+      note: string | null;
+      first_day: string | null;
+      last_day: string | null;
+    }>(
+      `select to_char(week_of, 'YYYY-MM-DD') as week_of, closed_at, note,
+              to_char(first_day, 'YYYY-MM-DD') as first_day, to_char(last_day, 'YYYY-MM-DD') as last_day
+         from pickup_weeks
+        where product_id = $1 and week_of >= $2::date
+        order by week_of`,
+      [productId, from],
+    );
+    return rows.map((row) => ({ weekOf: row.week_of, closedAt: row.closed_at, note: row.note, firstDay: row.first_day, lastDay: row.last_day }));
+  }
+
+  /** An upsert on product and week: every column is replaced, so null reopens a week and clears a note. */
+  async savePickupWeek(productId: string, week: ChangedWeek): Promise<void> {
+    await this.db.query(
+      `insert into pickup_weeks (product_id, week_of, closed_at, note, first_day, last_day)
+       values ($1, $2::date, $3, $4, $5::date, $6::date)
+       on conflict (product_id, week_of) do update
+         set closed_at = excluded.closed_at, note = excluded.note, first_day = excluded.first_day, last_day = excluded.last_day`,
+      [productId, week.weekOf, week.closedAt, week.note, week.firstDay, week.lastDay],
+    );
   }
 
   /**
