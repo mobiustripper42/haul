@@ -5,7 +5,7 @@
 // A form that asks for what the screen never offers (a closed week's move, an open week's note, a reopen after the
 // cutoff, a week that is not listed) goes back to the weeks and writes nothing; only a stale form reaches those.
 import { redirect } from "next/navigation";
-import { checkMove, pickupWeek } from "@core/pickup-week.js";
+import { checkMove, isDate, pickupWeek } from "@core/pickup-week.js";
 import { ADMIN_WEEKS_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
@@ -14,9 +14,6 @@ import { loadCalendar } from "./calendar";
 
 /** A note as saved: trimmed, and no note at all when nothing is left (`note` is `nonblank_text`). */
 const noteField = (formData: FormData): string | null => textField(formData, "note") || null;
-
-/** A real calendar date, `YYYY-MM-DD`: what a date input sends, and not a string that merely looks like one. */
-const isDate = (value: string): boolean => /^\d{4}-\d{2}-\d{2}$/.test(value) && new Date(`${value}T00:00:00Z`).toISOString().slice(0, 10) === value;
 
 /** The listed week the form names, its stored row, and the repository; null when the form names none. */
 async function weekOf(formData: FormData, now: Date) {

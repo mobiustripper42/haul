@@ -3,7 +3,7 @@ schema: 1
 id: DEC-032
 title: "A week credit is a meal of the picks that were charged"
 topic: "Data model"
-status: "draft"
+status: "active"
 date: "2026-11-10"
 ruling: "Closing a week grants each subscription charged for it one week credit holding that subscription's picks at the grant, in week_credits and week_credit_options; a later switch cannot change what it is worth."
 claims:

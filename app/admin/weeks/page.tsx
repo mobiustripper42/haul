@@ -1,5 +1,5 @@
 import { pluralKey, type Language, type Translator } from "@core/i18n.js";
-import { cutoffDate, formatPickupDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
+import { cutoffDate, formatPickupDate, isDate, nextCutoffDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -37,9 +37,6 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 
 /** A link back to this screen with one panel asked for: the URL says which dialog or panel is open. */
 const panelHref = (name: "close" | "reopen" | "note" | "move", weekOf: string): string => `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}`;
-
-/** The Sunday after `weekOf`, for the next week's cutoff date. */
-const nextSunday = (weekOf: string): string => new Date(Date.parse(`${weekOf}T00:00:00Z`) + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
@@ -119,7 +116,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   return (
     <div className="flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
       <Field label={t("admin.weeks.noteLabel")} htmlFor={id} help={t("admin.weeks.noteHelp")}>
-        <Textarea id={id} name="note" form={form} defaultValue={week.note ?? ""} aria-describedby={`${id}-help`} />
+        <Textarea id={id} name="note" form={form} rows={4} defaultValue={week.note ?? ""} aria-describedby={`${id}-help`} />
       </Field>
       <div className="flex flex-wrap gap-x-3 gap-y-2">
         <form id={form} action={saveWeekNote}>
@@ -148,12 +145,16 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
 /** An open week's days, in its row. After a refused move the dates entered come back, with the fault under the day at fault. */
 function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording; query: Query }) {
   const { t, language, product } = wording;
-  const fault = FAULTS.find((known): known is Fault => known === one(query.error));
-  const first = fault ? (one(query.first) ?? week.firstDay) : week.firstDay;
-  const last = fault ? (one(query.last) ?? week.lastDay) : week.lastDay;
+  // moveWeek sends a fault back with two real dates, so a query with anything else was typed by hand and is ignored whole.
+  const entered = one(query.first) ?? "";
+  const enteredLast = one(query.last) ?? "";
+  const refused = isDate(entered) && isDate(enteredLast);
+  const fault = refused ? FAULTS.find((known): known is Fault => known === one(query.error)) : undefined;
+  const first = fault ? entered : week.firstDay;
+  const last = fault ? enteredLast : week.lastDay;
   const firstId = `first-${week.weekOf}`;
   const lastId = `last-${week.weekOf}`;
-  const nextCutoff = formatPickupDate(cutoffDate(product, nextSunday(week.weekOf)), language);
+  const nextCutoff = formatPickupDate(nextCutoffDate(product, week.weekOf), language);
   const faultText =
     fault === "beforeCutoff"
       ? t("admin.weeks.errorBeforeCutoff", { cutoff: cutoffWords(wording, week) })

@@ -205,6 +205,18 @@ export function upcomingWeeks(product: ProductWithOptions, now: Date, changed: C
   });
 }
 
+/** A real calendar date, `YYYY-MM-DD`: what a date input sends, and not a string that merely looks like one (`2026-02-32`). */
+export function isDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const time = Date.parse(`${value}T00:00:00Z`);
+  return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/** The next week's cutoff date: where a move's last day must stop, so two weeks cannot overlap. */
+export function nextCutoffDate(product: ProductWithOptions, weekOf: string): string {
+  return cutoffDate(product, addDays(weekOf, 7));
+}
+
 /**
  * Whether a week's pickup days may be `firstDay` and `lastDay` (docs/SPEC.md §7.2): the first after the week's
  * cutoff date, the last not before the first, and the last no later than the next week's cutoff date, so two
@@ -218,7 +230,7 @@ export function checkMove(
 ): "ok" | "beforeCutoff" | "order" | "overlapsNext" {
   if (firstDay <= cutoffDate(product, weekOf)) return "beforeCutoff";
   if (lastDay < firstDay) return "order";
-  if (lastDay > cutoffDate(product, addDays(weekOf, 7))) return "overlapsNext";
+  if (lastDay > nextCutoffDate(product, weekOf)) return "overlapsNext";
   return "ok";
 }
 

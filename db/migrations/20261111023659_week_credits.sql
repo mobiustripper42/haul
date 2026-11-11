@@ -13,6 +13,7 @@ create table week_credits (
   spent_on uuid unique references ledger (id),
   granted_at timestamptz not null
 );
+create index on week_credits (subscription_id);
 
 -- The size that was charged, as the subscription's full set of picks at the grant (option types are data:
 -- DEC-027, so there is no size column). Copied from `subscription_options`, so a later switch cannot change what
