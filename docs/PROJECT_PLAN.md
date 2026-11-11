@@ -95,12 +95,12 @@ pickup.
 | 2.5 | Skip one or more weeks | 3 | [#137](https://github.com/mobiustripper42/haul/issues/137) · Cutoff enforced on the server |
 | 2.6 | Switch size or preference | 3 | [#138](https://github.com/mobiustripper42/haul/issues/138) |
 | 2.7 | Cancel, by the member or by an admin for them | 4 | [#139](https://github.com/mobiustripper42/haul/issues/139) · Admin cancel runs the member's cancel and keeps the ledger; a declined subscription is never cancelled automatically. Re-pointed from 2 on 2026-10-26 |
-| 2.8 | Menu builder: library, duplicate, edit, assign; missing-menu email | 8 | [#140](https://github.com/mobiustripper42/haul/issues/140) · Lenny builds on his phone |
+| 2.8 | Menu builder: library, duplicate, edit, assign | 8 | [#140](https://github.com/mobiustripper42/haul/issues/140) · Lenny builds on his phone. The missing-menu email moved to 2.9 on 2026-11-11 (Eric): the emails are built together |
 | 2.1c | Email members when a week closes | 3 | [#151](https://github.com/mobiustripper42/haul/issues/151) · Added 2026-11-10 with the split; after 2.1b. Moved 2026-11-11 with 2.2–2.3 beside 2.9: the emails and the charge run are built together, after skip, switch and cancel, which they read (Eric) |
 | 2.2 | Charge run against the ledger | 8 | [#134](https://github.com/mobiustripper42/haul/issues/134) · **@architect pass.** Split at spec if it reads as 13. Also picks up stranded signup payments: a `pending` ledger row with a saved card whose charge got no answer (task 1.4, AC10). Also the receipt email for each successful charge (`docs/SPEC.md` §7.3, Eric 2026-11-07); re-point if it grows |
 | 2.2b | Spend a week credit in the charge run | — | [#150](https://github.com/mobiustripper42/haul/issues/150) · Split from 2.1 on 2026-11-10; after 2.2. Points set at its spec walk |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | [#135](https://github.com/mobiustripper42/haul/issues/135) |
-| 2.9 | Weekly menu email and public menu page | 5 | [#141](https://github.com/mobiustripper42/haul/issues/141) · Unsubscribe link and the preference it sets |
+| 2.9 | Weekly menu email and public menu page; missing-menu email | 5 | [#141](https://github.com/mobiustripper42/haul/issues/141) · Unsubscribe link and the preference it sets. The missing-menu email (`docs/SPEC.md` §7.5) moved here from 2.8 on 2026-11-11; re-point at spec if it grows |
 | 2.10 | Pick list, skips CSV, printable pickup list | 3 | [#142](https://github.com/mobiustripper42/haul/issues/142) |
 | 2.11 | Health endpoint for sheepdog | 3 | [#143](https://github.com/mobiustripper42/haul/issues/143) · Sheepdog itself is out of this plan; includes runtime-error alerts (recipient and channel decided at spec) |
 | 2.12 | Backups and witnessed restore drill | 3 | [#144](https://github.com/mobiustripper42/haul/issues/144) |
