@@ -40,6 +40,8 @@ export default async function History() {
   ]);
   const weeks = pastWeeks(product, new Date(), changed, confirmation.pickupDate);
   const paidWeeks = new Set(ledger.paid.map((row) => row.weekOf));
+  // The subscription's current picks: until 2.6 (switch) they are what every paid week was charged for. 2.6 must
+  // snapshot the picks per paid row, as `week_credit_options` does for a week credit, or History rewrites the past.
   const meal = mealLabel(confirmation.options);
   const rows = historyRows(weeks, ledger, confirmation.pickupDate).map((row) => ({
     id: row.week.weekOf,

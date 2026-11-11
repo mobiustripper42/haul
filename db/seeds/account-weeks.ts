@@ -15,10 +15,11 @@
  * Every row is upserted on a key of its own (the member's email, a fixed subscription id, a ledger row's
  * subscription and pickup date, a week's product and Sunday, a week credit's ledger row) and puts back only the
  * columns it names. Every timestamp is derived from a week's date, never from the clock, so a second run changes
- * nothing.
+ * nothing. A run on a later week clears the unspent week credit and closure an earlier run made for the week that
+ * was then the latest past one, so only the new latest past week stands closed after it was paid.
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
-import { clevelandDate, cutoffInstant, pickupWeek } from "../../src/pickup-week.js";
+import { cutoffInstant, pastWeeks } from "../../src/pickup-week.js";
 import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 import { seed as supperClub } from "./supper-club.js";
 
@@ -54,10 +55,19 @@ export async function seed(db: Client): Promise<void> {
   };
 
   const now = new Date();
-  const today = clevelandDate(now);
   const charged: string[] = [];
   for (let sunday = product.first_pickup; cutoffInstant(settings, sunday).getTime() <= now.getTime(); sunday = addDays(sunday, 7)) charged.push(sunday);
-  const past = charged.filter((sunday) => pickupWeek(sunday, null).lastDay < today);
+  // The past weeks are History's (`pastWeeks`), so a week an admin moved is past when its moved last day is.
+  const stored = await db.query<{ week_of: string; closed_at: Date | null; note: string | null; first_day: string | null; last_day: string | null }>(
+    `select to_char(week_of, 'YYYY-MM-DD') as week_of, closed_at, note,
+            to_char(first_day, 'YYYY-MM-DD') as first_day, to_char(last_day, 'YYYY-MM-DD') as last_day
+       from pickup_weeks where product_id = $1`,
+    [product.id],
+  );
+  const changed = stored.rows.map((row) => ({ weekOf: row.week_of, closedAt: row.closed_at, note: row.note, firstDay: row.first_day, lastDay: row.last_day }));
+  const past = pastWeeks(settings, now, changed, product.first_pickup)
+    .map((week) => week.weekOf)
+    .reverse();
   const latestPast = past.at(-1);
   // A past week that is neither the signup's nor the latest: closed with no charge.
   const closedUnpaid = past.length >= 3 ? past[1] : undefined;
@@ -147,6 +157,21 @@ export async function seed(db: Client): Promise<void> {
   // Closed before its cutoff and never paid: three days ahead of it.
   if (closedUnpaid !== undefined) {
     await close(closedUnpaid, new Date(cutoffInstant(settings, closedUnpaid).getTime() - 3 * DAY_MS).toISOString(), "Closed before its cutoff, no charge (dev seed)");
+  }
+
+  // An earlier run's week credit, for a week that is no longer the latest past week, and the closure that went
+  // with it: cleared, so one week at a time stands closed after it was paid. A spent credit is the charge run's,
+  // not the seed's, and stays with its closure. A closure row holding a move keeps the move.
+  const cleared = await db.query<{ week: string }>(
+    `delete from week_credits c using ledger l
+      where l.id = c.granted_for and c.subscription_id = $1 and c.spent_on is null and l.pickup_date is distinct from $2::date
+      returning to_char(l.pickup_date, 'YYYY-MM-DD') as week`,
+    [SUBSCRIPTION_ID, latestPast ?? null],
+  );
+  if (cleared.rows.length > 0) {
+    const weeks = cleared.rows.map((row) => row.week);
+    await db.query("delete from pickup_weeks where product_id = $1 and week_of = any($2::date[]) and first_day is null", [product.id, weeks]);
+    await db.query("update pickup_weeks set closed_at = null, note = null where product_id = $1 and week_of = any($2::date[])", [product.id, weeks]);
   }
 
   // Closed after it was paid, on its first pickup day at noon: the week credit closing it would have granted.

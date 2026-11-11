@@ -1,3 +1,4 @@
+import type { MessageKey } from "@core/i18n.js";
 import { Button } from "../components/ui/button";
 import { MenuButton } from "../components/ui/menu-button";
 import { SiteBar } from "../components/ui/site-bar";
@@ -11,7 +12,7 @@ import { PANE_SIGN_IN_PAGES } from "./supper-club/paths";
 type Current = "admin" | "account" | "weeks" | "history";
 
 /** The signed-in header's links in order, drawn twice from here: in the row, and in the Menu's panel. Admin is for admins only. */
-const ACCOUNT_LINKS: readonly { current: Current; href: string; label: "header.yourMeal" | "header.weeks" | "header.history" | "header.admin"; adminOnly?: true }[] = [
+const ACCOUNT_LINKS: readonly { current: Current; href: string; label: MessageKey; adminOnly?: true }[] = [
   { current: "account", href: ACCOUNT_PATH, label: "header.yourMeal" },
   { current: "weeks", href: ACCOUNT_WEEKS_PATH, label: "header.weeks" },
   { current: "history", href: ACCOUNT_HISTORY_PATH, label: "header.history" },
@@ -73,13 +74,17 @@ export async function SiteHeader({
       {member ? (
         <>
           <div className="account-row ml-auto flex flex-wrap items-center justify-end gap-x-4 gap-y-2 lg:flex-nowrap">
-            {links(false)}
+            <nav aria-label={t("header.account")} className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:flex-nowrap">
+              {links(false)}
+            </nav>
             {switcher}
             <SignOutButton label={t("home.signOut")} flush="end" />
           </div>
           <div className="account-menu ml-auto">
             <MenuButton label={t("header.menu")}>
-              {links(true)}
+              <nav aria-label={t("header.account")} className="flex flex-col gap-2">
+                {links(true)}
+              </nav>
               <SignOutButton label={t("home.signOut")} />
               <div className="border-t border-divider pt-2">{switcher}</div>
             </MenuButton>

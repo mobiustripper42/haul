@@ -14,6 +14,7 @@ export const en = {
   "header.weeks": "Upcoming weeks",
   "header.history": "History",
   "header.menu": "Menu",
+  "header.account": "Account",
   "account.title": "Your Supper Club",
   "account.active": "Active",
   "account.nextPickup": "Next pickup: {week}",
