@@ -5,7 +5,7 @@
 // The seed works its weeks out from now, so these do too, from the clock read just before it runs; a run that
 // straddles a Monday's midnight cutoff would see one week differently. "Past" is AC6's: a week whose last pickup
 // day has passed in Cleveland. Dates are read as text, so `pg` hands back what Postgres stores.
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { createPool } from "../../src/adapters/pg-connect.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../../src/adapters/test-database.js";
 import { clevelandDate, cutoffInstant, pickupWeek } from "../../src/pickup-week.js";
@@ -147,5 +147,73 @@ describe.skipIf(!up)(`AC11 — the account-weeks seed against <test db>_account_
     const picks = await picksOf("subscription_options", "subscription_id", subscriptionId);
     expect(picks.length).toBeGreaterThan(0);
     expect(await picksOf("week_credit_options", "week_credit_id", credits[0]?.id ?? "")).toEqual(picks);
+  });
+
+  // The seed reads the clock with `new Date()` and runs in this process (`runSeed`), so these fix it with Date-only
+  // fake timers, as the page tests do, at instants chosen so the weeks fall out by hand. The Supper Club's cutoff is
+  // the end of the Monday before each Sunday, and an ordinary week's last pickup day the Monday after it.
+  describe("at a fixed clock", () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    /** The weeks closed with a paid row still standing: closed after they were paid. */
+    const closedAfterPaid = async (): Promise<string[]> =>
+      (
+        await pool.query<{ week: string }>(
+          `select to_char(w.week_of, 'YYYY-MM-DD') as week
+             from pickup_weeks w
+             join ledger l on l.pickup_date = w.week_of and l.status = 'paid'
+             join subscriptions s on s.id = l.subscription_id and s.product_id = w.product_id
+             join members m on m.id = s.member_id
+            where m.email = $1 and w.closed_at is not null
+            order by w.week_of`,
+          [EMAIL],
+        )
+      ).rows.map((row) => row.week);
+
+    /** Every week credit the member's subscriptions hold, with the week of the ledger row each was granted for. */
+    const creditsHeld = async () =>
+      (
+        await pool.query<{ spent_on: string | null; granted_week: string }>(
+          `select c.spent_on, to_char(l.pickup_date, 'YYYY-MM-DD') as granted_week
+             from week_credits c
+             join ledger l on l.id = c.granted_for
+             join subscriptions s on s.id = c.subscription_id
+             join members m on m.id = s.member_id
+            where m.email = $1
+            order by l.pickup_date`,
+          [EMAIL],
+        )
+      ).rows;
+
+    it("AC11: a run a week after the last one leaves one week closed after it was paid, the new latest past week, and one unspent week credit, granted for it", async () => {
+      // Wednesday, November 18, 2026, noon in Cleveland: the past weeks run through November 15 (last day the 16th).
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-18T17:00:00.000Z") });
+      await runSeed("account-weeks", url);
+      expect(await closedAfterPaid()).toEqual(["2026-11-15"]);
+
+      // A week later, November 25: November 22 (last day the 23rd) is the latest past week now.
+      vi.setSystemTime(new Date("2026-11-25T17:00:00.000Z"));
+      await runSeed("account-weeks", url);
+      expect(await closedAfterPaid()).toEqual(["2026-11-22"]);
+      expect(await creditsHeld()).toEqual([{ spent_on: null, granted_week: "2026-11-22" }]);
+    });
+
+    it("AC11: the latest past week honours a stored move, as History's pastWeeks does: a week moved to end before today is past", async () => {
+      // November 22's week moved, before its cutoff, to Saturday, November 21 only (`pickup_weeks`' first_day and
+      // last_day, as the admin calendar or SQL stores it). On Sunday, November 22, noon in Cleveland, its last day
+      // has passed, so it is History's newest row (`pastWeeks`); unmoved, its last day would be the 23rd.
+      await runSeed("supper-club", url);
+      const productId = (await pool.query<{ id: string }>("select id from products where name = 'Supper Club'")).rows[0]?.id;
+      await pool.query("insert into pickup_weeks (product_id, week_of, first_day, last_day) values ($1, '2026-11-22', '2026-11-21', '2026-11-21')", [
+        productId,
+      ]);
+
+      vi.useFakeTimers({ toFake: ["Date"], now: new Date("2026-11-22T17:00:00.000Z") });
+      await runSeed("account-weeks", url);
+      expect(await closedAfterPaid()).toEqual(["2026-11-22"]);
+      expect(await creditsHeld()).toEqual([{ spent_on: null, granted_week: "2026-11-22" }]);
+    });
   });
 });

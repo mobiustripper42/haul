@@ -218,8 +218,8 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
 // Issue 136, AC5: a Your account button. Issue 155 replaces it with the Your meal link, the first of the account
 // links; these read it in the row. Signed out it is not shown: the signed-out word lists above (AC18, AC17, AC5 of
 // issue 77) hold every word the header has.
-describe("AC5 (issue 136) — the Your account button", () => {
-  it('AC5: signed in as a member, the header shows a secondary "Your account" link to ACCOUNT_PATH after the language switch, then Sign out', async () => {
+describe("AC5 (issue 136) — the Your meal link", () => {
+  it('AC5: signed in as a member, the header shows a secondary "Your meal" link to ACCOUNT_PATH, then the language switch, then Sign out', async () => {
     session.member = { role: "member" };
     const { words, buttons } = await header("none");
     expect(words).toEqual([...BRAND, ...LINKS, SWITCH, SIGN_OUT]);
@@ -227,18 +227,18 @@ describe("AC5 (issue 136) — the Your account button", () => {
     expect(linkTo(buttons, ACCOUNT_PATH)?.props.current).toBeFalsy();
   });
 
-  it("AC5: signed in as an admin, the buttons are Your account, Admin, Sign out, in that order", async () => {
+  it("AC5: signed in as an admin, the buttons are Your meal, Upcoming weeks, History, Admin, Sign out, in that order", async () => {
     session.member = { role: "admin" };
     const { buttons } = await header("none");
     expect(buttons.map((button) => button.props.href ?? button.props.children)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, ADMIN_PATH, SIGN_OUT]);
   });
 
-  it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your account is marked as the page showing', async (role) => {
+  it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your meal is marked as the page showing', async (role) => {
     session.member = { role };
     expect(linkTo((await header("none", "account")).buttons, ACCOUNT_PATH)?.props).toMatchObject({ href: ACCOUNT_PATH, current: true });
   });
 
-  it('AC5: with current "account", Admin is not marked as the page showing; with current "admin", Your account is not', async () => {
+  it('AC5: with current "account", Admin is not marked as the page showing; with current "admin", Your meal is not', async () => {
     session.member = { role: "admin" };
     expect(linkTo((await header("none", "account")).buttons, ADMIN_PATH)?.props.current).toBeFalsy();
     const onAdmin = (await header("none", "admin")).buttons;
