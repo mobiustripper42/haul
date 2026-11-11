@@ -11,7 +11,7 @@ import { FakePayments } from "./fake-payments.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runProductContract } from "./product-contract.js";
-import { runSignupContract } from "./repository-contract.js";
+import { runSignupContract } from "./signup-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
