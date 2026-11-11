@@ -29,8 +29,7 @@ export const getSignedInMember = cache(async (): Promise<Member | null> => {
  * page and admin server action calls it first; no check lives in a layout (DEC-018).
  */
 export async function requireAdmin(): Promise<Member> {
-  const member = await getSignedInMember();
-  if (!member) redirect("/sign-in");
+  const member = await requireMember();
   if (member.role !== "admin") redirect("/");
   return member;
 }
