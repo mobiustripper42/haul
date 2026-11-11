@@ -503,6 +503,24 @@ describe("AC9, AC11, AC14 — the move panel", () => {
     expect(hasControl(screen.html, "lastDay", last)).toBe(true);
   });
 
+  // moveWeek only sends a fault back with two real dates, so a query carrying anything else was typed by hand: the
+  // panel opens as if no move had been refused, with the week's own days and no fault.
+  it.each([
+    ["order", "2027-02-14", "not-a-date"],
+    ["overlapsNext", "2027-02-14", "2026-13-01"],
+    ["beforeCutoff", "2026-02-32", "2027-02-15"],
+  ])("AC9: error=%s with a date that is no real date opens the panel as if nothing was refused", async (error, first, last) => {
+    const screen = await render({ move: OPEN, error, first, last });
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.text).toContain("Move pickup days");
+    expect(hasControl(screen.html, "firstDay", "2027-02-14")).toBe(true);
+    expect(hasControl(screen.html, "lastDay", "2027-02-15")).toBe(true);
+    expect(attributesOf(screen.html, "input").filter((input) => input["aria-invalid"] !== undefined)).toEqual([]);
+    for (const absent of ["Invalid Date", "Pickup can't be on or before the cutoff date.", "The last day can't be before the first day.", "runs into the next week's cutoff"]) {
+      expect(row.text).not.toContain(absent);
+    }
+  });
+
   it("AC11: ?move on a closed week opens nothing", async () => {
     await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
     const row = rowOf(await render({ move: OPEN }), TITLE_FEB_14, TITLE_FEB_21);

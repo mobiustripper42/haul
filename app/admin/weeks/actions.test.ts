@@ -204,6 +204,14 @@ describe("AC9–AC11 — moveWeek", () => {
     expect(await rowOf(OPEN)).toBeNull();
   });
 
+  it.each([
+    ["a first day", "2026-13-01", "2027-02-14"],
+    ["a last day", "2027-02-14", "2026-02-32"],
+  ])("AC9: a crafted form with %s that is no real date goes back to the weeks and writes nothing", async (_what, firstDay, lastDay) => {
+    await expect(redirectOf(moveWeek(form({ week: OPEN, firstDay, lastDay })))).resolves.toBe(WEEKS_PATH);
+    expect(await rowOf(OPEN)).toBeNull();
+  });
+
   it("AC11: a closed week cannot be moved: back to the weeks, the week as it was", async () => {
     const closed = changed(OPEN, { closedAt: CLOSED_AT, note: "Kitchen flooded" });
     await save(closed);
