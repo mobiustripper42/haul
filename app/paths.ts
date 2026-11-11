@@ -9,6 +9,12 @@ export const SIGN_IN_PAGES: FlowPages = { start: "/sign-in", code: "/sign-in/cod
 
 export const CREATE_ACCOUNT_PAGES: FlowPages = { start: "/create-account", code: "/create-account/code", done: ACCOUNT_PATH };
 
+/** A member's Upcoming weeks. */
+export const ACCOUNT_WEEKS_PATH = "/account/weeks";
+
+/** A member's History. */
+export const ACCOUNT_HISTORY_PATH = "/account/history";
+
 /** The admin's page, the header's Admin button. */
 export const ADMIN_PATH = "/admin";
 

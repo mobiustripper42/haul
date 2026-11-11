@@ -11,7 +11,8 @@ runRepositoryContract(
   async () => contractRepo.events().map((event) => event.actor),
 );
 
-// Issue 149: closing and reopening weeks, and the week credits, through the fake's three test seams.
+// Issue 149: closing and reopening weeks, and the week credits, through the fake's test seams; issue 155 adds the
+// spending of a week credit.
 let weekRepo: InMemoryRepository;
 runWeekCreditContract(
   "in-memory",
@@ -19,6 +20,7 @@ runWeekCreditContract(
   async (input) => weekRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => weekRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
   (subscriptionId, optionIds) => weekRepo.setSubscriptionOptions(subscriptionId, optionIds),
+  (weekCreditId, ledgerId) => weekRepo.spendWeekCredit(weekCreditId, ledgerId),
 );
 
 // Issue 9, AC16–AC19: the repository is a sign-in store too, and a subject is a member.

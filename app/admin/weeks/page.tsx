@@ -1,5 +1,5 @@
 import { pluralKey, type Language, type Translator } from "@core/i18n.js";
-import { cutoffDate, formatPickupDate, isDate, nextCutoffDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
+import { cutoffDate, formatPickupDate, isDate, listedWeekTitle, nextCutoffDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
@@ -41,10 +41,6 @@ const panelHref = (name: "close" | "reopen" | "note" | "move", weekOf: string): 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
 
-/** A week's title. A closed week has no pickup, so it carries its ordinary days: its move, if any, waits for a reopen. */
-const titleOf = ({ t, language }: Wording, week: AdminWeek): string =>
-  weekTitle(t, week.closedAt === null ? week : pickupWeek(week.weekOf, null), language);
-
 /** Closing an open week: who it gives week credits to, before or after the cutoff, and a note for admins. */
 function CloseDialog({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const { t, language, counts } = wording;
@@ -62,7 +58,7 @@ function CloseDialog({ week, wording }: { week: AdminWeek; wording: Wording }) {
       : t(pluralKey(language, "admin.weeks.closeConfirmBefore", paid), { n: paid });
   return (
     <Card width="fill">
-      <Heading level={2}>{t("admin.weeks.closeHeading", { days: titleOf(wording, week) })}</Heading>
+      <Heading level={2}>{t("admin.weeks.closeHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
       <p>{text}</p>
       <form action={closeWeek} className="flex flex-col gap-5">
         <input type="hidden" name="week" value={week.weekOf} />
@@ -88,7 +84,7 @@ function ReopenDialog({ week, wording }: { week: AdminWeek; wording: Wording }) 
   const given = counts.get(week.weekOf)?.weekCredits ?? 0;
   return (
     <Card width="fill">
-      <Heading level={2}>{t("admin.weeks.reopenHeading", { days: titleOf(wording, week) })}</Heading>
+      <Heading level={2}>{t("admin.weeks.reopenHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
       <p>
         {given === 0 ? t("admin.weeks.reopenGaveNone") : t(pluralKey(language, "admin.weeks.reopenGave", given), { n: given })}{" "}
         {t("admin.weeks.reopenCharged", { cutoff: cutoffWords(wording, week) })}
@@ -234,7 +230,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="font-semibold">{titleOf(wording, week)}</span>
+          <span className="font-semibold">{listedWeekTitle(t, week, language)}</span>
           {closed && <Badge kind="closed">{t("admin.weeks.badgeClosed")}</Badge>}
           {showMove && <Badge kind="moved">{t("admin.weeks.badgeMoved")}</Badge>}
           {week.note !== null && <Badge kind="note">{t("admin.weeks.badgeNote")}</Badge>}

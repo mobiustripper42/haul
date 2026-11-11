@@ -6,6 +6,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type MemberWeeks,
   type PendingSignup,
   type PendingSignupInput,
   type Repository,
@@ -269,6 +270,7 @@ export class InMemoryRepository implements Repository {
     if (!subscription || !ledger?.paidAt) return null;
     const week = pickupWeek(ledger.pickupDate, this.pickupWeeks.get(weekKey(subscription.productId, ledger.pickupDate)) ?? null);
     return {
+      subscriptionId: subscription.id,
       pickupDate: ledger.pickupDate,
       firstDay: week.firstDay,
       lastDay: week.lastDay,
@@ -342,6 +344,23 @@ export class InMemoryRepository implements Repository {
       if (row && row.pickupDate >= from && this.subscriptions.get(credit.subscriptionId)?.productId === productId) countsOf(row.pickupDate).weekCredits++;
     }
     return counts;
+  }
+
+  async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
+    const paid = [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "paid")
+      .map((row) => ({ weekOf: row.pickupDate, amountCents: row.amountCents }));
+    const weekCredits = [...this.weekCredits.values()].flatMap((credit) => {
+      const row = this.ledger.get(credit.grantedFor);
+      return credit.subscriptionId === subscriptionId && credit.spentOn === null && row ? [{ grantedForWeek: row.pickupDate }] : [];
+    });
+    return { paid, weekCredits };
+  }
+
+  /** A test seam on the fake only, not on `Repository`: a week credit spent on a later week's ledger row, as the charge run (2.2b) will. */
+  async spendWeekCredit(weekCreditId: string, ledgerId: string): Promise<void> {
+    const credit = this.weekCredits.get(weekCreditId);
+    if (credit) this.weekCredits.set(weekCreditId, { ...credit, spentOn: ledgerId });
   }
 
   /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write. */

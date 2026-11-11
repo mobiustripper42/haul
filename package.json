@@ -17,6 +17,7 @@
     "db:down": "docker compose down",
     "db:migrate": "tsx db/migrate.ts",
     "db:new-migration": "tsx db/new-migration.ts",
+    "db:seed:account-weeks": "tsx db/seed.ts account-weeks",
     "db:seed:members": "tsx db/seed.ts members",
     "db:seed:pickup-weeks": "tsx db/seed.ts pickup-weeks",
     "db:seed:subscribers": "tsx db/seed.ts subscribers",

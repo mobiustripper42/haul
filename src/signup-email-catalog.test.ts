@@ -34,6 +34,7 @@ const member = (firstName: string | null): Member => ({
 });
 
 const CONFIRMATION = {
+  subscriptionId: "5eed0000-0000-4000-8000-000000000001",
   pickupDate: "2027-01-03",
   firstDay: "2027-01-03",
   lastDay: "2027-01-04",

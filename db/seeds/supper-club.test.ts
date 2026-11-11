@@ -66,7 +66,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
       )
     ).rows;
 
-  it("AC1, AC3 (issue 102): from an emptied database, products holds Supper Club with cap 50, first pickup 2027-01-10, cutoff Monday (1) at 24:00:00", async () => {
+  it("AC1, AC3 (issue 102): from an emptied database, products holds Supper Club with cap 50, first pickup 2026-10-25, cutoff Monday (1) at 24:00:00", async () => {
     await seed();
 
     expect(await supperClub()).toEqual([
@@ -74,7 +74,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
         id: expect.any(String),
         name: "Supper Club",
         cap: 50,
-        first_pickup_date: "2027-01-10",
+        first_pickup_date: "2026-10-25",
         cutoff_weekday: 1,
         cutoff_time: "24:00:00",
       },

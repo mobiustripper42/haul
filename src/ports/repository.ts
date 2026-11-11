@@ -84,6 +84,7 @@ export type PendingSignupInput = {
  * Sunday key; `firstDay` and `lastDay` are its days as `pickup_weeks` holds them now.
  */
 export type SignupConfirmation = {
+  subscriptionId: string;
   pickupDate: string;
   firstDay: string;
   lastDay: string;
@@ -118,6 +119,16 @@ export type WeekCredit = {
   spentOn: string | null;
   grantedAt: Date;
   optionIds: string[];
+};
+
+/**
+ * A subscription's weeks as its account pages read them (issue 155): its `paid` ledger rows, each with the week's
+ * Sunday key and the amount charged, and its unspent week credits, each with the Sunday key of the ledger row it
+ * was granted for.
+ */
+export type MemberWeeks = {
+  paid: { weekOf: string; amountCents: number }[];
+  weekCredits: { grantedForWeek: string }[];
 };
 
 /**
@@ -180,6 +191,11 @@ export interface Repository extends SignInStore, RateLimitStore {
   listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]>;
   /** Per week key from `from` on, the `paid` ledger rows and the week credits granted. */
   listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>>;
+  /**
+   * The subscription's `paid` ledger rows and its week credits with `spent_on` null, each with the `pickup_date`
+   * of the ledger row it was granted for. Empty for an unknown id and for a string that isn't a UUID.
+   */
+  listMemberWeeks(subscriptionId: string): Promise<MemberWeeks>;
   /** A product's active subscriptions only, unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;

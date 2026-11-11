@@ -5,7 +5,7 @@
 // the header's Sign out button, where the home page's "Signed in as" line was.
 import type { APIRequestContext, Page } from "@playwright/test";
 import { en } from "../src/messages/en.js";
-import { expect, headerSignOut, outboxCount, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
+import { expect, expectSignedIn, headerSignOut, outboxCount, signOut, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const STRANGER = "nobody@ocf.xx";
@@ -50,7 +50,7 @@ test("AC13, AC2 (issue 97): that code, entered in 6-digit code, signs him in, an
   await enterCode(page, code);
 
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 });
 
 test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; the right code still signs him in", async ({
@@ -68,7 +68,7 @@ test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; th
   await enterCode(page, code);
 
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 });
 
 test("AC15: an email no member has gets the same code screen, and the outbox gets nothing for it", async ({
@@ -142,7 +142,7 @@ test("AC29: five wrong codes email him a sign-in link; the right code is refused
   await page.goto(link);
   await pressSignInOnLinkPage(page);
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 
   // AC30
   const fresh = await browser.newContext();
@@ -175,9 +175,9 @@ test("AC31: an email no member has gets the same notice for five wrong codes, an
 
 test("AC16, AC4 (issue 97): signed in, the header's Sign out ends the session and lands him on /supper-club, signed out: the header's Sign in, and no Sign out, there or on the next page", async ({ page, request }) => {
   await enterCode(page, await codeFor(page, request, ERIC));
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 
-  await headerSignOut(page).click();
+  await signOut(page);
 
   await expect(page).toHaveURL(onPath("/supper-club"));
   await expect(page.getByRole("banner").getByRole("link", { name: en["home.signIn"], exact: true })).toBeVisible();

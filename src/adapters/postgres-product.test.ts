@@ -74,7 +74,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
     await runSeed("supper-club", url);
 
     const found = await repo.findProductByName(SUPPER_CLUB_PRODUCT_NAME);
-    expect(found).toMatchObject({ name: "Supper Club", cap: 50, firstPickupDate: "2027-01-10", cutoffWeekday: 1, cutoffTime: "24:00:00" });
+    expect(found).toMatchObject({ name: "Supper Club", cap: 50, firstPickupDate: "2026-10-25", cutoffWeekday: 1, cutoffTime: "24:00:00" });
     expect(found?.optionTypes.map((type) => [type.name, type.options.map((option) => [option.name, option.priceCents])])).toEqual([
       ["How many people", [["Portioned for 4", 7400], ["Portioned for 2", 4200]]],
       ["Which menu", [["Standard", 0], ["Vegan", 0]]],

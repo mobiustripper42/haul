@@ -277,6 +277,11 @@
     @apply hidden;
   }
 
+  /* The signed-in header's Menu button: shown below 720px only, where the account row is not (see the media query after the layers). */
+  .account-menu {
+    @apply hidden;
+  }
+
   /* An alert: danger border, soft fill, an icon before the words. */
   .notice {
     @apply flex items-start gap-3 rounded-md border border-danger bg-danger-soft px-4 py-3 text-small text-ink;
@@ -356,12 +361,19 @@
   }
 }
 
-/* The members list: a table from 720px (45rem) up, stacked rows below it. Unlayered, for the reason above. */
+/* The members list: a table from 720px (45rem) up, stacked rows below it; the signed-in header the same. Unlayered, for the reason above. */
 @media (width < 45rem) {
   .data-table {
     display: none;
   }
   .row-list {
     display: flex;
+  }
+  /* The signed-in header: the account links fold into the Menu button (issue 155). */
+  .account-row {
+    display: none;
+  }
+  .account-menu {
+    display: block;
   }
 }
