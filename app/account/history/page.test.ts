@@ -158,6 +158,16 @@ describe("AC7 (issue 155) — what each row says, left then right", () => {
   });
 });
 
+// Issue 137: a past week the member skipped. Its marker, amount and line are historyRows' (src/account-weeks.test.ts),
+// a week both closed and skipped among them; here the row goes through the page once.
+describe("AC7 (issue 137) — a past skipped week", () => {
+  it("AC7: a skipped week: Skipped: not charged., $0, then Skipped, with no meal line", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.skipWeek(subscriptionId, "2027-01-17");
+    expect(rowTitled((await render()).rows, titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), "Skipped: not charged.", "$0", "Skipped"]);
+  });
+});
+
 describe("AC8 (issue 155) — no past weeks", () => {
   it("AC8: a member whose first week has not passed sees the heading and the intro line only: no card and no message", async () => {
     await subscribedAda("2027-02-07");

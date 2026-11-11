@@ -10,13 +10,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { redirectOf, textsOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, redirectOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import UpcomingWeeks from "./page";
 
@@ -43,6 +43,12 @@ vi.mock("../../services", () => ({
   getSessionSecret: () => services.secret,
 }));
 vi.mock("../../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
+// Issue 137: the row buttons' actions, each standing in for a server reference: React writes what `$$FORM_ACTION`
+// gives as the form's `action`, so the markup names the action a button posts to. What they do is ./actions.test.ts's.
+vi.mock("./actions", () => ({
+  skipWeek: Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: "$ACTION_ID_skipWeek", action: "skipWeek" }) }),
+  unskipWeek: Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: "$ACTION_ID_unskipWeek", action: "unskipWeek" }) }),
+}));
 
 // Wednesday, February 3, 2027, noon in Cleveland. The calendar lists from the week of February 7 (its cutoff, the
 // end of Monday, February 1, passed; its pickup to come) to April 25.
@@ -156,8 +162,8 @@ describe("AC3–AC5 (issue 155) — what each marker says, left then right", () 
   };
 
   // The whole page is coming weeks, so an ordinary one takes no badge and the badges mark what differs (Eric, PR #160).
-  it("AC3: a coming week says when it is charged, and has no badge", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-03-07"))).toEqual([titleOf("2027-03-07"), "Charged at the end of Monday, March 1"]);
+  it("AC3: a coming week says when it is charged, has no badge, then Skip", async () => {
+    expect(rowTitled(await arrange(), titleOf("2027-03-07"))).toEqual([titleOf("2027-03-07"), "Charged at the end of Monday, March 1", "Skip"]);
   });
 
   it("AC3: a Paid week says Paid, then Paid", async () => {
@@ -177,7 +183,7 @@ describe("AC3–AC5 (issue 155) — what each marker says, left then right", () 
   });
 
   it("AC5: the week the week credit lands on says it is made and not charged, then Week credit", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-28"))).toEqual([titleOf("2027-02-28"), "Week credit: made, not charged.", "Week credit"]);
+    expect(rowTitled(await arrange(), titleOf("2027-02-28"))).toEqual([titleOf("2027-02-28"), "Week credit: made, not charged.", "Week credit", "Skip"]);
   });
 });
 
@@ -186,5 +192,92 @@ describe("AC9 (issue 155) — the header on Upcoming weeks", () => {
     await subscribedAda();
     await render();
     expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "weeks" }));
+  });
+});
+
+// Issue 137: Skip and Unskip. Which week has which button is upcomingRows' (src/account-weeks.test.ts) and what a
+// press does ./actions.test.ts's; here one row of each kind goes through the page. The new words are typed once,
+// in the test of the criterion that brings them.
+
+/** The page drawn after a redirect back with `query`. */
+const renderWith = async (query: { error?: string }): Promise<string> => renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
+
+/** Each form in the row titled `title`: the action it posts to, and the `week` it posts. */
+const formsIn = (html: string, title: string): { action: string; week: string }[] => {
+  const row = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title);
+  if (row === undefined) throw new Error(`no row titled ${title}`);
+  return [...row.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].map(([, attrs = "", inner = ""]) => {
+    const buttons = attributesOf(inner, "button");
+    const action = buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action ?? "";
+    const week = [...attributesOf(inner, "input"), ...buttons].find((control) => control.name === "week")?.value ?? "";
+    return { action, week };
+  });
+};
+
+const MAR_7 = "2027-03-07";
+const MAR_14 = "2027-03-14";
+
+describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
+  /** Ada's weeks with March 7 skipped: February 7 is Coming past its cutoff, March 14 Coming before it. */
+  const arrange = async (): Promise<{ html: string; rows: string[][] }> => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.skipWeek(subscriptionId, MAR_7);
+    return render();
+  };
+
+  it("AC1: a Skipped week says it is skipped and not charged, then Skipped, then Unskip", async () => {
+    expect(rowTitled((await arrange()).rows, titleOf(MAR_7))).toEqual([titleOf(MAR_7), "Skipped: not charged.", "Skipped", "Unskip"]);
+  });
+
+  it("AC6: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek", async () => {
+    expect(formsIn((await arrange()).html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
+  });
+
+  it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {
+    expect(formsIn((await arrange()).html, titleOf(MAR_14))).toEqual([{ action: "skipWeek", week: MAR_14 }]);
+  });
+
+  it("AC6: a Coming week whose cutoff has passed has no button: its line, and nothing after", async () => {
+    const { html, rows } = await arrange();
+    expect(rowTitled(rows, titleOf("2027-02-07"))).toEqual([titleOf("2027-02-07"), t("account.weeks.charged", { date: formatPickupDate("2027-02-01", "en") })]);
+    expect(formsIn(html, titleOf("2027-02-07"))).toEqual([]);
+  });
+});
+
+describe("AC5 (issue 137) — a skipped Week credit week", () => {
+  it("AC5: the Week credit week skipped is Skipped, and the week credit shows on the next open week", async () => {
+    // February 14 paid, then closed: its week credit lands on February 21, which is skipped, so on February 28.
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-02-14", "paid", 4500);
+    await close("2027-02-14");
+    await services.repo.skipWeek(subscriptionId, "2027-02-21");
+    const { html, rows } = await render();
+    expect(formsIn(html, titleOf("2027-02-21"))).toEqual([{ action: "unskipWeek", week: "2027-02-21" }]);
+    expect(rowTitled(rows, titleOf("2027-02-28"))?.slice(0, 3)).toEqual([titleOf("2027-02-28"), t("account.weeks.weekCredit"), t("account.marker.weekCredit")]);
+  });
+});
+
+describe("AC3 (issue 137) — the cutoff Notice", () => {
+  it("AC3: sent back with ?error=cutoff, the page shows the cutoff Notice", async () => {
+    await subscribedAda();
+    expect(alertTexts(await renderWith({ error: "cutoff" }))).toEqual(["The cutoff for that week has passed, so it can't be changed."]);
+  });
+
+  it("AC3: with no error, or another one, there is no Notice", async () => {
+    await subscribedAda();
+    expect(alertTexts((await render()).html)).toEqual([]);
+    expect(alertTexts(await renderWith({}))).toEqual([]);
+    expect(alertTexts(await renderWith({ error: "nope" }))).toEqual([]);
+  });
+});
+
+describe("AC8 (issue 137) — the intro line", () => {
+  it("AC8: under the heading, the intro line says when a week is charged, and that a week skipped by then isn't", async () => {
+    await subscribedAda();
+    expect(textsOf((await render()).html).slice(0, 3)).toEqual([
+      "the header",
+      t("account.weeks.title"),
+      "Each week is charged at the end of the Monday before pickup. Skip a week by then and it isn't charged.",
+    ]);
   });
 });
