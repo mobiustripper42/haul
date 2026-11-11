@@ -1547,8 +1547,81 @@ export function runWeekCreditContract(
       it("AC3 (issue 155): an unknown id and a string that isn't a UUID give nothing", async () => {
         await paidFor(WEEK);
         for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) {
-          expect(await repo.listMemberWeeks(id)).toEqual({ paid: [], weekCredits: [] });
+          expect(await repo.listMemberWeeks(id)).toEqual({ paid: [], weekCredits: [], skipped: [] });
         }
+      });
+    });
+
+    // Issue 137: a skip is a ledger row of its own, status `skipped`, read back through listMemberWeeks. The
+    // repository checks no cutoff and no listing (the actions do: app/account/weeks/actions.test.ts), only the
+    // subscription's ledger rows for the week. A refusal of a week with a pending or declined row is owned here: the
+    // account pages read such a week as Coming.
+    describe("issue 137 — skipWeek and unskipWeek", () => {
+      const skippedOf = async (subscriptionId: string) => (await repo.listMemberWeeks(subscriptionId)).skipped;
+
+      it("AC1: skipWeek stores the subscription's skipped row for the week: true, and the week reads as skipped, not paid", async () => {
+        const signup = await paidFor(EARLIER);
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(true);
+        expect(await skippedOf(signup.subscriptionId)).toEqual([WEEK]);
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000 }]);
+      });
+
+      it("AC1: each week skipped is a row of its own, and another subscription's row for the week does not stand in the way", async () => {
+        const ada = await paidFor(EARLIER);
+        const grace = await paidFor(EARLIER);
+        await addLedgerRow(grace.subscriptionId, WEEK, "paid", 5000);
+        expect(await repo.skipWeek(ada.subscriptionId, WEEK)).toBe(true);
+        expect(await repo.skipWeek(ada.subscriptionId, NEXT)).toBe(true);
+        const skipped = await skippedOf(ada.subscriptionId);
+        expect(skipped).toHaveLength(2);
+        expect(skipped).toEqual(expect.arrayContaining([WEEK, NEXT]));
+        expect(await skippedOf(grace.subscriptionId)).toEqual([]);
+      });
+
+      it.each(["paid", "pending", "declined"] as const)("AC4: skipWeek refuses a week that already has a %s row: false, and nothing is written", async (status) => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, status, 5000);
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(false);
+        expect(await skippedOf(signup.subscriptionId)).toEqual([]);
+      });
+
+      it("AC4: a second skipWeek for a skipped week is false, and leaves the one skipped row", async () => {
+        const signup = await paidFor(EARLIER);
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(true);
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(false);
+        expect(await skippedOf(signup.subscriptionId)).toEqual([WEEK]);
+      });
+
+      it("AC2: unskipWeek deletes the skipped row: true, the week is no longer skipped, and it can be skipped again", async () => {
+        const signup = await paidFor(EARLIER);
+        await repo.skipWeek(signup.subscriptionId, WEEK);
+        expect(await repo.unskipWeek(signup.subscriptionId, WEEK)).toBe(true);
+        expect(await skippedOf(signup.subscriptionId)).toEqual([]);
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(true);
+      });
+
+      it("AC2: unskipWeek deletes that subscription's row for that week, and no other", async () => {
+        const ada = await paidFor(EARLIER);
+        const grace = await paidFor(EARLIER);
+        await repo.skipWeek(ada.subscriptionId, WEEK);
+        await repo.skipWeek(ada.subscriptionId, NEXT);
+        await repo.skipWeek(grace.subscriptionId, WEEK);
+        expect(await repo.unskipWeek(ada.subscriptionId, WEEK)).toBe(true);
+        expect(await skippedOf(ada.subscriptionId)).toEqual([NEXT]);
+        expect(await skippedOf(grace.subscriptionId)).toEqual([WEEK]);
+      });
+
+      it.each(["paid", "pending", "declined"] as const)("AC4: unskipWeek leaves a %s row alone: false, and the row is still there", async (status) => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, status, 5000);
+        expect(await repo.unskipWeek(signup.subscriptionId, WEEK)).toBe(false);
+        // The row stands in the way of a skip, so it is still there.
+        expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(false);
+      });
+
+      it("AC4: unskipWeek for a week with no ledger row is false", async () => {
+        const signup = await paidFor(EARLIER);
+        expect(await repo.unskipWeek(signup.subscriptionId, WEEK)).toBe(false);
       });
     });
   });

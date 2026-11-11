@@ -72,6 +72,9 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
         "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
         "app/admin/weeks/actions.ts#moveWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        // Issue 137: a member's Skip and Unskip write a ledger row the audit trigger records, and record no event.
+        "app/account/weeks/actions.ts#skipWeek": { none: "writes ledger; audited by trigger" },
+        "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
       }),
     );
   });

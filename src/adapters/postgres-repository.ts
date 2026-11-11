@@ -669,8 +669,8 @@ export class PostgresRepository implements Repository {
   }
 
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
-    if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [] };
-    const [paid, weekCredits] = await Promise.all([
+    if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [], skipped: [] };
+    const [paid, weekCredits, skipped] = await Promise.all([
       this.db.query<{ week_of: string; amount_cents: number }>(
         `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents
            from ledger
@@ -686,11 +686,41 @@ export class PostgresRepository implements Repository {
           order by l.pickup_date, c.id`,
         [subscriptionId],
       ),
+      this.db.query<{ week_of: string }>(
+        `select to_char(pickup_date, 'YYYY-MM-DD') as week_of
+           from ledger
+          where subscription_id = $1 and status = 'skipped'
+          order by pickup_date`,
+        [subscriptionId],
+      ),
     ]);
     return {
       paid: paid.rows.map((row) => ({ weekOf: row.week_of, amountCents: row.amount_cents })),
       weekCredits: weekCredits.rows.map((row) => ({ grantedForWeek: row.granted_for_week })),
+      skipped: skipped.rows.map((row) => row.week_of),
     };
+  }
+
+  async skipWeek(subscriptionId: string, weekOf: string): Promise<boolean> {
+    // Checked here, not by catching 22P02 or 23503: a failed query aborts a `withActor` transaction. The `select`
+    // makes an unknown subscription insert nothing, and `on conflict do nothing` a week that already has a row.
+    if (!UUID_SHAPE.test(subscriptionId)) return false;
+    const { rowCount } = await this.db.query(
+      `insert into ledger (subscription_id, pickup_date, amount_cents, status)
+       select id, $2::date, 0, 'skipped' from subscriptions where id = $1
+       on conflict (subscription_id, pickup_date) do nothing`,
+      [subscriptionId, weekOf],
+    );
+    return rowCount === 1;
+  }
+
+  async unskipWeek(subscriptionId: string, weekOf: string): Promise<boolean> {
+    if (!UUID_SHAPE.test(subscriptionId)) return false;
+    const { rowCount } = await this.db.query(
+      `delete from ledger where subscription_id = $1 and pickup_date = $2::date and status = 'skipped'`,
+      [subscriptionId, weekOf],
+    );
+    return rowCount === 1;
   }
 
   /**

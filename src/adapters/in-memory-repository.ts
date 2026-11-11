@@ -39,7 +39,7 @@ type StoredLedger = {
   subscriptionId: string;
   pickupDate: string;
   amountCents: number;
-  status: "pending" | "paid" | "declined";
+  status: "pending" | "paid" | "declined" | "skipped";
   attempt: number;
   squarePaymentId: string | null;
   paidAt: Date | null;
@@ -354,7 +354,23 @@ export class InMemoryRepository implements Repository {
       const row = this.ledger.get(credit.grantedFor);
       return credit.subscriptionId === subscriptionId && credit.spentOn === null && row ? [{ grantedForWeek: row.pickupDate }] : [];
     });
-    return { paid, weekCredits };
+    const skipped = [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "skipped")
+      .map((row) => row.pickupDate);
+    return { paid, weekCredits, skipped };
+  }
+
+  async skipWeek(subscriptionId: string, weekOf: string): Promise<boolean> {
+    if (!this.subscriptions.has(subscriptionId)) return false;
+    const taken = [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && row.pickupDate === weekOf);
+    if (taken) return false;
+    await this.addLedgerRow(subscriptionId, weekOf, "skipped", 0);
+    return true;
+  }
+
+  async unskipWeek(subscriptionId: string, weekOf: string): Promise<boolean> {
+    const row = [...this.ledger.values()].find((found) => found.subscriptionId === subscriptionId && found.pickupDate === weekOf && found.status === "skipped");
+    return row ? this.ledger.delete(row.id) : false;
   }
 
   /** A test seam on the fake only, not on `Repository`: a week credit spent on a later week's ledger row, as the charge run (2.2b) will. */
@@ -544,10 +560,10 @@ export class InMemoryRepository implements Repository {
     });
   }
 
-  /** A subscription's earliest ledger row. */
-  private ledgerOf(subscriptionId: string): StoredLedger | undefined {
+  /** A subscription's earliest ledger row of the signup's kinds: a skipped row is never the signup's. */
+  private ledgerOf(subscriptionId: string): (StoredLedger & { status: PendingSignup["ledgerStatus"] }) | undefined {
     return [...this.ledger.values()]
-      .filter((row) => row.subscriptionId === subscriptionId)
+      .filter((row): row is StoredLedger & { status: PendingSignup["ledgerStatus"] } => row.subscriptionId === subscriptionId && row.status !== "skipped")
       .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))[0];
   }
 

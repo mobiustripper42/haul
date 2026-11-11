@@ -123,12 +123,13 @@ export type WeekCredit = {
 
 /**
  * A subscription's weeks as its account pages read them (issue 155): its `paid` ledger rows, each with the week's
- * Sunday key and the amount charged, and its unspent week credits, each with the Sunday key of the ledger row it
- * was granted for.
+ * Sunday key and the amount charged, its unspent week credits, each with the Sunday key of the ledger row it
+ * was granted for, and (issue 137) the Sunday keys of its `skipped` rows.
  */
 export type MemberWeeks = {
   paid: { weekOf: string; amountCents: number }[];
   weekCredits: { grantedForWeek: string }[];
+  skipped: string[];
 };
 
 /**
@@ -196,6 +197,13 @@ export interface Repository extends SignInStore, RateLimitStore {
    * of the ledger row it was granted for. Empty for an unknown id and for a string that isn't a UUID.
    */
   listMemberWeeks(subscriptionId: string): Promise<MemberWeeks>;
+  /**
+   * Issue 137: inserts the subscription's `skipped` ledger row for the week (0 cents, attempt 1, no payment). False,
+   * writing nothing, when the subscription already has a ledger row for that week. It checks no cutoff.
+   */
+  skipWeek(subscriptionId: string, weekOf: string): Promise<boolean>;
+  /** Issue 137: deletes the subscription's row for the week only when its status is `skipped`; false otherwise. */
+  unskipWeek(subscriptionId: string, weekOf: string): Promise<boolean>;
   /** A product's active subscriptions only, unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;

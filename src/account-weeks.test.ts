@@ -37,7 +37,14 @@ const MAR_7 = "2027-03-07";
 const member = (paid: (string | [string, number])[], weekCredits: string[] = []): MemberWeeks => ({
   paid: paid.map((row) => (typeof row === "string" ? { weekOf: row, amountCents: 4500 } : { weekOf: row[0], amountCents: row[1] })),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
+  skipped: [],
 });
+
+/** Issue 137: the same ledger with skipped rows for `skipped`. */
+const skipping = (ledger: MemberWeeks, skipped: string[]): MemberWeeks => ({ ...ledger, skipped });
+
+/** Issue 137: a listed week whose cutoff has passed. */
+const pastCutoff = (listed: AdminWeek): AdminWeek => ({ ...listed, cutoffPassed: true });
 
 const markers = (rows: UpcomingRow[]) => rows.map((row) => [row.week.weekOf, row.marker]);
 const rowOf = <Row extends { week: AdminWeek }>(rows: Row[], weekOf: string): Row | undefined => rows.find((row) => row.week.weekOf === weekOf);
@@ -49,7 +56,7 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
   });
 
   it("AC3: an open week with no paid row is Coming, charged at the end of its cutoff Monday: February 1 for February 7", () => {
-    expect(upcomingRows([week(FEB_7)], member([]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "coming", closedPaid: false, chargeDate: "2027-02-01" }]);
+    expect(upcomingRows([week(FEB_7)], member([]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "coming", closedPaid: false, chargeDate: "2027-02-01", action: "skip" }]);
   });
 
   it("AC3: the charge date is the product's cutoff weekday, not a Monday in the code: Friday, February 5", () => {
@@ -58,7 +65,7 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
   });
 
   it("AC3: an open week with a paid row is Paid, with no charge date", () => {
-    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, chargeDate: null }]);
+    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, chargeDate: null, action: null }]);
   });
 
   it("AC3: a closed week is Closed whether or not it was paid, with no charge date", () => {
@@ -165,5 +172,78 @@ describe("AC7 (issue 155) — historyRows: each row's marker, amount and line", 
   it("AC7: the subscription's first week closed after it was paid takes the closed-after-paid line, not Paid at signup", () => {
     const closed = week(JAN_3, { closed: true });
     expect(only([closed], member([[JAN_3, 4500]]))).toMatchObject({ marker: "noMeal", amountCents: 4500, line: "closedPaid" });
+  });
+});
+
+// Issue 137: Skip and Unskip. Each row's `action` is the one rule the page draws its button from and the server
+// actions check a request against, so its edges are tested here and nowhere else.
+const actions = (rows: UpcomingRow[]) => rows.map((row) => [row.week.weekOf, row.marker, row.action]);
+
+describe("AC1 (issue 137) — upcomingRows: a skipped week", () => {
+  it("AC1: an open week with a skipped row is Skipped, with no charge date, and its button is Unskip", () => {
+    expect(upcomingRows([week(FEB_7)], skipping(member([]), [FEB_7]), PRODUCT)).toEqual([
+      { week: week(FEB_7), marker: "skipped", closedPaid: false, chargeDate: null, action: "unskip" },
+    ]);
+  });
+});
+
+describe("AC6 (issue 137) — upcomingRows: each week's button", () => {
+  it("AC6: Coming and Week credit weeks have Skip, a Skipped week has Unskip, Paid and Closed weeks have none", () => {
+    const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21), week(FEB_28), week(MAR_7)];
+    const ledger = skipping(member([FEB_7, FEB_14], [FEB_7]), [FEB_28]);
+    expect(actions(upcomingRows(weeks, ledger, PRODUCT))).toEqual([
+      [FEB_7, "closed", null],
+      [FEB_14, "paid", null],
+      [FEB_21, "weekCredit", "skip"],
+      [FEB_28, "skipped", "unskip"],
+      [MAR_7, "coming", "skip"],
+    ]);
+  });
+
+  it("AC6: a closed week with a skipped row is Closed, with no button: closed wins; reopened, it is Skipped again", () => {
+    const ledger = skipping(member([]), [FEB_7]);
+    expect(actions(upcomingRows([week(FEB_7, { closed: true })], ledger, PRODUCT))).toEqual([[FEB_7, "closed", null]]);
+    expect(actions(upcomingRows([week(FEB_7)], ledger, PRODUCT))).toEqual([[FEB_7, "skipped", "unskip"]]);
+  });
+
+  it("AC6: once a week's cutoff has passed it has no button, whatever its marker", () => {
+    const weeks = [pastCutoff(week(FEB_7)), pastCutoff(week(FEB_14)), pastCutoff(week(FEB_21))];
+    const ledger = skipping(member([], ["2027-01-31"]), [FEB_14]);
+    expect(actions(upcomingRows(weeks, ledger, PRODUCT))).toEqual([
+      [FEB_7, "weekCredit", null],
+      [FEB_14, "skipped", null],
+      [FEB_21, "coming", null],
+    ]);
+  });
+});
+
+describe("AC5 (issue 137) — upcomingRows: a skipped week takes no week credit", () => {
+  it("AC5: the week credit passes over a skipped week to the next that is open, unpaid and unskipped; unskipped, it is back", () => {
+    const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21)];
+    const ledger = member([FEB_7], [FEB_7]);
+    expect(markers(upcomingRows(weeks, skipping(ledger, [FEB_14]), PRODUCT))).toEqual([
+      [FEB_7, "closed"],
+      [FEB_14, "skipped"],
+      [FEB_21, "weekCredit"],
+    ]);
+    expect(markers(upcomingRows(weeks, ledger, PRODUCT))).toEqual([
+      [FEB_7, "closed"],
+      [FEB_14, "weekCredit"],
+      [FEB_21, "coming"],
+    ]);
+  });
+});
+
+describe("AC7 (issue 137) — historyRows: a skipped week", () => {
+  const JAN_3 = "2027-01-03";
+  const JAN_17 = "2027-01-17";
+
+  it("AC7: a past week with a skipped row is listed as Skipped, at 0, with the skipped line", () => {
+    expect(historyRows([week(JAN_17)], skipping(member([JAN_3]), [JAN_17]), JAN_3)).toEqual([{ week: week(JAN_17), marker: "skipped", amountCents: 0, line: "skipped" }]);
+  });
+
+  it("AC7: a past week both closed and skipped is No meal, Closed, at 0: closed wins", () => {
+    const closed = week(JAN_17, { closed: true });
+    expect(historyRows([closed], skipping(member([JAN_3]), [JAN_17]), JAN_3)).toEqual([{ week: closed, marker: "noMeal", amountCents: 0, line: "closed" }]);
   });
 });

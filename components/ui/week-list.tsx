@@ -1,11 +1,12 @@
 import type { ReactNode } from "react";
 import { Hint } from "./hint";
 
-export type WeekListRow = { id: string; title: string; lines: string[]; amount?: string; badge: ReactNode };
+export type WeekListRow = { id: string; title: string; lines: string[]; amount?: string; badge: ReactNode; action?: ReactNode };
 
 /**
  * The account pages' weeks (issue 155): a list of rows, divided as the admin weeks list's, each a left column
- * (the title, then its muted lines) and a right column (the amount, if any, and the badge). One column at every
+ * (the title, then its muted lines) and a right column (the amount, if any, the badge, and after it an optional
+ * action, issue 137). One column at every
  * width: `RowList` does not fit, for it hides at 720px and wider.
  */
 export function WeekList({ rows }: { rows: WeekListRow[] }) {
@@ -22,6 +23,7 @@ export function WeekList({ rows }: { rows: WeekListRow[] }) {
           <div className="ml-auto flex flex-wrap items-center justify-end gap-x-3 gap-y-1">
             {row.amount !== undefined && <strong className="font-semibold">{row.amount}</strong>}
             {row.badge}
+            {row.action}
           </div>
         </li>
       ))}
