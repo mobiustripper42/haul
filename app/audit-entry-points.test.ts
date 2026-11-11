@@ -67,6 +67,11 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         "app/supper-club/actions.ts#resendPaneAccountCode": { records: ["rate_limit_refusal"] },
         "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
         "app/admin/members.csv/route.ts#GET": { none: "reads" },
+        // Issue 149: the weeks screen's actions write rows the audit trigger records, and record no event.
+        "app/admin/weeks/actions.ts#closeWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#moveWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
       }),
     );
   });

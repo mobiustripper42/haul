@@ -108,6 +108,19 @@ export type Subscriber = {
 };
 
 /**
+ * A week credit (issue 149): a meal of the picks that were charged, granted for the `paid` ledger row
+ * `grantedFor` when its week closed, and spent at a later week's charge (`spentOn`, null until then).
+ */
+export type WeekCredit = {
+  id: string;
+  subscriptionId: string;
+  grantedFor: string;
+  spentOn: string | null;
+  grantedAt: Date;
+  optionIds: string[];
+};
+
+/**
  * The core's view of stored data (DEC-010). `InMemoryRepository` is the permanent fake and the
  * test substrate; `PostgresRepository` is the real one; one contract suite runs against both.
  *
@@ -157,6 +170,16 @@ export interface Repository extends SignInStore, RateLimitStore {
   listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]>;
   /** Saves a week's row: an upsert on product and week that replaces every column. */
   savePickupWeek(productId: string, week: ChangedWeek): Promise<void>;
+  /**
+   * Closes the week, keeping an existing `closed_at`, saves the note, and grants a week credit per `paid` ledger
+   * row of the product for that week, copying the subscription's picks; all under the product row's lock.
+   */
+  closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void>;
+  /** Clears `closed_at` and the note, deletes the week credits granted for the week, and deletes an empty row. */
+  reopenPickupWeek(productId: string, weekOf: string): Promise<void>;
+  listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]>;
+  /** Per week key from `from` on, the `paid` ledger rows and the week credits granted. */
+  listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>>;
   /** A product's active subscriptions only, unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;

@@ -26,4 +26,8 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
   "app/dev/outbox/route.ts#GET": { none: "dev only; reads" },
   "app/admin/members.csv/route.ts#GET": { none: "reads" },
+  "app/admin/weeks/actions.ts#closeWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+  "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+  "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+  "app/admin/weeks/actions.ts#moveWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
 };

@@ -10,6 +10,11 @@
  *
  * `runSignupContract` is issue 56's repository methods. A signup needs a product with options, so it
  * takes `addProduct` as `runProductContract` does, and the adapters' product test files call it.
+ *
+ * `runWeekCreditContract` is issue 149's: closing and reopening a week, and the week credits closing grants. It
+ * takes `addProduct` and two seams each adapter's repository test file passes in: `addLedgerRow`, a ledger row
+ * as the charge run would write it, and `setSubscriptionOptions`, a subscription's picks replaced as a switch
+ * would (task 2.6). The fake has a method for each; Postgres writes them with raw SQL.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountDetails } from "../create-account.js";
@@ -1185,6 +1190,304 @@ export function runSignupContract(
       ])("AC11: a payment on %s is joined on Cleveland's date", async (_what, paidAt, joined) => {
         await activeOn(product, memberId, new Date(paidAt));
         expect((await repo.listSubscribers(product.id))[0]?.joinedDate).toBe(joined);
+      });
+    });
+  });
+}
+
+type LedgerStatus = PendingSignup["ledgerStatus"];
+
+export function runWeekCreditContract(
+  name: string,
+  make: () => Promise<Repository>,
+  addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
+  addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<void>,
+  setSubscriptionOptions: (subscriptionId: string, optionIds: string[]) => Promise<void>,
+  reset?: () => Promise<void>,
+): void {
+  // Issue 149. The weeks are BOX's: January 24's cutoff is the end of Monday the 18th. The repository checks no
+  // cutoff (the core does), so the times here are only what each call is given.
+  describe(`Week credit repository contract — ${name}`, () => {
+    const WEEK = "2027-01-24";
+    const NEXT = "2027-01-31";
+    const EARLIER = "2027-01-17";
+    const PAID_AT = new Date("2027-01-05T15:00:00.000Z");
+    const CLOSED_AT = new Date("2027-01-12T15:00:00.000Z");
+    const LATER = new Date("2027-01-13T15:00:00.000Z");
+
+    let repo: Repository;
+    let product: ProductWithOptions;
+    let members = 0;
+
+    beforeEach(async () => {
+      if (reset) await reset();
+      repo = await make();
+      product = await addProduct(BOX);
+    });
+
+    /** The option ids at `size` and `menu` of `on`. */
+    const picks = (size: number, menu: number, on: ProductWithOptions = product): string[] => {
+      const [sizes, menus] = on.optionTypes;
+      return [sizes?.options[size]?.id ?? "no such size", menus?.options[menu]?.id ?? "no such menu"];
+    };
+
+    const choicesOf = (ids: string[], on: ProductWithOptions = product): Record<string, string> =>
+      Object.fromEntries(on.optionTypes.map((type, i) => [type.id, ids[i] ?? "no such option"]));
+
+    const sorted = (ids: readonly string[] | undefined) => [...(ids ?? [])].sort();
+
+    /** A new member's pending rows for `week`, picking `ids`. */
+    const pendingFor = async (week: string, ids: string[] = picks(0, 0), on: ProductWithOptions = product): Promise<PendingSignup> => {
+      const memberId = (await repo.createMember({ email: `member-${++members}@example.com` })).id;
+      const signup = await repo.savePendingSignup({
+        memberId,
+        productId: on.id,
+        choices: choicesOf(ids, on),
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: week,
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: PAID_AT,
+      });
+      expect(signup.ledgerId).not.toBe("");
+      return signup;
+    };
+
+    const confirm = (signup: PendingSignup, at: Date = PAID_AT) =>
+      repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, at);
+
+    /** A new member's signup for `week`, charged at signup: an active subscription with a paid row for the week. */
+    const paidFor = async (week: string, ids?: string[], on?: ProductWithOptions): Promise<PendingSignup> => {
+      const signup = await pendingFor(week, ids, on);
+      expect(await confirm(signup)).toBe("confirmed");
+      return signup;
+    };
+
+    const close = (week: string, note: string | null = "Kitchen flooded", at: Date = CLOSED_AT) => repo.closePickupWeek(product.id, week, note, at);
+
+    const credits = async (week: string = WEEK) =>
+      [...(await repo.listWeekCredits(product.id, week))].sort((a, b) => a.subscriptionId.localeCompare(b.subscriptionId));
+
+    const changedWeek = async (week: string = WEEK): Promise<ChangedWeek | null> =>
+      (await repo.listChangedWeeks(product.id, week)).find((changed) => changed.weekOf === week) ?? null;
+
+    describe("AC2 — closing a week", () => {
+      it("AC2: closePickupWeek closes the week at the time given, with its note", async () => {
+        await close(WEEK, "Kitchen flooded");
+        expect(await changedWeek()).toEqual({ weekOf: WEEK, closedAt: CLOSED_AT, note: "Kitchen flooded", firstDay: null, lastDay: null });
+      });
+
+      it("AC2: closed with no note, its note is null", async () => {
+        await close(WEEK, null);
+        expect(await changedWeek()).toEqual({ weekOf: WEEK, closedAt: CLOSED_AT, note: null, firstDay: null, lastDay: null });
+      });
+
+      it("AC7: closing a moved week keeps its days", async () => {
+        await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-23", lastDay: "2027-01-24" });
+        await close(WEEK, "Kitchen flooded");
+        expect(await changedWeek()).toEqual({ weekOf: WEEK, closedAt: CLOSED_AT, note: "Kitchen flooded", firstDay: "2027-01-23", lastDay: "2027-01-24" });
+      });
+    });
+
+    describe("AC3 — the week credits closing grants", () => {
+      it("AC3: each subscription with a paid row for the week gets one week credit for that row, granted at the closing time and unspent", async () => {
+        const ada = await paidFor(WEEK);
+        const grace = await paidFor(WEEK);
+        await close(WEEK);
+        const expected = [ada, grace]
+          .map((signup) => ({
+            id: expect.stringMatching(UUID),
+            subscriptionId: signup.subscriptionId,
+            grantedFor: signup.ledgerId,
+            spentOn: null,
+            grantedAt: CLOSED_AT,
+            optionIds: expect.any(Array),
+          }))
+          .sort((a, b) => a.subscriptionId.localeCompare(b.subscriptionId));
+        expect(await credits()).toEqual(expected);
+      });
+
+      it("AC3: a paid row the charge run wrote, on a subscription that started earlier, gets one too", async () => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, "paid", 5000);
+        await close(WEEK);
+        const found = await credits();
+        expect(found.map((credit) => credit.subscriptionId)).toEqual([signup.subscriptionId]);
+        expect(found[0]?.grantedFor).toMatch(UUID);
+        expect(found[0]?.grantedFor).not.toBe(signup.ledgerId);
+      });
+
+      it("AC3: a pending row and a declined row get none, at signup or from the run: only the paid row does", async () => {
+        const paid = await paidFor(WEEK);
+        await pendingFor(WEEK);
+        const declined = await pendingFor(WEEK);
+        await repo.recordSignupDecline(declined.ledgerId);
+        const runPending = await paidFor(EARLIER);
+        await addLedgerRow(runPending.subscriptionId, WEEK, "pending", 5000);
+        const runDeclined = await paidFor(EARLIER);
+        await addLedgerRow(runDeclined.subscriptionId, WEEK, "declined", 5000);
+        await close(WEEK);
+        expect((await credits()).map((credit) => credit.subscriptionId)).toEqual([paid.subscriptionId]);
+      });
+
+      it("AC3: another week's paid row and another product's paid row for the same week get none", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        const paid = await paidFor(WEEK);
+        await paidFor(EARLIER);
+        await paidFor(WEEK, picks(0, 0, crate), crate);
+        await close(WEEK);
+        expect((await credits()).map((credit) => credit.subscriptionId)).toEqual([paid.subscriptionId]);
+        expect(await repo.listWeekCredits(crate.id, WEEK)).toEqual([]);
+      });
+
+      it("AC3: a close that its withActor rolls back leaves the week open and grants nothing", async () => {
+        await paidFor(WEEK);
+        const failure = new Error("fn failed after closing");
+        await expect(
+          repo.withActor(null, async (r) => {
+            await r.closePickupWeek(product.id, WEEK, "Kitchen flooded", CLOSED_AT);
+            throw failure;
+          }),
+        ).rejects.toBe(failure);
+        expect(await changedWeek()).toBeNull();
+        expect(await credits()).toEqual([]);
+      });
+    });
+
+    describe("AC4 — a week credit holds the picks that were charged", () => {
+      it("AC4: a week credit holds the subscription's full set of picks", async () => {
+        await paidFor(WEEK, picks(1, 1));
+        await close(WEEK);
+        expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 1))]);
+      });
+
+      it("AC4: the picks are the subscription's at the grant: changed before the closing, the week credit holds the new ones", async () => {
+        const signup = await paidFor(WEEK, picks(0, 0));
+        await setSubscriptionOptions(signup.subscriptionId, picks(1, 0));
+        await close(WEEK);
+        expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 0))]);
+      });
+
+      it("AC4: changing the subscription's picks after the grant does not change the week credit", async () => {
+        const signup = await paidFor(WEEK, picks(1, 1));
+        await close(WEEK);
+        await setSubscriptionOptions(signup.subscriptionId, picks(0, 0));
+        expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 1))]);
+      });
+    });
+
+    describe("AC5 — a week closed twice", () => {
+      it("AC5: a second close grants no second week credit, and the first closing time is kept", async () => {
+        const signup = await paidFor(WEEK);
+        await close(WEEK, "Kitchen flooded", CLOSED_AT);
+        await close(WEEK, "Kitchen flooded", LATER);
+        expect(await credits()).toEqual([expect.objectContaining({ subscriptionId: signup.subscriptionId, grantedAt: CLOSED_AT })]);
+        expect((await changedWeek())?.closedAt).toEqual(CLOSED_AT);
+      });
+    });
+
+    describe("AC7 — reopening a week", () => {
+      it("AC7: a reopened week with no move is ordinary again, no row, and the week credits its closing granted are gone", async () => {
+        await paidFor(WEEK);
+        await close(WEEK, "Kitchen flooded");
+        expect(await credits()).toHaveLength(1);
+        await repo.reopenPickupWeek(product.id, WEEK);
+        expect(await changedWeek()).toBeNull();
+        expect(await credits()).toEqual([]);
+      });
+
+      it("AC7: a move on the week stays: open again, the note cleared, the days kept", async () => {
+        await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-23", lastDay: "2027-01-24" });
+        await close(WEEK, "Kitchen flooded");
+        expect((await changedWeek())?.closedAt).toEqual(CLOSED_AT);
+        await repo.reopenPickupWeek(product.id, WEEK);
+        expect(await changedWeek()).toEqual({ weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-23", lastDay: "2027-01-24" });
+      });
+
+      it("AC7: it withdraws that week's week credits and no other week's", async () => {
+        await paidFor(WEEK);
+        const next = await paidFor(NEXT);
+        await close(WEEK);
+        await close(NEXT);
+        expect(await credits(NEXT)).toHaveLength(1);
+        await repo.reopenPickupWeek(product.id, WEEK);
+        expect(await credits(WEEK)).toEqual([]);
+        expect((await credits(NEXT)).map((credit) => credit.subscriptionId)).toEqual([next.subscriptionId]);
+      });
+
+      it("AC7, AC5: a week reopened and closed again grants its week credits again, once, at the new closing", async () => {
+        await paidFor(WEEK);
+        await close(WEEK, "Kitchen flooded", CLOSED_AT);
+        await repo.reopenPickupWeek(product.id, WEEK);
+        await close(WEEK, null, LATER);
+        expect(await credits()).toEqual([expect.objectContaining({ grantedAt: LATER })]);
+      });
+    });
+
+    describe("AC10 — no row is an ordinary week", () => {
+      it("AC10: savePickupWeek with no close, no move and no note leaves the week with no row", async () => {
+        await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-23", lastDay: "2027-01-24" });
+        await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: null, lastDay: null });
+        expect(await repo.listChangedWeeks(product.id, EARLIER)).toEqual([]);
+      });
+
+      it("AC10: a week left with only its note keeps its row, which guards the delete above", async () => {
+        const noted: ChangedWeek = { weekOf: WEEK, closedAt: null, note: "Heads up", firstDay: null, lastDay: null };
+        await repo.savePickupWeek(product.id, { ...noted, firstDay: "2027-01-23", lastDay: "2027-01-24" });
+        await repo.savePickupWeek(product.id, noted);
+        expect(await repo.listChangedWeeks(product.id, EARLIER)).toEqual([noted]);
+      });
+    });
+
+    describe("AC12 — a signup confirmed paid after its week closed", () => {
+      it("AC12: a signup pending when its week closes gets its week credit when it confirms paid, granted at the confirmation's time", async () => {
+        const signup = await pendingFor(WEEK, picks(1, 1));
+        await close(WEEK);
+        expect(await credits()).toEqual([]);
+        expect(await confirm(signup, LATER)).toBe("confirmed");
+        const found = await credits();
+        expect(found).toEqual([
+          { id: expect.stringMatching(UUID), subscriptionId: signup.subscriptionId, grantedFor: signup.ledgerId, spentOn: null, grantedAt: LATER, optionIds: expect.any(Array) },
+        ]);
+        expect(sorted(found[0]?.optionIds)).toEqual(sorted(picks(1, 1)));
+      });
+
+      it("AC12: a confirmation for an open week grants nothing, though another week is closed", async () => {
+        const signup = await pendingFor(WEEK);
+        await close(NEXT);
+        expect(await confirm(signup, LATER)).toBe("confirmed");
+        expect(await credits(WEEK)).toEqual([]);
+        expect(await credits(NEXT)).toEqual([]);
+      });
+
+      it('AC12, AC5: a replayed confirmation ("already") grants no second week credit', async () => {
+        const signup = await pendingFor(WEEK);
+        await close(WEEK);
+        await confirm(signup, LATER);
+        expect(await confirm(signup, LATER)).toBe("already");
+        expect(await credits()).toHaveLength(1);
+      });
+    });
+
+    describe("AC14 — listWeekCounts", () => {
+      it("AC14: per week from the date on, the paid rows, from signup and from the run, and the week credits granted", async () => {
+        await paidFor(WEEK);
+        const runRow = await paidFor(EARLIER);
+        await addLedgerRow(runRow.subscriptionId, WEEK, "paid", 5000);
+        await pendingFor(WEEK);
+        await paidFor(NEXT);
+        await close(WEEK);
+        const counts = await repo.listWeekCounts(product.id, WEEK);
+        expect(counts.get(WEEK)).toEqual({ paid: 2, weekCredits: 2 });
+        expect(counts.get(NEXT)).toEqual({ paid: 1, weekCredits: 0 });
+        expect(counts.has(EARLIER)).toBe(false);
+      });
+
+      it("AC14: another product's rows are not counted", async () => {
+        const crate = await addProduct({ ...BOX, name: "Crate" });
+        await paidFor(WEEK);
+        await paidFor(WEEK, picks(0, 0, crate), crate);
+        expect((await repo.listWeekCounts(product.id, WEEK)).get(WEEK)).toEqual({ paid: 1, weekCredits: 0 });
       });
     });
   });

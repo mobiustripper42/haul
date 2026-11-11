@@ -59,48 +59,104 @@ a{color:#003f4c}a:hover{color:#487878}
   <main style="flex: 1 0 auto; width: 100%; max-width: 960px; box-sizing: border-box; margin: 0 auto; padding: 32px 16px 48px; display: flex; flex-direction: column; gap: 20px;">
     <div style="display: flex; flex-direction: column; gap: 4px;">
       <h1 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 400; font-size: 24px; line-height: 30px; letter-spacing: 0.03em; color: #003f4c;">Weeks</h1>
-      <p style="margin: 0; color: #55615f;">Close a week when there is no pickup. Before its cutoff nobody is charged for it. After its cutoff, everyone who paid gets a week credit: their next box is made and not charged.</p>
+      <p style="margin: 0; color: #55615f;">The next 12 weeks. Close a week when there is no pickup, or move its pickup days. Closing before the cutoff skips that week's charge, and members who paid for it at signup get a week credit. Closing after the cutoff gives everyone who paid a week credit: their next box is made and not charged.</p>
     </div>
-    <sc-if value="{{before}}" hint-placeholder-val="{{false}}">
-      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; border: 1px solid #003f4c;">
-        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Close the week of January 24 and 25?</h2>
-        <p style="margin: 0;">Nobody has been charged for it. The charge at the end of Monday, January 18 is skipped, and members see the week as closed.</p>
+
+    <sc-if value="{{dClose}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="close-title" style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; border: 1px solid {{dBorder}};">
+        <h2 id="close-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Close the week of {{dWhen}}?</h2>
+        <p style="margin: 0;">{{dText}}</p>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          <label for="close-note" style="font-weight: 600;">Note for admins (optional)</label>
+          <textarea id="close-note" rows="3" aria-describedby="close-note-hint" style="font: inherit; box-sizing: border-box; width: 100%; max-width: 560px; padding: 10px 12px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; resize: vertical;"></textarea>
+          <span id="close-note-hint" style="font-size: 12px; line-height: 18px; color: #55615f;">Shown on this row. Members never see it.</span>
+        </div>
         <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-          <button type="button" onClick="{{close}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Close the week</button>
-          <button type="button" onClick="{{close}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Keep it open</button>
+          <button type="button" onClick="{{dConfirm}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">{{dButton}}</button>
+          <button type="button" onClick="{{dCancel}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Keep it open</button>
         </div>
       </section>
     </sc-if>
-    <sc-if value="{{after}}" hint-placeholder-val="{{false}}">
-      <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; border: 1px solid #a93226;">
-        <h2 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Close the week of January 17 and 18?</h2>
-        <p style="margin: 0;">31 members were charged for it at the end of Monday, January 11. Each gets a week credit: their next box is made and not charged. This cannot be undone.</p>
+
+    <sc-if value="{{dReopen}}" hint-placeholder-val="{{false}}">
+      <section aria-labelledby="reopen-title" style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; border: 1px solid #003f4c;">
+        <h2 id="reopen-title" style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 17px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Reopen the week of {{dWhen}}?</h2>
+        <p style="margin: 0;">{{dText}}</p>
         <div style="display: flex; flex-wrap: wrap; gap: 12px;">
-          <button type="button" onClick="{{close}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Close the week and give credits</button>
-          <button type="button" onClick="{{close}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Keep it open</button>
+          <button type="button" onClick="{{dConfirm}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Reopen the week</button>
+          <button type="button" onClick="{{dCancel}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Keep it closed</button>
         </div>
       </section>
     </sc-if>
-    <section style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 28px 20px; display: flex; flex-direction: column; gap: 20px; padding-top: 8px; padding-bottom: 8px; gap: 0;">
-      <sc-for list="{{rows}}" as="r" hint-placeholder-count="6">
-        <div style="display: flex; justify-content: space-between; align-items: center; gap: 12px; padding: 12px 0; border-top: 1px solid #c7d5d1; align-items: flex-start;">
-          <div style="display: flex; flex-direction: column; min-width: 0; gap: 2px;">
-            <span style="font-weight: 600;">{{r.when}}</span>
-            <span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Cutoff: end of {{r.cutoff}}</span>
-            <sc-if value="{{r.hasMenu}}" hint-placeholder-val="{{true}}"><span>{{r.menu}}</span></sc-if>
+
+    <section aria-label="Upcoming weeks" style="background: #ffffff; border-radius: 8px; box-shadow: 0 1px 3px rgba(0, 63, 76, 0.12); padding: 4px 20px; display: flex; flex-direction: column;">
+      <sc-for list="{{rows}}" as="r" hint-placeholder-count="12">
+        <div style="display: flex; flex-wrap: wrap; align-items: flex-start; gap: 8px 16px; padding: 16px 0; border-top: {{r.topBorder}};">
+          <div style="flex: 1 1 280px; min-width: 0; display: flex; flex-direction: column; gap: 4px;">
+            <div style="display: flex; flex-wrap: wrap; align-items: center; gap: 4px 10px;">
+              <span style="font-weight: 600;">{{r.title}}</span>
+              <sc-if value="{{r.isClosed}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 4px; padding: 1px 7px; border: 1px solid #7a9692; border-radius: 4px; background: #f7f7f7; color: #1e2a2d; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#1e2a2d" stroke-width="2.5" stroke-linecap="round"><circle cx="12" cy="12" r="9"></circle><path d="M5.6 18.4L18.4 5.6"></path></svg>Closed</span></sc-if>
+              <sc-if value="{{r.isMoved}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; background: #003f4c; color: #ffffff; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#ffffff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4"></path></svg>Moved</span></sc-if>
+              <sc-if value="{{r.hasNote}}" hint-placeholder-val="{{false}}"><span style="display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #003f4c; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;"><svg aria-hidden="true" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#003f4c" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 4h14v12H9l-4 4z"></path></svg>Note</span></sc-if>
+            </div>
+            <sc-if value="{{r.isMoved}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; line-height: 18px; color: #55615f;">{{r.movedFrom}}</span></sc-if>
+            <span style="font-size: 12px; line-height: 18px; color: #55615f;">{{r.cutoffLine}}</span>
+            <sc-if value="{{r.showMenu}}" hint-placeholder-val="{{true}}"><span>{{r.menu}}</span></sc-if>
             <sc-if value="{{r.noMenu}}" hint-placeholder-val="{{false}}"><span style="font-weight: 600; color: #a93226;">No menu yet</span></sc-if>
+            <sc-if value="{{r.hasClosedLine}}" hint-placeholder-val="{{false}}"><span style="font-size: 12px; line-height: 18px; color: #55615f;">{{r.closedLine}}</span></sc-if>
+            <sc-if value="{{r.showNote}}" hint-placeholder-val="{{false}}"><p style="margin: 4px 0 0; padding: 8px 12px; border-radius: 4px; background: #f7f7f7; max-width: 520px;"><strong style="font-weight: 600;">Note: </strong>{{r.note}}</p></sc-if>
           </div>
-          <div style="flex: none; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 12px;">
-            <span style="font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">{{r.boxes}} boxes</span>
-            <sc-if value="{{r.isOpen}}" hint-placeholder-val="{{true}}"><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #003f4c; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">{{r.label}}</span></sc-if>
-            <sc-if value="{{r.isCharged}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 2px 8px; border-radius: 4px; background: #e3ebe8; color: #1c4723; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">{{r.label}}</span></sc-if>
-            <sc-if value="{{r.isClosed}}" hint-placeholder-val="{{false}}"><span style="display: inline-block; padding: 1px 7px; border: 1px solid #c7d5d1; border-radius: 4px; background: #f7f7f7; color: #55615f; font-size: 12px; line-height: 18px; font-weight: 600; white-space: nowrap;">{{r.label}}</span></sc-if>
-            <sc-if value="{{r.canClose}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{r.ask}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Close week</button></sc-if>
+          <div style="flex: 0 1 auto; margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 4px 8px;">
+            <sc-if value="{{r.showBoxes}}" hint-placeholder-val="{{true}}"><span style="font-size: 12px; line-height: 18px; color: #55615f; padding-right: 4px;">{{r.boxes}} boxes</span></sc-if>
+            <sc-if value="{{r.canMove}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{r.onMove}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Move days</button></sc-if>
+            <sc-if value="{{r.isMoved}}" hint-placeholder-val="{{false}}"><button type="button" onClick="{{r.onPutBack}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Put back</button></sc-if>
+            <sc-if value="{{r.isClosed}}" hint-placeholder-val="{{false}}"><button type="button" onClick="{{r.onNote}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">{{r.noteLabel}}</button></sc-if>
+            <sc-if value="{{r.canClose}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{r.onClose}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Close week</button></sc-if>
+            <sc-if value="{{r.canReopen}}" hint-placeholder-val="{{false}}"><button type="button" onClick="{{r.onReopen}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Reopen</button></sc-if>
           </div>
+
+          <sc-if value="{{r.noteOpen}}" hint-placeholder-val="{{false}}">
+            <div style="flex: 1 1 100%; box-sizing: border-box; background: #f7f7f7; border: 1px solid #c7d5d1; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 12px;">
+              <div style="display: flex; flex-direction: column; gap: 6px;">
+                <label for="{{r.noteId}}" style="font-weight: 600;">Note for admins</label>
+                <textarea id="{{r.noteId}}" rows="3" aria-describedby="{{r.noteHintId}}" style="font: inherit; box-sizing: border-box; width: 100%; max-width: 560px; padding: 10px 12px; border: 1px solid #7a9692; border-radius: 8px; background: #ffffff; color: #1e2a2d; resize: vertical;">{{r.note}}</textarea>
+                <span id="{{r.noteHintId}}" style="font-size: 12px; line-height: 18px; color: #55615f;">Members never see it.</span>
+              </div>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px 12px;">
+                <button type="button" onClick="{{r.onPanelDone}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Save note</button>
+                <sc-if value="{{r.hasNote}}" hint-placeholder-val="{{true}}"><button type="button" onClick="{{r.onClearNote}}" style="font: inherit; cursor: pointer; min-height: 44px; box-sizing: border-box; padding: 0 16px; border: 1px solid #003f4c; border-radius: 8px; background: #ffffff; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Clear note</button></sc-if>
+                <button type="button" onClick="{{r.onPanelDone}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Cancel</button>
+              </div>
+            </div>
+          </sc-if>
+
+          <sc-if value="{{r.moveOpen}}" hint-placeholder-val="{{false}}">
+            <div style="flex: 1 1 100%; box-sizing: border-box; background: #f7f7f7; border: 1px solid #c7d5d1; border-radius: 8px; padding: 16px; display: flex; flex-direction: column; gap: 16px;">
+              <h3 style="margin: 0; font-family: 'Oswald', sans-serif; font-weight: 500; font-size: 16px; line-height: 22px; letter-spacing: 0.04em; color: #003f4c;">Move pickup days</h3>
+              <div style="display: flex; flex-wrap: wrap; gap: 16px 24px;">
+                <div style="flex: 1 1 200px; max-width: 260px; display: flex; flex-direction: column; gap: 6px;">
+                  <label for="{{r.firstId}}" style="font-weight: 600;">First day</label>
+                  <input type="date" id="{{r.firstId}}" value="{{r.mFirst}}" aria-invalid="{{r.firstBad}}" aria-describedby="{{r.firstErrId}}" style="font: inherit; box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 12px; border: {{r.firstBorder}}; border-radius: 8px; background: #ffffff; color: #1e2a2d;">
+                  <sc-if value="{{r.firstBad}}" hint-placeholder-val="{{false}}"><span id="{{r.firstErrId}}" style="display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 20px; font-weight: 600; color: #a93226;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="2.5" stroke-linecap="round" style="flex: none; margin-top: 2px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>{{r.firstErr}}</span></sc-if>
+                </div>
+                <div style="flex: 1 1 200px; max-width: 260px; display: flex; flex-direction: column; gap: 6px;">
+                  <label for="{{r.lastId}}" style="font-weight: 600;">Last day</label>
+                  <input type="date" id="{{r.lastId}}" value="{{r.mLast}}" aria-invalid="{{r.lastBad}}" aria-describedby="{{r.lastHintId}}" style="font: inherit; box-sizing: border-box; width: 100%; min-height: 44px; padding: 0 12px; border: {{r.lastBorder}}; border-radius: 8px; background: #ffffff; color: #1e2a2d;">
+                  <sc-if value="{{r.lastBad}}" hint-placeholder-val="{{false}}"><span style="display: flex; gap: 6px; align-items: flex-start; font-size: 13px; line-height: 20px; font-weight: 600; color: #a93226;"><svg aria-hidden="true" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a93226" stroke-width="2.5" stroke-linecap="round" style="flex: none; margin-top: 2px;"><circle cx="12" cy="12" r="9"></circle><path d="M12 7v6M12 16.5v.5"></path></svg>{{r.lastErr}}</span></sc-if>
+                  <span id="{{r.lastHintId}}" style="font-size: 12px; line-height: 18px; color: #55615f;">For a one-day pickup, pick the same day as the first.</span>
+                </div>
+              </div>
+              <p style="margin: 0; font-size: 12px; line-height: 18px; color: #55615f;">The cutoff stays the end of {{r.cutoff}}.</p>
+              <div style="display: flex; flex-wrap: wrap; gap: 8px 12px;">
+                <button type="button" onClick="{{r.onPanelDone}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 24px; border: 0; border-radius: 8px; background: #c8b43d; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600; letter-spacing: 0.02em;">Save days</button>
+                <button type="button" onClick="{{r.onPanelDone}}" style="font: inherit; cursor: pointer; min-height: 44px; padding: 0 8px; border: 0; background: transparent; color: #003f4c; font-size: 14px; line-height: 20px; font-weight: 600;">Cancel</button>
+              </div>
+            </div>
+          </sc-if>
         </div>
       </sc-for>
     </section>
-    <p style="margin: 0; font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Holiday closures and moved windows are set by the developer. Menus are assigned under Menus.</p>
+    <p style="margin: 0; font-size: 12px; line-height: 18px; font-weight: 400; color: #55615f;">Menus are assigned under Menus.</p>
   </main>
   <footer style="border-top: 1px solid #c7d5d1; background: #ffffff;">
     <div style="max-width: 960px; margin: 0 auto; padding: 20px 16px; display: flex; flex-wrap: wrap; justify-content: space-between; gap: 12px; color: #55615f;">
@@ -114,23 +170,141 @@ a{color:#003f4c}a:hover{color:#487878}
   </footer>
 </div>
 </x-dc>
-<script type="text/x-dc" data-dc-script data-props='{"confirm":{"editor":"enum","options":["none","before","after"],"default":"none"},"menu":{"editor":"enum","options":["closed","open"],"default":"closed"},"$preview":{"width":1280,"height":1000}}'>
+<script type="text/x-dc" data-dc-script data-props='{"confirm":{"editor":"enum","options":["none","before","beforePaid","after","reopen"],"default":"none"},"panel":{"editor":"enum","options":["none","note","move","moveErrCutoff","moveErrOrder","moveErrNext"],"default":"none"},"first":{"editor":"enum","options":["charged","closed"],"default":"charged"},"menu":{"editor":"enum","options":["closed","open"],"default":"closed"},"$preview":{"width":1280,"height":1700}}'>
 class Component extends DCLogic {
-  constructor(props) { super(props); this.state = { confirm: null }; }
+  constructor(props) { super(props); this.state = { confirm: null, panel: null, closed: {}, restored: {}, cleared: {} }; }
   renderVals() {
-    const c = this.state.confirm ?? this.props.confirm ?? 'none';
-    const rows = [
-      ['January 17 and 18', 'Monday, January 11', 'Shish tawook chicken skewers', '31', 'charged', 'Charged', true, 'after'],
-      ['January 24 and 25', 'Monday, January 18', 'Cajun red beans and smoked sausage', '29', 'open', 'Open', true, 'before'],
-      ['January 31 and February 1', 'Monday, January 25', '', '30', 'open', 'Open', true, 'before'],
-      ['February 6 and 7', 'Monday, February 1', 'Egg shakshuka', '30', 'moved', 'Moved window', true, 'before'],
-      ['February 14 and 15', 'Monday, February 8', '', '0', 'closed', 'Closed', false, ''],
-      ['February 21 and 22', 'Monday, February 15', '', '31', 'open', 'Open', true, 'before']
+    const DAY = 86400000;
+    const start = Date.UTC(2027, 0, 17);
+    const fmt = (t, o) => new Date(t).toLocaleDateString('en-US', Object.assign({ timeZone: 'UTC' }, o));
+    const md = (t) => fmt(t, { month: 'long', day: 'numeric' });
+    const wmd = (t) => fmt(t, { weekday: 'long', month: 'long', day: 'numeric' });
+    const mon = (t) => fmt(t, { month: 'long' });
+    const iso = (t) => new Date(t).toISOString().slice(0, 10);
+    const pair = (a, b) => mon(a) === mon(b) ? md(a) + ' and ' + fmt(b, { day: 'numeric' }) : md(a) + ' and ' + md(b);
+    const n = (k, one, many) => k + ' ' + (k === 1 ? one : many);
+
+    const spec = [
+      { menu: 'Shish tawook chicken skewers', boxes: 31, charged: 31 },
+      { menu: 'Cajun red beans and smoked sausage', boxes: 29, paid: 3 },
+      { menu: '', boxes: 30 },
+      { menu: 'Egg shakshuka', boxes: 30, move: [-1, 0] },
+      { boxes: 0, closed: { credits: 2, note: 'Kitchen inspection week. Staff are off.' } },
+      { menu: 'Chicken pozole verde', boxes: 31 },
+      { menu: 'Mushroom bourguignon', boxes: 31, move: [0, 0] },
+      { menu: 'Pork carnitas tacos', boxes: 31 },
+      { menu: 'Red lentil dal', boxes: 31 },
+      { menu: 'Beef bulgogi bowls', boxes: 31 },
+      { boxes: 0, closed: { credits: 0, note: '' } },
+      { menu: '', boxes: 31 }
     ];
-    return { menuOpen: (this.props.menu ?? 'closed') === 'open', 
-      none: c === 'none', before: c === 'before', after: c === 'after',
-      close: () => this.setState({ confirm: 'none' }),
-      rows: rows.map((r) => ({ when: r[0], cutoff: r[1], menu: r[2], hasMenu: r[2] !== '', noMenu: r[2] === '' && r[4] !== 'closed', boxes: r[3], isOpen: r[4] === 'open' || r[4] === 'moved', isCharged: r[4] === 'charged', isClosed: r[4] === 'closed', label: r[5], canClose: r[6], ask: () => this.setState({ confirm: r[7] }) }))
+
+    const p = this.props;
+    const st = this.state;
+    const firstClosed = (p.first ?? 'charged') === 'closed';
+
+    const propConfirm = { before: { kind: 'close', row: 2 }, beforePaid: { kind: 'close', row: 1 }, after: { kind: 'close', row: 0 }, reopen: { kind: 'reopen', row: 4 } }[p.confirm ?? 'none'] || { kind: 'none' };
+    const confirm = st.confirm ?? propConfirm;
+    const propPanel = { note: { kind: 'note', row: 4 }, move: { kind: 'move', row: 2 }, moveErrCutoff: { kind: 'move', row: 2, err: 'cutoff' }, moveErrOrder: { kind: 'move', row: 2, err: 'order' }, moveErrNext: { kind: 'move', row: 2, err: 'next' } }[p.panel ?? 'none'] || { kind: 'none' };
+    const panel = st.panel ?? propPanel;
+
+    const info = spec.map((s, i) => {
+      const sun = start + i * 7 * DAY;
+      const monday = sun + DAY;
+      const cutoff = sun - 6 * DAY;
+      const passed = i === 0;
+      let closed = s.closed || (i === 0 && firstClosed ? { credits: 31, note: 'Storm. The kitchen lost power.' } : null);
+      if (st.closed[i] === false) closed = null;
+      else if (st.closed[i]) closed = st.closed[i];
+      if (closed && st.cleared[i]) closed = Object.assign({}, closed, { note: '' });
+      const moved = !closed && s.move && !st.restored[i];
+      return { s, i, sun, monday, cutoff, nextCutoff: monday, passed, closed, moved };
+    });
+
+    const rows = info.map((w) => {
+      const { s, i, sun, monday, cutoff, passed, closed, moved } = w;
+      let title = pair(sun, monday);
+      if (moved) {
+        const d0 = sun + s.move[0] * DAY, d1 = sun + s.move[1] * DAY;
+        title = s.move[0] === s.move[1] ? wmd(d0) + ' only' : wmd(d0) + ' and ' + wmd(d1);
+      }
+      const cutoffLine = passed ? 'Cutoff passed: end of ' + wmd(cutoff) + (closed ? '' : ' · ' + s.charged + ' charged') : 'Cutoff: end of ' + wmd(cutoff);
+      let closedLine = '';
+      if (closed && passed) closedLine = 'Closed after its cutoff. ' + n(closed.credits, 'week credit', 'week credits') + ' given. The closure stands.';
+      else if (closed && closed.credits > 0) closedLine = n(closed.credits, 'week credit', 'week credits') + ' given at closing.';
+      const note = closed ? closed.note : '';
+
+      const noteOpen = panel.kind === 'note' && panel.row === i && !!closed;
+      const moveOpen = panel.kind === 'move' && panel.row === i && !closed;
+      let mFirst = sun, mLast = monday;
+      if (moved) { mFirst = sun + s.move[0] * DAY; mLast = sun + s.move[1] * DAY; }
+      let firstErr = '', lastErr = '';
+      if (moveOpen && panel.err === 'cutoff') { mFirst = cutoff; mLast = sun; firstErr = 'Pick a day after ' + wmd(cutoff) + '. Pickup can’t be on or before the cutoff date.'; }
+      if (moveOpen && panel.err === 'order') { mFirst = sun; mLast = sun - DAY; lastErr = 'The last day can’t be before the first day.'; }
+      if (moveOpen && panel.err === 'next') { mFirst = sun - DAY; mLast = monday + DAY; lastErr = wmd(mLast) + ' runs into the next week’s cutoff, the end of ' + wmd(w.nextCutoff) + '. Pick a day on or before it.'; }
+      const bad = '2px solid #a93226', ok = '1px solid #7a9692';
+
+      return {
+        title, cutoffLine, cutoff: wmd(cutoff),
+        topBorder: i === 0 ? '0' : '1px solid #c7d5d1',
+        movedFrom: 'Moved from Sunday and Monday, ' + pair(sun, monday),
+        menu: s.menu || '', showMenu: !closed && !!s.menu, noMenu: !closed && !s.menu,
+        boxes: s.boxes, showBoxes: !closed,
+        isClosed: !!closed, isMoved: !!moved, hasNote: !!note, showNote: !!note, note,
+        noteLabel: note ? 'Edit note' : 'Add note',
+        closedLine, hasClosedLine: closedLine !== '',
+        canClose: !closed, canMove: !closed, canReopen: !!closed && !passed,
+        noteOpen, moveOpen,
+        noteId: 'note-' + i, noteHintId: 'note-hint-' + i,
+        firstId: 'first-' + i, lastId: 'last-' + i, firstErrId: 'first-err-' + i, lastHintId: 'last-hint-' + i,
+        mFirst: iso(mFirst), mLast: iso(mLast),
+        firstBad: firstErr !== '', lastBad: lastErr !== '', firstErr, lastErr,
+        firstBorder: firstErr ? bad : ok, lastBorder: lastErr ? bad : ok,
+        onClose: () => this.setState({ confirm: { kind: 'close', row: i }, panel: { kind: 'none' } }),
+        onReopen: () => this.setState({ confirm: { kind: 'reopen', row: i }, panel: { kind: 'none' } }),
+        onMove: () => this.setState({ panel: { kind: 'move', row: i } }),
+        onNote: () => this.setState({ panel: { kind: 'note', row: i } }),
+        onPanelDone: () => this.setState({ panel: { kind: 'none' } }),
+        onClearNote: () => this.setState({ cleared: Object.assign({}, st.cleared, { [i]: true }), panel: { kind: 'none' } }),
+        onPutBack: () => this.setState({ restored: Object.assign({}, st.restored, { [i]: true }) })
+      };
+    });
+
+    const d = info[confirm.row] || info[0];
+    const dWhen = pair(d.sun, d.monday);
+    const dCutoff = wmd(d.cutoff);
+    let dText = '', dButton = 'Close the week', dBorder = '#003f4c', credits = 0;
+    if (confirm.kind === 'close') {
+      if (d.passed) {
+        credits = d.s.charged;
+        dText = n(credits, 'member was', 'members were') + ' charged for it at the end of ' + dCutoff + '. Each gets a week credit: their next box is made and not charged. This cannot be undone.';
+        dButton = 'Close the week and give credits';
+        dBorder = '#a93226';
+      } else if (d.s.paid) {
+        credits = d.s.paid;
+        dText = n(credits, 'member', 'members') + ' paid for this week when they signed up. Each gets a week credit: their next box is made and not charged. Nobody else is charged: the charge at the end of ' + dCutoff + ' is skipped, and members see the week as closed.';
+        dButton = 'Close the week and give ' + n(credits, 'credit', 'credits');
+      } else {
+        dText = 'Nobody has been charged for it. The charge at the end of ' + dCutoff + ' is skipped, and members see the week as closed.';
+      }
+    }
+    if (confirm.kind === 'reopen') {
+      const c = d.closed ? d.closed.credits : 0;
+      dText = (c > 0 ? 'Closing it gave ' + n(c, 'member', 'members') + ' a week credit. Those credits are taken back. ' : 'Closing it gave no week credits. ') + 'Members are charged as usual at the end of ' + dCutoff + '.';
+    }
+
+    return {
+      menuOpen: (p.menu ?? 'closed') === 'open',
+      rows,
+      dClose: confirm.kind === 'close', dReopen: confirm.kind === 'reopen',
+      dWhen, dText, dButton, dBorder,
+      dCancel: () => this.setState({ confirm: { kind: 'none' } }),
+      dConfirm: () => {
+        const r = confirm.row;
+        const next = Object.assign({}, st.closed);
+        next[r] = confirm.kind === 'close' ? { credits, note: '' } : false;
+        this.setState({ closed: next, confirm: { kind: 'none' } });
+      }
     };
   }
 }

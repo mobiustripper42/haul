@@ -10,6 +10,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type WeekCredit,
 } from "../ports/repository.js";
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
@@ -430,7 +431,9 @@ export class PostgresRepository implements Repository {
   /**
    * Flips the ledger row and its subscription together, under the member row's lock: a concurrent confirm waits,
    * re-reads the row and finds it paid, so it says "already", whatever amount it brings. An amount that is not
-   * the ledger's leaves both rows pending and says "mismatch".
+   * the ledger's leaves both rows pending and says "mismatch". The product row is locked after the member row,
+   * as closing a week locks it, so a confirmation that lands after its week closed sees the closure and grants
+   * its week credit itself.
    */
   async confirmSignupRows(
     ledgerId: string,
@@ -447,6 +450,13 @@ export class PostgresRepository implements Repository {
         where l.id = $1 for update of m`,
       [ledgerId],
     );
+    await this.db.query(
+      `select p.id from products p
+         join subscriptions s on s.product_id = p.id
+         join ledger l on l.subscription_id = s.id
+        where l.id = $1 for update of p`,
+      [ledgerId],
+    );
     const { rows: held } = await this.db.query<{ status: string; amount_cents: number; subscription_id: string }>(
       "select status, amount_cents, subscription_id from ledger where id = $1 for update",
       [ledgerId],
@@ -460,6 +470,16 @@ export class PostgresRepository implements Repository {
       now,
     ]);
     await this.db.query("update subscriptions set status = 'active' where id = $1", [row.subscription_id]);
+    const { rows: weeks } = await this.db.query<{ product_id: string; pickup_date: string; closed: boolean }>(
+      `select s.product_id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date,
+              exists (select 1 from pickup_weeks w
+                       where w.product_id = s.product_id and w.week_of = l.pickup_date and w.closed_at is not null) as closed
+         from ledger l join subscriptions s on s.id = l.subscription_id
+        where l.id = $1`,
+      [ledgerId],
+    );
+    const week = weeks[0];
+    if (week?.closed) await this.grantWeekCredits(week.product_id, week.pickup_date, now, ledgerId);
     return "confirmed";
   }
 
@@ -518,8 +538,15 @@ export class PostgresRepository implements Repository {
     return rows.map((row) => ({ weekOf: row.week_of, closedAt: row.closed_at, note: row.note, firstDay: row.first_day, lastDay: row.last_day }));
   }
 
-  /** An upsert on product and week: every column is replaced, so null reopens a week and clears a note. */
+  /**
+   * An upsert on product and week: every column is replaced, so null reopens a week and clears a note. A week left
+   * with nothing on it (not closed, not moved, no note) has no row: no row is an ordinary week (DEC-030).
+   */
   async savePickupWeek(productId: string, week: ChangedWeek): Promise<void> {
+    if (week.closedAt === null && week.note === null && week.firstDay === null && week.lastDay === null) {
+      await this.db.query("delete from pickup_weeks where product_id = $1 and week_of = $2::date", [productId, week.weekOf]);
+      return;
+    }
     await this.db.query(
       `insert into pickup_weeks (product_id, week_of, closed_at, note, first_day, last_day)
        values ($1, $2::date, $3, $4, $5::date, $6::date)
@@ -527,6 +554,116 @@ export class PostgresRepository implements Repository {
          set closed_at = excluded.closed_at, note = excluded.note, first_day = excluded.first_day, last_day = excluded.last_day`,
       [productId, week.weekOf, week.closedAt, week.note, week.firstDay, week.lastDay],
     );
+  }
+
+  /**
+   * One transaction under the product row's lock, the lock a signup's confirmation takes after the member's: the
+   * week is closed, its closing time and days kept if it already was, and every `paid` ledger row for it gets its
+   * week credit. A second close grants nothing new: a week credit is unique by the ledger row it answers for.
+   */
+  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void> {
+    if (!UUID_SHAPE.test(productId)) return;
+    if (!this.scoped) return this.withActor(null, (repo) => repo.closePickupWeek(productId, weekOf, note, now));
+    await this.db.query("select id from products where id = $1 for update", [productId]);
+    await this.db.query(
+      `insert into pickup_weeks (product_id, week_of, closed_at, note)
+       values ($1, $2::date, $3, $4)
+       on conflict (product_id, week_of) do update
+         set closed_at = coalesce(pickup_weeks.closed_at, excluded.closed_at), note = excluded.note`,
+      [productId, weekOf, now, note],
+    );
+    await this.grantWeekCredits(productId, weekOf, now);
+  }
+
+  /**
+   * Under the same lock: the week's week credits are deleted (their picks go with them), the closing and the
+   * note are cleared, and the row is deleted when nothing is left on it.
+   */
+  async reopenPickupWeek(productId: string, weekOf: string): Promise<void> {
+    if (!UUID_SHAPE.test(productId)) return;
+    if (!this.scoped) return this.withActor(null, (repo) => repo.reopenPickupWeek(productId, weekOf));
+    await this.db.query("select id from products where id = $1 for update", [productId]);
+    await this.db.query(
+      `delete from week_credits
+        where granted_for in (select l.id from ledger l join subscriptions s on s.id = l.subscription_id
+                               where s.product_id = $1 and l.pickup_date = $2::date)`,
+      [productId, weekOf],
+    );
+    await this.db.query("update pickup_weeks set closed_at = null, note = null where product_id = $1 and week_of = $2::date", [productId, weekOf]);
+    await this.db.query(
+      `delete from pickup_weeks
+        where product_id = $1 and week_of = $2::date and closed_at is null and note is null and first_day is null and last_day is null`,
+      [productId, weekOf],
+    );
+  }
+
+  /**
+   * A week credit for each `paid` ledger row of the product's subscriptions for the week that has none, granted at
+   * `now`, with a copy of the subscription's picks beside it; with `ledgerId`, for that row alone. The one home for
+   * granting, called by closing and by a confirmation that lands after the week closed. The caller holds the
+   * product row's lock.
+   */
+  private async grantWeekCredits(productId: string, weekOf: string, now: Date, ledgerId?: string): Promise<void> {
+    const { rows } = await this.db.query<{ id: string }>(
+      `insert into week_credits (subscription_id, granted_for, granted_at)
+       select l.subscription_id, l.id, $3::timestamptz
+         from ledger l join subscriptions s on s.id = l.subscription_id
+        where s.product_id = $1 and l.pickup_date = $2::date and l.status = 'paid' and ($4::uuid is null or l.id = $4::uuid)
+       on conflict (granted_for) do nothing
+       returning id`,
+      [productId, weekOf, now, ledgerId ?? null],
+    );
+    if (rows.length === 0) return;
+    await this.db.query(
+      `insert into week_credit_options (week_credit_id, option_type_id, option_id)
+       select c.id, so.option_type_id, so.option_id
+         from week_credits c join subscription_options so on so.subscription_id = c.subscription_id
+        where c.id = any($1::uuid[])`,
+      [rows.map((row) => row.id)],
+    );
+  }
+
+  async listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const { rows } = await this.db.query<{
+      id: string;
+      subscription_id: string;
+      granted_for: string;
+      spent_on: string | null;
+      granted_at: Date;
+      option_ids: string[];
+    }>(
+      `select c.id, c.subscription_id, c.granted_for, c.spent_on, c.granted_at,
+              array(select o.option_id::text from week_credit_options o where o.week_credit_id = c.id) as option_ids
+         from week_credits c
+         join ledger l on l.id = c.granted_for
+         join subscriptions s on s.id = l.subscription_id
+        where s.product_id = $1 and l.pickup_date = $2::date
+        order by c.granted_at, c.id`,
+      [productId, weekOf],
+    );
+    return rows.map((row) => ({
+      id: row.id,
+      subscriptionId: row.subscription_id,
+      grantedFor: row.granted_for,
+      spentOn: row.spent_on,
+      grantedAt: row.granted_at,
+      optionIds: row.option_ids,
+    }));
+  }
+
+  async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
+    if (!UUID_SHAPE.test(productId)) return new Map();
+    const { rows } = await this.db.query<{ week_of: string; paid: number; week_credits: number }>(
+      `select to_char(l.pickup_date, 'YYYY-MM-DD') as week_of, count(*)::int as paid, count(c.id)::int as week_credits
+         from ledger l
+         join subscriptions s on s.id = l.subscription_id
+         left join week_credits c on c.granted_for = l.id
+        where s.product_id = $1 and l.pickup_date >= $2::date and l.status = 'paid'
+        group by l.pickup_date`,
+      [productId, from],
+    );
+    return new Map(rows.map((row) => [row.week_of, { paid: row.paid, weekCredits: row.week_credits }]));
   }
 
   /**
