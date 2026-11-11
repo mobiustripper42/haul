@@ -40,7 +40,6 @@ export const es = {
   "account.history.signup": "Pagada al inscribirse",
   "account.history.closedPaid": "Cerrada después de pagarla: un crédito de semana cubre una semana posterior.",
   "account.marker.paid": "Pagada",
-  "account.marker.coming": "Próxima",
   "account.marker.closed": "Cerrada",
   "account.marker.weekCredit": "Crédito de semana",
   "account.marker.noMeal": "Sin comida",
