@@ -49,7 +49,7 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
 
 /**
  * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
- * week, each marked Paid, Coming, Closed, Week credit or Skipped, with a Skip or Unskip button before its cutoff
+ * week, each marked Paid, Closed, Week credit or Skipped, or coming with no badge, with a Skip or Unskip button before its cutoff
  * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with.
  */
 export default async function UpcomingWeeks(): Promise<ReactElement>;
@@ -62,7 +62,7 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     id: row.week.weekOf,
     title: listedWeekTitle(t, row.week, language),
     lines: [lineOf(row, t, language)],
-    badge: <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
+    badge: row.marker === "coming" ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
     action: actionOf(row, t, language),
   }));
 

@@ -161,8 +161,9 @@ describe("AC3–AC5 (issue 155) — what each marker says, left then right", () 
     return (await render()).rows;
   };
 
-  it("AC3: a Coming week says when it is charged, then Coming", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-03-07"))).toEqual([titleOf("2027-03-07"), "Charged at the end of Monday, March 1", "Coming", "Skip"]);
+  // The whole page is coming weeks, so an ordinary one takes no badge and the badges mark what differs (Eric, PR #160).
+  it("AC3: a coming week says when it is charged, has no badge, then Skip", async () => {
+    expect(rowTitled(await arrange(), titleOf("2027-03-07"))).toEqual([titleOf("2027-03-07"), "Charged at the end of Monday, March 1", "Skip"]);
   });
 
   it("AC3: a Paid week says Paid, then Paid", async () => {
@@ -236,13 +237,9 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     expect(formsIn((await arrange()).html, titleOf(MAR_14))).toEqual([{ action: "skipWeek", week: MAR_14 }]);
   });
 
-  it("AC6: a Coming week whose cutoff has passed has no button: its line and its badge, and nothing after", async () => {
+  it("AC6: a Coming week whose cutoff has passed has no button: its line, and nothing after", async () => {
     const { html, rows } = await arrange();
-    expect(rowTitled(rows, titleOf("2027-02-07"))).toEqual([
-      titleOf("2027-02-07"),
-      t("account.weeks.charged", { date: formatPickupDate("2027-02-01", "en") }),
-      t("account.marker.coming"),
-    ]);
+    expect(rowTitled(rows, titleOf("2027-02-07"))).toEqual([titleOf("2027-02-07"), t("account.weeks.charged", { date: formatPickupDate("2027-02-01", "en") })]);
     expect(formsIn(html, titleOf("2027-02-07"))).toEqual([]);
   });
 });
