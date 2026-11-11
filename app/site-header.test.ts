@@ -14,7 +14,7 @@ import { en } from "@core/messages/en.js";
 import { Button } from "../components/ui/button";
 import { SiteBar } from "../components/ui/site-bar";
 import { emptyRequest } from "./next-headers-fake";
-import { ADMIN_PATH } from "./paths";
+import { ACCOUNT_PATH, ADMIN_PATH } from "./paths";
 import { findAll, textsOf } from "./screen-test-helpers";
 import { SiteHeader } from "./site-header";
 import { signOut } from "./sign-in/actions";
@@ -54,10 +54,11 @@ const BRAND = [en["brand.name"], en["brand.byline"]];
 const SIGN_IN = en["home.signIn"];
 const SIGN_OUT = en["home.signOut"];
 const ADMIN = en["header.admin"];
+const ACCOUNT = en["header.account"];
 
 type Account = "none" | "sign-in" | "sign-in-current";
 
-const header = async (account: Account, current?: "admin", wideOnly?: boolean) => {
+const header = async (account: Account, current?: "admin" | "account", wideOnly?: boolean) => {
   const element = await SiteHeader({ account, ...(current === undefined ? {} : { current }), ...(wideOnly ? { wideOnly } : {}) });
   return { element, words: textsOf(renderToStaticMarkup(element)), buttons: findAll(element, Button) };
 };
@@ -115,7 +116,7 @@ describe("AC4 (issue 97) — signed in as a member", () => {
   });
 
   it("AC4: after the language switch the header shows Sign out, and no Admin and no Sign in", async () => {
-    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, SIGN_OUT]);
+    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, ACCOUNT, SIGN_OUT]);
   });
 
   it("AC4: Sign out is a quiet submit button alone in a form whose action is signOut", async () => {
@@ -130,7 +131,7 @@ describe("AC4 (issue 97) — signed in as a member", () => {
   it.each(["none", "sign-in", "sign-in-current"] as const)(
     'AC6 (issue 97): with account "%s" the header shows Sign out and no Sign in: account is only the signed-out state',
     async (account) => {
-      expect((await header(account)).words).toEqual([...BRAND, SWITCH, SIGN_OUT]);
+      expect((await header(account)).words).toEqual([...BRAND, SWITCH, ACCOUNT, SIGN_OUT]);
     },
   );
 });
@@ -141,23 +142,59 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
   });
 
   it("AC5: after the language switch the header shows Admin, then Sign out", async () => {
-    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, ADMIN, SIGN_OUT]);
+    expect((await header("sign-in")).words).toEqual([...BRAND, SWITCH, ACCOUNT, ADMIN, SIGN_OUT]);
   });
 
   it("AC5: Admin is a secondary link to ADMIN_PATH, not marked current when `current` is not given", async () => {
-    const [admin, ...others] = (await header("none")).buttons;
+    const [account, admin, ...others] = (await header("none")).buttons;
     expect(admin?.props).toMatchObject({ kind: "secondary", href: ADMIN_PATH, children: ADMIN });
     expect(admin?.props.current).toBeFalsy();
-    expect(others.map((button) => button.props.children)).toEqual([SIGN_OUT]);
+    expect([account, ...others].map((button) => button?.props.children)).toEqual([ACCOUNT, SIGN_OUT]);
   });
 
   it('AC5: with current "admin", Admin is marked as the page showing', async () => {
-    const [admin] = (await header("none", "admin")).buttons;
+    const [, admin] = (await header("none", "admin")).buttons;
     expect(admin?.props).toMatchObject({ href: ADMIN_PATH, current: true });
   });
 
   it('AC6 (issue 97): with account "sign-in-current" the header still shows Admin, then Sign out', async () => {
-    expect((await header("sign-in-current")).words).toEqual([...BRAND, SWITCH, ADMIN, SIGN_OUT]);
+    expect((await header("sign-in-current")).words).toEqual([...BRAND, SWITCH, ACCOUNT, ADMIN, SIGN_OUT]);
+  });
+});
+
+// Issue 136, AC5: signed in, a Your account button between the language switch and Admin. Signed out it is not
+// shown: the signed-out word lists above (AC18, AC17, AC5 of issue 77) hold every word the header has.
+describe("AC5 (issue 136) — the Your account button", () => {
+  const accountButton = (buttons: Awaited<ReturnType<typeof header>>["buttons"]) =>
+    buttons.find((button) => button.props.href === ACCOUNT_PATH);
+
+  it('AC5: signed in as a member, the header shows a secondary "Your account" link to ACCOUNT_PATH after the language switch, then Sign out', async () => {
+    session.member = { role: "member" };
+    const { words, buttons } = await header("none");
+    expect(words).toEqual([...BRAND, SWITCH, "Your account", SIGN_OUT]);
+    expect(accountButton(buttons)?.props).toMatchObject({ kind: "secondary", href: ACCOUNT_PATH, children: "Your account" });
+    expect(accountButton(buttons)?.props.current).toBeFalsy();
+  });
+
+  it("AC5: signed in as an admin, the buttons are Your account, Admin, Sign out, in that order", async () => {
+    session.member = { role: "admin" };
+    const { buttons } = await header("none");
+    expect(buttons.map((button) => button.props.href ?? button.props.children)).toEqual([ACCOUNT_PATH, ADMIN_PATH, SIGN_OUT]);
+  });
+
+  it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your account is marked as the page showing', async (role) => {
+    session.member = { role };
+    const { buttons } = await header("none", "account");
+    expect(accountButton(buttons)?.props).toMatchObject({ href: ACCOUNT_PATH, current: true });
+  });
+
+  it('AC5: with current "account", Admin is not marked as the page showing; with current "admin", Your account is not', async () => {
+    session.member = { role: "admin" };
+    const onAccount = (await header("none", "account")).buttons;
+    expect(onAccount.find((button) => button.props.href === ADMIN_PATH)?.props.current).toBeFalsy();
+    const onAdmin = (await header("none", "admin")).buttons;
+    expect(accountButton(onAdmin)).toBeDefined();
+    expect(accountButton(onAdmin)?.props.current).toBeFalsy();
   });
 });
 

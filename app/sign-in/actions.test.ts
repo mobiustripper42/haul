@@ -346,11 +346,11 @@ describe("AC28 (issue 9) — verifyCode", () => {
     expect(setsNamed(SESSION)).toEqual([]);
   });
 
-  it("AC28: the right code, trimmed, sets ocf_session to a token for the member expiring 30 days on, deletes ocf_sign_in_email and redirects to /", async () => {
+  it("AC28: the right code, trimmed, sets ocf_session to a token for the member expiring 30 days on, deletes ocf_sign_in_email and redirects to /account", async () => {
     await issueCode("123456");
     request.current.cookies = { [SIGN_IN_EMAIL]: "Ada@Example.com" };
     const { verifyCode } = await load("development");
-    expect(await redirectOf(verifyCode(form({ code: "  123456 " })))).toBe("/");
+    expect(await redirectOf(verifyCode(form({ code: "  123456 " })))).toBe("/account");
 
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
@@ -367,7 +367,7 @@ describe("AC28 (issue 9) — verifyCode", () => {
     await issueCode("123456");
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { verifyCode } = await load("production");
-    expect(await redirectOf(verifyCode(form({ code: "123456" })))).toBe("/");
+    expect(await redirectOf(verifyCode(form({ code: "123456" })))).toBe("/account");
     expect(setsNamed(SESSION)).toEqual([
       expect.objectContaining({ maxAge: 2_592_000, httpOnly: true, sameSite: "lax", path: "/", secure: true }),
     ]);
@@ -677,11 +677,11 @@ describe("AC20 (issue 22) — signInWithLink", () => {
     await issueSignInLink(repo, ada, { now: new Date(), mintLinkToken: () => TOKEN, hold: false });
   };
 
-  it("AC20: a token that redeems, trimmed, sets ocf_session for the member expiring 30 days on, deletes ocf_sign_in_email and redirects to /", async () => {
+  it("AC20: a token that redeems, trimmed, sets ocf_session for the member expiring 30 days on, deletes ocf_sign_in_email and redirects to /account", async () => {
     await linkForAda();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { signInWithLink } = await load("development");
-    await expect(redirectOf(signInWithLink(form({ token: `  ${TOKEN} ` })))).resolves.toBe("/");
+    await expect(redirectOf(signInWithLink(form({ token: `  ${TOKEN} ` })))).resolves.toBe("/account");
 
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
@@ -696,7 +696,7 @@ describe("AC20 (issue 22) — signInWithLink", () => {
   it("AC20: the token works once — a second press starts no session and redirects to /sign-in?error=link", async () => {
     await linkForAda();
     const { signInWithLink } = await load();
-    await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/");
+    await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/account");
     request.current.sets = [];
     await expect(redirectOf(signInWithLink(form({ token: TOKEN })))).resolves.toBe("/sign-in?error=link");
     expect(setsNamed(SESSION)).toEqual([]);
@@ -753,21 +753,21 @@ const pgError = (code: string): Error =>
   Object.assign(new Error("could not reach postgres://haul:hunter2@db/haul"), { name: "error", code });
 
 describe("AC1 — a sign-in by code records one sign_in_by_code event", () => {
-  it("AC1: the right code records one sign_in_by_code event for the member by the time it redirects to /, with nothing left to run after the response", async () => {
+  it("AC1: the right code records one sign_in_by_code event for the member by the time it redirects to /account, with nothing left to run after the response", async () => {
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { verifyCode } = await load();
-    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/account");
     expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: ada.id, actor: { member: ada.id } }]);
     expect(scheduled.tasks).toEqual([]);
   });
 });
 
 describe("AC2 — a sign-in by link records one sign_in_by_link event", () => {
-  it("AC2: pressing the link page's button with a live token records one sign_in_by_link event for the member by the time it redirects to /, with nothing left to run after the response", async () => {
+  it("AC2: pressing the link page's button with a live token records one sign_in_by_link event for the member by the time it redirects to /account, with nothing left to run after the response", async () => {
     await plantLink();
     const { signInWithLink } = await load();
-    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/account");
     expect(repo.events()).toEqual([{ kind: "sign_in_by_link", memberId: ada.id, actor: { member: ada.id } }]);
     expect(scheduled.tasks).toEqual([]);
   });
@@ -943,7 +943,7 @@ describe("AC10 — an event that fails to record is logged and changes nothing t
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { verifyCode } = await load();
 
-    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/account");
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
     expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
@@ -962,7 +962,7 @@ describe("AC10 — an event that fails to record is logged and changes nothing t
     await plantLink();
     const { signInWithLink } = await load();
 
-    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/account");
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
     expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
@@ -1105,14 +1105,14 @@ describe("AC4 (issue 71) — a sign-in event's actor", () => {
     await plantCode();
     request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
     const { verifyCode } = await load();
-    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/account");
     expect(kindsAndActors()).toEqual([{ kind: "sign_in_by_code", actor: { member: ada.id } }]);
   });
 
   it("AC4: a sign-in by link's event names the member signing in as its actor", async () => {
     await plantLink();
     const { signInWithLink } = await load();
-    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/");
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/account");
     expect(kindsAndActors()).toEqual([{ kind: "sign_in_by_link", actor: { member: ada.id } }]);
   });
 
@@ -1181,9 +1181,9 @@ describe("AC9 (issue 55) — a sign-in confirms the email and goes back where it
     expect(cookieGone(RETURN_TO)).toBe(true);
   });
 
-  it.each(SIGN_INS)("AC9: a sign-in by %s with no ocf_return_to still redirects to /", async (_how, signIn) => {
+  it.each(SIGN_INS)("AC9: a sign-in by %s with no ocf_return_to still redirects to /account", async (_how, signIn) => {
     const actions = await load();
-    expect(await redirectOf(signIn(actions))).toBe("/");
+    expect(await redirectOf(signIn(actions))).toBe("/account");
     expect((await repo.findMemberById(ada.id))?.emailConfirmedAt).toEqual(T0);
   });
 
@@ -1272,7 +1272,7 @@ describe("AC14 (issue 71) — an event whose own transaction fails is logged and
     const errors = silenceErrors();
     const { verifyCode } = await load();
 
-    await expect(redirectOf(verifyCode(form({ code: RIGHT_CODE })))).resolves.toBe("/");
+    await expect(redirectOf(verifyCode(form({ code: RIGHT_CODE })))).resolves.toBe("/account");
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
     expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
@@ -1291,7 +1291,7 @@ describe("AC14 (issue 71) — an event whose own transaction fails is logged and
     const errors = silenceErrors();
     const { signInWithLink } = await load();
 
-    await expect(redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).resolves.toBe("/");
+    await expect(redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).resolves.toBe("/account");
     const sessions = setsNamed(SESSION);
     expect(sessions).toHaveLength(1);
     expect(verifySession(sessions[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: ada.id } });
@@ -1339,5 +1339,22 @@ describe("AC14 (issue 71) — an event whose own transaction fails is logged and
     expect(logged).toContain("rate_limit_refusal");
     expect(logged).not.toContain(ADDRESS);
     expect(logged).not.toContain("hunter2");
+  });
+});
+
+// Issue 136, AC6: with no ocf_return_to, a sign-in finishes at the account home, by code and by link alike.
+// Where /account sends a member with no subscription is app/account/page.test.ts's (AC2).
+describe("AC6 (issue 136) — a sign-in lands on /account", () => {
+  it("AC6: a sign-in by code with no ocf_return_to redirects to /account", async () => {
+    await plantCode();
+    request.current.cookies = { [SIGN_IN_EMAIL]: "ada@example.com" };
+    const { verifyCode } = await load();
+    expect(await redirectOf(verifyCode(form({ code: RIGHT_CODE })))).toBe("/account");
+  });
+
+  it("AC6: a sign-in by link with no ocf_return_to redirects to /account, as one by code does", async () => {
+    await plantLink();
+    const { signInWithLink } = await load();
+    expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/account");
   });
 });

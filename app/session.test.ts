@@ -6,7 +6,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "./next-headers-fake";
 import { redirectOf } from "./screen-test-helpers";
 import { getRepository } from "./services";
-import { getSignedInMember, requireAdmin } from "./session";
+import { getSignedInMember, requireAdmin, requireMember } from "./session";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -108,5 +108,19 @@ describe("AC6 (issue 10) — requireAdmin, signed in as an admin", () => {
     const admin = await services.repo.createMember({ email: "lenny@example.com", role: "admin" });
     request.current.cookies = { ocf_session: tokenFor(admin.id, new Date(Date.now() + DAY)) };
     expect(await requireAdmin()).toEqual(admin);
+  });
+});
+
+// Issue 136: requireMember, beside requireAdmin and through the same faked cookie. Which sessions hold is
+// getSignedInMember's (AC30 above), so signed out is read here once.
+describe("AC1 (issue 136) — requireMember", () => {
+  it("AC1: with no ocf_session cookie it redirects to /sign-in", async () => {
+    await expect(redirectOf(requireMember())).resolves.toBe("/sign-in");
+  });
+
+  it.each(["member", "admin"] as const)("AC1: signed in with role %s it returns the signed-in member", async (role) => {
+    const member = await services.repo.createMember({ email: "ada@example.com", role });
+    request.current.cookies = { ocf_session: tokenFor(member.id, new Date(Date.now() + DAY)) };
+    expect(await requireMember()).toEqual(member);
   });
 });

@@ -309,6 +309,10 @@
   .btn-flush {
     @apply -ml-2 -my-3;
   }
+  /* A button whose label never breaks across lines: the header's, which wrap as buttons rather than as words. */
+  .btn-nowrap {
+    @apply whitespace-nowrap;
+  }
   /* The same at the right edge, for the quiet button that ends the header's row (issue 84); `-narrow` below lg only. */
   .btn-flush-end {
     @apply -mr-2;

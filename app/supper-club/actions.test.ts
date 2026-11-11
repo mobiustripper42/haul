@@ -125,13 +125,17 @@ const VERIFY = [
   ["verifyPaneAccountCode", CREATE],
 ] as const;
 
+// Issue 136, AC6b: with no return path held, the pane's sign-in finishes at the account home, and its
+// Create Account still at the Supper Club page.
+const NO_RETURN_LANDING = { verifyPaneCode: ACCOUNT_PATH, verifyPaneAccountCode: "/supper-club" } as const;
+
 describe("the pane's page sets", () => {
   it("AC1: PANE_CREATE_PAGES is the Create Account pane, its code step, and /supper-club when no return path is held", () => {
     expect(PANE_CREATE_PAGES).toEqual({ start: CREATE, code: `${CREATE}/code`, done: "/supper-club" });
   });
 
-  it("AC2: PANE_SIGN_IN_PAGES is the sign-in pane, its code step, and /supper-club when no return path is held", () => {
-    expect(PANE_SIGN_IN_PAGES).toEqual({ start: SIGN_IN, code: `${SIGN_IN}/code`, done: "/supper-club" });
+  it(`AC2: PANE_SIGN_IN_PAGES is the sign-in pane, its code step, and ${ACCOUNT_PATH} when no return path is held`, () => {
+    expect(PANE_SIGN_IN_PAGES).toEqual({ start: SIGN_IN, code: `${SIGN_IN}/code`, done: ACCOUNT_PATH });
   });
 });
 
@@ -157,9 +161,9 @@ describe.each(VERIFY)("%s — a confirmed code", (name) => {
     expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: member.id, actor: { member: member.id } }]);
   });
 
-  it(`AC4: ${name} with no return path in the cookie lands on /supper-club`, async () => {
+  it(`AC4, AC6b: ${name} with no return path in the cookie lands on ${NO_RETURN_LANDING[name]}`, async () => {
     await memberAtCodeStep();
-    expect(await redirectOf(verify({ code: RIGHT_CODE }))).toBe("/supper-club");
+    expect(await redirectOf(verify({ code: RIGHT_CODE }))).toBe(NO_RETURN_LANDING[name]);
   });
 
   it(`AC4: ${name} with a bad return path still gives /, never /supper-club`, async () => {

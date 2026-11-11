@@ -30,9 +30,12 @@ export function subscriberName({ firstName, lastName }: Named): string {
   return [lastName, firstName].filter(Boolean).join(", ");
 }
 
-/** The picked options joined with " · ". */
+/** What joins the parts of one line: the picks, and phone · language. */
+export const SEPARATOR = " · ";
+
+/** The picked options joined with `SEPARATOR`. */
 export function mealLabel(options: Subscriber["options"]): string {
-  return options.map((option) => option.optionName).join(" · ");
+  return options.map((option) => option.optionName).join(SEPARATOR);
 }
 
 const digitsOf = (text: string): string => text.replace(/\D/g, "");
