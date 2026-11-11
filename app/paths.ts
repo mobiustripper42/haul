@@ -11,3 +11,6 @@ export const ACCOUNT_PATH = "/";
 
 /** The admin's page, the header's Admin button. */
 export const ADMIN_PATH = "/admin";
+
+/** The admin's weeks screen: close, reopen and move pickup weeks. */
+export const ADMIN_WEEKS_PATH = "/admin/weeks";

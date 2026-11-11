@@ -2,12 +2,13 @@
 // `<test db>_repository`, created if absent, migrated once, truncated before each test.
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import type { Actor } from "../ports/repository.js";
+import type { Actor, PendingSignup } from "../ports/repository.js";
+import type { ProductInput, ProductWithOptions } from "../products.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
-import { runRepositoryContract } from "./repository-contract.js";
+import { runRepositoryContract, runWeekCreditContract } from "./repository-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
@@ -57,6 +58,125 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     async () => ({ store: repo, makeSubject: async (email) => (await repo.createMember({ email })).id }),
     truncateAll,
   );
+
+  // Issue 149: the week credit contract's seams, as raw SQL. A product is inserted row by row and read back.
+  const addProduct = async (input: ProductInput): Promise<ProductWithOptions> => {
+    const product = await pool.query<{ id: string }>(
+      `insert into products (name, cap, first_pickup_date, cutoff_weekday, cutoff_time)
+       values ($1, $2, $3, $4, $5) returning id`,
+      [input.name, input.cap, input.firstPickupDate, input.cutoffWeekday, input.cutoffTime],
+    );
+    for (const type of input.optionTypes) {
+      const row = await pool.query<{ id: string }>("insert into option_types (product_id, name, position) values ($1, $2, $3) returning id", [
+        product.rows[0]?.id,
+        type.name,
+        type.position,
+      ]);
+      for (const option of type.options) {
+        await pool.query("insert into options (option_type_id, name, price_cents, position) values ($1, $2, $3, $4)", [
+          row.rows[0]?.id,
+          option.name,
+          option.priceCents,
+          option.position,
+        ]);
+      }
+    }
+    const found = await repo.findProductByName(input.name);
+    expect(found, `findProductByName found nothing for the rows just inserted for ${input.name}`).not.toBeNull();
+    return found as ProductWithOptions;
+  };
+
+  /** A ledger row as the charge run writes it: a paid row carries its payment's time. */
+  const addLedgerRow = async (subscriptionId: string, pickupDate: string, status: PendingSignup["ledgerStatus"], amountCents: number): Promise<void> => {
+    await pool.query(
+      `insert into ledger (subscription_id, pickup_date, amount_cents, status, paid_at)
+       values ($1, $2::date, $3, $4, case when $4 = 'paid' then '2027-01-11T15:00:00Z'::timestamptz end)`,
+      [subscriptionId, pickupDate, amountCents, status],
+    );
+  };
+
+  /** The subscription's picks replaced, one option per option type, as a switch would. */
+  const setSubscriptionOptions = async (subscriptionId: string, optionIds: string[]): Promise<void> => {
+    await pool.query("delete from subscription_options where subscription_id = $1", [subscriptionId]);
+    await pool.query(
+      `insert into subscription_options (subscription_id, option_type_id, option_id)
+       select $1, o.option_type_id, o.id from options o where o.id = any ($2::uuid[])`,
+      [subscriptionId, optionIds],
+    );
+  };
+
+  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, setSubscriptionOptions, truncateAll);
+
+  // Issue 149: Postgres only. Closing and confirming take the product row's lock, so whichever lands second sees
+  // the other; and a week credit's options go with it.
+  describe("issue 149 — week credits under concurrency and in their tables", () => {
+    const BOX: ProductInput = {
+      name: "Box",
+      cap: 50,
+      firstPickupDate: "2027-01-03",
+      cutoffWeekday: 1,
+      cutoffTime: "24:00:00",
+      optionTypes: [
+        { name: "How many people?", position: 1, options: [{ name: "2 people", priceCents: 5000, position: 1 }] },
+        { name: "Which menu?", position: 2, options: [{ name: "Standard", priceCents: 0, position: 1 }] },
+      ],
+    };
+    const CONSENT_AT = new Date("2027-01-05T15:00:00.000Z");
+    const CLOSED_AT = new Date("2027-01-12T15:00:00.000Z");
+    const PAID_AT = new Date("2027-01-12T15:00:01.000Z");
+
+    const pendingFor = async (product: ProductWithOptions, email: string, week: string): Promise<PendingSignup> => {
+      const member = await repo.createMember({ email });
+      return repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: week,
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: CONSENT_AT,
+      });
+    };
+
+    const confirm = (signup: PendingSignup) => repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, PAID_AT);
+
+    it("AC12: a close and a paid confirmation that run together leave exactly one week credit, whichever lands first", async () => {
+      await truncateAll();
+      const product = await addProduct(BOX);
+      const weeks = Array.from({ length: 8 }, (_, i) => new Date(Date.parse("2027-01-10T00:00:00Z") + i * 7 * 86_400_000).toISOString().slice(0, 10));
+      for (const [i, week] of weeks.entries()) {
+        const signup = await pendingFor(product, `race-${i}@example.com`, week);
+        await Promise.all([repo.closePickupWeek(product.id, week, null, CLOSED_AT), confirm(signup)]);
+      }
+      const granted = await Promise.all(weeks.map(async (week) => (await repo.listWeekCredits(product.id, week)).length));
+      expect(granted).toEqual(weeks.map(() => 1));
+    });
+
+    it("AC5: five closes of one week at once grant one week credit per paid row, and none fails", async () => {
+      await truncateAll();
+      const product = await addProduct(BOX);
+      for (const email of ["ada@example.com", "grace@example.com"]) {
+        const signup = await pendingFor(product, email, "2027-01-24");
+        expect(await confirm(signup)).toBe("confirmed");
+      }
+      const closes = await Promise.allSettled(Array.from({ length: 5 }, () => repo.closePickupWeek(product.id, "2027-01-24", "Kitchen flooded", CLOSED_AT)));
+      expect(closes.map((close) => close.status)).toEqual(closes.map(() => "fulfilled"));
+      expect(await repo.listWeekCredits(product.id, "2027-01-24")).toHaveLength(2);
+    });
+
+    it("AC4, AC7: a week credit's picks are kept beside it, and go when reopening withdraws it", async () => {
+      await truncateAll();
+      const product = await addProduct(BOX);
+      const signup = await pendingFor(product, "ada@example.com", "2027-01-24");
+      expect(await confirm(signup)).toBe("confirmed");
+      await repo.closePickupWeek(product.id, "2027-01-24", null, CLOSED_AT);
+      const options = async () => Number((await pool.query<{ n: string }>("select count(*) as n from week_credit_options")).rows[0]?.n);
+      expect(await options()).toBe(2);
+      await repo.reopenPickupWeek(product.id, "2027-01-24");
+      expect(await options()).toBe(0);
+    });
+  });
 
   // Issue 9: Postgres only. Each claim, consume and increment is one atomic statement, so
   // concurrent callers cannot pass a cap together.

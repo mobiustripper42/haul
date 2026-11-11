@@ -611,15 +611,41 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         expect(next.outcome).toBe("paid");
       });
 
-      it("AC14 (issue 57): a confirm takes no product lock, so a bind waiting on it can never deadlock with one", async () => {
-        const { input, product } = await cappedAt(1);
+      it("AC14 (issue 57): a confirm waits on a held product lock and finishes once it is released, so a bind and a confirm never deadlock", async () => {
+        const { input, product } = await cappedAt(2);
         const signup = await repo.savePendingSignup(input);
+        const other = await repo.savePendingSignup({ ...input, memberId: await rival() });
+        const lockWaiters = async (): Promise<number> =>
+          Number(
+            (
+              await pool.query<{ n: string }>(
+                "select count(*) as n from pg_stat_activity where datname = current_database() and wait_event_type = 'Lock'",
+              )
+            ).rows[0]?.n,
+          );
+        const untilWaiting = async (n: number): Promise<number> => {
+          for (let tries = 0; tries < 50 && (await lockWaiters()) < n; tries++) await new Promise((resolve) => setTimeout(resolve, 20));
+          return lockWaiters();
+        };
         const holder = await pool.connect();
         try {
           await holder.query("begin");
           await holder.query("select id from products where id = $1 for update", [product.id]);
           const confirm = repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
-          expect(await Promise.race([confirm.then(() => "landed"), blockedOnALock()])).toBe("landed");
+          expect(await Promise.race([confirm.then(() => "landed"), blockedOnALock()])).toBe("waiting");
+          await holder.query("commit");
+          expect(await confirm).toBe("confirmed");
+
+          // One member's bind and confirm, both queued behind the product lock: the bind holds the member row and
+          // waits on the product, the confirm waits on the member. Member then product in both, so no deadlock.
+          await holder.query("begin");
+          await holder.query("select id from products where id = $1 for update", [product.id]);
+          const bind = repo.saveSubscriptionCard(other.subscriptionId, "ccof:card-2");
+          expect(await untilWaiting(1)).toBe(1);
+          const second = repo.confirmSignupRows(other.ledgerId, "PAYMENT_2", other.amountCents, PAID_AT);
+          expect(await untilWaiting(2)).toBe(2);
+          await holder.query("commit");
+          expect(await Promise.all([bind, second])).toEqual([{ amountCents: other.amountCents, attempt: expect.any(Number) }, "confirmed"]);
         } finally {
           await holder.query("rollback");
           holder.release();

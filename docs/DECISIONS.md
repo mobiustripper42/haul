@@ -47,6 +47,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-027 — Product, option type and option names are data
 - DEC-028 — Every audit row names who acted; events only where the trigger can't tell
 - DEC-031 — A pickup week is named by its ordinary Sunday, moved or not
+- DEC-032 — A week credit is a meal of the picks that were charged
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens

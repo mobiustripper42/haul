@@ -11,6 +11,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type WeekCredit,
 } from "../ports/repository.js";
 import { clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
@@ -43,12 +44,24 @@ type StoredLedger = {
   paidAt: Date | null;
 };
 
+type StoredWeekCredit = {
+  id: string;
+  subscriptionId: string;
+  /** The paid ledger row the week credit answers for; one week credit each. */
+  grantedFor: string;
+  spentOn: string | null;
+  grantedAt: Date;
+  /** The subscription's picks at the grant, option type id → option id. */
+  optionIds: Record<string, string>;
+};
+
 /** The permanent fake (DEC-010): same behaviour as `PostgresRepository`, proved by one contract. */
 export class InMemoryRepository implements Repository {
   private readonly members = new Map<string, Member>();
   // Entries are replaced, never mutated: `withActor` restores the maps' entries on rollback.
   private readonly subscriptions = new Map<string, StoredSubscription>();
   private readonly ledger = new Map<string, StoredLedger>();
+  private readonly weekCredits = new Map<string, StoredWeekCredit>();
   private readonly products: ProductWithOptions[] = [];
   /** `<product id>|<week_of>` → the changed week. Replaced, never mutated, like the maps above. */
   private readonly pickupWeeks = new Map<string, ChangedWeek>();
@@ -241,6 +254,10 @@ export class InMemoryRepository implements Repository {
     this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now) });
     const subscription = this.subscriptions.get(row.subscriptionId);
     if (subscription) this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
+    // A week that closed while the signup was paying: the week credit is granted here, as closing would have.
+    if (subscription && this.pickupWeeks.get(weekKey(subscription.productId, row.pickupDate))?.closedAt != null) {
+      this.grantWeekCredits(subscription.productId, row.pickupDate, now, ledgerId);
+    }
     return "confirmed";
   }
 
@@ -269,9 +286,91 @@ export class InMemoryRepository implements Repository {
       .sort((a, b) => a.weekOf.localeCompare(b.weekOf));
   }
 
-  /** Replaces every column. It does not copy the table's refusals: 2.1b's calendar validates before it writes. */
+  /**
+   * Replaces every column; a week left with nothing on it (not closed, not moved, no note) has no row: no row is an
+   * ordinary week (DEC-030). It does not copy the table's refusals: 2.1b's calendar validates before it writes.
+   */
   async savePickupWeek(productId: string, week: ChangedWeek): Promise<void> {
-    this.pickupWeeks.set(weekKey(productId, week.weekOf), copyWeek(week));
+    const key = weekKey(productId, week.weekOf);
+    if (week.closedAt === null && week.note === null && week.firstDay === null && week.lastDay === null) this.pickupWeeks.delete(key);
+    else this.pickupWeeks.set(key, copyWeek(week));
+  }
+
+  /** Closes the week, keeping an existing closing time and the days, and grants its week credits. */
+  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void> {
+    const existing = this.pickupWeeks.get(weekKey(productId, weekOf));
+    await this.savePickupWeek(productId, {
+      weekOf,
+      closedAt: existing?.closedAt ?? now,
+      note,
+      firstDay: existing?.firstDay ?? null,
+      lastDay: existing?.lastDay ?? null,
+    });
+    this.grantWeekCredits(productId, weekOf, now);
+  }
+
+  /** Withdraws the week's week credits, clears the closing and the note, and drops the row if nothing is left. */
+  async reopenPickupWeek(productId: string, weekOf: string): Promise<void> {
+    for (const credit of this.creditsOfWeek(productId, weekOf)) this.weekCredits.delete(credit.id);
+    const existing = this.pickupWeeks.get(weekKey(productId, weekOf));
+    if (existing) await this.savePickupWeek(productId, { ...existing, closedAt: null, note: null });
+  }
+
+  async listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]> {
+    return this.creditsOfWeek(productId, weekOf).map((credit) => ({
+      id: credit.id,
+      subscriptionId: credit.subscriptionId,
+      grantedFor: credit.grantedFor,
+      spentOn: credit.spentOn,
+      grantedAt: new Date(credit.grantedAt),
+      optionIds: Object.values(credit.optionIds),
+    }));
+  }
+
+  async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
+    const counts = new Map<string, { paid: number; weekCredits: number }>();
+    const countsOf = (week: string) => {
+      const found = counts.get(week) ?? { paid: 0, weekCredits: 0 };
+      counts.set(week, found);
+      return found;
+    };
+    for (const row of this.ledger.values()) {
+      if (row.status === "paid" && row.pickupDate >= from && this.subscriptions.get(row.subscriptionId)?.productId === productId) countsOf(row.pickupDate).paid++;
+    }
+    for (const credit of this.weekCredits.values()) {
+      const row = this.ledger.get(credit.grantedFor);
+      if (row && row.pickupDate >= from && this.subscriptions.get(credit.subscriptionId)?.productId === productId) countsOf(row.pickupDate).weekCredits++;
+    }
+    return counts;
+  }
+
+  /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write. */
+  async addLedgerRow(subscriptionId: string, pickupDate: string, status: StoredLedger["status"], amountCents: number): Promise<void> {
+    const id = randomUUID();
+    this.ledger.set(id, {
+      id,
+      subscriptionId,
+      pickupDate,
+      amountCents,
+      status,
+      attempt: 1,
+      squarePaymentId: null,
+      paidAt: status === "paid" ? new Date() : null,
+    });
+  }
+
+  /** A test seam on the fake only, not on `Repository`: replaces a subscription's picks, as a switch would. */
+  async setSubscriptionOptions(subscriptionId: string, optionIds: string[]): Promise<void> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    const product = subscription && this.products.find((p) => p.id === subscription.productId);
+    if (!subscription || !product) return;
+    const picked = Object.fromEntries(
+      product.optionTypes.flatMap((type) => {
+        const option = type.options.find((o) => optionIds.includes(o.id));
+        return option ? [[type.id, option.id]] : [];
+      }),
+    );
+    this.subscriptions.set(subscriptionId, { ...subscription, optionIds: picked });
   }
 
   async listSubscribers(productId: string): Promise<Subscriber[]> {
@@ -347,6 +446,7 @@ export class InMemoryRepository implements Repository {
     const members = new Map(this.members);
     const subscriptions = new Map(this.subscriptions);
     const ledger = new Map(this.ledger);
+    const weekCredits = new Map(this.weekCredits);
     const pickupWeeks = new Map(this.pickupWeeks);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
@@ -363,6 +463,8 @@ export class InMemoryRepository implements Repository {
       for (const [id, subscription] of subscriptions) this.subscriptions.set(id, subscription);
       this.ledger.clear();
       for (const [id, row] of ledger) this.ledger.set(id, row);
+      this.weekCredits.clear();
+      for (const [id, credit] of weekCredits) this.weekCredits.set(id, credit);
       this.pickupWeeks.clear();
       for (const [key, week] of pickupWeeks) this.pickupWeeks.set(key, week);
       this.signIn.restore(signIn);
@@ -381,6 +483,37 @@ export class InMemoryRepository implements Repository {
     return [...this.subscriptions.values()]
       .filter((s) => s.memberId === memberId && s.productId === productId && s.status === status)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime());
+  }
+
+  /**
+   * One week credit for each `paid` ledger row of the product's subscriptions for the week that has none, copying
+   * the subscription's picks and granted at `now`; with `only`, for that ledger row alone. The one home for
+   * granting, called by closing and by a confirmation that lands after the week closed.
+   */
+  private grantWeekCredits(productId: string, weekOf: string, now: Date, only?: string): void {
+    const granted = new Set([...this.weekCredits.values()].map((credit) => credit.grantedFor));
+    for (const row of this.ledger.values()) {
+      if (row.status !== "paid" || row.pickupDate !== weekOf || granted.has(row.id) || (only !== undefined && row.id !== only)) continue;
+      const subscription = this.subscriptions.get(row.subscriptionId);
+      if (subscription?.productId !== productId) continue;
+      const id = randomUUID();
+      this.weekCredits.set(id, {
+        id,
+        subscriptionId: subscription.id,
+        grantedFor: row.id,
+        spentOn: null,
+        grantedAt: new Date(now),
+        optionIds: { ...subscription.optionIds },
+      });
+    }
+  }
+
+  /** The week credits granted for the product's ledger rows of the week. */
+  private creditsOfWeek(productId: string, weekOf: string): StoredWeekCredit[] {
+    return [...this.weekCredits.values()].filter(
+      (credit) =>
+        this.ledger.get(credit.grantedFor)?.pickupDate === weekOf && this.subscriptions.get(credit.subscriptionId)?.productId === productId,
+    );
   }
 
   /** The options a subscription picked, in option-type position order. */

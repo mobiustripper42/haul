@@ -3,7 +3,7 @@ schema: 1
 id: DEC-030
 title: "The pickup-weeks calendar is an admin screen, not SQL"
 topic: "Product rules"
-status: "draft"
+status: "active"
 date: "2026-11-10"
 ruling: "An admin closes and moves pickup weeks from an admin calendar, because the farm must act on a week without the developer; the weekly rule stays code, and a table holds only the weeks an admin changed."
 claims:
