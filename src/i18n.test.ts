@@ -1,17 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { LANGUAGES, MissingValueError, pluralKey, resolveLanguage, translate, type Catalogs } from "./i18n.js";
 
-describe("AC1 — resolveLanguage: member, then cookie, then Accept-Language, then English", () => {
+describe("AC1 — resolveLanguage: cookie, then Accept-Language, then English", () => {
   it.each([
-    [{ member: "es", cookie: "en", acceptLanguage: "en-US" }, "es"],
-    [{ member: "en", cookie: "es", acceptLanguage: "es-MX" }, "en"],
     [{ cookie: "es", acceptLanguage: "en-US" }, "es"],
     [{ cookie: "en", acceptLanguage: "es-MX" }, "en"],
-    [{ member: null, cookie: "es", acceptLanguage: "en-US" }, "es"],
     [{ acceptLanguage: "es-MX" }, "es"],
-    [{ member: null, cookie: null, acceptLanguage: "es-MX" }, "es"],
+    [{ cookie: null, acceptLanguage: "es-MX" }, "es"],
     [{}, "en"],
-    [{ member: null, cookie: null, acceptLanguage: null }, "en"],
+    [{ cookie: null, acceptLanguage: null }, "en"],
   ] as const)("AC1: resolveLanguage(%j) → %j", (input, expected) => {
     expect(resolveLanguage(input)).toBe(expected);
   });

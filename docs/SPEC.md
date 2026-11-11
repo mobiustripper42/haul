@@ -227,7 +227,9 @@ the login and the Square match key. An admin can run the same cancel for a membe
 <!-- /amended-by-dec -->
 
 All UI strings live in translation files from day one, enforced by a lint rule that fails on a bare
-string in a component. Each member has a language preference; transactional email goes out in it.
+string in a component. Each member has a language preference, chosen at signup and changed on their
+account page; transactional email goes out in it. Pages show the language last chosen with the
+switch, else the browser's, the same signed in or not; the switch never changes the preference.
 Product, option type and option names are data, translated as admin-written text, not catalog
 strings (DEC-027). Browser page translation is the fallback for anything else. English and Spanish
 are enough for now (open question 6).

@@ -848,6 +848,17 @@ describe("issue 56 — the pay actions", () => {
         await runScheduled();
         expect(onlyText()).toContain("domingo, 3 de enero");
       });
+
+      describe("AC4 (issue 130) — the email's language is the saved one, not the page's", () => {
+        it("AC4: a member saved as es, reading in English through the lang cookie, gets their pickup date in Spanish", async () => {
+          await ana();
+          signIn();
+          request.current.cookies.lang = "en";
+          await join(pay());
+          await runScheduled();
+          expect(onlyText()).toContain("domingo, 3 de enero");
+        });
+      });
     });
 
     describe("AC7 — a failure never touches the paid signup", () => {

@@ -237,7 +237,8 @@ describe("AC4 (issue 136) — the details card", () => {
     const member = await ada({ language: "es" });
     await subscribed(member);
     signIn(member);
-    expect(detailsLines((await render()).runs, "es").at(-1)).toBe("(216) 555-0134 · Español");
+    // The page follows the cookie, then the browser, never the member (issue 130), so it renders in English here.
+    expect(detailsLines((await render()).runs).at(-1)).toBe("(216) 555-0134 · Español");
   });
 
   it("AC4: with no name and no phone, the name line is not shown and the last line is the language alone", async () => {
