@@ -9,9 +9,13 @@ import {
   firstPickupLine,
   formatPickupDate,
   formatShortDate,
+  listedWeekTitle,
   nextPickup,
+  pastWeeks,
   pickupWeek,
   pickupWhereLine,
+  upcomingWeeks,
+  weekTitle,
   type AdminWeek,
   type ChangedWeek,
 } from "./pickup-week.js";
@@ -306,5 +310,100 @@ describe("AC3b (issue 136) — nextPickup", () => {
 
   it("AC3b: when every listed week is closed there is none: null", () => {
     expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14, { closed: true })], "2027-01-03")).toBeNull();
+  });
+});
+
+// Issue 155: the weeks a member's account pages list. The cut between them is the week's last pickup day, in
+// Cleveland: a week is on Upcoming weeks (upcomingWeeks) through that day and on History (pastWeeks) from the day
+// after. Which weeks upcomingWeeks lists with no first week is src/pickup-week-calendar.test.ts's; here are the first
+// week it is given and the past weeks. Wednesday, February 3, 2027, noon in Cleveland: January 31's pickup ended
+// Monday, February 1; February 7's is to come.
+describe("AC2, AC6 (issue 155) — a member's weeks", () => {
+  const FEB_3 = new Date("2027-02-03T17:00:00.000Z");
+  const sundaysFrom = (first: string, count: number, step = 7): string[] =>
+    Array.from({ length: count }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * step * 86_400_000).toISOString().slice(0, 10));
+  const weeksOf = (weeks: AdminWeek[]): string[] => weeks.map((week) => week.weekOf);
+
+  describe("AC2 — upcomingWeeks from a member's first week", () => {
+    it("AC2: a member whose first week is later than the current week still sees 12 weeks, starting at their first week", () => {
+      expect(weeksOf(upcomingWeeks(product(), FEB_3, [], "2027-02-21"))).toEqual(sundaysFrom("2027-02-21", 12));
+    });
+
+    it("AC2: a member whose first week has passed sees the 12 weeks from the current week, as with no first week", () => {
+      expect(weeksOf(upcomingWeeks(product(), FEB_3, [], "2027-01-03"))).toEqual(sundaysFrom("2027-02-07", 12));
+    });
+  });
+
+  describe("AC2 — listedWeekTitle", () => {
+    const t = createTranslator("en");
+    const MOVED: ChangedWeek = { weekOf: "2027-02-14", closedAt: null, note: null, firstDay: "2027-02-13", lastDay: "2027-02-14" };
+    const listedWeek = (changed: ChangedWeek): AdminWeek => {
+      const found = upcomingWeeks(product(), FEB_3, [changed]).find((week) => week.weekOf === changed.weekOf);
+      if (!found) throw new Error(`${changed.weekOf} is not listed at ${FEB_3.toISOString()}`);
+      return found;
+    };
+
+    it("AC2: an open week's title is its days, moved days and all", () => {
+      expect(listedWeekTitle(t, listedWeek(MOVED), "en")).toBe(weekTitle(t, pickupWeek("2027-02-14", MOVED), "en"));
+    });
+
+    it("AC2: a closed week that was moved is titled by its ordinary days, its move waiting for a reopen: February 14 and 15", () => {
+      const closedMoved = { ...MOVED, closedAt: new Date("2027-02-01T15:00:00.000Z") };
+      expect(listedWeekTitle(t, listedWeek(closedMoved), "en")).toBe(weekTitle(t, pickupWeek("2027-02-14", null), "en"));
+    });
+  });
+
+  describe("AC6 — pastWeeks", () => {
+    it("AC6: every week from the member's first week whose last pickup day has passed, newest first", () => {
+      expect(weeksOf(pastWeeks(product(), FEB_3, [], "2027-01-03"))).toEqual(sundaysFrom("2027-01-31", 5, -7));
+    });
+
+    it("AC6: a member whose first week is later has no week before it", () => {
+      expect(weeksOf(pastWeeks(product(), FEB_3, [], "2027-01-17"))).toEqual(["2027-01-31", "2027-01-24", "2027-01-17"]);
+    });
+
+    it("AC6: a member whose first week has not passed has none", () => {
+      expect(pastWeeks(product(), FEB_3, [], "2027-02-07")).toEqual([]);
+    });
+
+    it("AC6: never a week before the product's first pickup date", () => {
+      expect(weeksOf(pastWeeks(product(), FEB_3, [], "2026-12-20")).at(-1)).toBe("2027-01-03");
+    });
+
+    // Monday, February 1 is January 31's last pickup day; midnight ending it, EST, is 05:00Z on the 2nd.
+    it.each([
+      ["at 23:59 on its last pickup day it is still upcoming, not past", "2027-02-02T04:59:00.000Z", "2027-01-24", "2027-01-31"],
+      ["a minute later it is past, and no longer upcoming", "2027-02-02T05:00:00.000Z", "2027-01-31", "2027-02-07"],
+    ])("AC6: the cut is the week's last pickup day: %s", (_what, instant, newestPast, firstUpcoming) => {
+      const now = new Date(instant);
+      const past = weeksOf(pastWeeks(product(), now, [], "2027-01-03"));
+      const upcoming = weeksOf(upcomingWeeks(product(), now, [], "2027-01-03"));
+      expect(past[0]).toBe(newestPast);
+      expect(upcoming[0]).toBe(firstUpcoming);
+      expect(past.filter((weekOf) => upcoming.includes(weekOf))).toEqual([]);
+    });
+
+    it("AC6: a week moved to Saturday and Sunday is past on the Monday after: its moved last day is the cut", () => {
+      const moved: ChangedWeek = { weekOf: "2027-01-31", closedAt: null, note: null, firstDay: "2027-01-30", lastDay: "2027-01-31" };
+      const monday = new Date("2027-02-01T17:00:00.000Z");
+      expect(pastWeeks(product(), monday, [moved], "2027-01-03")[0]).toMatchObject({ weekOf: "2027-01-31", firstDay: "2027-01-30", lastDay: "2027-01-31", moved: true });
+      expect(weeksOf(upcomingWeeks(product(), monday, [moved], "2027-01-03"))[0]).toBe("2027-02-07");
+    });
+
+    it("AC6: each week is built as upcomingWeeks builds one: a closed week carries its closing and note, its cutoff passed", () => {
+      const closedAt = new Date("2027-01-12T15:00:00.000Z");
+      const changed: ChangedWeek[] = [{ weekOf: "2027-01-17", closedAt, note: "Kitchen flooded", firstDay: null, lastDay: null }];
+      expect(pastWeeks(product(), FEB_3, changed, "2027-01-03").find((week) => week.weekOf === "2027-01-17")).toEqual({
+        weekOf: "2027-01-17",
+        firstDay: "2027-01-17",
+        lastDay: "2027-01-18",
+        cutoff: new Date("2027-01-12T05:00:00.000Z"),
+        closedAt,
+        note: "Kitchen flooded",
+        moved: false,
+        cutoffPassed: true,
+        canReopen: false,
+      });
+    });
   });
 });

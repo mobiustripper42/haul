@@ -12,7 +12,9 @@ import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 const PRODUCT = {
   name: SUPPER_CLUB_PRODUCT_NAME,
   cap: 50,
-  firstPickupDate: "2027-01-10",
+  // Dev data, not Lenny's date (his first pickup weekend is January 10-11, 2027; production's date is not a seed,
+  // DEC-007). Dev runs from Sunday, October 25, 2026 so the calendar has a past, and History has weeks to show.
+  firstPickupDate: "2026-10-25",
   cutoffWeekday: 1,
   cutoffTime: "24:00",
 };

@@ -753,6 +753,7 @@ export function runSignupContract(
         const signup = await saved({ choices: picks(1, 1), firstChargeCents: 7000, weeklyCents: 8000 });
         await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
         expect(await repo.findSignupConfirmation(memberId, product.id)).toEqual({
+          subscriptionId: signup.subscriptionId,
           pickupDate: "2027-01-03",
           firstDay: "2027-01-03",
           lastDay: "2027-01-04",
@@ -1203,6 +1204,7 @@ export function runWeekCreditContract(
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
   addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<void>,
   setSubscriptionOptions: (subscriptionId: string, optionIds: string[]) => Promise<void>,
+  spendWeekCredit: (weekCreditId: string, ledgerId: string) => Promise<void>,
   reset?: () => Promise<void>,
 ): void {
   // Issue 149. The weeks are BOX's: January 24's cutoff is the end of Monday the 18th. The repository checks no
@@ -1488,6 +1490,65 @@ export function runWeekCreditContract(
         await paidFor(WEEK);
         await paidFor(WEEK, picks(0, 0, crate), crate);
         expect((await repo.listWeekCounts(product.id, WEEK)).get(WEEK)).toEqual({ paid: 1, weekCredits: 0 });
+      });
+    });
+
+    // Issue 155: what a member's account pages read of one subscription. Neither list's order is part of the
+    // contract, so each is sorted here.
+    describe("issue 155 — listMemberWeeks", () => {
+      const weeksOf = async (subscriptionId: string) => {
+        const found = await repo.listMemberWeeks(subscriptionId);
+        return {
+          paid: [...found.paid].sort((a, b) => a.weekOf.localeCompare(b.weekOf)),
+          weekCredits: [...found.weekCredits].sort((a, b) => a.grantedForWeek.localeCompare(b.grantedForWeek)),
+        };
+      };
+
+      it("AC3 (issue 155): the subscription's paid rows, from signup and from the charge run, each with its week and the amount charged", async () => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, "paid", 4200);
+        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([
+          { weekOf: EARLIER, amountCents: 5000 },
+          { weekOf: WEEK, amountCents: 4200 },
+        ]);
+      });
+
+      it("AC3 (issue 155): a pending row and a declined row are not paid rows, and another subscription's paid row is not this one's", async () => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, "pending", 5000);
+        await addLedgerRow(signup.subscriptionId, NEXT, "declined", 5000);
+        await paidFor(WEEK);
+        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000 }]);
+      });
+
+      it("AC5 (issue 155): its unspent week credits, each with the week of the paid row it was granted for; another subscription's are not its", async () => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, "paid", 5000);
+        await paidFor(WEEK);
+        await close(EARLIER);
+        await close(WEEK);
+        expect((await weeksOf(signup.subscriptionId)).weekCredits).toEqual([{ grantedForWeek: EARLIER }, { grantedForWeek: WEEK }]);
+      });
+
+      it("AC5 (issue 155): a week credit the charge run spent is left out", async () => {
+        const signup = await paidFor(WEEK);
+        await close(WEEK);
+        const [spent] = await credits(WEEK);
+        // NEXT's paid row, the charge the week credit is spent on. Its id is read from the week credit closing NEXT
+        // grants for it: the contract shows a run row's id nowhere else.
+        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
+        await close(NEXT);
+        const [nextCredit] = await credits(NEXT);
+        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
+        await spendWeekCredit(spent.id, nextCredit.grantedFor);
+        expect((await weeksOf(signup.subscriptionId)).weekCredits).toEqual([{ grantedForWeek: NEXT }]);
+      });
+
+      it("AC3 (issue 155): an unknown id and a string that isn't a UUID give nothing", async () => {
+        await paidFor(WEEK);
+        for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) {
+          expect(await repo.listMemberWeeks(id)).toEqual({ paid: [], weekCredits: [] });
+        }
       });
     });
   });

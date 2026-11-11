@@ -69,7 +69,7 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
     ]);
   });
 
-  it("AC5 (issue 102): every member's first pickup is 2027-01-10", async () => {
+  it("AC5 (issue 102): every member's first pickup is 2026-10-25", async () => {
     await runSeed("subscribers", url);
 
     const { rows } = await pool.query<{ pickup_date: string }>(
@@ -80,7 +80,7 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
         where p.name = 'Supper Club'`,
     );
     expect(rows).toHaveLength(12);
-    expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2027-01-10"]);
+    expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2026-10-25"]);
   });
 
   it("AC12 (seed): none of the members has a Square customer", async () => {

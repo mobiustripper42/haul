@@ -5,7 +5,7 @@
 // and Create Account here. Each test starts from an emptied e2e database with the `members` and
 // `supper-club` seeds (fixtures.ts). Controls are found by role and the English wording in `en`.
 import { en } from "../src/messages/en.js";
-import { expect, headerSignOut, outboxCount, test, waitForSignInCode } from "./fixtures";
+import { expect, expectSignedIn, outboxCount, test, waitForSignInCode } from "./fixtures";
 
 const NEWCOMER = "new@ocf.xx";
 
@@ -33,5 +33,5 @@ test("AC2: creating an account at /create-account ends on /supper-club, signed i
   await page.getByRole("button", { name: en["createAccount.confirm"], exact: true }).click();
 
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 });

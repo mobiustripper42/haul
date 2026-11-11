@@ -105,7 +105,13 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     );
   };
 
-  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, setSubscriptionOptions, truncateAll);
+  /** Issue 155: a week credit spent on a later week's ledger row, as the charge run (2.2b) will spend one. */
+  const spendWeekCredit = async (weekCreditId: string, ledgerId: string): Promise<void> => {
+    const { rowCount } = await pool.query("update week_credits set spent_on = $2 where id = $1", [weekCreditId, ledgerId]);
+    expect(rowCount, `no week credit ${weekCreditId} to spend`).toBe(1);
+  };
+
+  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, setSubscriptionOptions, spendWeekCredit, truncateAll);
 
   // Issue 149: Postgres only. Closing and confirming take the product row's lock, so whichever lands second sees
   // the other; and a week credit's options go with it.

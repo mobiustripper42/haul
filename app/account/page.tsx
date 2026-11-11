@@ -1,10 +1,8 @@
-import { redirect } from "next/navigation";
 import { LANGUAGES } from "@core/i18n.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { memberDisplayName } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { nextPickup, pickupWhereLine, weekTitle } from "@core/pickup-week.js";
-import { requireSupperClub } from "@core/products.js";
 import { Badge } from "../../components/ui/badge";
 import { Card } from "../../components/ui/card";
 import { Heading } from "../../components/ui/heading";
@@ -13,9 +11,8 @@ import { loadCalendar } from "../admin/weeks/calendar";
 import { getLanguage, getTranslator } from "../language";
 import { titled } from "../page-title";
 import { getRepository } from "../services";
-import { requireMember } from "../session";
 import { SiteHeader } from "../site-header";
-import { SUPPER_CLUB_PATH } from "../supper-club/paths";
+import { requireSubscriber } from "./subscriber";
 
 export const generateMetadata = titled("account.title");
 
@@ -25,14 +22,9 @@ export const generateMetadata = titled("account.title");
  * subscription, not the price of its picks today.
  */
 export default async function Account() {
-  const member = await requireMember();
-  const repo = getRepository();
-  const product = await requireSupperClub(repo);
-  const confirmation = await repo.findSignupConfirmation(member.id, product.id);
-  if (!confirmation) redirect(SUPPER_CLUB_PATH);
-
+  const { member, confirmation } = await requireSubscriber();
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
-  const { weeks } = await loadCalendar(repo, new Date());
+  const { weeks } = await loadCalendar(getRepository(), new Date());
   const next = nextPickup(weeks, confirmation.pickupDate);
   const name = memberDisplayName(member);
   const phoneAndLanguage = [member.phone, LANGUAGES[member.language].name].filter(Boolean).join(SEPARATOR);

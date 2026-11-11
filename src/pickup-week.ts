@@ -183,31 +183,56 @@ export function weekTitle(t: Translator, week: PickupWeek, language: Language): 
 /** How many weeks the admin's calendar lists. */
 const CALENDAR_WEEKS = 12;
 
-/**
- * The weeks the admin's calendar lists (docs/SPEC.md §7.2): 12, from the earliest whose last pickup day has not
- * passed in Cleveland (the moved last day for a moved week), so a week past its cutoff and before its pickup is
- * still listed. Never a week before the product's first pickup date. A closed week keeps its move.
- */
-export function upcomingWeeks(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): AdminWeek[] {
-  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
-  const today = clevelandDate(now);
-  const weekAt = (sunday: string): PickupWeek => pickupWeek(sunday, byWeek.get(sunday) ?? null);
+/** A week as the admin's calendar shows it: its days, its cutoff, what `pickup_weeks` holds for it, and what the screen may offer. */
+function adminWeek(product: ProductWithOptions, now: Date, byWeek: Map<string, ChangedWeek>, weekOf: string): AdminWeek {
+  const week = pickupWeek(weekOf, byWeek.get(weekOf) ?? null);
+  const row = byWeek.get(weekOf);
+  const cutoff = cutoffInstant(product, weekOf);
+  const cutoffPassed = now.getTime() >= cutoff.getTime();
+  const closedAt = row?.closedAt ?? null;
+  return { ...week, cutoff, closedAt, note: row?.note ?? null, moved: isMoved(week), cutoffPassed, canReopen: closedAt !== null && !cutoffPassed };
+}
 
+/** The earliest week whose last pickup day has not passed in Cleveland: the current week, as the calendar starts. */
+function currentSunday(product: ProductWithOptions, today: string, byWeek: Map<string, ChangedWeek>): string {
   let sunday = firstSunday(product);
   // Weeks long past are skipped in one step, two short of the answer: a week's last day is at most 8 days after its Sunday.
   const weeksBehind = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${sunday}T00:00:00Z`)) / (7 * DAY_MS)) - 2;
   if (weeksBehind > 0) sunday = addDays(sunday, weeksBehind * 7);
-  while (weekAt(sunday).lastDay < today) sunday = addDays(sunday, 7);
+  while (pickupWeek(sunday, byWeek.get(sunday) ?? null).lastDay < today) sunday = addDays(sunday, 7);
+  return sunday;
+}
 
-  return Array.from({ length: CALENDAR_WEEKS }, (_, i) => {
-    const weekOf = addDays(sunday, i * 7);
-    const week = weekAt(weekOf);
-    const row = byWeek.get(weekOf);
-    const cutoff = cutoffInstant(product, weekOf);
-    const cutoffPassed = now.getTime() >= cutoff.getTime();
-    const closedAt = row?.closedAt ?? null;
-    return { ...week, cutoff, closedAt, note: row?.note ?? null, moved: isMoved(week), cutoffPassed, canReopen: closedAt !== null && !cutoffPassed };
-  });
+/**
+ * The weeks the admin's calendar lists (docs/SPEC.md §7.2): 12, from the earliest whose last pickup day has not
+ * passed in Cleveland (the moved last day for a moved week), so a week past its cutoff and before its pickup is
+ * still listed. Never a week before the product's first pickup date. A closed week keeps its move. With `from`, a
+ * member's first week, the 12 start at the later of `from` and that week.
+ */
+export function upcomingWeeks(product: ProductWithOptions, now: Date, changed: ChangedWeek[], from?: string): AdminWeek[] {
+  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
+  const current = currentSunday(product, clevelandDate(now), byWeek);
+  const sunday = from !== undefined && from > current ? from : current;
+  return Array.from({ length: CALENDAR_WEEKS }, (_, i) => adminWeek(product, now, byWeek, addDays(sunday, i * 7)));
+}
+
+/**
+ * The weeks a member's History lists (issue 155): every week from `from` up to the latest whose last pickup day
+ * has passed in Cleveland, newest first, each built as `upcomingWeeks` builds them; never a week before the
+ * product's first pickup date.
+ */
+export function pastWeeks(product: ProductWithOptions, now: Date, changed: ChangedWeek[], from: string): AdminWeek[] {
+  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
+  const current = currentSunday(product, clevelandDate(now), byWeek);
+  const first = from > firstSunday(product) ? from : firstSunday(product);
+  const weeks: AdminWeek[] = [];
+  for (let sunday = first; sunday < current; sunday = addDays(sunday, 7)) weeks.push(adminWeek(product, now, byWeek, sunday));
+  return weeks.reverse();
+}
+
+/** A listed week's title (issue 155): a closed week carries its ordinary days, its move waiting for a reopen. */
+export function listedWeekTitle(t: Translator, week: AdminWeek, language: Language): string {
+  return weekTitle(t, week.closedAt === null ? week : pickupWeek(week.weekOf, null), language);
 }
 
 /** A real calendar date, `YYYY-MM-DD`: what a date input sends, and not a string that merely looks like one (`2026-02-32`). */

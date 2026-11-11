@@ -5,6 +5,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type MemberWeeks,
   type PendingSignup,
   type PendingSignupInput,
   type Repository,
@@ -509,6 +510,7 @@ export class PostgresRepository implements Repository {
     if (!row) return null;
     const week = pickupWeek(row.pickup_date, { weekOf: row.pickup_date, closedAt: null, note: null, firstDay: row.first_day, lastDay: row.last_day });
     return {
+      subscriptionId: row.id,
       pickupDate: row.pickup_date,
       firstDay: week.firstDay,
       lastDay: week.lastDay,
@@ -664,6 +666,31 @@ export class PostgresRepository implements Repository {
       [productId, from],
     );
     return new Map(rows.map((row) => [row.week_of, { paid: row.paid, weekCredits: row.week_credits }]));
+  }
+
+  async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
+    if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [] };
+    const [paid, weekCredits] = await Promise.all([
+      this.db.query<{ week_of: string; amount_cents: number }>(
+        `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents
+           from ledger
+          where subscription_id = $1 and status = 'paid'
+          order by pickup_date`,
+        [subscriptionId],
+      ),
+      this.db.query<{ granted_for_week: string }>(
+        `select to_char(l.pickup_date, 'YYYY-MM-DD') as granted_for_week
+           from week_credits c
+           join ledger l on l.id = c.granted_for
+          where c.subscription_id = $1 and c.spent_on is null
+          order by l.pickup_date, c.id`,
+        [subscriptionId],
+      ),
+    ]);
+    return {
+      paid: paid.rows.map((row) => ({ weekOf: row.week_of, amountCents: row.amount_cents })),
+      weekCredits: weekCredits.rows.map((row) => ({ grantedForWeek: row.granted_for_week })),
+    };
   }
 
   /**
