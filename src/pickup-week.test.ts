@@ -9,8 +9,10 @@ import {
   firstPickupLine,
   formatPickupDate,
   formatShortDate,
+  nextPickup,
   pickupWeek,
   pickupWhereLine,
+  type AdminWeek,
   type ChangedWeek,
 } from "./pickup-week.js";
 import type { ProductWithOptions } from "./products.js";
@@ -247,5 +249,62 @@ describe("AC3 (issue 59) — formatShortDate", () => {
 
   it("AC3 (issue 59): it is in the language given", () => {
     expect(formatShortDate("2026-12-01", "es")).toMatch(/dic/i);
+  });
+});
+
+// Issue 136, AC3b: a member's next pickup, read from the weeks the calendar lists (`loadCalendar(repo, now).weeks`).
+// Which weeks are listed is upcomingWeeks' (src/pickup-week-calendar.test.ts); here the list is given, so only
+// the choice among them is read. Only `weekOf` and `closedAt` decide it; the rest of each week is carried along.
+describe("AC3b (issue 136) — nextPickup", () => {
+  /** A listed week: an ordinary Sunday and Monday unless moved, open unless closed. */
+  const listed = (weekOf: string, over: { closed?: boolean; firstDay?: string; lastDay?: string } = {}): AdminWeek => {
+    const days = pickupWeek(weekOf, null);
+    const firstDay = over.firstDay ?? days.firstDay;
+    const lastDay = over.lastDay ?? days.lastDay;
+    const closedAt = over.closed ? new Date("2027-01-25T15:00:00.000Z") : null;
+    return {
+      weekOf,
+      firstDay,
+      lastDay,
+      cutoff: new Date(`${weekOf}T05:00:00.000Z`),
+      closedAt,
+      note: null,
+      moved: firstDay !== days.firstDay || lastDay !== days.lastDay,
+      cutoffPassed: false,
+      canReopen: closedAt !== null,
+    };
+  };
+
+  const FEB_7 = "2027-02-07";
+  const FEB_14 = "2027-02-14";
+  const FEB_21 = "2027-02-21";
+
+  it("AC3b: for a member whose first week is long past, it is the first listed week", () => {
+    expect(nextPickup([listed(FEB_7), listed(FEB_14), listed(FEB_21)], "2027-01-03")).toMatchObject({
+      weekOf: FEB_7,
+      firstDay: FEB_7,
+      lastDay: "2027-02-08",
+    });
+  });
+
+  it("AC3b: a member who joined after a cutoff sees their first week, not the listed week before it", () => {
+    expect(nextPickup([listed(FEB_7), listed(FEB_14), listed(FEB_21)], FEB_14)).toMatchObject({ weekOf: FEB_14 });
+  });
+
+  it("AC3b: a closed coming week is passed over to the week after", () => {
+    expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14), listed(FEB_21)], "2027-01-03")).toMatchObject({ weekOf: FEB_14 });
+  });
+
+  it("AC3b: a closed first week is passed over too: the member's first week closed gives the week after it", () => {
+    expect(nextPickup([listed(FEB_7), listed(FEB_14, { closed: true }), listed(FEB_21)], FEB_14)).toMatchObject({ weekOf: FEB_21 });
+  });
+
+  it("AC3b: a moved week is given with its moved days, under its Sunday key", () => {
+    const moved = listed(FEB_7, { firstDay: "2027-02-06", lastDay: "2027-02-07" });
+    expect(nextPickup([moved, listed(FEB_14)], "2027-01-03")).toMatchObject({ weekOf: FEB_7, firstDay: "2027-02-06", lastDay: "2027-02-07" });
+  });
+
+  it("AC3b: when every listed week is closed there is none: null", () => {
+    expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14, { closed: true })], "2027-01-03")).toBeNull();
   });
 });

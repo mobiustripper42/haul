@@ -35,6 +35,13 @@ export async function requireAdmin(): Promise<Member> {
   return member;
 }
 
+/** The signed-in member, any role. Signed out → `/sign-in`. Every member page calls it first (DEC-018). */
+export async function requireMember(): Promise<Member> {
+  const member = await getSignedInMember();
+  if (!member) redirect("/sign-in");
+  return member;
+}
+
 /** Signs the member in for 30 days. Cookies are written only in Server Functions, so call this from an action. */
 export async function startSession(memberId: string): Promise<void> {
   const expiresAt = new Date(Date.now() + SESSION_TTL_MS).toISOString();

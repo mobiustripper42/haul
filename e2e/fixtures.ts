@@ -68,8 +68,8 @@ export async function waitForSignInCode(
 export const headerSignOut = (page: Page) => page.getByRole("banner").getByRole("button", { name: en["home.signOut"], exact: true });
 
 /**
- * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands: `/`,
- * which redirects to /supper-club, signed in.
+ * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands: `/account`,
+ * which sends a member with no Supper Club subscription on to /supper-club, signed in.
  */
 export async function signIn(page: Page, request: APIRequestContext, email: string): Promise<void> {
   const before = await outboxCount(request, email);

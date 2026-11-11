@@ -28,7 +28,7 @@ export async function signInWithLink(formData: FormData): Promise<void> {
   if (!result.ok) redirect("/sign-in?error=link");
 
   await recordEventAs(repo, { member: result.subjectId }, { kind: "sign_in_by_link", memberId: result.subjectId });
-  await finishSignIn(result.subjectId, "/");
+  await finishSignIn(result.subjectId, SIGN_IN_PAGES.done);
 }
 
 export async function signOut(): Promise<void> {

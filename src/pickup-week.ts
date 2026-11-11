@@ -146,6 +146,11 @@ export type AdminWeek = PickupWeek & {
   canReopen: boolean;
 };
 
+/** A member's next pickup: the first of `weeks` not closed and with `weekOf >= firstWeek`; null when there is none. */
+export function nextPickup(weeks: AdminWeek[], firstWeek: string): PickupWeek | null {
+  return weeks.find((week) => week.closedAt === null && week.weekOf >= firstWeek) ?? null;
+}
+
 /** Whether a week's days are not its ordinary ones, the Sunday and the Monday after. */
 export function isMoved(week: PickupWeek): boolean {
   return week.firstDay !== week.weekOf || week.lastDay !== addDays(week.weekOf, 1);
