@@ -1,6 +1,7 @@
 import type { AccountDetails } from "../create-account.js";
 import type { Language } from "../i18n.js";
 import type { Member, Role } from "../members.js";
+import type { Menu, MenuInput } from "../menus.js";
 import type { ChangedWeek } from "../pickup-week.js";
 import type { ProductWithOptions } from "../products.js";
 import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
@@ -254,6 +255,17 @@ export interface Repository extends SignInStore, RateLimitStore {
   switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged">;
   /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
+  /** Issue 140: every menu, newest `updatedAt` first. */
+  listMenus(): Promise<Menu[]>;
+  /** Issue 140: null for an unknown id and for a string that isn't a UUID. */
+  findMenu(id: string): Promise<Menu | null>;
+  createMenu(input: MenuInput): Promise<Menu>;
+  /** Issue 140: replaces the menu's texts whole; null, writing nothing, for an unknown id. */
+  saveMenu(id: string, input: MenuInput): Promise<Menu | null>;
+  /** Issue 140: week key → menu id, for the product's weeks from `from` on. */
+  listWeekMenus(productId: string, from: string): Promise<Map<string, string>>;
+  /** Issue 140: null deletes the week's row; false, writing nothing, for an unknown menu. */
+  assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

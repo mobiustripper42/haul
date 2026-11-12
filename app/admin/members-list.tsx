@@ -12,6 +12,7 @@ import { RowList } from "../../components/ui/row-list";
 import { SearchField } from "../../components/ui/search-field";
 import { Select } from "../../components/ui/select";
 import { TextLink } from "../../components/ui/text-link";
+import { fill } from "../fill";
 import { adminMemberPath } from "../paths";
 import { SubscriptionStatus } from "../subscription-badges";
 
@@ -34,9 +35,6 @@ export type MembersListText = {
 
 const SORT_BY_ID = "members-sort";
 const SEARCH_ID = "members-search";
-
-/** `template` with each `{name}` replaced by its value. */
-const fill = (template: string, values: Record<string, string>): string => template.replace(/\{(\w+)\}/g, (whole, name: string) => values[name] ?? whole);
 
 /**
  * The members' search box, the table (from 720px up) and the stacked rows with their "Sort by" select (below it).

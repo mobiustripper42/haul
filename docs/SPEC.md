@@ -204,7 +204,7 @@ Nobody is charged and then refused.
 
 ### 7.5 Menus and translation
 
-- Menus are records in a library: a standard text and a vegan text. Admins find, duplicate and
+- Menus are records in a library: a text for each option of the product's menu option type (the Supper Club's: standard and vegan). Admins find, duplicate and
   edit them, and assign one to each pickup week on the admin calendar (§7.2), as far ahead as they
   like — on phone or desktop.
   (The library replaces the requirements' one-record-per-date model; Eric, 2026-10-25.)

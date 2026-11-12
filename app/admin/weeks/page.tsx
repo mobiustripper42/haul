@@ -1,4 +1,6 @@
 import { pluralKey, type Language, type Translator } from "@core/i18n.js";
+import { collator } from "@core/member-list.js";
+import type { Menu } from "@core/menus.js";
 import { cutoffDate, formatPickupDate, isDate, listedWeekTitle, nextCutoffDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { Badge } from "../../../components/ui/badge";
@@ -10,16 +12,17 @@ import { FieldError } from "../../../components/ui/field-error";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
 import { Input } from "../../../components/ui/input";
+import { Select } from "../../../components/ui/select";
 import { Shell } from "../../../components/ui/shell";
 import { Textarea } from "../../../components/ui/textarea";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
-import { ADMIN_WEEKS_PATH } from "../../paths";
+import { ADMIN_MENU_NEW_PATH, ADMIN_WEEKS_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
 import { SiteHeader } from "../../site-header";
 import { AdminNav } from "../admin-nav";
-import { closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
+import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 import { loadCalendar } from "./calendar";
 
 export const generateMetadata = titled("admin.weeks.title");
@@ -27,8 +30,8 @@ export const generateMetadata = titled("admin.weeks.title");
 type Query = Record<string, string | string[] | undefined>;
 type Counts = Map<string, { paid: number; weekCredits: number }>;
 
-/** What the screen needs to word a week, so a row or a dialog is given one thing rather than five. */
-type Wording = { t: Translator; language: Language; product: ProductWithOptions; counts: Counts };
+/** What the screen needs to word a week, so a row or a dialog is given one thing rather than six. `weekMenus` is week key → menu id. */
+type Wording = { t: Translator; language: Language; product: ProductWithOptions; counts: Counts; menus: Menu[]; weekMenus: Map<string, string> };
 
 const FAULTS = ["beforeCutoff", "order", "overlapsNext"] as const;
 type Fault = (typeof FAULTS)[number];
@@ -36,7 +39,7 @@ type Fault = (typeof FAULTS)[number];
 const one = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);
 
 /** A link back to this screen with one panel asked for: the URL says which dialog or panel is open. */
-const panelHref = (name: "close" | "reopen" | "note" | "move", weekOf: string): string => `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}`;
+const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string => `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}`;
 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
@@ -208,10 +211,55 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
   );
 }
 
+/** An open week's menu, in its row: the library's menus in name order and No menu first, or when there are none a way to make one. */
+function MenuPanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
+  const { t, language, menus, weekMenus } = wording;
+  const id = `menu-${week.weekOf}`;
+  const named = [...menus].sort((a, b) => collator.compare(a.name, b.name));
+  return (
+    <form action={assignMenu} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
+      <input type="hidden" name="week" value={week.weekOf} />
+      <Heading level={2}>{t("admin.weeks.menuHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
+      {named.length === 0 ? (
+        <>
+          <Hint>{t("admin.weeks.noMenusYet")}</Hint>
+          <div className="flex">
+            <Button kind="secondary" href={ADMIN_MENU_NEW_PATH}>
+              {t("admin.weeks.newMenu")}
+            </Button>
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="max-w-xs">
+            <Field label={t("admin.weeks.menuLabel")} htmlFor={id}>
+              <Select
+                id={id}
+                name="menu"
+                defaultValue={weekMenus.get(week.weekOf) ?? ""}
+                options={[{ value: "", label: t("admin.weeks.noMenu") }, ...named.map((menu) => ({ value: menu.id, label: menu.name }))]}
+              />
+            </Field>
+          </div>
+          <div className="flex flex-wrap gap-x-3 gap-y-2">
+            <Button kind="primary" type="submit">
+              {t("admin.weeks.saveMenu")}
+            </Button>
+            <Button kind="quiet" href={ADMIN_WEEKS_PATH}>
+              {t("admin.weeks.cancel")}
+            </Button>
+          </div>
+        </>
+      )}
+    </form>
+  );
+}
+
 /** One week: its days, badges, cutoff and what closing gave, then its actions and whichever panel the URL opened. */
 function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; query: Query }) {
-  const { t, language, counts } = wording;
+  const { t, language, counts, menus, weekMenus } = wording;
   const closed = week.closedAt !== null;
+  const menuName = menus.find((menu) => menu.id === weekMenus.get(week.weekOf))?.name ?? null;
   const { paid, weekCredits } = counts.get(week.weekOf) ?? { paid: 0, weekCredits: 0 };
   const cutoff = cutoffWords(wording, week);
   const cutoffLine = !week.cutoffPassed
@@ -237,10 +285,16 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
         </div>
         {showMove && <Hint>{t("admin.weeks.movedFrom", { days: weekTitle(t, pickupWeek(week.weekOf, null), language) })}</Hint>}
         <Hint>{cutoffLine}</Hint>
+        {!closed && (menuName !== null ? <Hint>{t("admin.weeks.menuLine", { name: menuName })}</Hint> : <Hint danger>{t("admin.weeks.noMenuYet")}</Hint>)}
         {closedLine !== null && <Hint>{closedLine}</Hint>}
         {week.note !== null && <p className="mt-1 max-w-xl rounded-sm bg-surface-alt px-3 py-2">{t("admin.weeks.noteLine", { note: week.note })}</p>}
       </div>
       <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
+        {!closed && (
+          <Button kind="quiet" href={panelHref("menu", week.weekOf)}>
+            {menuName === null ? t("admin.weeks.assignMenu") : t("admin.weeks.changeMenu")}
+          </Button>
+        )}
         {!closed && (
           <Button kind="quiet" href={panelHref("move", week.weekOf)}>
             {t("admin.weeks.moveDays")}
@@ -272,6 +326,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
         )}
       </div>
       {closed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
+      {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} wording={wording} />}
       {!closed && one(query.move) === week.weekOf && <MovePanel week={week} wording={wording} query={query} />}
     </li>
   );
@@ -286,9 +341,9 @@ export default async function AdminWeeks({ searchParams }: { searchParams: Promi
   await requireAdmin();
   const [t, language, query] = await Promise.all([getTranslator(), getLanguage(), searchParams]);
   const repo = getRepository();
-  const { product, weeks } = await loadCalendar(repo, new Date());
-  const counts = await repo.listWeekCounts(product.id, weeks[0]?.weekOf ?? product.firstPickupDate);
-  const wording: Wording = { t, language, product, counts };
+  const { product, weeks, menus: weekMenus } = await loadCalendar(repo, new Date());
+  const [counts, menus] = await Promise.all([repo.listWeekCounts(product.id, weeks[0]?.weekOf ?? product.firstPickupDate), repo.listMenus()]);
+  const wording: Wording = { t, language, product, counts, menus, weekMenus };
   const closing = weeks.find((week) => week.weekOf === one(query.close) && week.closedAt === null);
   const reopening = weeks.find((week) => week.weekOf === one(query.reopen) && week.canReopen);
 

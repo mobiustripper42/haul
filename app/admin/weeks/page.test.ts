@@ -10,6 +10,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { ChangedWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Hint } from "../../../components/ui/hint";
 import { emptyRequest } from "../../next-headers-fake";
 import { attributesOf, escapeRegExp, screenMarkup } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
@@ -39,6 +40,11 @@ vi.mock("../../services", () => ({
   getSessionSecret: () => services.secret,
 }));
 vi.mock("../../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
+// Issue 140: the real Hint, wrapped so a test can read the props the page gives it (AC8's danger).
+vi.mock("../../../components/ui/hint", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../components/ui/hint")>();
+  return { Hint: vi.fn(actual.Hint) };
+});
 
 // Wednesday, February 3, noon in Cleveland. The list starts at the week of February 7, past its cutoff (the end
 // of Monday, February 1) with its pickup to come; February 14's cutoff is the end of Monday, February 8.
@@ -526,5 +532,139 @@ describe("AC9, AC11, AC14 — the move panel", () => {
     const row = rowOf(await render({ move: OPEN }), TITLE_FEB_14, TITLE_FEB_21);
     expect(row.runs).toEqual(expect.arrayContaining(["Closed"]));
     expect(row.text).not.toContain("Move pickup days");
+  });
+});
+
+// Issue 140: a week's menu on the calendar. Which weeks may take one is assignMenu's (./actions.test.ts); the menus
+// are made through the repository. "No menu yet" is read as the Hint the page draws, its props through the mock of
+// components/ui/hint above; how `danger` looks is components/ui/hint.test.ts's. The wording is new copy, typed here.
+describe("AC1, AC5, AC8–AC12 (issue 140) — a week's menu", () => {
+  beforeEach(() => {
+    vi.mocked(Hint).mockClear();
+  });
+
+  const menu = (name: string) => services.repo.createMenu({ name, texts: {} });
+  const assign = (weekOf: string, menuId: string) => services.repo.assignWeekMenu(product.id, weekOf, menuId);
+
+  /** Every Hint the page drew, as the props it was given. */
+  const hints = () => vi.mocked(Hint).mock.calls.map(([props]) => props as { danger?: boolean; children?: unknown });
+
+  /** The panel's select: its name and each option's value and label. */
+  const selectOf = (html: string) => {
+    const [, attrs = "", inner = ""] = /<select\b([^>]*)>([\s\S]*?)<\/select>/.exec(screenMarkup(html)) ?? [];
+    return {
+      name: /\bname="([^"]*)"/.exec(attrs)?.[1],
+      options: [...inner.matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/g)].map(([, a = "", label = ""]) => ({
+        value: /\bvalue="([^"]*)"/.exec(a)?.[1] ?? "",
+        label: label.trim(),
+      })),
+    };
+  };
+
+  it("AC1: the admin nav reads Members, Menus, Weeks, and Menus links to /admin/menus", async () => {
+    const { text, html } = await render();
+    expect(inSequence(text, ["Members", "Menus", "Weeks"])).toEqual(["Members", "Menus", "Weeks"]);
+    expect(screenMarkup(html)).toMatch(/<a\b[^>]*href="\/admin\/menus"[^>]*>[\s\S]*?Menus/);
+  });
+
+  it("AC8: an open week with a menu reads Menu: and its name, under the cutoff line, and offers Change menu", async () => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    const screen = await render();
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    expect(inSequence(row.text, ["Cutoff: end of Monday, February 8", "Menu: Autumn harvest"])).toEqual(["Cutoff: end of Monday, February 8", "Menu: Autumn harvest"]);
+    expect(row.runs).toContain("Change menu");
+    expect(row.runs).not.toContain("Assign menu");
+    expect(row.text).not.toContain("No menu yet");
+    expect(targets(screen.html, "Change menu")).toContainEqual({ menu: OPEN });
+  });
+
+  it("AC8: an open week with no menu reads No menu yet, in danger, and offers Assign menu", async () => {
+    await menu("Autumn harvest");
+    const screen = await render();
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.runs).toEqual(expect.arrayContaining(["No menu yet", "Assign menu"]));
+    expect(row.runs).not.toContain("Change menu");
+    expect(targets(screen.html, "Assign menu")).toContainEqual({ menu: OPEN });
+    const noMenu = hints().filter((props) => props.children === "No menu yet");
+    expect(noMenu.length).toBeGreaterThan(0);
+    expect(noMenu.every((props) => props.danger === true)).toBe(true);
+  });
+
+  it("AC8: the line naming a week's menu is a Hint, not in danger", async () => {
+    const autumn = await menu("Autumn harvest");
+    for (const week of [PAST_CUTOFF, OPEN]) await assign(week, autumn.id);
+    await render();
+    const named = hints().filter((props) => props.children === "Menu: Autumn harvest");
+    expect(named).toHaveLength(2);
+    expect(named.filter((props) => props.danger === true)).toEqual([]);
+  });
+
+  it("AC10: a week past its cutoff has the menu line and Assign menu too", async () => {
+    const screen = await render();
+    const row = rowOf(screen, TITLE_FEB_7, TITLE_FEB_14);
+    expect(row.runs).toEqual(expect.arrayContaining(["No menu yet", "Assign menu"]));
+  });
+
+  it("AC5: a week holds the menu itself: once the menu is saved under a new name, the week reads the new name", async () => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    await services.repo.saveMenu(autumn.id, { name: "Late autumn", texts: {} });
+    const row = rowOf(await render(), TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.text).toContain("Menu: Late autumn");
+    expect(row.text).not.toContain("Autumn harvest");
+  });
+
+  it("AC11: a closed week shows no menu line and no menu control, and ?menu on it opens nothing", async () => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
+    const screen = await render({ menu: OPEN });
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.runs).toContain("Closed");
+    for (const absent of ["Menu: Autumn harvest", "No menu yet", "Assign menu", "Change menu", "Menu for", "Save menu"]) expect(row.text).not.toContain(absent);
+  });
+
+  it("AC11: the assignment is kept, and shows again once the week is reopened", async () => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    await services.repo.closePickupWeek(product.id, OPEN, null, BEFORE_FEB_14_CUTOFF);
+    await services.repo.reopenPickupWeek(product.id, OPEN);
+    const row = rowOf(await render(), TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.text).toContain("Menu: Autumn harvest");
+    expect(row.runs).toContain("Change menu");
+  });
+
+  it("AC9: ?menu=<week> opens the panel in its row: its heading, the Menu select, Save menu and Cancel", async () => {
+    await menu("Autumn harvest");
+    const screen = await render({ menu: OPEN });
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    const wanted = ["Menu for February 14 and 15", "Menu", "Save menu", "Cancel"];
+    expect(inSequence(row.text, wanted)).toEqual(wanted);
+    const markup = screenMarkup(screen.html);
+    expect([...markup.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(([, inner = ""]) => inner.replace(/<[^>]*>/g, "").trim())).toContain("Menu for February 14 and 15");
+    expect(selectOf(screen.html).name).toBe("menu");
+    expect(hasControl(screen.html, "week", OPEN)).toBe(true);
+  });
+
+  it("AC9: the select offers No menu first, then every menu in name order, case ignored", async () => {
+    const zucchini = await menu("Zucchini bread");
+    const apple = await menu("apple tart");
+    const beet = await menu("Beet soup");
+    const { options } = selectOf((await render({ menu: OPEN })).html);
+    expect(options).toEqual([
+      { value: "", label: "No menu" },
+      { value: apple.id, label: "apple tart" },
+      { value: beet.id, label: "Beet soup" },
+      { value: zucchini.id, label: "Zucchini bread" },
+    ]);
+  });
+
+  it("AC12: with no menus in the library the panel says so and links to New menu, with no select", async () => {
+    const screen = await render({ menu: OPEN });
+    const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);
+    expect(row.runs).toEqual(expect.arrayContaining(["No menus yet.", "New menu"]));
+    expect(screenMarkup(screen.html)).toMatch(/<a\b[^>]*href="\/admin\/menus\/new"[^>]*>[\s\S]*?New menu/);
+    expect(selectOf(screen.html).name).toBeUndefined();
   });
 });

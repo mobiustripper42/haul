@@ -10,6 +10,7 @@ import { retrySignup, signUp, type SignupDeps } from "../signup.js";
 import { FakePayments } from "./fake-payments.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
+import { runMenuContract } from "./menu-contract.js";
 import { runProductContract } from "./product-contract.js";
 import { runSignupContract } from "./signup-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
@@ -49,8 +50,8 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
     );
     for (const type of input.optionTypes) {
       const row = await pool.query<{ id: string }>(
-        "insert into option_types (product_id, name, position) values ($1, $2, $3) returning id",
-        [product.rows[0]?.id, type.name, type.position],
+        "insert into option_types (product_id, name, position, menu_texts) values ($1, $2, $3, $4) returning id",
+        [product.rows[0]?.id, type.name, type.position, type.menuTexts ?? false],
       );
       for (const option of type.options) {
         await pool.query("insert into options (option_type_id, name, price_cents, position) values ($1, $2, $3, $4)", [
@@ -68,6 +69,71 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
 
   runProductContract("postgres", async () => repo, addProduct, truncateAll);
   runSignupContract("postgres", async () => repo, addProduct, truncateAll);
+  runMenuContract("postgres", async () => repo, addProduct, truncateAll);
+
+  // Issue 140: what only Postgres can show of the menu library: the audit trigger and who it names, and the one
+  // marked option type per product.
+  describe("issue 140 — the menu tables in Postgres", () => {
+    const MENU_BOX: ProductInput = {
+      name: SUPPER_CLUB_PRODUCT_NAME,
+      cap: 50,
+      firstPickupDate: "2027-01-03",
+      cutoffWeekday: 1,
+      cutoffTime: "24:00:00",
+      optionTypes: [
+        { name: "How many people", position: 1, options: [{ name: "Portioned for 4", priceCents: 7400, position: 1 }] },
+        {
+          name: "Which menu",
+          position: 2,
+          menuTexts: true,
+          options: [
+            { name: "Standard", priceCents: 0, position: 1 },
+            { name: "Vegan", priceCents: 0, position: 2 },
+          ],
+        },
+      ],
+    };
+
+    it("AC14: menus, menu_texts and week_menus carry the audit trigger", async () => {
+      const { rows } = await pool.query<{ table_name: string }>(
+        `select c.relname as table_name
+           from pg_trigger t
+           join pg_class c on c.oid = t.tgrelid
+           join pg_proc p on p.oid = t.tgfoid
+          where p.proname = 'audit_row' and not t.tgisinternal and c.relname in ('menus', 'menu_texts', 'week_menus')
+          order by c.relname`,
+      );
+      expect(rows.map((row) => row.table_name)).toEqual(["menu_texts", "menus", "week_menus"]);
+    });
+
+    it("AC14: a menu made, saved and put on a week under withActor({ member }) is audited, every row naming that admin", async () => {
+      await truncateAll();
+      const product = await addProduct(MENU_BOX);
+      const [standard, vegan] = product.optionTypes[1]?.options.map((option) => option.id) ?? [];
+      const admin = await repo.createMember({ email: "lenny@example.com", role: "admin" });
+      const texts = { [standard ?? "no standard"]: "Squash soup", [vegan ?? "no vegan"]: "Lentil soup" };
+      const { rows: before } = await pool.query<{ n: string }>("select coalesce(max(id), 0)::text as n from audit_log");
+
+      const menu = await repo.withActor({ member: admin.id }, (scoped) => scoped.createMenu({ name: "Autumn harvest", texts }));
+      await repo.withActor({ member: admin.id }, (scoped) => scoped.saveMenu(menu.id, { name: "Late autumn", texts }));
+      await repo.withActor({ member: admin.id }, (scoped) => scoped.assignWeekMenu(product.id, "2027-02-14", menu.id));
+
+      const { rows } = await pool.query<{ table_name: string; operation: string; actor: string | null }>(
+        "select table_name, operation, actor from audit_log where id > $1::bigint order by id",
+        [before[0]?.n ?? "0"],
+      );
+      expect(new Set(rows.map((row) => row.table_name))).toEqual(new Set(["menus", "menu_texts", "week_menus"]));
+      expect(rows.filter((row) => row.actor !== `member:${admin.id}`)).toEqual([]);
+    });
+
+    it("AC4: a product has at most one option type marked menu_texts", async () => {
+      await truncateAll();
+      const product = await addProduct(MENU_BOX);
+      await expect(pool.query("update option_types set menu_texts = true where product_id = $1", [product.id])).rejects.toMatchObject({ code: "23505" });
+      const other = await addProduct({ ...MENU_BOX, name: "Crate" });
+      expect(other.optionTypes.map((type) => type.menuTexts)).toEqual([false, true]);
+    });
+  });
 
   it("AC1, AC14 (issue 77): the supper-club seed's product is found by SUPPER_CLUB_PRODUCT_NAME, its pickers in the seed's order", async () => {
     await truncateAll();

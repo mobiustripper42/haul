@@ -11,7 +11,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../../next-headers-fake";
 import { redirectOf } from "../../screen-test-helpers";
 import { addSupperClub } from "../subscribers-fixture";
-import { closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
+import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -229,5 +229,107 @@ describe("AC9–AC11 — moveWeek", () => {
     await save(changed(OPEN, { note: "Heads up", firstDay: "2027-02-13", lastDay: "2027-02-14" }));
     await redirectOf(moveWeek(form({ week: OPEN, putBack: "1" })));
     expect(await rowOf(OPEN)).toEqual(changed(OPEN, { note: "Heads up" }));
+  });
+});
+
+// Issue 140: a week's menu. What the repository stores is the menu contract's (src/adapters/menu-contract.ts); these
+// hold which weeks the action lets take a menu, what it writes, as whom, and where the admin lands.
+describe("AC9–AC11, AC13, AC14 (issue 140) — assignMenu", () => {
+  const LAST_LISTED = "2027-04-25";
+  const UNKNOWN_MENU = "00000000-0000-4000-8000-000000000000";
+
+  const menu = (name: string) => services.repo.createMenu({ name, texts: {} });
+  const weekMenus = () => services.repo.listWeekMenus(product.id, product.firstPickupDate);
+  const assign = (week: string, menuId: string) => redirectOf(assignMenu(form({ week, menu: menuId })));
+
+  it("AC9: it puts the menu on the week and goes back to the weeks", async () => {
+    const autumn = await menu("Autumn harvest");
+    await expect(assign(OPEN, autumn.id)).resolves.toBe(WEEKS_PATH);
+    expect(await weekMenus()).toEqual(new Map([[OPEN, autumn.id]]));
+  });
+
+  it('AC9: picking another menu replaces it, and "" (No menu) clears it', async () => {
+    const [autumn, winter] = [await menu("Autumn harvest"), await menu("Winter roots")];
+    await assign(OPEN, autumn.id);
+    await assign(OPEN, winter.id);
+    expect(await weekMenus()).toEqual(new Map([[OPEN, winter.id]]));
+    await expect(assign(OPEN, "")).resolves.toBe(WEEKS_PATH);
+    expect(await weekMenus()).toEqual(new Map());
+  });
+
+  it("AC9: one menu can be on any number of weeks", async () => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    await assign(LAST_LISTED, autumn.id);
+    expect(await weekMenus()).toEqual(
+      new Map([
+        [OPEN, autumn.id],
+        [LAST_LISTED, autumn.id],
+      ]),
+    );
+  });
+
+  it("AC10: a week past its cutoff takes a menu too, as does the last week listed", async () => {
+    const autumn = await menu("Autumn harvest");
+    await expect(assign(PAST_CUTOFF, autumn.id)).resolves.toBe(WEEKS_PATH);
+    await assign(LAST_LISTED, autumn.id);
+    expect(await weekMenus()).toEqual(
+      new Map([
+        [PAST_CUTOFF, autumn.id],
+        [LAST_LISTED, autumn.id],
+      ]),
+    );
+  });
+
+  it.each([
+    ["a week whose pickup has passed", "2027-01-31"],
+    ["a week beyond the 12 listed", "2027-05-02"],
+  ])("AC10: %s is not listed: back to the weeks, nothing written", async (_what, week) => {
+    const autumn = await menu("Autumn harvest");
+    await expect(assign(week, autumn.id)).resolves.toBe(WEEKS_PATH);
+    expect(await weekMenus()).toEqual(new Map());
+  });
+
+  it.each([
+    ["an unknown menu", UNKNOWN_MENU],
+    ["a menu id that isn't a UUID", "not-a-uuid"],
+  ])("AC9: %s writes nothing: the week keeps the menu it had", async (_what, menuId) => {
+    const autumn = await menu("Autumn harvest");
+    await assign(OPEN, autumn.id);
+    await expect(assign(OPEN, menuId)).resolves.toBe(WEEKS_PATH);
+    expect(await weekMenus()).toEqual(new Map([[OPEN, autumn.id]]));
+  });
+
+  it("AC11: a closed week takes no menu and keeps the one it had: back to the weeks, nothing written", async () => {
+    const [autumn, winter] = [await menu("Autumn harvest"), await menu("Winter roots")];
+    await assign(OPEN, autumn.id);
+    await save(changed(OPEN, { closedAt: CLOSED_AT }));
+    await expect(assign(OPEN, winter.id)).resolves.toBe(WEEKS_PATH);
+    await expect(assign(OPEN, "")).resolves.toBe(WEEKS_PATH);
+    expect(await weekMenus()).toEqual(new Map([[OPEN, autumn.id]]));
+  });
+
+  it("AC14: it writes as the admin, so the audit row names the admin's member id as who acted", async () => {
+    const admin = await services.repo.findMemberByEmail("lenny@example.com");
+    const autumn = await menu("Autumn harvest");
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await assign(OPEN, autumn.id);
+    expect(withActor).toHaveBeenCalledWith({ member: admin?.id }, expect.any(Function));
+    withActor.mockRestore();
+  });
+
+  it.each([
+    ["a signed-in member whose role is not admin", "member", "/"],
+    ["a signed-out visitor", null, "/sign-in"],
+  ] as const)("AC13: %s is sent where the other admin screens send them, and nothing is written", async (_who, role, where) => {
+    const autumn = await menu("Autumn harvest");
+    if (role) {
+      const member = await services.repo.createMember({ email: "rosa@example.com", role });
+      request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt: new Date(NOW.getTime() + DAY).toISOString() }, services.secret);
+    } else {
+      request.current = emptyRequest();
+    }
+    await expect(assign(OPEN, autumn.id)).resolves.toBe(where);
+    expect(await weekMenus()).toEqual(new Map());
   });
 });

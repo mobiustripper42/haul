@@ -30,6 +30,17 @@ describe("AC17 — Hint", () => {
     expect(classOf(false).filter((utility) => utility.startsWith("mt-"))).toEqual([]);
   });
 
+  // Issue 140: the danger line on a calendar row ("No menu yet"), in FieldError's colour and Hint's size.
+  it("AC8 (issue 140): `danger` draws the danger colour in place of the muted one, at the same size; without it, no danger colour", () => {
+    const utilitiesFor = (danger: boolean) =>
+      utilitiesOf(/class="([^"]*)"/.exec(openingTag(renderToStaticMarkup(createElement(Hint, { danger, children: "No menu yet" }))))?.[1]);
+    const danger = utilitiesFor(true);
+    expect(danger).toContain("text-danger");
+    expect(danger).toContain("text-small");
+    expect(danger.filter((utility) => /^text-(ink|teal)-muted$/.test(utility))).toEqual([]);
+    expect(utilitiesFor(false)).not.toContain("text-danger");
+  });
+
   it("AC17: it is small and muted", () => {
     const utilities = utilitiesOf(/class="([^"]*)"/.exec(openingTag(render()))?.[1]);
     expect(utilities).toContain("text-small");

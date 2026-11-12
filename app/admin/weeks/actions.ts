@@ -61,6 +61,21 @@ export async function saveWeekNote(formData: FormData): Promise<void> {
 }
 
 /**
+ * Puts a menu on a listed week, before or after its cutoff, or with `menu` empty takes it off (issue 140). A closed week
+ * keeps the menu it had and takes no change; a week not listed, or a menu that is not in the library, writes nothing.
+ */
+export async function assignMenu(formData: FormData): Promise<void> {
+  const admin = await requireAdmin();
+  const found = await weekOf(formData, new Date());
+  if (found && found.week.closedAt === null) {
+    const { repo, product, week } = found;
+    const menuId = textField(formData, "menu") || null;
+    await repo.withActor({ member: admin.id }, (scoped) => scoped.assignWeekMenu(product.id, week.weekOf, menuId));
+  }
+  redirect(ADMIN_WEEKS_PATH);
+}
+
+/**
  * Moves an open week's pickup days, or with `putBack` returns them to the ordinary ones. The move is checked in
  * full before anything is written (the database checks are a backstop): a fault sends the form back with the dates
  * entered. Days that are the ordinary ones are saved as no move, so a week with nothing else on it has no row.

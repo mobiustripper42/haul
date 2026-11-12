@@ -178,6 +178,22 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     expect(await rows()).toEqual(before);
   });
 
+  // Issue 140: "Which menu" is the type whose options each get a menu text, so the editor has a field per option.
+  it('AC4 (issue 140): the seed marks "Which menu" as the option type carrying menu texts, and "How many people" not', async () => {
+    await seed();
+
+    const { rows } = await pool.query<{ name: string; menu_texts: boolean }>(
+      `select t.name, t.menu_texts
+         from option_types t join products p on p.id = t.product_id
+        where p.name = 'Supper Club'
+        order by t.position, t.name`,
+    );
+    expect(rows).toEqual([
+      { name: "How many people", menu_texts: false },
+      { name: "Which menu", menu_texts: true },
+    ]);
+  });
+
   // Issue 101, AC6: the names are data, in the farm's words; the picker's question mark is the catalog's (DEC-027).
   it("AC6 (issue 101): the seed stores the option types as \"How many people\" and \"Which menu\", neither with a question mark", async () => {
     await seed();

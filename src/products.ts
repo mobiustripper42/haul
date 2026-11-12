@@ -4,7 +4,8 @@ export const SUPPER_CLUB_PRODUCT_NAME = "Supper Club";
 
 export type ProductOption = { id: string; name: string; priceCents: number; position: number };
 
-export type ProductOptionType = { id: string; name: string; position: number; options: ProductOption[] };
+/** `menuTexts` marks the type whose options each get a menu text (issue 140), at most one per product; absent reads as false. */
+export type ProductOptionType = { id: string; name: string; position: number; menuTexts?: boolean; options: ProductOption[] };
 
 export type ProductWithOptions = {
   id: string;

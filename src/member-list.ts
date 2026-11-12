@@ -16,7 +16,7 @@ export const SORT_CHOICES: readonly Sort[] = [
 export const OPENING_SORT: Sort = { key: "name", direction: "asc" };
 
 /** Case-insensitive, accents kept: "abara" and "Abara" are one name, "Lee" comes before "Lee Kim". */
-const collator = new Intl.Collator("en", { sensitivity: "accent" });
+export const collator = new Intl.Collator("en", { sensitivity: "accent" });
 
 type Named = Pick<Subscriber, "firstName" | "lastName">;
 

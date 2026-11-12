@@ -9,11 +9,15 @@ export type Calendar = {
   weeks: AdminWeek[];
   /** What `pickup_weeks` holds for them, a week with no row being absent. */
   changed: ChangedWeek[];
+  /** The menu on each of them, week key (`weekOf`) → menu id; a week with no menu is absent (issue 140). */
+  menus: Map<string, string>;
 };
 
 /** The Supper Club's upcoming weeks at `now`, with the rows that make them differ from ordinary weeks. */
 export async function loadCalendar(repo: Repository, now: Date): Promise<Calendar> {
   const product = await requireSupperClub(repo);
   const changed = await repo.listChangedWeeks(product.id, product.firstPickupDate);
-  return { product, weeks: upcomingWeeks(product, now, changed), changed };
+  const weeks = upcomingWeeks(product, now, changed);
+  const menus = await repo.listWeekMenus(product.id, weeks[0]?.weekOf ?? product.firstPickupDate);
+  return { product, weeks, changed, menus };
 }

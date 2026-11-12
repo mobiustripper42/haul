@@ -39,4 +39,7 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
   "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
   "app/admin/weeks/actions.ts#moveWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+  "app/admin/menus/actions.ts#createMenu": { none: "writes menus and menu_texts; audited by trigger" },
+  "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },
+  "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
 };
