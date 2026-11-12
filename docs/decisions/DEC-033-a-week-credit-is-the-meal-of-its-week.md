@@ -17,7 +17,6 @@ claims:
     target: "src/adapters/week-credit-contract.ts"
 supersedes:
   - DEC-032
-  - DEC-005
 revisit_if: "A week credit must be worth a different meal than the one charged, or refunds become a weekly chore the farm wants built"
 ---
 
@@ -31,8 +30,8 @@ the set in effect for the week of the ledger row it is granted for, so a switch 
 
 The rest of DEC-032 stands, restated whole: one week credit per subscription (§7.2); `week_credits.granted_for`
 is the paid ledger row it answers for and is unique; reopening a week deletes the credits its closing granted;
-`spent_on` is null until the charge run spends one. Refunds stay manual in Square (DEC-005, superseded here in
-DEC-032's place). A skipped week does not use a week credit.
+`spent_on` is null until the charge run spends one. Refunds stay manual in Square (DEC-005, as
+DEC-032 restated it). A skipped week does not use a week credit.
 
 History reads the set in effect for each paid week; the account pages and the admin's list, the newest.
 The charge run (2.2) should total the week's set, not read `weekly_cents`.

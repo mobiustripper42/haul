@@ -15,6 +15,8 @@ claims:
     target: "src/adapters/postgres-repository.ts"
   - kind: "test"
     target: "src/adapters/week-credit-contract.ts"
+supersedes:
+  - DEC-005
 superseded_by: DEC-033
 revisit_if: "A week credit must be worth a different meal than the one charged, or refunds become a weekly chore the farm wants built"
 ---
