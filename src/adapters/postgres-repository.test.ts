@@ -7,6 +7,7 @@ import type { ProductInput, ProductWithOptions } from "../products.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { BOX as SWITCH_BOX } from "./contract-helpers.js";
+import { runEmailChangeContract } from "./email-change-contract.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
@@ -104,6 +105,9 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   };
 
   runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
+
+  // Issue 156: a member's own details and their pending email change, in email_changes.
+  runEmailChangeContract("postgres", async () => repo, truncateAll);
 
   // Issue 149: Postgres only. Closing and confirming take the product row's lock, so whichever lands second sees
   // the other; and a week credit's options go with it.

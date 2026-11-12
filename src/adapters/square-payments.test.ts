@@ -595,6 +595,52 @@ describe("AC6 (issue 56) — a customer's reference_id", () => {
   });
 });
 
+// Issue 156: setCustomerEmail is Square's UpdateCustomer, the request setCustomerReference already makes.
+describe("AC11 (issue 156) — setCustomerEmail", () => {
+  const update = (fetch: FetchLike, environment: "sandbox" | "production" = "sandbox") =>
+    square(fetch, environment).setCustomerEmail({ customerId: "CUS_ADA", email: "ada.new@example.com" });
+
+  it("AC11: it makes one PUT to /customers/{customer_id} with email_address, and resolves to nothing", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: { ...SQ_CUSTOMER, email_address: "ada.new@example.com" } }));
+    await expect(update(fetch)).resolves.toBeUndefined();
+    expect(calls).toHaveLength(1);
+    expect(calls[0]?.url).toBe("https://connect.squareupsandbox.com/v2/customers/CUS_ADA");
+    expect(calls[0]?.init.method).toBe("PUT");
+    expect(bodyOf(calls[0])).toMatchObject({ email_address: "ada.new@example.com" });
+  });
+
+  it("AC11: it goes to production's base in production, with Square's headers", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+    await update(fetch, "production");
+    expect(calls[0]?.url).toBe("https://connect.squareup.com/v2/customers/CUS_ADA");
+    expect(calls[0]?.init.headers).toMatchObject({ Authorization: `Bearer ${TOKEN}`, "Square-Version": "2026-09-16" });
+  });
+
+  it("AC11: a non-2xx rejects with PaymentsError, so the member's email is not changed", async () => {
+    const { fetch } = stubFetch(json(404, squareError("INVALID_REQUEST_ERROR", "NOT_FOUND", "No such customer.")));
+    expect(await rejectionOf(update(fetch))).toBeInstanceOf(PaymentsError);
+  });
+
+  it("AC11: an empty email sends nothing", async () => {
+    const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+    const error = await rejectionOf(square(fetch).setCustomerEmail({ customerId: "CUS_ADA", email: "" }));
+    expect(error).toBeInstanceOf(RangeError);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("AC11: built without timeoutMs, it passes fetch the signal of AbortSignal.timeout(15_000), so a hang is a refusal", async () => {
+    const timeout = vi.spyOn(AbortSignal, "timeout");
+    try {
+      const { fetch, calls } = stubFetch(json(200, { customer: SQ_CUSTOMER }));
+      await update(fetch);
+      expect(timeout).toHaveBeenCalledWith(15_000);
+      expect(calls[0]?.init.signal).toBe(timeout.mock.results[0]?.value);
+    } finally {
+      timeout.mockRestore();
+    }
+  });
+});
+
 describe("AC10 (issue 56) — findPaymentByReference", () => {
   const SINCE = new Date("2026-11-06T12:00:00.000Z");
   const LEDGER = "ledger-1";

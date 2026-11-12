@@ -20,10 +20,25 @@ import {
 } from "../sign-in/shared";
 
 /** A form value as entered: not trimmed, since the draft cookie refills the form with what was typed. */
-const entered = (formData: FormData, name: string): string => {
+export const entered = (formData: FormData, name: string): string => {
   const value = formData.get(name);
   return typeof value === "string" ? value : "";
 };
+
+/**
+ * The draft a failed request leaves, to refill the form with what was typed: each value cut to its limit, so a long
+ * one cannot overflow the cookie. Used by Create Account's request and by Your details' save.
+ */
+export async function keepDraft(draft: { firstName: string; lastName: string; email: string; phone: string; language: string }): Promise<void> {
+  const kept = {
+    ...draft,
+    firstName: draft.firstName.slice(0, ACCOUNT_LIMITS.firstName),
+    lastName: draft.lastName.slice(0, ACCOUNT_LIMITS.lastName),
+    email: draft.email.slice(0, ACCOUNT_LIMITS.email),
+    phone: draft.phone.slice(0, ACCOUNT_LIMITS.phone),
+  };
+  await setFlowCookie(ACCOUNT_DRAFT_COOKIE, JSON.stringify(kept));
+}
 
 /**
  * The details step. Details are checked before anything is counted; then the request is limited in
@@ -40,15 +55,7 @@ export async function requestAccountCodeFor(formData: FormData, pages: FlowPages
   };
   const checked = validateAccountDetails(draft);
   if (!checked.ok) {
-    // Each value cut to its limit, so a long one cannot overflow the cookie.
-    const kept = {
-      ...draft,
-      firstName: draft.firstName.slice(0, ACCOUNT_LIMITS.firstName),
-      lastName: draft.lastName.slice(0, ACCOUNT_LIMITS.lastName),
-      email: draft.email.slice(0, ACCOUNT_LIMITS.email),
-      phone: draft.phone.slice(0, ACCOUNT_LIMITS.phone),
-    };
-    await setFlowCookie(ACCOUNT_DRAFT_COOKIE, JSON.stringify(kept));
+    await keepDraft(draft);
     redirect(`${pages.start}?error=${checked.errors.join(",")}`);
   }
   (await cookies()).delete(ACCOUNT_DRAFT_COOKIE);

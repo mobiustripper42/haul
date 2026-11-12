@@ -18,6 +18,8 @@ export const AUDIT_EVENT_KINDS = [
   "card_declined",
   "charge_outcome_unknown",
   "sold_out",
+  // Issue 156: the event kind the interface names. Which entry records it is the task's (AUDIT_ENTRY_POINTS).
+  "email_changed",
 ] as const;
 export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 
@@ -34,6 +36,8 @@ export type AuditEventDetail = {
   code?: string;
   chargedCents?: number;
   ledgerCents?: number;
+  from?: string;
+  to?: string;
 };
 
 export type AuditEvent =
@@ -147,6 +151,9 @@ export type MemberWeeks = {
   skipped: string[];
 };
 
+/** Issue 156: a member's email change waiting for its code, one per member. */
+export type EmailChange = { memberId: string; newEmail: string; codeHash: string; expiresAt: Date; attempts: number };
+
 /**
  * The core's view of stored data (DEC-010). `InMemoryRepository` is the permanent fake and the
  * test substrate; `PostgresRepository` is the real one; one contract suite runs against both.
@@ -164,6 +171,17 @@ export interface Repository extends SignInStore, RateLimitStore {
   findMemberById(id: string): Promise<Member | null>;
   saveAccount(input: AccountDetails): Promise<Member>;
   confirmMemberEmail(memberId: string, now: Date): Promise<void>;
+  /** Issue 156: the member's name, phone and language; the email is left alone. */
+  saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member>;
+  /** Issue 156: `expires_at = now + CODE_TTL_MS`, `attempts = 0`, replacing any row the member has. */
+  startEmailChange(input: { memberId: string; newEmail: string; codeHash: string; now: Date }): Promise<void>;
+  /** Issue 156: the member's row, even once expired; the caller compares `expiresAt`. Null when none. */
+  findEmailChange(memberId: string): Promise<EmailChange | null>;
+  /** Issue 156: adds one to `attempts` and returns the new count; 0 when no row exists. */
+  countEmailChangeAttempt(memberId: string): Promise<number>;
+  /** Issue 156: the new address becomes the member's email, `email_confirmed_at = now`, and the row is deleted. */
+  applyEmailChange(memberId: string, now: Date): Promise<Member>;
+  dropEmailChange(memberId: string): Promise<void>;
   findProductByName(name: string): Promise<ProductWithOptions | null>;
   setMemberSquareCustomer(memberId: string, customerId: string): Promise<void>;
   findActiveSubscription(memberId: string, productId: string): Promise<{ id: string } | null>;

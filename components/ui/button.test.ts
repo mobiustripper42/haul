@@ -85,6 +85,15 @@ describe("AC8 — Button with href", () => {
   });
 });
 
+// Issue 156: "Keep the old email" drops the pending change, so it posts; a submit button takes the back arrow too.
+describe("AC14 (issue 156) — Button's button form, back", () => {
+  it("AC14: a submit Button with back gets back-link straight after the kind, as the link does, and no back attribute", () => {
+    expect(normalMarkup(render({ kind: "quiet", type: "submit", back: true, flush: true }, "Keep the old email"))).toBe(
+      normalMarkup('<button type="submit" class="btn-quiet back-link btn-flush">Keep the old email</button>'),
+    );
+  });
+});
+
 // Issue 77: the link form's `current`. The fill's colour is read in a browser, e2e/supper-club.spec.ts.
 describe("AC5 (issue 77) — Button's link form, current", () => {
   it('AC5: current adds aria-current="page" to the link, keeping its kind and href', () => {

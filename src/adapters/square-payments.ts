@@ -207,6 +207,15 @@ export class SquarePayments implements PaymentsPort {
     if (!reply.ok) throw errorFor(reply);
   }
 
+  /** Square's `UpdateCustomer` again: moves a customer to `email`, the match key (`docs/SPEC.md` §7.6). */
+  async setCustomerEmail(input: { customerId: string; email: string }): Promise<void> {
+    checkPaymentsInput("setCustomerEmail", input);
+    const reply = await this.request("PUT", `/customers/${encodeURIComponent(input.customerId)}`, {
+      email_address: input.email,
+    });
+    if (!reply.ok) throw errorFor(reply);
+  }
+
   /**
    * Square's `ListPayments` from `since` at this location, following the cursor until a COMPLETED
    * payment carries `referenceId`: the rule `charge` has for paid, so a FAILED attempt never confirms a signup.

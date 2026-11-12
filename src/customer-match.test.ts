@@ -33,6 +33,9 @@ function scriptedPayments(directory: Customer[]): { payments: PaymentsPort; sear
       throw new Error("matchCustomer has no business charging");
     },
     async setCustomerReference() {},
+    async setCustomerEmail() {
+      throw new Error("matchCustomer has no business changing a customer's email");
+    },
     async findPaymentByReference() {
       throw new Error("matchCustomer has no business looking up a payment");
     },

@@ -31,7 +31,10 @@ export async function CodeStep({
   verify,
   resend,
   backHref,
+  back,
   invalid,
+  invalidText,
+  notice,
   sent,
   hint,
   resendEmail,
@@ -42,7 +45,13 @@ export async function CodeStep({
   verify: FormAction;
   resend: FormAction;
   backHref: string;
+  /** Replaces the back link, for a caller whose way back posts. */
+  back?: ReactNode;
   invalid: boolean;
+  /** The wrong-code line, already translated, in place of sign-in's. */
+  invalidText?: string;
+  /** Another notice, after the wrong-code one: a refusal from somewhere else, the wait notice. */
+  notice?: ReactNode;
   sent: boolean;
   hint?: string;
   resendEmail?: string;
@@ -50,15 +59,18 @@ export async function CodeStep({
   const t = await getTranslator();
   return (
     <>
-      <p>
-        <Button kind="quiet" href={backHref} back flush>
-          {t("signIn.differentEmail")}
-        </Button>
-      </p>
+      {back ?? (
+        <p>
+          <Button kind="quiet" href={backHref} back flush>
+            {t("signIn.differentEmail")}
+          </Button>
+        </p>
+      )}
       <Heading>{heading}</Heading>
       <p className="text-ink-muted">{sentence}</p>
       {sent && !invalid && <Notice icon="check">{t("signIn.resent")}</Notice>}
-      {invalid && <Notice icon="alert">{t("signIn.invalidCode")}</Notice>}
+      {invalid && <Notice icon="alert">{invalidText ?? t("signIn.invalidCode")}</Notice>}
+      {notice}
       <form action={verify} className="flex flex-col gap-6">
         <Field label={t("signIn.codeLabel")} htmlFor="code">
           <Input

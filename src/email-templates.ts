@@ -5,11 +5,15 @@ import { PRIVACY_PATH, TERMS_PATH } from "./legal-documents.js";
 export type EmailTemplates = {
   signInCode: { code: string; minutes: number };
   signInLink: { link: string; minutes: number };
+  emailChangeCode: { code: string; minutes: number };
+  emailChanged: { email: string };
 };
 
 const KEYS = {
   signInCode: { subject: "email.signInCode.subject", body: "email.signInCode.body" },
   signInLink: { subject: "email.signInLink.subject", body: "email.signInLink.body" },
+  emailChangeCode: { subject: "details.codeEmail.subject", body: "details.codeEmail.body" },
+  emailChanged: { subject: "details.changedEmail.subject", body: "details.changedEmail.body" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey }>;
 
 /** The site's address and a path, with one slash between them whatever the address ends in. */

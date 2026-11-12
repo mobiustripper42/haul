@@ -38,6 +38,8 @@ export interface PaymentsPort {
     referenceId?: string;
   }): Promise<ChargeResult>;
   setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void>;
+  /** Issue 156: the customer's email, Haul's match key, set to `email`. */
+  setCustomerEmail(input: { customerId: string; email: string }): Promise<void>;
   findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null>;
 }
 
@@ -124,6 +126,10 @@ export function checkPaymentsInput(method: keyof PaymentsPort, input: object): v
       requireText("customerId", fields.customerId);
       requireText("referenceId", fields.referenceId);
       requireReference(fields.referenceId);
+      break;
+    case "setCustomerEmail":
+      requireText("customerId", fields.customerId);
+      requireText("email", fields.email);
       break;
     case "saveCard":
       requireText("customerId", fields.customerId);

@@ -65,11 +65,14 @@ const HISTORY = "History";
 const MENU = "Menu";
 const WEEKS_PATH = "/account/weeks";
 const HISTORY_PATH = "/account/history";
+// Issue 156, AC1: "Your details" after History, new copy typed here.
+const DETAILS = "Your details";
+const DETAILS_PATH = "/account/details";
 /** The account links, in order: the row's and the panel's. */
-const LINKS = [YOUR_MEAL, WEEKS, HISTORY];
+const LINKS = [YOUR_MEAL, WEEKS, HISTORY, DETAILS];
 
 type Account = "none" | "sign-in" | "sign-in-current";
-type Current = "admin" | "account" | "weeks" | "history";
+type Current = "admin" | "account" | "weeks" | "history" | "details";
 
 /** Components read as themselves; every other function component is called through, so what it draws is read too. */
 const KEPT = new Set<unknown>([Button, SiteBar, MenuButton]);
@@ -230,7 +233,7 @@ describe("AC5 (issue 136) — the Your meal link", () => {
   it("AC5: signed in as an admin, the buttons are Your meal, Upcoming weeks, History, Admin, Sign out, in that order", async () => {
     session.member = { role: "admin" };
     const { buttons } = await header("none");
-    expect(buttons.map((button) => button.props.href ?? button.props.children)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, ADMIN_PATH, SIGN_OUT]);
+    expect(buttons.map((button) => button.props.href ?? button.props.children)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH, ADMIN_PATH, SIGN_OUT]);
   });
 
   it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your meal is marked as the page showing', async (role) => {
@@ -255,6 +258,7 @@ describe("AC9 (issue 155) — the account nav", () => {
       expect.objectContaining({ kind: "secondary", href: ACCOUNT_PATH, children: YOUR_MEAL }),
       expect.objectContaining({ kind: "secondary", href: WEEKS_PATH, children: WEEKS }),
       expect.objectContaining({ kind: "secondary", href: HISTORY_PATH, children: HISTORY }),
+      expect.objectContaining({ kind: "secondary", href: DETAILS_PATH, children: DETAILS }),
     ]);
   });
 
@@ -273,7 +277,7 @@ describe("AC9 (issue 155) — the account nav", () => {
     const { buttons, panel } = await header("none");
     const links = (found: Buttons) => found.filter((button) => button.props.href !== undefined).map(({ props }) => [props.kind, props.href]);
     expect(links(panel.buttons)).toEqual(links(buttons));
-    expect(links(panel.buttons)).toHaveLength(4);
+    expect(links(panel.buttons)).toHaveLength(5);
   });
 
   it.each([
@@ -286,6 +290,27 @@ describe("AC9 (issue 155) — the account nav", () => {
     const { buttons, panel } = await header("none", current);
     for (const found of [buttons, panel.buttons]) {
       expect(found.filter((button) => button.props.current).map((button) => button.props.href)).toEqual([href]);
+    }
+  });
+});
+
+// Issue 156, AC1: Your details joins the account nav after History; the page passes current "details" (its own test).
+describe("AC1 (issue 156) — the Your details link", () => {
+  it.each(["member", "admin"] as const)('AC1: signed in as %s, "Your details" is a secondary link to /account/details straight after History, in the row and in the panel', async (role) => {
+    session.member = { role };
+    const { buttons, panel } = await header("none");
+    for (const found of [buttons, panel.buttons]) {
+      const hrefs = found.filter((button) => button.props.href !== undefined).map((button) => button.props.href);
+      expect(hrefs[hrefs.indexOf(HISTORY_PATH) + 1]).toBe(DETAILS_PATH);
+      expect(linkTo(found, DETAILS_PATH)?.props).toMatchObject({ kind: "secondary", href: DETAILS_PATH, children: DETAILS });
+    }
+  });
+
+  it('AC1: with current "details", Your details alone is marked as the page showing, in the row and in the panel', async () => {
+    session.member = { role: "member" };
+    const { buttons, panel } = await header("none", "details");
+    for (const found of [buttons, panel.buttons]) {
+      expect(found.filter((button) => button.props.current).map((button) => button.props.href)).toEqual([DETAILS_PATH]);
     }
   });
 });

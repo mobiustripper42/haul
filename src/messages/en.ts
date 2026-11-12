@@ -15,6 +15,7 @@ export const en = {
   "header.history": "History",
   "header.menu": "Menu",
   "header.account": "Account",
+  "header.details": "Your details",
   "account.title": "Your Supper Club",
   "account.active": "Active",
   "account.cancelled": "Cancelled",
@@ -268,6 +269,22 @@ export const en = {
     "We sent a 6-digit code to {email}. Enter it to confirm your email. It expires in {minutes} minutes.",
   "createAccount.confirm": "Confirm email",
   "createAccount.spam": "No email? Check your spam folder.",
+  "details.emailHelp":
+    "This is how you sign in. Changing it sends a 6-digit code to the new address, and it becomes your sign-in email once confirmed.",
+  "details.save": "Save",
+  "details.saved": "Saved. Your details are up to date.",
+  "details.keepOldEmail": "Keep the old email",
+  "details.codeTitle": "Check your new email",
+  "details.codeSent":
+    "We sent a 6-digit code to {email}. Enter it to confirm the change. Until then you sign in with the old address.",
+  "details.invalidCode": "That code didn't match, or it has expired. Check it and try again, or send a new code.",
+  "details.squareFailed": "We couldn't update your email just now. Try the code again in a minute.",
+  "details.codeEmail.subject": "Confirm your new email for Ohio City Farm",
+  "details.codeEmail.body":
+    "Your code is {code}. Enter it on the Your details page to confirm this address. It works for {minutes} minutes. If you didn't ask for this, ignore this email.",
+  "details.changedEmail.subject": "Your Ohio City Farm sign-in email was changed",
+  "details.changedEmail.body":
+    "The sign-in email for your Ohio City Farm account is now {email}. If you made this change, there is nothing to do. If you didn't, contact the farm.",
   "email.signInCode.subject": "Your OCF Member Portal sign-in code",
   "email.signInCode.body":
     "Your sign-in code is {code}.\n\nIt expires in {minutes} minutes. If you didn't ask for it, you can ignore this email.",
