@@ -86,10 +86,10 @@ export default async function YourDetails({
   async function form() {
     // The form refills only after a save that broke a rule: `error` names its fields.
     const failing = new Set(error === undefined || error === "invalid" || error === "square" ? [] : error.split(","));
-    const values =
-      failing.size > 0
-        ? readDraft(cookieStore.get(ACCOUNT_DRAFT_COOKIE)?.value)
-        : { firstName: member.firstName ?? "", lastName: member.lastName ?? "", email: member.email, phone: member.phone ?? "", language: member.language };
+    const stored = { firstName: member.firstName ?? "", lastName: member.lastName ?? "", email: member.email, phone: member.phone ?? "", language: member.language };
+    // The draft cookie can have expired by the time the page loads; the member's stored values stand in for it.
+    const draft = failing.size > 0 ? readDraft(cookieStore.get(ACCOUNT_DRAFT_COOKIE)?.value) : {};
+    const values = Object.keys(draft).length > 0 ? draft : stored;
     return (
       <>
         <Heading>{t("account.details")}</Heading>
@@ -99,7 +99,7 @@ export default async function YourDetails({
           <form action={saveDetails} noValidate className="flex flex-col gap-6">
             {await AccountFields({ values, failing, emailHelp: "details.emailHelp" })}
             <Button kind="primary" full type="submit">
-              {t("account.weeks.switchSave")}
+              {t("details.save")}
             </Button>
           </form>
         </Card>

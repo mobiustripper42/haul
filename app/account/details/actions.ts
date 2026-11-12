@@ -84,9 +84,11 @@ export async function confirmEmailChange(formData: FormData): Promise<void> {
   const repo = getRepository();
   const payments = getPayments();
   const now = new Date();
-  const result = await repo.withActor({ member: member.id }, (scoped) =>
-    verifyEmailChange(scoped, payments, member, textField(formData, "code"), { now }),
-  );
+  // Only the write is the member's own act: the claim, the checks and Square's call run outside any transaction.
+  const result = await verifyEmailChange(repo, payments, member, textField(formData, "code"), {
+    now,
+    scope: (run) => repo.withActor({ member: member.id }, run),
+  });
   if (!result.ok) redirect(`${ACCOUNT_DETAILS_PATH}?error=${result.reason}`);
 
   await recordEventAs(repo, { member: member.id }, { kind: "email_changed", memberId: member.id, detail: { from: result.from, to: result.to } });

@@ -21,22 +21,24 @@ export async function requestEmailChange(
   return holder && holder.id !== member.id ? { send: "nothing" } : { send: "code", code };
 }
 
+/** Runs the write in a repository of the caller's choosing, such as `withActor`'s scoped one. */
+export type ApplyScope = <T>(run: (repo: Repository) => Promise<T>) => Promise<T>;
+
 /**
  * Step two: the presented code. A guess is claimed first (atomic in the repository), so the sixth guess finds the
  * code dead, the right one included. The code must match and be unexpired, and the address must still be free;
  * only then Square's customer, and last the member. Every refusal but Square's is `invalid`, one value, so the page
  * never says whether an address has an account. A Square refusal leaves the pending change for another try.
- * The sign-in code's wrong-guess window is never touched.
+ * The sign-in code's wrong-guess window is never touched. `deps.scope` wraps only the final write (default: `repo`).
  */
 export async function verifyEmailChange(
   repo: Repository,
   payments: PaymentsPort,
   member: Member,
   code: string,
-  deps: { now: Date },
+  deps: { now: Date; scope?: ApplyScope },
 ): Promise<{ ok: true; from: string; to: string } | { ok: false; reason: "invalid" | "square" }> {
   const invalid = { ok: false, reason: "invalid" } as const;
-  if (!(await repo.findEmailChange(member.id))) return invalid;
   const attempts = await repo.countEmailChangeAttempt(member.id);
   if (attempts === 0 || attempts > MAX_ATTEMPTS) return invalid;
   // Read after the claim, so the row compared is the one the claim counted against.
@@ -52,11 +54,18 @@ export async function verifyEmailChange(
       return { ok: false, reason: "square" };
     }
   }
-  try {
-    await repo.applyEmailChange(member.id, deps.now);
-  } catch (error) {
-    if (error instanceof DuplicateEmailError) return invalid;
-    throw error;
-  }
+  // The claim, the checks and Square's call ran on `repo`; only the write runs in `scope`, so a caller's transaction is
+  // not held open across Square. A taken address is caught inside it, an ordinary outcome that leaves the transaction whole.
+  const scope: ApplyScope = deps.scope ?? ((run) => run(repo));
+  const applied = await scope(async (scoped) => {
+    try {
+      await scoped.applyEmailChange(member.id, deps.now);
+      return true;
+    } catch (error) {
+      if (error instanceof DuplicateEmailError) return false;
+      throw error;
+    }
+  });
+  if (!applied) return invalid;
   return { ok: true, from: member.email, to: change.newEmail };
 }

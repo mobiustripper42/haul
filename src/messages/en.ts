@@ -271,6 +271,7 @@ export const en = {
   "createAccount.spam": "No email? Check your spam folder.",
   "details.emailHelp":
     "This is how you sign in. Changing it sends a 6-digit code to the new address, and it becomes your sign-in email once confirmed.",
+  "details.save": "Save",
   "details.saved": "Saved. Your details are up to date.",
   "details.keepOldEmail": "Keep the old email",
   "details.codeTitle": "Check your new email",

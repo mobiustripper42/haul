@@ -275,6 +275,7 @@ export const es = {
   "createAccount.spam": "¿No le llegó el correo? Revise su carpeta de spam.",
   "details.emailHelp":
     "Así inicia sesión. Cambiarlo envía un código de 6 dígitos a la nueva dirección, y se convierte en su correo de inicio de sesión una vez confirmado.",
+  "details.save": "Guardar",
   "details.saved": "Guardado. Sus datos están al día.",
   "details.keepOldEmail": "Conservar el correo anterior",
   "details.codeTitle": "Revise su nuevo correo",

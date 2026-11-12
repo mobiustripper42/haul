@@ -269,25 +269,28 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * One statement: the pending row is deleted and its address becomes the member's email, confirmed at `now`. A
-   * unique violation is another member holding the address, raised as `DuplicateEmailError`.
+   * One statement: the pending row is deleted and its address becomes the member's email, confirmed at `now`. An
+   * address another member holds changes nothing and leaves the row, raised as `DuplicateEmailError`. Guarded in the
+   * statement rather than caught as a 23505, like `createMember`: a failed statement aborts a `withActor` transaction.
    */
   async applyEmailChange(memberId: string, now: Date): Promise<Member> {
-    try {
-      const { rows } = await this.db.query<MemberRow>(
-        `with change as (delete from email_changes where member_id = $1 returning new_email)
-         update members set email = change.new_email, email_confirmed_at = $2
-           from change
-          where members.id = $1
-         returning ${MEMBER_COLUMNS.split(", ").map((column) => `members.${column}`).join(", ")}`,
-        [memberId, now],
-      );
-      if (!rows[0]) throw new Error(`applyEmailChange: no pending change for member ${memberId}`);
-      return toMember(rows[0]);
-    } catch (error) {
-      if ((error as { code?: string }).code === "23505") throw new DuplicateEmailError("the new email");
-      throw error;
-    }
+    const { rows } = await this.db.query<MemberRow>(
+      `with change as (select new_email from email_changes where member_id = $1),
+            applied as (
+              update members set email = change.new_email, email_confirmed_at = $2
+                from change
+               where members.id = $1
+                 and not exists (select 1 from members other where other.email = change.new_email and other.id <> $1)
+              returning ${MEMBER_COLUMNS.split(", ").map((column) => `members.${column}`).join(", ")}
+            ),
+            dropped as (delete from email_changes where member_id = $1 and exists (select 1 from applied))
+       select * from applied`,
+      [memberId, now],
+    );
+    if (rows[0]) return toMember(rows[0]);
+    const pending = await this.findEmailChange(memberId);
+    if (!pending) throw new Error(`applyEmailChange: no pending change for member ${memberId}`);
+    throw new DuplicateEmailError(pending.newEmail);
   }
 
   async dropEmailChange(memberId: string): Promise<void> {
