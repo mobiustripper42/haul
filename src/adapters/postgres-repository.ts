@@ -1,6 +1,7 @@
 import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
+import type { Menu, MenuInput } from "../menus.js";
 import {
   SignupRefusedError,
   type Actor,
@@ -66,6 +67,7 @@ type OptionRow = {
   option_type_id: string;
   option_type_name: string;
   option_type_position: number;
+  option_type_menu_texts: boolean;
   option_id: string | null;
   option_name: string | null;
   price_cents: number | null;
@@ -310,6 +312,7 @@ export class PostgresRepository implements Repository {
 
     const { rows } = await this.db.query<OptionRow>(
       `select t.id as option_type_id, t.name as option_type_name, t.position as option_type_position,
+              t.menu_texts as option_type_menu_texts,
               o.id as option_id, o.name as option_name, o.price_cents, o.position as option_position
          from option_types t
          left join options o on o.option_type_id = t.id
@@ -321,7 +324,13 @@ export class PostgresRepository implements Repository {
     for (const r of rows) {
       let type = optionTypes.at(-1);
       if (type?.id !== r.option_type_id) {
-        type = { id: r.option_type_id, name: r.option_type_name, position: r.option_type_position, options: [] };
+        type = {
+          id: r.option_type_id,
+          name: r.option_type_name,
+          position: r.option_type_position,
+          menuTexts: r.option_type_menu_texts,
+          options: [],
+        };
         optionTypes.push(type);
       }
       if (r.option_id !== null) {
@@ -713,6 +722,91 @@ export class PostgresRepository implements Repository {
         where product_id = $1 and week_of = $2::date and closed_at is null and note is null and first_day is null and last_day is null`,
       [productId, weekOf],
     );
+  }
+
+  /** The menus (all, or the one with `id`) with their texts keyed by option id, newest `updated_at` first. */
+  private async readMenus(id: string | null): Promise<Menu[]> {
+    const { rows } = await this.db.query<{ id: string; name: string; updated_at: Date; texts: Record<string, string> }>(
+      `select m.id, m.name, m.updated_at,
+              coalesce(jsonb_object_agg(t.option_id, t.text) filter (where t.option_id is not null), '{}'::jsonb) as texts
+         from menus m
+         left join menu_texts t on t.menu_id = m.id
+        where $1::uuid is null or m.id = $1::uuid
+        group by m.id
+        order by m.updated_at desc, m.id`,
+      [id],
+    );
+    return rows.map((row) => ({ id: row.id, name: row.name, texts: row.texts, updatedAt: row.updated_at }));
+  }
+
+  /** Issue 140: every menu, newest `updated_at` first. */
+  async listMenus(): Promise<Menu[]> {
+    return this.readMenus(null);
+  }
+
+  async findMenu(id: string): Promise<Menu | null> {
+    if (!UUID_SHAPE.test(id)) return null;
+    return (await this.readMenus(id))[0] ?? null;
+  }
+
+  /** The menu row and a row per text, in one transaction. */
+  async createMenu(input: MenuInput): Promise<Menu> {
+    if (!this.scoped) return this.withActor(null, (repo) => repo.createMenu(input));
+    const { rows } = await this.db.query<{ id: string }>("insert into menus (name) values ($1) returning id", [input.name]);
+    const id = rows[0]?.id;
+    if (id === undefined) throw new Error("createMenu: the insert returned no id");
+    await this.insertMenuTexts(id, input.texts);
+    const menu = await this.findMenu(id);
+    if (!menu) throw new Error("createMenu: the menu vanished after the insert");
+    return menu;
+  }
+
+  /** Replaces the name and the texts whole, in one transaction; null, writing nothing, for an unknown id. */
+  async saveMenu(id: string, input: MenuInput): Promise<Menu | null> {
+    if (!UUID_SHAPE.test(id)) return null;
+    if (!this.scoped) return this.withActor(null, (repo) => repo.saveMenu(id, input));
+    const { rowCount } = await this.db.query("update menus set name = $2, updated_at = now() where id = $1", [id, input.name]);
+    if (rowCount !== 1) return null;
+    await this.db.query("delete from menu_texts where menu_id = $1", [id]);
+    await this.insertMenuTexts(id, input.texts);
+    return this.findMenu(id);
+  }
+
+  private async insertMenuTexts(menuId: string, texts: Record<string, string>): Promise<void> {
+    const entries = Object.entries(texts);
+    if (entries.length === 0) return;
+    await this.db.query("insert into menu_texts (menu_id, option_id, text) select $1, o, t from unnest($2::uuid[], $3::text[]) as x(o, t)", [
+      menuId,
+      entries.map(([optionId]) => optionId),
+      entries.map(([, text]) => text),
+    ]);
+  }
+
+  /** Week key → menu id, for the product's weeks from `from` on. */
+  async listWeekMenus(productId: string, from: string): Promise<Map<string, string>> {
+    if (!UUID_SHAPE.test(productId)) return new Map();
+    const { rows } = await this.db.query<{ week_of: string; menu_id: string }>(
+      `select to_char(week_of, 'YYYY-MM-DD') as week_of, menu_id from week_menus where product_id = $1 and week_of >= $2::date`,
+      [productId, from],
+    );
+    return new Map(rows.map((row) => [row.week_of, row.menu_id]));
+  }
+
+  /** An upsert on product and week; null deletes the row. False, writing nothing, for a menu that is not there. */
+  async assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean> {
+    if (!UUID_SHAPE.test(productId)) return false;
+    if (menuId === null) {
+      await this.db.query("delete from week_menus where product_id = $1 and week_of = $2::date", [productId, weekOf]);
+      return true;
+    }
+    if (!UUID_SHAPE.test(menuId)) return false;
+    const { rowCount } = await this.db.query(
+      `insert into week_menus (product_id, week_of, menu_id)
+       select $1, $2::date, m.id from menus m where m.id = $3
+       on conflict (product_id, week_of) do update set menu_id = excluded.menu_id`,
+      [productId, weekOf, menuId],
+    );
+    return rowCount === 1;
   }
 
   /**

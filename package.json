@@ -20,6 +20,7 @@
     "db:seed:account-weeks": "tsx db/seed.ts account-weeks",
     "db:seed:details": "tsx db/seed.ts details",
     "db:seed:members": "tsx db/seed.ts members",
+    "db:seed:menus": "tsx db/seed.ts menus",
     "db:seed:pickup-weeks": "tsx db/seed.ts pickup-weeks",
     "db:seed:subscribers": "tsx db/seed.ts subscribers",
     "db:seed:supper-club": "tsx db/seed.ts supper-club",

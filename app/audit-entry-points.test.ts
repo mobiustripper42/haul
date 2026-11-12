@@ -40,7 +40,7 @@ describe("AC12 — the check on the real repo", () => {
 
 const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
 
-describe("AC13 — the list is exactly these twenty-nine entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these thirty-two entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
@@ -86,6 +86,10 @@ describe("AC13 — the list is exactly these twenty-nine entries, and issue 56's
         "app/account/details/actions.ts#confirmEmailChange": { records: ["email_changed"] },
         "app/account/details/actions.ts#resendEmailChange": { records: ["rate_limit_refusal"] },
         "app/account/details/actions.ts#keepOldEmail": AUDIT_ENTRY_POINTS["app/account/details/actions.ts#keepOldEmail"] ?? { none: "an entry for keepOldEmail" },
+        // Issue 140: the menu library's actions and a week's menu write rows the audit trigger records, and record no event.
+        "app/admin/menus/actions.ts#createMenu": { none: "writes menus and menu_texts; audited by trigger" },
+        "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },
+        "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
       }),
     );
   });

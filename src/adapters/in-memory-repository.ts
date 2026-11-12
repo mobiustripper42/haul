@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
+import type { Menu, MenuInput } from "../menus.js";
 import {
   SignupRefusedError,
   type Actor,
@@ -76,6 +77,10 @@ export class InMemoryRepository implements Repository {
   private readonly products: ProductWithOptions[] = [];
   /** `<product id>|<week_of>` → the changed week. Replaced, never mutated, like the maps above. */
   private readonly pickupWeeks = new Map<string, ChangedWeek>();
+  /** Issue 140: menu id → the menu. Replaced, never mutated, like the maps above. */
+  private readonly menus = new Map<string, Menu>();
+  /** Issue 140: `<product id>|<week_of>` → the menu on that week. */
+  private readonly weekMenus = new Map<string, string>();
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
   private readonly recorded: RecordedEvent[] = [];
@@ -193,6 +198,7 @@ export class InMemoryRepository implements Repository {
         .map((type) => ({
           ...type,
           id: randomUUID(),
+          menuTexts: type.menuTexts ?? false,
           options: type.options.map((option) => ({ ...option, id: randomUUID() })).sort(byPositionThenName),
         }))
         .sort(byPositionThenName),
@@ -404,6 +410,50 @@ export class InMemoryRepository implements Repository {
     if (existing) await this.savePickupWeek(productId, { ...existing, closedAt: null, note: null });
   }
 
+  /** Every menu, newest `updatedAt` first. */
+  async listMenus(): Promise<Menu[]> {
+    return [...this.menus.values()].sort((a, b) => b.updatedAt.getTime() - a.updatedAt.getTime()).map(copyMenu);
+  }
+
+  async findMenu(id: string): Promise<Menu | null> {
+    const menu = this.menus.get(id);
+    return menu ? copyMenu(menu) : null;
+  }
+
+  async createMenu(input: MenuInput): Promise<Menu> {
+    const menu: Menu = { id: randomUUID(), name: input.name, texts: { ...input.texts }, updatedAt: new Date() };
+    this.menus.set(menu.id, menu);
+    return copyMenu(menu);
+  }
+
+  /** Replaces the name and the texts whole; null, writing nothing, for an unknown id. */
+  async saveMenu(id: string, input: MenuInput): Promise<Menu | null> {
+    if (!this.menus.has(id)) return null;
+    const menu: Menu = { id, name: input.name, texts: { ...input.texts }, updatedAt: new Date() };
+    this.menus.set(id, menu);
+    return copyMenu(menu);
+  }
+
+  async listWeekMenus(productId: string, from: string): Promise<Map<string, string>> {
+    const prefix = `${productId}|`;
+    const found = new Map<string, string>();
+    for (const [key, menuId] of this.weekMenus) {
+      const weekOf = key.slice(prefix.length);
+      if (key.startsWith(prefix) && weekOf >= from) found.set(weekOf, menuId);
+    }
+    return found;
+  }
+
+  async assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean> {
+    if (menuId === null) {
+      this.weekMenus.delete(weekKey(productId, weekOf));
+      return true;
+    }
+    if (!this.menus.has(menuId)) return false;
+    this.weekMenus.set(weekKey(productId, weekOf), menuId);
+    return true;
+  }
+
   async listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]> {
     return this.creditsOfWeek(productId, weekOf).map((credit) => ({
       id: credit.id,
@@ -574,6 +624,8 @@ export class InMemoryRepository implements Repository {
     const weekCredits = new Map(this.weekCredits);
     const pickupWeeks = new Map(this.pickupWeeks);
     const emailChanges = new Map(this.emailChanges);
+    const menus = new Map(this.menus);
+    const weekMenus = new Map(this.weekMenus);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
 
@@ -595,6 +647,10 @@ export class InMemoryRepository implements Repository {
       for (const [key, week] of pickupWeeks) this.pickupWeeks.set(key, week);
       this.emailChanges.clear();
       for (const [id, change] of emailChanges) this.emailChanges.set(id, change);
+      this.menus.clear();
+      for (const [id, menu] of menus) this.menus.set(id, menu);
+      this.weekMenus.clear();
+      for (const [key, menuId] of weekMenus) this.weekMenus.set(key, menuId);
       this.signIn.restore(signIn);
       this.recorded.splice(0, this.recorded.length, ...recorded);
       throw error;
@@ -697,6 +753,8 @@ const setKey = (set: StoredSet): [string, [string, string][]] => [set.fromWeek, 
 const weekKey = (productId: string, weekOf: string): string => `${productId}|${weekOf}`;
 
 const copyWeek = (week: ChangedWeek): ChangedWeek => ({ ...week, closedAt: week.closedAt && new Date(week.closedAt) });
+
+const copyMenu = (menu: Menu): Menu => ({ ...menu, texts: { ...menu.texts }, updatedAt: new Date(menu.updatedAt) });
 
 /** The order `findProductByName` promises for option types and options. */
 const byPositionThenName = (a: { position: number; name: string }, b: { position: number; name: string }): number =>
