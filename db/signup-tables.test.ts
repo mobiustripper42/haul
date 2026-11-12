@@ -106,7 +106,41 @@ describe.skipIf(!up)(`issue 56 — the signup tables in <test db>_signup_tables$
     });
 
     it("AC7: any other status fails a check", async () => {
-      await expect(subscription("cancelled")).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      await expect(subscription("paused")).rejects.toMatchObject({ code: CHECK_VIOLATION });
+    });
+
+    // Issue 139: a cancel is status 'cancelled' and the time of it, `cancelled_at`, set exactly when cancelled.
+    describe("issue 139 — cancelled, and cancelled_at", () => {
+      const withCancelledAt = async (status: string, cancelledAt: string | null): Promise<string> =>
+        id(
+          (
+            await pool.query(
+              `insert into subscriptions (member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents, cancelled_at)
+               values ($1, $2, $3, 'I agree.', now(), 5000, 5000, $4) returning id`,
+              [memberId, productId, status, cancelledAt],
+            )
+          ).rows,
+        );
+
+      it("Data shapes: status 'cancelled' with the time of the cancel is accepted, and cancelled_at holds that time", async () => {
+        const subscriptionId = await withCancelledAt("cancelled", "2026-11-20T15:00:00.000Z");
+        const { rows } = await pool.query<{ cancelled_at: Date }>("select cancelled_at from subscriptions where id = $1", [subscriptionId]);
+        expect(rows).toEqual([{ cancelled_at: new Date("2026-11-20T15:00:00.000Z") }]);
+      });
+
+      it("Data shapes: a subscription made with no cancelled_at has it null", async () => {
+        const subscriptionId = await subscription("active");
+        const { rows } = await pool.query("select cancelled_at from subscriptions where id = $1", [subscriptionId]);
+        expect(rows).toEqual([{ cancelled_at: null }]);
+      });
+
+      it("Data shapes: status 'cancelled' with cancelled_at null fails a check", async () => {
+        await expect(withCancelledAt("cancelled", null)).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      });
+
+      it.each(["pending", "active"])("Data shapes: status %j with cancelled_at set fails a check", async (status) => {
+        await expect(withCancelledAt(status, "2026-11-20T15:00:00.000Z")).rejects.toMatchObject({ code: CHECK_VIOLATION });
+      });
     });
 
     it("AC11: a second pending row for one member and product is refused", async () => {

@@ -5,6 +5,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type MemberSubscription,
   type MemberWeeks,
   type PendingSignup,
   type PendingSignupInput,
@@ -494,9 +495,25 @@ export class PostgresRepository implements Repository {
   }
 
   async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
+    return (await this.findSubscriptionOf(memberId, productId, ["active"]))?.confirmation ?? null;
+  }
+
+  async findMemberSubscription(memberId: string, productId: string): Promise<MemberSubscription | null> {
+    const found = await this.findSubscriptionOf(memberId, productId, ["active", "cancelled"]);
+    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt };
+  }
+
+  /** The member's newest subscription to the product with one of `statuses` and a paid row: its signup details, status and cancel time. */
+  private async findSubscriptionOf(
+    memberId: string,
+    productId: string,
+    statuses: ("active" | "cancelled")[],
+  ): Promise<{ confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null } | null> {
     if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
     const found = await this.db.query<{
       id: string;
+      status: "active" | "cancelled";
+      cancelled_at: Date | null;
       pickup_date: string;
       charged_date: string;
       first_charge_cents: number;
@@ -504,33 +521,43 @@ export class PostgresRepository implements Repository {
       first_day: string | null;
       last_day: string | null;
     }>(
-      `select s.id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, ${clevelandDay("l.paid_at")} as charged_date,
+      `select s.id, s.status, s.cancelled_at, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, ${clevelandDay("l.paid_at")} as charged_date,
               s.first_charge_cents, s.weekly_cents,
               to_char(w.first_day, 'YYYY-MM-DD') as first_day, to_char(w.last_day, 'YYYY-MM-DD') as last_day
          from subscriptions s
          join ledger l on l.subscription_id = s.id
          left join pickup_weeks w on w.product_id = s.product_id and w.week_of = l.pickup_date
-        where s.member_id = $1 and s.product_id = $2 and s.status = 'active' and l.paid_at is not null
+        where s.member_id = $1 and s.product_id = $2 and s.status = any($3::text[]) and l.paid_at is not null
         order by s.created_at desc, l.pickup_date
         limit 1`,
-      [memberId, productId],
+      [memberId, productId, statuses],
     );
     const row = found.rows[0];
     if (!row) return null;
     const week = pickupWeek(row.pickup_date, { weekOf: row.pickup_date, closedAt: null, note: null, firstDay: row.first_day, lastDay: row.last_day });
     const newest = (await this.optionsOf([row.id])).get(row.id);
     return {
-      subscriptionId: row.id,
-      pickupDate: row.pickup_date,
-      firstDay: week.firstDay,
-      lastDay: week.lastDay,
-      chargedDate: row.charged_date,
-      firstChargeCents: row.first_charge_cents,
-      weeklyCents: row.weekly_cents,
-      options: newest?.options ?? [],
-      optionsFromWeek: newest?.fromWeek ?? "",
-      choices: newest?.choices ?? {},
+      confirmation: {
+        subscriptionId: row.id,
+        pickupDate: row.pickup_date,
+        firstDay: week.firstDay,
+        lastDay: week.lastDay,
+        chargedDate: row.charged_date,
+        firstChargeCents: row.first_charge_cents,
+        weeklyCents: row.weekly_cents,
+        options: newest?.options ?? [],
+        optionsFromWeek: newest?.fromWeek ?? "",
+        choices: newest?.choices ?? {},
+      },
+      status: row.status,
+      cancelledAt: row.cancelled_at,
     };
+  }
+
+  async cancelSubscription(subscriptionId: string, now: Date): Promise<boolean> {
+    if (!UUID_SHAPE.test(subscriptionId)) return false;
+    const { rowCount } = await this.db.query("update subscriptions set status = 'cancelled', cancelled_at = $2 where id = $1 and status = 'active'", [subscriptionId, now]);
+    return rowCount === 1;
   }
 
   async listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]> {
@@ -794,9 +821,9 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * The active subscriptions to the product, each with its member and the date its first paid row was paid, in
-   * Cleveland. A subscription with no paid row is left out: only a paid row makes one active. Stable by the date
-   * joined, then by id.
+   * The active and cancelled subscriptions to the product, each with its member and the date its first paid row was
+   * paid, in Cleveland. A subscription with no paid row is left out: only a paid row makes one active. `refundOwed`
+   * is a cancelled subscription holding a week credit not yet spent. Stable by the date joined, then by id.
    */
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     if (!UUID_SHAPE.test(productId)) return [];
@@ -807,16 +834,20 @@ export class PostgresRepository implements Repository {
       email: string;
       phone: string | null;
       joined: string;
+      status: "active" | "cancelled";
+      refund_owed: boolean;
     }>(
       `select s.id, m.first_name, m.last_name, m.email, m.phone,
-              ${clevelandDay("paid.first_paid_at")} as joined
+              ${clevelandDay("paid.first_paid_at")} as joined, s.status,
+              (s.status = 'cancelled'
+                and exists (select 1 from week_credits c where c.subscription_id = s.id and c.spent_on is null)) as refund_owed
          from subscriptions s
          join members m on m.id = s.member_id
          join lateral (
            select min(l.paid_at) as first_paid_at from ledger l
             where l.subscription_id = s.id and l.status = 'paid' and l.paid_at is not null
          ) paid on paid.first_paid_at is not null
-        where s.product_id = $1 and s.status = 'active'
+        where s.product_id = $1 and s.status in ('active', 'cancelled')
         order by paid.first_paid_at, s.id`,
       [productId],
     );
@@ -829,6 +860,8 @@ export class PostgresRepository implements Repository {
       phone: row.phone,
       options: options.get(row.id)?.options ?? [],
       joinedDate: row.joined,
+      status: row.status,
+      refundOwed: row.refund_owed,
     }));
   }
 

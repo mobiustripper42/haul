@@ -29,10 +29,17 @@ export type HistoryRow = {
  * The Upcoming rows for the listed weeks, with each unspent week credit on the later week it lands on: the first
  * listed week after the one it was granted for that is open, has no paid row, is not skipped and carries no week
  * credit yet (a skipped week does not use one, DEC-032). Week credits land in date order, one to a week; one with
- * no such week shows on none.
+ * no such week shows on none. For a `cancelled` subscription (issue 139) only the weeks still to be made stay: the
+ * rows whose marker is `paid`, each with no button. Nothing more is charged, so a Coming, Skipped or Week credit week
+ * is left out, and so is a week closed after it was paid, which holds a week credit and is no pickup.
  */
-export function upcomingRows(weeks: AdminWeek[], member: MemberWeeks, product: ProductWithOptions): UpcomingRow[] {
+export function upcomingRows(weeks: AdminWeek[], member: MemberWeeks, product: ProductWithOptions, cancelled = false): UpcomingRow[] {
   const paid = new Set(member.paid.map((row) => row.weekOf));
+  if (cancelled) {
+    return weeks
+      .filter((week) => week.closedAt === null && paid.has(week.weekOf))
+      .map((week) => ({ week, marker: "paid", closedPaid: false, chargeDate: null, action: null }));
+  }
   const skipped = new Set(member.skipped);
   const landed = new Set<string>();
   const grantedFor = member.weekCredits.map((credit) => credit.grantedForWeek).sort();
@@ -52,6 +59,18 @@ export function upcomingRows(weeks: AdminWeek[], member: MemberWeeks, product: P
     if (landed.has(week.weekOf)) return { week, marker: "weekCredit", closedPaid: false, chargeDate: null, action };
     return { week, marker: "coming", closedPaid: false, chargeDate: cutoffDate(product, week.weekOf), action };
   });
+}
+
+/**
+ * The member's last pickup (issue 139), the latest row whose marker is `paid`: still to come (`passed` false) when it
+ * is an Upcoming row, passed when it is a History row; null when neither list has one. A week closed after it was paid
+ * holds a week credit and is no pickup, in either list.
+ */
+export function lastPickup(rows: UpcomingRow[], history: HistoryRow[]): { week: AdminWeek; passed: boolean } | null {
+  const upcoming = rows.filter((row) => row.marker === "paid").at(-1);
+  if (upcoming) return { week: upcoming.week, passed: false };
+  const past = history.filter((row) => row.marker === "paid").reduce<HistoryRow | null>((latest, row) => (latest === null || row.week.weekOf > latest.week.weekOf ? row : latest), null);
+  return past && { week: past.week, passed: true };
 }
 
 /**

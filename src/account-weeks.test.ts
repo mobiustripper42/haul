@@ -3,7 +3,7 @@
 // (src/pickup-week.test.ts); what each row says on screen is each page's test. Only `weekOf` and `closedAt` decide a
 // row here, and the product's cutoff a Coming week's charge date; the rest of each week is carried along.
 import { describe, expect, it } from "vitest";
-import { historyRows, upcomingRows, type HistoryRow, type UpcomingRow } from "./account-weeks.js";
+import { historyRows, lastPickup, upcomingRows, type HistoryRow, type UpcomingRow } from "./account-weeks.js";
 import { pickupWeek, type AdminWeek } from "./pickup-week.js";
 import type { MemberWeeks } from "./ports/repository.js";
 import type { ProductWithOptions } from "./products.js";
@@ -245,5 +245,59 @@ describe("AC7 (issue 137) — historyRows: a skipped week", () => {
   it("AC7: a past week both closed and skipped is No meal, Closed, at 0: closed wins", () => {
     const closed = week(JAN_17, { closed: true });
     expect(historyRows([closed], skipping(member([JAN_3]), [JAN_17]), JAN_3)).toEqual([{ week: closed, marker: "noMeal", amountCents: 0, line: "closed" }]);
+  });
+});
+
+// Issue 139: a cancelled subscription's Upcoming weeks keep only its paid rows, with no button: the one rule, owned here.
+// The pages check one case through it (app/account/weeks/page.test.ts).
+describe("AC5 (issue 139) — upcomingRows for a cancelled subscription", () => {
+  it("AC5: only the paid weeks are listed, each Paid with no button; coming, skipped and closed weeks are left out", () => {
+    const weeks = [week(FEB_7), week(FEB_14, { closed: true }), week(FEB_21), week(FEB_28), week(MAR_7)];
+    const ledger = skipping(member([FEB_7, FEB_14, MAR_7]), [FEB_28]);
+    expect(upcomingRows(weeks, ledger, PRODUCT, true)).toEqual([
+      { week: week(FEB_7), marker: "paid", closedPaid: false, chargeDate: null, action: null },
+      { week: week(MAR_7), marker: "paid", closedPaid: false, chargeDate: null, action: null },
+    ]);
+  });
+
+  it("AC4: an unused week credit lands on no week: the week it would have been made is not listed", () => {
+    const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21)];
+    const ledger = member([FEB_7, FEB_21], [FEB_7]);
+    expect(markers(upcomingRows(weeks, ledger, PRODUCT, true))).toEqual([[FEB_21, "paid"]]);
+  });
+});
+
+// Issue 139: the last pickup, the one home account home, /account/cancel and the admin confirm read it from.
+describe("issue 139 — lastPickup", () => {
+  const JAN_17 = "2027-01-17";
+  const JAN_24 = "2027-01-24";
+  const JAN_31 = "2027-01-31";
+  /** History as pastWeeks lists it, newest first. */
+  const history = (weeks: AdminWeek[], ledger: MemberWeeks): HistoryRow[] => historyRows(weeks, ledger, "2027-01-03");
+
+  it("AC5: the latest paid Upcoming week is the last pickup, still to come", () => {
+    const ledger = member(["2027-01-03", FEB_7, FEB_21]);
+    const rows = upcomingRows([week(FEB_7), week(FEB_14), week(FEB_21), week(FEB_28)], ledger, PRODUCT);
+    expect(lastPickup(rows, history([week(JAN_31), week(JAN_24)], ledger))).toEqual({ week: week(FEB_21), passed: false });
+  });
+
+  it("AC5: with no paid Upcoming week, the latest paid History week is the last pickup, passed, though History lists it newest first", () => {
+    const ledger = member([JAN_17, JAN_24]);
+    const rows = upcomingRows([week(FEB_7), week(FEB_14)], ledger, PRODUCT);
+    expect(lastPickup(rows, history([week(JAN_31), week(JAN_24), week(JAN_17)], ledger))).toEqual({ week: week(JAN_24), passed: true });
+  });
+
+  it("AC5: a week closed after it was paid holds a week credit and is no pickup, in Upcoming weeks or in History", () => {
+    const ledger = member([JAN_17, JAN_24, FEB_7, FEB_14]);
+    const upcoming = upcomingRows([week(FEB_7), week(FEB_14, { closed: true })], ledger, PRODUCT);
+    expect(lastPickup(upcoming, [])).toEqual({ week: week(FEB_7), passed: false });
+    const past = history([week(JAN_24, { closed: true }), week(JAN_17)], ledger);
+    expect(lastPickup(upcomingRows([week(FEB_21)], member([]), PRODUCT), past)).toEqual({ week: week(JAN_17), passed: true });
+  });
+
+  it("AC5: with no paid week in either list there is no last pickup; guards the cases above", () => {
+    const ledger = skipping(member([JAN_17], [JAN_17]), [FEB_14]);
+    const upcoming = upcomingRows([week(FEB_7), week(FEB_14)], ledger, PRODUCT);
+    expect(lastPickup(upcoming, history([week(JAN_17, { closed: true })], ledger))).toBeNull();
   });
 });

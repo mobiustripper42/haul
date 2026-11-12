@@ -310,6 +310,15 @@
     @apply bg-success;
   }
 
+  /* The information alert (issue 139): Badge's closed look, an outline on the page's tint, with a teal circled "i". */
+  .notice-info {
+    --notice-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 7.5h.01'/%3E%3C/svg%3E");
+    @apply border-border bg-surface-alt;
+  }
+  .notice-info::before {
+    @apply bg-teal;
+  }
+
   /* A quiet button set flush: its text lines up with the card's edge, and its tap area adds no height. */
   .btn-flush {
     @apply -ml-2 -my-3;

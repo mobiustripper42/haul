@@ -201,3 +201,15 @@ describe("AC9 (issue 155) — the header on History", () => {
     expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "history" }));
   });
 });
+
+// Issue 139: a cancel touches no ledger row, so History is unchanged after it; here one case goes through the page.
+describe("AC2, AC5 (issue 139) — History after a cancel", () => {
+  it("AC2: a cancelled member's History still lists each week charged before the cancel, Paid", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-24", "paid", 4500);
+    expect(await services.repo.cancelSubscription(subscriptionId, NOW)).toBe(true);
+    const { rows } = await render();
+    expect(rows.map((row) => row[0])).toEqual([titleOf("2027-01-24"), titleOf(JAN_3)]);
+    expect(rows.map((row) => row.at(-1))).toEqual(["Paid", "Paid"]);
+  });
+});

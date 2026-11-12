@@ -1,13 +1,18 @@
 import type { ReactNode } from "react";
 
+/** An outline on the page's tint, so it reads without colour. */
+const OUTLINE = "border border-border bg-surface-alt text-ink";
+
 const LOOKS = {
   success: "bg-sage-soft text-success",
-  /** A week an admin closed. An outline on the page's tint, so it reads without colour. */
-  closed: "border border-border bg-surface-alt text-ink",
+  /** A week an admin closed. */
+  closed: OUTLINE,
   /** A week whose pickup days moved. */
   moved: "bg-teal text-surface",
   /** A week that carries an admin's note. */
   note: "bg-sage-soft text-teal",
+  /** A cancelled subscription: the closed look, with no icon. */
+  cancelled: OUTLINE,
 } as const;
 
 export type BadgeKind = keyof typeof LOOKS;
@@ -24,7 +29,7 @@ const ICONS: Partial<Record<BadgeKind, ReactNode>> = {
   note: <path d="M5 4h14v12H9l-4 4z" />,
 };
 
-/** A status word on a tint, with an icon for the kinds that have one. Tasks 2.3 and 2.7 add the kinds for a declined card and a cancelled one. */
+/** A status word on a tint, with an icon for the kinds that have one. Task 2.3 adds the kind for a declined card. */
 export function Badge({ kind, children }: { kind: BadgeKind; children: ReactNode }) {
   const icon = ICONS[kind];
   return (

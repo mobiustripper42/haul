@@ -158,6 +158,62 @@ describe.skipIf(!up)(`AC11 — the account-weeks seed against <test db>_account_
     expect(await picksOf("week_credit_options", "week_credit_id", credits[0]?.id ?? "")).toEqual(picks);
   });
 
+  // Issue 139, AC15: the seed also makes cancel.member@example.com, the plain cancel to weeks.member's cancel with a
+  // refund owed, and every run puts both back to active, so a cancel tried by hand is undone by running it again.
+  describe("issue 139 — the two members a cancel is tried on", () => {
+    const EMAILS = [EMAIL, "cancel.member@example.com"];
+
+    /** Each of the two members' Supper Club subscriptions, by email: its status and cancelled_at. */
+    const subscriptionsOf = async () =>
+      (
+        await pool.query<{ email: string; status: string; cancelled_at: Date | null }>(
+          `select m.email, s.status, s.cancelled_at
+             from subscriptions s
+             join members m on m.id = s.member_id
+             join products p on p.id = s.product_id
+            where m.email = any($1) and p.name = 'Supper Club'
+            order by m.email`,
+          [EMAILS],
+        )
+      ).rows;
+
+    it("AC15: a run leaves weeks.member@example.com and cancel.member@example.com each with one active subscription, cancelled_at null", async () => {
+      await seeded();
+      expect(await subscriptionsOf()).toEqual([
+        { email: "cancel.member@example.com", status: "active", cancelled_at: null },
+        { email: EMAIL, status: "active", cancelled_at: null },
+      ]);
+    });
+
+    it("AC15: a run after both were cancelled puts both back to active, cancelled_at null", async () => {
+      await seeded();
+      await pool.query(
+        `update subscriptions s set status = 'cancelled', cancelled_at = now()
+           from members m where m.id = s.member_id and m.email = any($1)`,
+        [EMAILS],
+      );
+      await runSeed("account-weeks", url);
+      expect(await subscriptionsOf()).toEqual([
+        { email: "cancel.member@example.com", status: "active", cancelled_at: null },
+        { email: EMAIL, status: "active", cancelled_at: null },
+      ]);
+    });
+
+    it("AC15: cancel.member@example.com holds no week credit, though the latest past week was closed after it was paid", async () => {
+      const { latestPast } = await seeded();
+      expect(latestPast).toBeDefined();
+      const members = (await pool.query("select id from members where email = 'cancel.member@example.com'")).rows;
+      expect(members).toHaveLength(1);
+      const { rows } = await pool.query(
+        `select c.id from week_credits c
+           join subscriptions s on s.id = c.subscription_id
+           join members m on m.id = s.member_id
+          where m.email = 'cancel.member@example.com'`,
+      );
+      expect(rows).toEqual([]);
+    });
+  });
+
   // The seed reads the clock with `new Date()` and runs in this process (`runSeed`), so these fix it with Date-only
   // fake timers, as the page tests do, at instants chosen so the weeks fall out by hand. The Supper Club's cutoff is
   // the end of the Monday before each Sunday, and an ordinary week's last pickup day the Monday after it.

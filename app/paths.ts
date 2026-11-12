@@ -25,3 +25,11 @@ export const ADMIN_PATH = "/admin";
 
 /** The admin's weeks screen: close, reopen and move pickup weeks. */
 export const ADMIN_WEEKS_PATH = "/admin/weeks";
+
+/** A member's cancel confirm (issue 139). */
+export const ACCOUNT_CANCEL_PATH = "/account/cancel";
+
+/** The admin's page for one subscription (issue 139). */
+export const adminMemberPath = (subscriptionId: string): string => `/admin/members/${encodeURIComponent(subscriptionId)}`;
+/** The value of the admin member page's `cancel` query that opens the confirm card, as Switch opens its pickers. */
+export const ADMIN_MEMBER_CANCEL_OPEN = "1";

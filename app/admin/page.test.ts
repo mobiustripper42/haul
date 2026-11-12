@@ -217,6 +217,26 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     });
   });
 
+  // Issue 139: the list reads active and cancelled subscriptions, each with its own status (listSubscribers', in
+  // src/adapters/signup-contract.ts); the list's own markup is app/admin/members-list.test.ts's. One case here.
+  describe("AC9 (issue 139) — cancelled subscriptions on the list", () => {
+    it("AC9: the list gets a cancelled subscription beside an active one, each with its status, and the words for Active, Cancelled and Refund owed", async () => {
+      const product = addSupperClub(services.repo);
+      const rosa = await pendingSignup(services.repo, product, ROSA, PICKS);
+      await services.repo.confirmSignupRows(rosa.ledgerId, `PAYMENT_${rosa.ledgerId}`, rosa.amountCents, new Date("2026-12-01T17:00:00.000Z"));
+      await activeSubscriber(services.repo, product, CHIDI, PICKS);
+      await services.repo.cancelSubscription(rosa.subscriptionId, new Date("2027-02-03T17:00:00.000Z"));
+
+      const { list, rows } = await page();
+
+      expect(Object.fromEntries(rows.map((row) => [row.email, row.status]))).toEqual({ "rosa@example.com": "cancelled", "chidi@example.com": "active" });
+      expect(list?.props.text).toMatchObject({
+        status: { active: en["account.active"], cancelled: en["account.cancelled"] },
+        refundOwed: en["admin.members.refundOwed"],
+      });
+    });
+  });
+
   describe("AC11 — Joined on the screen", () => {
     it("AC11: a payment at 22:30 on December 1 in Cleveland, already December 2 in UTC, reads Dec 1", async () => {
       const product = addSupperClub(services.repo);

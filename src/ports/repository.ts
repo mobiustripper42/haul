@@ -99,8 +99,16 @@ export type SignupConfirmation = {
 };
 
 /**
- * One active subscription and who holds it, for the admin's list and spreadsheet. `options` is in option-type
- * position order, and `joinedDate` is `YYYY-MM-DD` in America/New_York. A member holding two has two rows (DEC-026).
+ * Issue 139: the member's subscription as the account pages read it, active or cancelled. `status` is the one home
+ * for "is it cancelled"; `cancelledAt` is null while it is active.
+ */
+export type MemberSubscription = SignupConfirmation & { status: "active" | "cancelled"; cancelledAt: Date | null };
+
+/**
+ * One active or cancelled subscription and who holds it, for the admin's list and spreadsheet. `options` is in
+ * option-type position order, and `joinedDate` is `YYYY-MM-DD` in America/New_York. A member holding two has two rows
+ * (DEC-026). `refundOwed` (issue 139) is a cancelled subscription holding a week credit not yet spent: the farm
+ * refunds it by hand in Square (DEC-005).
  */
 export type Subscriber = {
   subscriptionId: string;
@@ -110,6 +118,8 @@ export type Subscriber = {
   phone: string | null;
   options: { typeName: string; optionName: string }[];
   joinedDate: string;
+  status: "active" | "cancelled";
+  refundOwed: boolean;
 };
 
 /**
@@ -183,6 +193,16 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   confirmSignupRows(ledgerId: string, paymentId: string, amountCents: number, now: Date): Promise<"confirmed" | "already" | "mismatch">;
   findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null>;
+  /**
+   * Issue 139: the member's newest subscription to the product that is `active` or `cancelled` and has a paid ledger
+   * row; null when there is none.
+   */
+  findMemberSubscription(memberId: string, productId: string): Promise<MemberSubscription | null>;
+  /**
+   * Issue 139: sets `status = 'cancelled'` and `cancelled_at = now`. False, writing nothing, when the subscription is
+   * not `active`, an unknown id and a string that isn't a UUID included. The ledger is not touched.
+   */
+  cancelSubscription(subscriptionId: string, now: Date): Promise<boolean>;
   /** The product's changed weeks with `weekOf >= from`, ordered by `weekOf`. */
   listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]>;
   /** Saves a week's row: an upsert on product and week that replaces every column. */
@@ -214,7 +234,7 @@ export interface Repository extends SignInStore, RateLimitStore {
    * one transaction. "unchanged", writing nothing, when the stored sets would end as they were. It checks no cutoff.
    */
   switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged">;
-  /** A product's active subscriptions only, unsorted by contract beyond being stable. */
+  /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**

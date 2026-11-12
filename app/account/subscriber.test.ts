@@ -99,3 +99,35 @@ describe("AC1 (issue 155) — requireSubscriber", () => {
     });
   });
 });
+
+// Issue 139: the gate lets in the member's newest subscription, active or cancelled, so a paid week still to come stays
+// in reach after a cancel. Which subscription is newest is findMemberSubscription's (src/adapters/signup-contract.ts).
+describe("issue 139 — requireSubscriber after a cancel", () => {
+  /** The member's signup, paid. */
+  const paid = async (member: Member): Promise<PendingSignup> => {
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    return rows;
+  };
+
+  it("AC5: a member whose subscription is cancelled is let in, with that subscription, cancelled", async () => {
+    const member = await ada();
+    const rows = await paid(member);
+    await services.repo.cancelSubscription(rows.subscriptionId, NOW);
+    signIn(member);
+    expect(await requireSubscriber()).toMatchObject({
+      member: { id: member.id },
+      confirmation: { subscriptionId: rows.subscriptionId, status: "cancelled", cancelledAt: NOW },
+    });
+  });
+
+  it("AC7: after a cancel and a new signup, paid, the gate gives the new subscription, active", async () => {
+    const member = await ada();
+    const first = await paid(member);
+    expect(await services.repo.cancelSubscription(first.subscriptionId, NOW)).toBe(true);
+    vi.setSystemTime(new Date(NOW.getTime() + 60_000));
+    const again = await paid(member);
+    signIn(member);
+    expect(await requireSubscriber()).toMatchObject({ confirmation: { subscriptionId: again.subscriptionId, status: "active", cancelledAt: null } });
+  });
+});

@@ -8,7 +8,7 @@ export async function GET(): Promise<Response> {
   await requireAdmin();
   const repo = getRepository();
   const product = await requireSupperClub(repo);
-  const subscribers = await repo.listSubscribers(product.id);
+  const subscribers = (await repo.listSubscribers(product.id)).filter((subscriber) => subscriber.status === "active");
   return new Response(
     subscribersCsv(
       product.optionTypes.map((type) => type.name),

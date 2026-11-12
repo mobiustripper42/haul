@@ -6,6 +6,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type MemberSubscription,
   type MemberWeeks,
   type PendingSignup,
   type PendingSignupInput,
@@ -24,7 +25,9 @@ type StoredSubscription = {
   id: string;
   memberId: string;
   productId: string;
-  status: "pending" | "active";
+  status: "pending" | "active" | "cancelled";
+  /** The time of the cancel; set exactly when `status` is `cancelled`. */
+  cancelledAt: Date | null;
   squareCardId: string | null;
   consentText: string;
   consentAt: Date;
@@ -191,6 +194,7 @@ export class InMemoryRepository implements Repository {
       memberId: input.memberId,
       productId: input.productId,
       status: "pending",
+      cancelledAt: null,
       squareCardId: existing?.squareCardId ?? null,
       consentText: input.consentText,
       consentAt: new Date(input.consentAt),
@@ -267,25 +271,50 @@ export class InMemoryRepository implements Repository {
   }
 
   async findSignupConfirmation(memberId: string, productId: string): Promise<SignupConfirmation | null> {
+    return this.findSubscriptionOf(memberId, productId, ["active"])?.confirmation ?? null;
+  }
+
+  async findMemberSubscription(memberId: string, productId: string): Promise<MemberSubscription | null> {
+    const found = this.findSubscriptionOf(memberId, productId, ["active", "cancelled"]);
+    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt };
+  }
+
+  /** The member's newest subscription to the product with one of `statuses` and a paid row: its signup details, status and cancel time. */
+  private findSubscriptionOf(
+    memberId: string,
+    productId: string,
+    statuses: ("active" | "cancelled")[],
+  ): { confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null } | null {
     const subscription = [...this.subscriptions.values()]
-      .filter((s) => s.memberId === memberId && s.productId === productId && s.status === "active")
+      .filter((s) => s.memberId === memberId && s.productId === productId && (statuses as string[]).includes(s.status))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
     const ledger = subscription && this.ledgerOf(subscription.id);
     if (!subscription || !ledger?.paidAt) return null;
     const week = pickupWeek(ledger.pickupDate, this.pickupWeeks.get(weekKey(subscription.productId, ledger.pickupDate)) ?? null);
     const newest = this.newestSet(subscription);
     return {
-      subscriptionId: subscription.id,
-      pickupDate: ledger.pickupDate,
-      firstDay: week.firstDay,
-      lastDay: week.lastDay,
-      chargedDate: clevelandDate(ledger.paidAt),
-      firstChargeCents: subscription.firstChargeCents,
-      weeklyCents: subscription.weeklyCents,
-      options: this.optionsNamed(subscription, newest?.optionIds ?? {}),
-      optionsFromWeek: newest?.fromWeek ?? "",
-      choices: { ...newest?.optionIds },
+      confirmation: {
+        subscriptionId: subscription.id,
+        pickupDate: ledger.pickupDate,
+        firstDay: week.firstDay,
+        lastDay: week.lastDay,
+        chargedDate: clevelandDate(ledger.paidAt),
+        firstChargeCents: subscription.firstChargeCents,
+        weeklyCents: subscription.weeklyCents,
+        options: this.optionsNamed(subscription, newest?.optionIds ?? {}),
+        optionsFromWeek: newest?.fromWeek ?? "",
+        choices: { ...newest?.optionIds },
+      },
+      status: subscription.status as "active" | "cancelled",
+      cancelledAt: subscription.cancelledAt && new Date(subscription.cancelledAt),
     };
+  }
+
+  async cancelSubscription(subscriptionId: string, now: Date): Promise<boolean> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (subscription?.status !== "active") return false;
+    this.subscriptions.set(subscriptionId, { ...subscription, status: "cancelled", cancelledAt: new Date(now) });
+    return true;
   }
 
   async listChangedWeeks(productId: string, from: string): Promise<ChangedWeek[]> {
@@ -419,7 +448,7 @@ export class InMemoryRepository implements Repository {
 
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     return [...this.subscriptions.values()]
-      .filter((s) => s.productId === productId && s.status === "active")
+      .filter((s) => s.productId === productId && (s.status === "active" || s.status === "cancelled"))
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
       .flatMap((subscription) => {
         const member = this.members.get(subscription.memberId);
@@ -434,6 +463,8 @@ export class InMemoryRepository implements Repository {
             phone: member.phone,
             options: this.optionsNamed(subscription, this.newestSet(subscription)?.optionIds ?? {}),
             joinedDate: clevelandDate(paidAt),
+            status: subscription.status as "active" | "cancelled",
+            refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
           },
         ];
       });
@@ -520,6 +551,11 @@ export class InMemoryRepository implements Repository {
   /** The events recorded, in order, each with the actor it was recorded under; for tests. */
   events(): RecordedEvent[] {
     return this.recorded.map(copyEvent);
+  }
+
+  /** How many week credits the subscription holds that are not yet spent. */
+  private unspentCreditsOf(subscriptionId: string): number {
+    return [...this.weekCredits.values()].filter((credit) => credit.subscriptionId === subscriptionId && credit.spentOn === null).length;
   }
 
   /** The member's subscriptions to the product with `status`, oldest first. */

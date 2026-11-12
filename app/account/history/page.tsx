@@ -1,7 +1,7 @@
-import { historyRows, type HistoryRow } from "@core/account-weeks.js";
+import type { HistoryRow } from "@core/account-weeks.js";
 import { mealLabel } from "@core/member-list.js";
 import { formatUsdWhole } from "@core/money.js";
-import { listedWeekTitle, pastWeeks } from "@core/pickup-week.js";
+import { listedWeekTitle } from "@core/pickup-week.js";
 import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Heading } from "../../../components/ui/heading";
@@ -10,10 +10,10 @@ import { Shell } from "../../../components/ui/shell";
 import { WeekList } from "../../../components/ui/week-list";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
-import { getRepository } from "../../services";
 import { SiteHeader } from "../../site-header";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
+import { loadHistoryRows } from "../weeks/rows";
 
 export const generateMetadata = titled("account.history.title");
 
@@ -32,17 +32,11 @@ const LINES = {
  */
 export default async function History() {
   const { product, confirmation } = await requireSubscriber();
-  const repo = getRepository();
-  const [t, language, changed, ledger] = await Promise.all([
-    getTranslator(),
-    getLanguage(),
-    repo.listChangedWeeks(product.id, product.firstPickupDate),
-    repo.listMemberWeeks(confirmation.subscriptionId),
-  ]);
-  const weeks = pastWeeks(product, new Date(), changed, confirmation.pickupDate);
+  const [t, language, history] = await Promise.all([getTranslator(), getLanguage(), loadHistoryRows(product, confirmation.subscriptionId, confirmation.pickupDate, new Date())]);
+  const { rows: past, ledger } = history;
   // Each paid week shows the picks it was charged for: the set in effect for that week (issue 138), never the newest.
   const mealOf = new Map(ledger.paid.map((row) => [row.weekOf, mealLabel(row.options)]));
-  const rows = historyRows(weeks, ledger, confirmation.pickupDate).map((row) => {
+  const rows = past.map((row) => {
     const meal = mealOf.get(row.week.weekOf);
     return {
       id: row.week.weekOf,

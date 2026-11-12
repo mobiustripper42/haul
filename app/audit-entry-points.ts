@@ -29,6 +29,8 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/account/weeks/actions.ts#skipWeek": { none: "writes ledger; audited by trigger" },
   "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
   "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },
+  "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
+  "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
   "app/admin/weeks/actions.ts#closeWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
   "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
   "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
