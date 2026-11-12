@@ -29,7 +29,7 @@ export const en = {
   "account.cancel.skipInstead": "If you only need a break, skip the weeks instead.",
   "account.cancel.creditOne": "You have a week credit.",
   "account.cancel.creditMany": "You have {n} week credits.",
-  "account.cancel.refund": "The farm refunds it in Square after you cancel.",
+  "account.cancel.refund": "The farm refunds it in Square after you cancel. If you haven't heard from them in a week, contact the farm.",
   "account.cancel.confirm": "Yes, cancel my Supper Club",
   "account.cancel.skipWeeks": "Skip weeks instead",
   "account.nextPickup": "Next pickup: {week}",

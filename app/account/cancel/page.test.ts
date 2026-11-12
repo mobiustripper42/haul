@@ -181,15 +181,15 @@ describe("AC13 (issue 139) — the words and their order", () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-24");
     const { html, sentences } = await render();
-    expect(alertTexts(html)).toEqual(["You have a week credit. The farm refunds it in Square after you cancel."]);
-    expect(sentences.indexOf("You have a week credit. The farm refunds it in Square after you cancel.")).toBeLessThan(sentences.indexOf(CONFIRM));
+    expect(alertTexts(html)).toEqual(["You have a week credit. The farm refunds it in Square after you cancel. If you haven't heard from them in a week, contact the farm."]);
+    expect(sentences.indexOf("You have a week credit. The farm refunds it in Square after you cancel. If you haven't heard from them in a week, contact the farm.")).toBeLessThan(sentences.indexOf(CONFIRM));
   });
 
   it("AC4, AC13: with two, the Notice counts them", async () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-17");
     await weekCredit(subscriptionId, "2027-01-24");
-    expect(alertTexts((await render()).html)).toEqual(["You have 2 week credits. The farm refunds it in Square after you cancel."]);
+    expect(alertTexts((await render()).html)).toEqual(["You have 2 week credits. The farm refunds it in Square after you cancel. If you haven't heard from them in a week, contact the farm."]);
   });
 });
 

@@ -33,7 +33,7 @@ export const es = {
   "account.cancel.skipInstead": "Si solo necesita una pausa, omita las semanas.",
   "account.cancel.creditOne": "Tiene un crédito de semana.",
   "account.cancel.creditMany": "Tiene {n} créditos de semana.",
-  "account.cancel.refund": "La granja se lo reembolsa en Square después de que cancele.",
+  "account.cancel.refund": "La granja se lo reembolsa en Square después de que cancele. Si no sabe nada de ellos en una semana, comuníquese con la granja.",
   "account.cancel.confirm": "Sí, cancelar mi Supper Club",
   "account.cancel.skipWeeks": "Omitir semanas",
   "account.nextPickup": "Próxima recogida: {week}",
