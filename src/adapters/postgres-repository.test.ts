@@ -6,6 +6,7 @@ import type { Actor, PendingSignup } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
+import { BOX as SWITCH_BOX } from "./contract-helpers.js";
 import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
@@ -96,23 +97,13 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     );
   };
 
-  /** The subscription's picks replaced, one option per option type, as a switch would. */
-  const setSubscriptionOptions = async (subscriptionId: string, optionIds: string[]): Promise<void> => {
-    await pool.query("delete from subscription_options where subscription_id = $1", [subscriptionId]);
-    await pool.query(
-      `insert into subscription_options (subscription_id, option_type_id, option_id)
-       select $1, o.option_type_id, o.id from options o where o.id = any ($2::uuid[])`,
-      [subscriptionId, optionIds],
-    );
-  };
-
   /** Issue 155: a week credit spent on a later week's ledger row, as the charge run (2.2b) will spend one. */
   const spendWeekCredit = async (weekCreditId: string, ledgerId: string): Promise<void> => {
     const { rowCount } = await pool.query("update week_credits set spent_on = $2 where id = $1", [weekCreditId, ledgerId]);
     expect(rowCount, `no week credit ${weekCreditId} to spend`).toBe(1);
   };
 
-  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, setSubscriptionOptions, spendWeekCredit, truncateAll);
+  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
 
   // Issue 149: Postgres only. Closing and confirming take the product row's lock, so whichever lands second sees
   // the other; and a week credit's options go with it.
@@ -182,6 +173,37 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
       expect(await options()).toBe(2);
       await repo.reopenPickupWeek(product.id, "2027-01-24");
       expect(await options()).toBe(0);
+    });
+  });
+
+  // Issue 138: Postgres only. "Writes nothing" is more than the stored sets ending as they were, which the contract
+  // reads: a delete and a reinsert of the same rows ends there too, and the audit trigger records both (DEC-019).
+  describe("issue 138 — an unchanged switch in the audit log", () => {
+    it('AC7: an "unchanged" save writes no row change to subscription_options or subscriptions', async () => {
+      await truncateAll();
+      const product = await addProduct(SWITCH_BOX);
+      const member = await repo.createMember({ email: "ada@example.com" });
+      const choices = Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+      const signup = await repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices,
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: "2027-01-03",
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: new Date("2027-01-01T15:00:00.000Z"),
+      });
+      expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, new Date("2027-01-01T15:00:05.000Z"))).toBe("confirmed");
+      const changes = async () =>
+        (
+          await pool.query<{ n: number }>(
+            "select count(*)::int as n from audit_log where table_name in ('subscription_options', 'subscriptions') and operation <> 'event'",
+          )
+        ).rows[0]?.n;
+      const before = await changes();
+      expect(await repo.withActor({ member: member.id }, (scoped) => scoped.switchPicks(signup.subscriptionId, choices, "2027-01-10", 4200))).toBe("unchanged");
+      expect(await changes()).toBe(before);
     });
   });
 
@@ -516,7 +538,7 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
       return { productId: product.rows[0]?.id, typeId: type.rows[0]?.id, standard: await option("Standard", 1), vegan: await option("Vegan", 2) };
     };
 
-    /** An active subscription with its pick, and no ledger rows yet. */
+    /** An active subscription with its pick from its first week, December 6, and no ledger rows yet. */
     const addActive = async (memberId: string, productId: string | undefined, typeId: string | undefined, optionId: string | undefined): Promise<string> => {
       const { rows } = await pool.query<{ id: string }>(
         `insert into subscriptions (member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents)
@@ -524,7 +546,11 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
         [memberId, productId],
       );
       const id = rows[0]?.id as string;
-      await pool.query("insert into subscription_options (subscription_id, option_type_id, option_id) values ($1, $2, $3)", [id, typeId, optionId]);
+      await pool.query("insert into subscription_options (subscription_id, option_type_id, option_id, from_week) values ($1, $2, $3, '2026-12-06')", [
+        id,
+        typeId,
+        optionId,
+      ]);
       return id;
     };
 

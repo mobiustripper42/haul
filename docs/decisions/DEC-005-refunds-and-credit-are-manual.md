@@ -11,7 +11,7 @@ claims:
     target: "§7.2"
   - kind: "spec"
     target: "§7.3"
-superseded_by: DEC-032
+superseded_by: DEC-033
 revisit_if: "Manual refunds become a weekly chore, skip-to-credit leaves future ideas, or members want a credit worth a different box than they paid for"
 ---
 

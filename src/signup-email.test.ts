@@ -43,6 +43,8 @@ const confirmation = (over: Partial<SignupConfirmation> = {}): SignupConfirmatio
     { typeName: "How many people?", optionName: "2 people" },
     { typeName: "Which menu?", optionName: "Standard" },
   ],
+  optionsFromWeek: "2027-01-03",
+  choices: { size: "two", menu: "standard" },
   ...over,
 });
 

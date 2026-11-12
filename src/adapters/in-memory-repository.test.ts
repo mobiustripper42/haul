@@ -20,7 +20,6 @@ runWeekCreditContract(
   async () => (weekRepo = new InMemoryRepository()),
   async (input) => weekRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => weekRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
-  (subscriptionId, optionIds) => weekRepo.setSubscriptionOptions(subscriptionId, optionIds),
   (weekCreditId, ledgerId) => weekRepo.spendWeekCredit(weekCreditId, ledgerId),
 );
 

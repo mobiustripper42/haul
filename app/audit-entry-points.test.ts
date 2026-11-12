@@ -75,6 +75,8 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         // Issue 137: a member's Skip and Unskip write a ledger row the audit trigger records, and record no event.
         "app/account/weeks/actions.ts#skipWeek": { none: "writes ledger; audited by trigger" },
         "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
+        // Issue 138: a member's switch writes subscription_options and the weekly price, which the trigger records.
+        "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },
       }),
     );
   });

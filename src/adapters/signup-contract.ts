@@ -300,6 +300,8 @@ export function runSignupContract(
             { typeName: "How many people?", optionName: "3–4 people" },
             { typeName: "Which menu?", optionName: "Vegan" },
           ],
+          optionsFromWeek: "2027-01-03",
+          choices: picks(1, 1),
         });
       });
 
@@ -727,6 +729,58 @@ export function runSignupContract(
       ])("AC11: a payment on %s is joined on Cleveland's date", async (_what, paidAt, joined) => {
         await activeOn(product, memberId, new Date(paidAt));
         expect((await repo.listSubscribers(product.id))[0]?.joinedDate).toBe(joined);
+      });
+    });
+
+    // Issue 138: picks are dated sets. A signup writes its one set at its ledger row's week; the account pages and the
+    // admin's list read the newest set, whatever week it starts from. Which set a given week reads is the week credit
+    // contract's (src/adapters/week-credit-contract.ts), where switchPicks' own rules are too.
+    describe("issue 138 — the signup's set, and the newest set", () => {
+      const THREE_FOUR_VEGAN = [
+        { typeName: "How many people?", optionName: "3–4 people" },
+        { typeName: "Which menu?", optionName: "Vegan" },
+      ];
+
+      /** Ada's signup for January 3 at the first size and menu, charged. */
+      const confirmed = async (): Promise<PendingSignup> => {
+        const signup = await saved();
+        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT)).toBe("confirmed");
+        return signup;
+      };
+
+      it("AC4: a signup saved again for an earlier week writes its picks at that week: its paid week reads them, and they start from it", async () => {
+        await saved({ pickupDate: "2027-01-10" });
+        const signup = await saved({ pickupDate: "2027-01-03", choices: picks(1, 0) });
+        expect(await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT)).toBe("confirmed");
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([
+          {
+            weekOf: "2027-01-03",
+            amountCents: 5000,
+            options: [
+              { typeName: "How many people?", optionName: "3–4 people" },
+              { typeName: "Which menu?", optionName: "Standard" },
+            ],
+          },
+        ]);
+        expect((await repo.findSignupConfirmation(memberId, product.id))?.optionsFromWeek).toBe("2027-01-03");
+      });
+
+      it("AC5: after a switch, findSignupConfirmation gives the newest set, its from_week, its choices and the new weekly price, though the set starts at a week to come", async () => {
+        const signup = await confirmed();
+        expect(await repo.switchPicks(signup.subscriptionId, picks(1, 1), "2027-01-24", 8000)).toBe("switched");
+        expect(await repo.findSignupConfirmation(memberId, product.id)).toMatchObject({
+          pickupDate: "2027-01-03",
+          weeklyCents: 8000,
+          options: THREE_FOUR_VEGAN,
+          optionsFromWeek: "2027-01-24",
+          choices: picks(1, 1),
+        });
+      });
+
+      it("AC5: after a switch, listSubscribers gives the subscription's newest set", async () => {
+        const signup = await confirmed();
+        await repo.switchPicks(signup.subscriptionId, picks(1, 1), "2027-01-24", 8000);
+        expect((await repo.listSubscribers(product.id)).map((row) => row.options)).toEqual([THREE_FOUR_VEGAN]);
       });
     });
   });

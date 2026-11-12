@@ -104,12 +104,14 @@ export async function seed(db: Client): Promise<void> {
       [id, memberId, productId, `I agree to a weekly charge of $${cents / 100} until I cancel.`, paidAt, cents],
     );
 
+    // The one set of picks, from the subscription's first ledger week, so every paid week reads it.
+    await db.query("delete from subscription_options where subscription_id = $1 and from_week <> $2::date", [id, firstPickup]);
     for (const option of picked) {
       await db.query(
-        `insert into subscription_options (subscription_id, option_type_id, option_id)
-         values ($1, $2, $3)
-         on conflict (subscription_id, option_type_id) do update set option_id = excluded.option_id`,
-        [id, option.type_id, option.id],
+        `insert into subscription_options (subscription_id, option_type_id, option_id, from_week)
+         values ($1, $2, $3, $4::date)
+         on conflict (subscription_id, option_type_id, from_week) do update set option_id = excluded.option_id`,
+        [id, option.type_id, option.id, firstPickup],
       );
     }
 

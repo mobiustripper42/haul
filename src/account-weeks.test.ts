@@ -35,7 +35,7 @@ const MAR_7 = "2027-03-07";
 
 /** A member's ledger: the weeks paid, at 4500 each unless given, and the weeks their unspent week credits were granted for. */
 const member = (paid: (string | [string, number])[], weekCredits: string[] = []): MemberWeeks => ({
-  paid: paid.map((row) => (typeof row === "string" ? { weekOf: row, amountCents: 4500 } : { weekOf: row[0], amountCents: row[1] })),
+  paid: paid.map((row) => (typeof row === "string" ? { weekOf: row, amountCents: 4500, options: [] } : { weekOf: row[0], amountCents: row[1], options: [] })),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
   skipped: [],
 });

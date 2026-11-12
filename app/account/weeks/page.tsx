@@ -1,9 +1,13 @@
 import type { ReactElement } from "react";
 import type { UpcomingRow } from "@core/account-weeks.js";
 import type { Language, Translator } from "@core/i18n.js";
+import { mealLabel, SEPARATOR } from "@core/member-list.js";
+import { formatUsdWhole } from "@core/money.js";
 import { formatPickupDate, listedWeekTitle } from "@core/pickup-week.js";
+import { switchWeek } from "@core/switch-meal.js";
 import { Badge } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
+import { ButtonRow } from "../../../components/ui/button-row";
 import { Card } from "../../../components/ui/card";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
@@ -11,15 +15,22 @@ import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { WeekList } from "../../../components/ui/week-list";
 import { getLanguage, getTranslator } from "../../language";
+import { MealPickers } from "../../meal-pickers";
 import { titled } from "../../page-title";
-import { ACCOUNT_WEEKS_CUTOFF_ERROR } from "../../paths";
+import { ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH } from "../../paths";
 import { SiteHeader } from "../../site-header";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
-import { skipWeek, unskipWeek } from "./actions";
+import { skipWeek, switchMeal, unskipWeek } from "./actions";
 import { loadUpcomingRows } from "./rows";
 
 export const generateMetadata = titled("account.weeks.title");
+
+/** The page's query: `error` is the Notice a refused request sends the member back with, `switch` opens the meal card's pickers. */
+type Query = { error?: string; switch?: string };
+
+/** Upcoming weeks with the meal card's pickers open. */
+const OPEN_SWITCH_PATH = `${ACCOUNT_WEEKS_PATH}?switch=1`;
 
 /** The one muted line under an Upcoming week's title. */
 function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
@@ -50,13 +61,16 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
 /**
  * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
  * week, each marked Paid, Closed, Week credit or Skipped, or coming with no badge, with a Skip or Unskip button before its cutoff
- * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with.
+ * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with. Above the weeks, the meal
+ * card (issue 138): the newest picks and the weekly price, and with `?switch=1` and a switch week listed, the pickers
+ * in a form posting that week to `switchMeal`.
  */
 export default async function UpcomingWeeks(): Promise<ReactElement>;
 // Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
-export default async function UpcomingWeeks(props: { searchParams?: Promise<{ error?: string }> }): Promise<ReactElement>;
-export default async function UpcomingWeeks({ searchParams }: { searchParams?: Promise<{ error?: string }> } = {}): Promise<ReactElement> {
+export default async function UpcomingWeeks(props: { searchParams?: Promise<Query> }): Promise<ReactElement>;
+export default async function UpcomingWeeks({ searchParams }: { searchParams?: Promise<Query> } = {}): Promise<ReactElement> {
   const subscribed = await requireSubscriber();
+  const { product, confirmation } = subscribed;
   const [t, language, upcoming, query] = await Promise.all([getTranslator(), getLanguage(), loadUpcomingRows(subscribed, new Date()), searchParams]);
   const rows = upcoming.map((row) => ({
     id: row.week.weekOf,
@@ -66,6 +80,13 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     action: actionOf(row, t, language),
   }));
 
+  // The new picks have not started yet while their set starts after the first listed week.
+  const firstWeek = upcoming[0]?.week.weekOf;
+  const startsAt = upcoming.find((row) => row.week.weekOf === confirmation.optionsFromWeek);
+  const notStarted = firstWeek !== undefined && startsAt !== undefined && startsAt.week.weekOf > firstWeek ? startsAt : null;
+  const switchesFrom = upcoming.find((row) => row.week.weekOf === switchWeek(upcoming));
+  const open = query?.switch === "1" && switchesFrom !== undefined;
+
   return (
     <>
       {await SiteHeader({ account: "none", current: "weeks" })}
@@ -74,6 +95,32 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
           <Heading>{t("account.weeks.title")}</Heading>
           <Hint>{t("account.weeks.intro")}</Hint>
           {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <Notice icon="alert">{t("account.weeks.cutoffPassed")}</Notice>}
+          <Card width="fill">
+            <Heading level={2}>{t("header.yourMeal")}</Heading>
+            <p>{[mealLabel(confirmation.options), t("supperClub.price", { price: formatUsdWhole(confirmation.weeklyCents) })].join(SEPARATOR)}</p>
+            {notStarted && <Hint>{t("account.weeks.switchFrom", { week: listedWeekTitle(t, notStarted.week, language) })}</Hint>}
+            {open ? (
+              <form action={switchMeal} className="flex flex-col gap-5">
+                <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
+                {MealPickers({ product, selected: confirmation.choices, t })}
+                <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
+                <ButtonRow>
+                  <Button kind="primary" type="submit">
+                    {t("account.weeks.switchSave")}
+                  </Button>
+                  <Button kind="secondary" href={ACCOUNT_WEEKS_PATH}>
+                    {t("account.weeks.switchCancel")}
+                  </Button>
+                </ButtonRow>
+              </form>
+            ) : (
+              switchesFrom !== undefined && (
+                <Button kind="secondary" href={OPEN_SWITCH_PATH}>
+                  {t("account.weeks.switch")}
+                </Button>
+              )
+            )}
+          </Card>
           <Card width="fill">
             <WeekList rows={rows} />
           </Card>

@@ -40,17 +40,18 @@ export default async function History() {
     repo.listMemberWeeks(confirmation.subscriptionId),
   ]);
   const weeks = pastWeeks(product, new Date(), changed, confirmation.pickupDate);
-  const paidWeeks = new Set(ledger.paid.map((row) => row.weekOf));
-  // The subscription's current picks: until 2.6 (switch) they are what every paid week was charged for. 2.6 must
-  // snapshot the picks per paid row, as `week_credit_options` does for a week credit, or History rewrites the past.
-  const meal = mealLabel(confirmation.options);
-  const rows = historyRows(weeks, ledger, confirmation.pickupDate).map((row) => ({
-    id: row.week.weekOf,
-    title: listedWeekTitle(t, row.week, language),
-    lines: [...(paidWeeks.has(row.week.weekOf) ? [meal] : []), t(LINES[row.line])],
-    amount: formatUsdWhole(row.amountCents ?? 0),
-    badge: <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
-  }));
+  // Each paid week shows the picks it was charged for: the set in effect for that week (issue 138), never the newest.
+  const mealOf = new Map(ledger.paid.map((row) => [row.weekOf, mealLabel(row.options)]));
+  const rows = historyRows(weeks, ledger, confirmation.pickupDate).map((row) => {
+    const meal = mealOf.get(row.week.weekOf);
+    return {
+      id: row.week.weekOf,
+      title: listedWeekTitle(t, row.week, language),
+      lines: [...(meal === undefined ? [] : [meal]), t(LINES[row.line])],
+      amount: formatUsdWhole(row.amountCents ?? 0),
+      badge: <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
+    };
+  });
 
   return (
     <>

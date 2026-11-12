@@ -92,6 +92,10 @@ export type SignupConfirmation = {
   firstChargeCents: number;
   weeklyCents: number;
   options: { typeName: string; optionName: string }[];
+  /** Issue 138: the `from_week` of the newest set of picks, `YYYY-MM-DD`; `options` is that set. */
+  optionsFromWeek: string;
+  /** Issue 138: the newest set of picks, option type id → option id. */
+  choices: Record<string, string>;
 };
 
 /**
@@ -127,7 +131,8 @@ export type WeekCredit = {
  * was granted for, and (issue 137) the Sunday keys of its `skipped` rows.
  */
 export type MemberWeeks = {
-  paid: { weekOf: string; amountCents: number }[];
+  /** Issue 138: `options` is the set of picks in effect for the week, in option-type position order. */
+  paid: { weekOf: string; amountCents: number; options: { typeName: string; optionName: string }[] }[];
   weekCredits: { grantedForWeek: string }[];
   skipped: string[];
 };
@@ -204,6 +209,11 @@ export interface Repository extends SignInStore, RateLimitStore {
   skipWeek(subscriptionId: string, weekOf: string): Promise<boolean>;
   /** Issue 137: deletes the subscription's row for the week only when its status is `skipped`; false otherwise. */
   unskipWeek(subscriptionId: string, weekOf: string): Promise<boolean>;
+  /**
+   * Issue 138: the subscription's picks from `fromWeek` on are `choices`, and its `weekly_cents` is `weeklyCents`, in
+   * one transaction. "unchanged", writing nothing, when the stored sets would end as they were. It checks no cutoff.
+   */
+  switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged">;
   /** A product's active subscriptions only, unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   recordEvent(event: AuditEvent): Promise<void>;
