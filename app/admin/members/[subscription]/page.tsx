@@ -55,9 +55,11 @@ export default async function AdminMember({
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           {await AdminNav({ current: "members" })}
-          <Button kind="quiet" href={ADMIN_PATH} back flush>
-            {t("admin.member.back")}
-          </Button>
+          <div className="flex">
+            <Button kind="quiet" href={ADMIN_PATH} back flush>
+              {t("admin.member.back")}
+            </Button>
+          </div>
           <div className="flex flex-wrap items-center gap-3">
             <Heading>{subscriberName(row)}</Heading>
             <SubscriptionStatus

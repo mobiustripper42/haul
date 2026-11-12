@@ -41,9 +41,11 @@ export default async function CancelSupperClub() {
       {await SiteHeader({ account: "none", current: "account" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          <Button kind="quiet" href={ACCOUNT_PATH} back flush>
-            {t("account.title")}
-          </Button>
+          <div className="flex">
+            <Button kind="quiet" href={ACCOUNT_PATH} back flush>
+              {t("account.title")}
+            </Button>
+          </div>
           <Heading>{t("account.cancel.title")}</Heading>
           <Card width="fill">
             <p>
@@ -55,8 +57,11 @@ export default async function CancelSupperClub() {
             </p>
             {credits > 0 && (
               <Notice icon="info">
-                <strong className="font-semibold text-teal">{credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}</strong>{" "}
-                {t("account.cancel.refund")}
+                {/* One span, so the bold lead and its sentence run on beside the icon, not as two flex columns. */}
+                <span>
+                  <strong className="font-semibold text-teal">{credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}</strong>{" "}
+                  {t("account.cancel.refund")}
+                </span>
               </Notice>
             )}
             <form action={cancelSubscription}>

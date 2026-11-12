@@ -33,8 +33,7 @@ export default async function Account() {
   const cancelled = confirmation.status === "cancelled";
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const now = new Date();
-  const { weeks } = await loadCalendar(getRepository(), now);
-  const next = cancelled ? null : nextPickup(weeks, confirmation.pickupDate);
+  const next = cancelled ? null : nextPickup((await loadCalendar(getRepository(), now)).weeks, confirmation.pickupDate);
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
   const badge = SUBSCRIPTION_BADGES[confirmation.status];
   const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
@@ -49,8 +48,11 @@ export default async function Account() {
           <Heading>{t("account.title")}</Heading>
           {cancelled && (
             <Notice icon="info">
-              <strong className="font-semibold text-teal">{t("account.cancelledNotice")}</strong>{" "}
-              {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+              {/* One span, so the bold lead and its sentences run on beside the icon, not as two flex columns. */}
+              <span>
+                <strong className="font-semibold text-teal">{t("account.cancelledNotice")}</strong>{" "}
+                {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+              </span>
             </Notice>
           )}
           <Card width="fill">

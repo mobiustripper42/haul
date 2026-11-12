@@ -16,7 +16,7 @@ export const SUBSCRIPTION_BADGES: Readonly<Record<"active" | "cancelled", { kind
  */
 export function SubscriptionStatus({ status, refundOwed, words }: { status: "active" | "cancelled"; refundOwed: boolean; words: { status: string; refundOwed: string } }) {
   return (
-    <span className="inline-flex flex-wrap items-center gap-2">
+    <span className="inline-flex shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
       <Badge kind={SUBSCRIPTION_BADGES[status].kind}>{words.status}</Badge>
       {refundOwed && <span className="text-small font-semibold text-ink">{words.refundOwed}</span>}
     </span>
