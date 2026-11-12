@@ -391,4 +391,28 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
       expect(textsOf(html)).not.toContain("Switch size or menu");
     }
   });
+
+  // Review route (@ui-reviewer): nothing more is charged, so neither the intro line, which says when a week is
+  // charged, nor the meal card's weekly price is shown.
+
+  /** Ada's subscription with February 7 paid, cancelled now; the page's markup. */
+  const renderCancelled = async (): Promise<string> => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-02-07", "paid", 4500);
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    return renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve({}) }));
+  };
+
+  it("AC5: the intro line, which says when a week is charged, is not shown", async () => {
+    const runs = textsOf(await renderCancelled());
+    expect(runs).toContain(t("account.weeks.title"));
+    expect(runs).not.toContain(t("account.weeks.intro"));
+  });
+
+  it("AC5: the meal card shows the meal without its weekly price", async () => {
+    const html = await renderCancelled();
+    // The meal card is the Card (a <section>) before the weeks card, which holds the list.
+    const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
+    expect(textsOf(card)).toEqual([t("header.yourMeal"), "3–4 people · Standard"]);
+  });
 });
