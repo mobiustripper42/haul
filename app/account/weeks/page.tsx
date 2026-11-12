@@ -17,7 +17,7 @@ import { WeekList } from "../../../components/ui/week-list";
 import { getLanguage, getTranslator } from "../../language";
 import { MealPickers } from "../../meal-pickers";
 import { titled } from "../../page-title";
-import { ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH } from "../../paths";
+import { ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH, ACCOUNT_WEEKS_SWITCH_OPEN } from "../../paths";
 import { SiteHeader } from "../../site-header";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
@@ -30,7 +30,7 @@ export const generateMetadata = titled("account.weeks.title");
 type Query = { error?: string; switch?: string };
 
 /** Upcoming weeks with the meal card's pickers open. */
-const OPEN_SWITCH_PATH = `${ACCOUNT_WEEKS_PATH}?switch=1`;
+const OPEN_SWITCH_PATH = `${ACCOUNT_WEEKS_PATH}?switch=${ACCOUNT_WEEKS_SWITCH_OPEN}`;
 
 /** The one muted line under an Upcoming week's title. */
 function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
@@ -84,8 +84,9 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
   const firstWeek = upcoming[0]?.week.weekOf;
   const startsAt = upcoming.find((row) => row.week.weekOf === confirmation.optionsFromWeek);
   const notStarted = firstWeek !== undefined && startsAt !== undefined && startsAt.week.weekOf > firstWeek ? startsAt : null;
-  const switchesFrom = upcoming.find((row) => row.week.weekOf === switchWeek(upcoming));
-  const open = query?.switch === "1" && switchesFrom !== undefined;
+  const switchOn = switchWeek(upcoming);
+  const switchesFrom = upcoming.find((row) => row.week.weekOf === switchOn);
+  const open = query?.switch === ACCOUNT_WEEKS_SWITCH_OPEN && switchesFrom !== undefined;
 
   return (
     <>

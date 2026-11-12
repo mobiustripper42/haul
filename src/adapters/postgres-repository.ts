@@ -14,6 +14,7 @@ import {
   type WeekCredit,
 } from "../ports/repository.js";
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
@@ -124,10 +125,6 @@ const inEffectFor = (weekExpr: string): string =>
 
 /** A `where` condition on `subscription_options so`: the row belongs to the subscription's newest set, whatever week it starts from. */
 const NEWEST_SET = `so.from_week = (select max(newest.from_week) from subscription_options newest where newest.subscription_id = so.subscription_id)`;
-
-/** The two sets of picks as one: the same option for every option type. */
-const sameChoices = (a: Record<string, string>, b: Record<string, string>): boolean =>
-  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([typeId, optionId]) => b[typeId] === optionId);
 
 /**
  * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the

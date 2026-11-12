@@ -15,6 +15,10 @@ export function switchWeek(rows: UpcomingRow[]): string | null {
   return row?.week.weekOf ?? null;
 }
 
+/** The two sets of picks as one: the same option for every option type. */
+export const sameChoices = (a: Record<string, string>, b: Record<string, string>): boolean =>
+  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([typeId, optionId]) => b[typeId] === optionId);
+
 /**
  * Each option type's choice (option type id → option id) from a switch form, keyed by the type ids as the form's
  * field names. Null for an option that is not the type's, a missing type, or two values for one type. Fields that

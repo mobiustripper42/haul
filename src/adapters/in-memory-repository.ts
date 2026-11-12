@@ -14,7 +14,8 @@ import {
   type Subscriber,
   type WeekCredit,
 } from "../ports/repository.js";
-import { clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -387,7 +388,7 @@ export class InMemoryRepository implements Repository {
   async switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged"> {
     const subscription = this.subscriptions.get(subscriptionId);
     if (!subscription) return "unchanged";
-    const before = this.setInEffect(subscriptionId, weekBefore(fromWeek));
+    const before = this.setInEffect(subscriptionId, addDays(fromWeek, -7));
     const kept = subscription.sets.filter((set) => set.fromWeek < fromWeek);
     const sets = before && sameChoices(before.optionIds, choices) ? kept : [...kept, { fromWeek, optionIds: { ...choices } }];
     if (JSON.stringify(sets.map(setKey)) === JSON.stringify(subscription.sets.map(setKey))) return "unchanged";
@@ -600,12 +601,6 @@ const copy = (member: Member): Member => ({
   createdAt: new Date(member.createdAt),
   emailConfirmedAt: member.emailConfirmedAt && new Date(member.emailConfirmedAt),
 });
-
-/** The Sunday a week before `weekOf`. */
-const weekBefore = (weekOf: string): string => new Date(Date.parse(`${weekOf}T00:00:00Z`) - 7 * 24 * 60 * 60_000).toISOString().slice(0, 10);
-
-const sameChoices = (a: Record<string, string>, b: Record<string, string>): boolean =>
-  Object.keys(a).length === Object.keys(b).length && Object.entries(a).every(([typeId, optionId]) => b[typeId] === optionId);
 
 /** A set as a comparable string: its week and its picks in type id order. */
 const setKey = (set: StoredSet): [string, [string, string][]] => [set.fromWeek, Object.entries(set.optionIds).sort(([a], [b]) => a.localeCompare(b))];

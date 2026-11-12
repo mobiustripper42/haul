@@ -3,7 +3,7 @@ schema: 1
 id: DEC-033
 title: "A week credit holds the picks in effect for the week it answers for"
 topic: "Data model"
-status: "draft"
+status: "active"
 date: "2026-11-12"
 ruling: "Picks are dated sets in subscription_options, and a week credit holds the set in effect for the week of the paid row it answers for, so a switch never changes what a week charged or a week credit is worth."
 claims:

@@ -41,7 +41,7 @@ function clevelandInstant(date: string, time: string): number {
   return instant;
 }
 
-const addDays = (date: string, days: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
+export const addDays = (date: string, days: number): string => new Date(Date.parse(`${date}T00:00:00Z`) + days * DAY_MS).toISOString().slice(0, 10);
 
 /**
  * A Sunday key and its changed row as a week: an ordinary week is its Sunday and the Monday after, a moved week
