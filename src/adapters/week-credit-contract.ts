@@ -576,5 +576,53 @@ export function runWeekCreditContract(
         });
       });
     });
+
+    // Issue 139: a cancel touches no ledger row, so a week charged before it is still made; and a refund is owed only
+    // for a week credit not spent. What a cancel writes, and refundOwed's other cases, are the signup contract's
+    // (src/adapters/signup-contract.ts).
+    describe("issue 139 — a cancelled subscription's weeks", () => {
+      const CANCELLED_AT = new Date("2027-01-19T15:00:00.000Z");
+
+      const refundOwedOf = async (subscriptionId: string) => (await repo.listSubscribers(product.id)).find((row) => row.subscriptionId === subscriptionId)?.refundOwed;
+
+      it("AC2: a week charged before the cancel stays a paid row, and stays in the week's paid count from listWeekCounts", async () => {
+        const signup = await paidFor(EARLIER);
+        await addLedgerRow(signup.subscriptionId, WEEK, "paid", 5000);
+        await paidFor(WEEK);
+        expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+        expect((await repo.listWeekCounts(product.id, WEEK)).get(WEEK)).toEqual({ paid: 2, weekCredits: 0 });
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid.map((row) => row.weekOf)).toEqual([EARLIER, WEEK]);
+      });
+
+      it("AC4: a cancelled subscription whose only week credit the charge run spent owes no refund", async () => {
+        const signup = await paidFor(WEEK);
+        await close(WEEK);
+        const [spent] = await credits(WEEK);
+        // NEXT's paid row, the charge the week credit is spent on; its id is read from the week credit closing NEXT grants.
+        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
+        await close(NEXT);
+        const [nextCredit] = await credits(NEXT);
+        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
+        await spendWeekCredit(spent.id, nextCredit.grantedFor);
+        // NEXT reopened: its own week credit is withdrawn, so the one spent on NEXT's charge is the subscription's only one.
+        await repo.reopenPickupWeek(product.id, NEXT);
+        expect(await credits(NEXT)).toEqual([]);
+        expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+        expect(await refundOwedOf(signup.subscriptionId)).toBe(false);
+      });
+
+      it("AC4: a cancelled subscription with one week credit spent and one not owes a refund", async () => {
+        const signup = await paidFor(WEEK);
+        await close(WEEK);
+        const [spent] = await credits(WEEK);
+        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
+        await close(NEXT);
+        const [nextCredit] = await credits(NEXT);
+        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
+        await spendWeekCredit(spent.id, nextCredit.grantedFor);
+        expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+        expect(await refundOwedOf(signup.subscriptionId)).toBe(true);
+      });
+    });
   });
 }

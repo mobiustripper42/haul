@@ -5,24 +5,28 @@ import { filterSubscribers, mealLabel, nextSort, OPENING_SORT, SORT_CHOICES, sor
 import type { Language } from "@core/i18n.js";
 import { formatShortDate } from "@core/pickup-week.js";
 import type { Subscriber } from "@core/ports/repository.js";
-import { Badge } from "../../components/ui/badge";
 import { DataTable, type DataTableColumn } from "../../components/ui/data-table";
 import { Field } from "../../components/ui/field";
 import { Hint } from "../../components/ui/hint";
 import { RowList } from "../../components/ui/row-list";
 import { SearchField } from "../../components/ui/search-field";
 import { Select } from "../../components/ui/select";
+import { TextLink } from "../../components/ui/text-link";
+import { adminMemberPath } from "../paths";
+import { SubscriptionStatus } from "../subscription-badges";
 
 /**
  * The words the page has translated for this list, which a client component cannot get for itself. `noMatch`
- * holds `{q}` and `joinedLine` holds `{meal}` and `{date}`, filled here as the admin types.
+ * holds `{q}` and `joinedLine` holds `{meal}` and `{date}`, filled here as the admin types. `status` is the word for
+ * each subscription status, and `refundOwed` the one a cancelled row holding an unspent week credit adds beside it.
  */
 export type MembersListText = {
   search: string;
   searchPlaceholder: string;
   noMatch: string;
   columns: Record<"name" | "email" | "phone" | "meal" | "joined" | "status", string>;
-  active: string;
+  status: Record<"active" | "cancelled", string>;
+  refundOwed: string;
   sortBy: string;
   sortLabels: Record<SortKey, string>;
   joinedLine: string;
@@ -43,6 +47,10 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<Sort>(OPENING_SORT);
   const shown = sortSubscribers(filterSubscribers(rows, query), sort);
+  /** The row's name, linking to its member page. */
+  const nameOf = (row: Subscriber) => <TextLink href={adminMemberPath(row.subscriptionId)}>{subscriberName(row)}</TextLink>;
+  /** The row's status badge, with "Refund owed" beside it when one is owed. */
+  const statusOf = (row: Subscriber) => <SubscriptionStatus status={row.status} refundOwed={row.refundOwed} words={{ status: text.status[row.status], refundOwed: text.refundOwed }} />;
 
   const header = (id: keyof MembersListText["columns"], key?: SortKey): DataTableColumn => ({
     id,
@@ -69,12 +77,12 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
         rows={shown.map((row) => ({
           id: row.subscriptionId,
           cells: [
-            subscriberName(row),
+            nameOf(row),
             row.email,
             row.phone ?? "",
             mealLabel(row.options),
             formatShortDate(row.joinedDate, language),
-            <Badge kind="success">{text.active}</Badge>,
+            statusOf(row),
           ],
         }))}
       />
@@ -95,8 +103,8 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
         }
         rows={shown.map((row) => ({
           id: row.subscriptionId,
-          title: subscriberName(row),
-          badge: <Badge kind="success">{text.active}</Badge>,
+          title: nameOf(row),
+          badge: statusOf(row),
           detail: fill(text.joinedLine, { meal: mealLabel(row.options), date: formatShortDate(row.joinedDate, language) }),
           note: [row.email, row.phone].filter(Boolean).join(" · "),
         }))}

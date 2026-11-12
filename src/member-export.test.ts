@@ -21,6 +21,8 @@ const row = (over: Partial<Subscriber> = {}): Subscriber => ({
     { typeName: "Which menu?", optionName: "Vegan" },
   ],
   joinedDate: "2026-12-01",
+  status: "active",
+  refundOwed: false,
   ...over,
 });
 

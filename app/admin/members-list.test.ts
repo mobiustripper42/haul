@@ -14,7 +14,8 @@ const TEXT: MembersListText = {
   searchPlaceholder: "Type to find",
   noMatch: 'None for "{q}"',
   columns: { name: "Who", email: "Mail", phone: "Ring", meal: "Food", joined: "When", status: "State" },
-  active: "On",
+  status: { active: "On", cancelled: "Off" },
+  refundOwed: "Owed back",
   sortBy: "Order by",
   sortLabels: { name: "By who", joined: "By when", meal: "By food", status: "By state" },
   joinedLine: "{meal} since {date}",
@@ -32,6 +33,8 @@ const subscriber = (over: Partial<Subscriber> = {}): Subscriber => ({
     { typeName: "Which menu?", optionName: "Vegan" },
   ],
   joinedDate: "2026-12-01",
+  status: "active",
+  refundOwed: false,
   ...over,
 });
 
@@ -61,7 +64,7 @@ const tableHeaders = (html: string) => {
 
 describe("AC3 — the rows", () => {
   it('AC3: a row reads "Last, First", email, phone, the meal, the joined date and the Active badge', () => {
-    expect(tableRows(render([ROSA]))).toEqual([["Bennett, Rosa", "rosa@example.com", "(216) 555-0187", "2 people · Vegan", "Dec 1", TEXT.active]]);
+    expect(tableRows(render([ROSA]))).toEqual([["Bennett, Rosa", "rosa@example.com", "(216) 555-0187", "2 people · Vegan", "Dec 1", TEXT.status.active]]);
   });
 
   it("AC3: there is one row for each row it is given", () => {
@@ -70,7 +73,7 @@ describe("AC3 — the rows", () => {
 
   it("AC3: a member with no name and no phone has empty cells, not the word null", () => {
     const ada = subscriber({ firstName: null, lastName: null, phone: null, email: "ada@example.com" });
-    expect(tableRows(render([ada]))).toEqual([["", "ada@example.com", "", "2 people · Vegan", "Dec 1", TEXT.active]]);
+    expect(tableRows(render([ada]))).toEqual([["", "ada@example.com", "", "2 people · Vegan", "Dec 1", TEXT.status.active]]);
   });
 
   it("AC3: the columns show the six column words it is given, in order: name, email, phone, meal, joined, status", () => {
@@ -104,5 +107,58 @@ describe("AC6 — the headers as the list opens", () => {
   it("AC6: Name, Meal, Joined and Status have a sort button, and Email and Phone do not", () => {
     const sorting = tableHeaders(render([ROSA])).filter((header) => header.sorts);
     expect(sorting.map((header) => header.word)).toEqual([TEXT.columns.name, TEXT.columns.meal, TEXT.columns.joined, TEXT.columns.status]);
+  });
+});
+
+// Issue 139: each row reads its own status, a cancelled row with a refund owed says so beside its badge, and each
+// name links to the row's member page, in the table and on the stacked rows below 720px. Which rows are cancelled
+// and owe a refund is listSubscribers' (src/adapters/signup-contract.ts); the words are the page's (app/admin/page.test.ts).
+describe("AC4, AC9 (issue 139) — status, refund owed and the member page", () => {
+  /** The stacked rows' items, each as its runs of text. */
+  const stackedRows = (html: string): string[][] =>
+    [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, inner = ""]) => textsOf(inner));
+
+  /** Each link inside the table's body, then inside the stacked rows: where it goes and its text. */
+  const linksIn = (html: string, part: "table" | "stacked"): { href: string; text: string }[] => {
+    const scope =
+      part === "table"
+        ? (/<tbody\b[^>]*>([\s\S]*?)<\/tbody>/.exec(html)?.[1] ?? "")
+        : [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, inner = ""]) => inner).join("");
+    return [...scope.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
+      href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
+      text: textsOf(inner).join(" "),
+    }));
+  };
+
+  const CANCELLED = subscriber({ firstName: "Chidi", lastName: "Abara", email: "chidi@example.com", status: "cancelled" });
+  const OWED = subscriber({ firstName: "Marco", lastName: "Castillo", email: "marco@example.com", status: "cancelled", refundOwed: true });
+
+  it("AC9: the status cell and the stacked row's badge read each row's own status: Active or Cancelled", () => {
+    const html = render([ROSA, CANCELLED]);
+    expect(tableRows(html).map((row) => row.at(-1))).toEqual([TEXT.status.cancelled, TEXT.status.active]);
+    expect(stackedRows(html).map((row) => row.slice(0, 2))).toEqual([
+      ["Abara, Chidi", TEXT.status.cancelled],
+      ["Bennett, Rosa", TEXT.status.active],
+    ]);
+  });
+
+  it("AC4: a cancelled row with a refund owed adds Refund owed beside its badge, in the status cell and in the stacked row; the others do not", () => {
+    const html = render([ROSA, CANCELLED, OWED]);
+    expect(tableRows(html).map((row) => row.at(-1))).toEqual([TEXT.status.cancelled, TEXT.status.active, `${TEXT.status.cancelled} ${TEXT.refundOwed}`]);
+    expect(stackedRows(html).map((row) => row.slice(0, 3))).toEqual([
+      ["Abara, Chidi", TEXT.status.cancelled, expect.not.stringMatching(TEXT.refundOwed)],
+      ["Bennett, Rosa", TEXT.status.active, expect.not.stringMatching(TEXT.refundOwed)],
+      ["Castillo, Marco", TEXT.status.cancelled, TEXT.refundOwed],
+    ]);
+  });
+
+  it("AC9: each row's name links to /admin/members/<its subscription>, in the table and on the stacked rows", () => {
+    const html = render([ROSA, CANCELLED]);
+    const wanted = [
+      { href: `/admin/members/${CANCELLED.subscriptionId}`, text: "Abara, Chidi" },
+      { href: `/admin/members/${ROSA.subscriptionId}`, text: "Bennett, Rosa" },
+    ];
+    expect(linksIn(html, "table")).toEqual(wanted);
+    expect(linksIn(html, "stacked")).toEqual(wanted);
   });
 });

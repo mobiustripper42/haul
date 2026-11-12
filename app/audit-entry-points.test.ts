@@ -77,6 +77,9 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
         // Issue 138: a member's switch writes subscription_options and the weekly price, which the trigger records.
         "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },
+        // Issue 139: the member's cancel and the admin's write the subscription's status, which the trigger records.
+        "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
+        "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
       }),
     );
   });

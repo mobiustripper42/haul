@@ -636,6 +636,21 @@ export function runSignupContract(
           expect(await repo.countHeldSpots(club.id)).toBe(2);
         });
       });
+
+      // Issue 139: the cap counts only active and held signups (countHeldSpots, unchanged), so a cancel frees a spot.
+      describe("AC6 (issue 139) — a cancel releases the spot", () => {
+        it("AC6 (issue 139): a product full before a cancel is below its cap after it, and another member's card then binds", async () => {
+          const club = await capped(1);
+          const holder = await activeOn(club);
+          const mine = await rowsOn(club, memberId);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+
+          expect(await repo.cancelSubscription(holder.subscriptionId, new Date("2026-11-20T15:00:00.000Z"))).toBe(true);
+
+          expect(await repo.countHeldSpots(club.id)).toBe(0);
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+        });
+      });
     });
 
     // Issue 59: the admin's list. Several paid rows on a subscription, and a member's two rows, are Postgres
@@ -670,6 +685,8 @@ export function runSignupContract(
               { typeName: "Which menu?", optionName: "Vegan" },
             ],
             joinedDate: "2026-11-06",
+            status: "active",
+            refundOwed: false,
           },
         ]);
       });
@@ -781,6 +798,184 @@ export function runSignupContract(
         const signup = await confirmed();
         await repo.switchPicks(signup.subscriptionId, picks(1, 1), "2027-01-24", 8000);
         expect((await repo.listSubscribers(product.id)).map((row) => row.options)).toEqual([THREE_FOUR_VEGAN]);
+      });
+    });
+
+    // Issue 139: a cancel is a status on the subscription and the time it happened; the ledger is not touched. A second
+    // cancel writing nothing, active-and-cancelled in listSubscribers and refundOwed are owned here; the actions test
+    // only where they send the member or admin. refundOwed after a week credit is spent is the week credit contract's
+    // (src/adapters/week-credit-contract.ts), which has the seam that spends one.
+    describe("issue 139 — cancelSubscription, findMemberSubscription and a cancelled subscription", () => {
+      const CANCELLED_AT = new Date("2026-11-20T15:00:00.000Z");
+      const LATER = new Date("2026-11-27T15:00:00.000Z");
+      // BOX's January 3, granted a week credit when closed after it was paid.
+      const CLOSED_AT = new Date("2027-01-03T16:00:00.000Z");
+
+      /** A member's signup for January 3, charged: Ada's, or the member given. */
+      const confirmed = async (who: string = memberId, on: ProductWithOptions = product): Promise<PendingSignup> => {
+        const choices = Object.fromEntries(on.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+        const signup = await saved({ memberId: who, productId: on.id, choices });
+        expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, PAID_AT)).toBe("confirmed");
+        return signup;
+      };
+
+      const newMember = async (email: string): Promise<string> => (await repo.createMember({ email })).id;
+
+      /** The subscription's row in listSubscribers, by id. */
+      const listed = async (subscriptionId: string) => (await repo.listSubscribers(product.id)).find((row) => row.subscriptionId === subscriptionId);
+
+      /** A tick of the real clock, so a later row's created_at is later in either adapter. */
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+
+      describe("AC1 — findMemberSubscription and cancelSubscription", () => {
+        it("AC1: an active subscription comes back as findSignupConfirmation gives it, with status active and cancelledAt null", async () => {
+          await confirmed();
+          const confirmation = await repo.findSignupConfirmation(memberId, product.id);
+          expect(confirmation).not.toBeNull();
+          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "active", cancelledAt: null });
+        });
+
+        it("AC1: cancelSubscription on an active subscription is true; it then reads as cancelled, at the time given, its signup details unchanged", async () => {
+          const signup = await confirmed();
+          const confirmation = await repo.findSignupConfirmation(memberId, product.id);
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "cancelled", cancelledAt: CANCELLED_AT });
+        });
+
+        it("AC1: a cancel leaves the ledger as it was: the subscription's paid rows and week credits read the same after it", async () => {
+          const signup = await confirmed();
+          await repo.closePickupWeek(product.id, "2027-01-03", null, CLOSED_AT);
+          const before = await repo.listMemberWeeks(signup.subscriptionId);
+          expect(before.weekCredits).toHaveLength(1);
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await repo.listMemberWeeks(signup.subscriptionId)).toEqual(before);
+        });
+
+        it("AC1: a cancel is that subscription's alone: another member's stays active", async () => {
+          const ada = await confirmed();
+          const grace = await newMember("grace@example.com");
+          await confirmed(grace);
+          expect(await repo.cancelSubscription(ada.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await repo.findMemberSubscription(grace, product.id)).toMatchObject({ status: "active", cancelledAt: null });
+        });
+
+        it("AC1: a cancel that its withActor rolls back writes nothing: the subscription stays active", async () => {
+          const signup = await confirmed();
+          const failure = new Error("fn failed after cancelling");
+          await expect(
+            repo.withActor({ member: memberId }, async (r) => {
+              expect(await r.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+              throw failure;
+            }),
+          ).rejects.toBe(failure);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ status: "active", cancelledAt: null });
+        });
+
+        it("AC1: findMemberSubscription gives the product asked for: a member subscribed to two products gets each one's", async () => {
+          const crate = await addProduct({ ...BOX, name: "Crate" });
+          const box = await confirmed();
+          const crated = await confirmed(memberId, crate);
+          expect((await repo.findMemberSubscription(memberId, product.id))?.subscriptionId).toBe(box.subscriptionId);
+          expect((await repo.findMemberSubscription(memberId, crate.id))?.subscriptionId).toBe(crated.subscriptionId);
+        });
+
+        it("AC1: a pending signup, with or without a decline, and no subscription at all give null; guards the cases above", async () => {
+          const declined = await saved();
+          await repo.recordSignupDecline(declined.ledgerId);
+          const grace = await newMember("grace@example.com");
+          await saved({ memberId: grace });
+          expect(await repo.findMemberSubscription(memberId, product.id)).toBeNull();
+          expect(await repo.findMemberSubscription(grace, product.id)).toBeNull();
+          expect(await repo.findMemberSubscription(await newMember("linh@example.com"), product.id)).toBeNull();
+        });
+      });
+
+      describe("AC10 — a cancel of a subscription that is not active writes nothing", () => {
+        it("AC10: a second cancel is false, and the subscription keeps the first cancel's time", async () => {
+          const signup = await confirmed();
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await repo.cancelSubscription(signup.subscriptionId, LATER)).toBe(false);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ status: "cancelled", cancelledAt: CANCELLED_AT });
+        });
+
+        it("AC10: a pending subscription is false, and stays pending", async () => {
+          const signup = await saved();
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(false);
+          expect(await pending()).toMatchObject({ subscriptionId: signup.subscriptionId, ledgerStatus: "pending" });
+        });
+
+        it("AC10: an unknown id and a string that isn't a UUID are false", async () => {
+          await confirmed();
+          for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) expect(await repo.cancelSubscription(id, CANCELLED_AT)).toBe(false);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ status: "active" });
+        });
+      });
+
+      describe("AC7 — signing up again", () => {
+        it("AC7: once cancelled, the signup pages' checks do not see the member as subscribed: findActiveSubscription and findSignupConfirmation are null", async () => {
+          const signup = await confirmed();
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await repo.findActiveSubscription(memberId, product.id)).toBeNull();
+          expect(await repo.findSignupConfirmation(memberId, product.id)).toBeNull();
+        });
+
+        it("AC7: a member whose subscription is cancelled signs up again as a new subscription; paid, it is the one findMemberSubscription gives, active", async () => {
+          const first = await confirmed();
+          expect(await repo.cancelSubscription(first.subscriptionId, CANCELLED_AT)).toBe(true);
+          await tick();
+          const again = await confirmed();
+          expect(again.subscriptionId).not.toBe(first.subscriptionId);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ subscriptionId: again.subscriptionId, status: "active", cancelledAt: null });
+        });
+
+        it("AC7: while the new signup is still pending, findMemberSubscription gives the cancelled one, which has a paid row", async () => {
+          const first = await confirmed();
+          expect(await repo.cancelSubscription(first.subscriptionId, CANCELLED_AT)).toBe(true);
+          await tick();
+          await saved();
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ subscriptionId: first.subscriptionId, status: "cancelled" });
+        });
+
+        it("AC7: of two cancelled subscriptions, findMemberSubscription gives the newer", async () => {
+          const first = await confirmed();
+          expect(await repo.cancelSubscription(first.subscriptionId, CANCELLED_AT)).toBe(true);
+          await tick();
+          const again = await confirmed();
+          expect(await repo.cancelSubscription(again.subscriptionId, LATER)).toBe(true);
+          expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({ subscriptionId: again.subscriptionId, status: "cancelled", cancelledAt: LATER });
+        });
+      });
+
+      describe("AC9, AC4 — listSubscribers reads active and cancelled subscriptions", () => {
+        it("AC9: a cancelled subscription is listed, with status cancelled, beside an active one with status active", async () => {
+          const ada = await confirmed();
+          const grace = await confirmed(await newMember("grace@example.com"));
+          expect(await repo.cancelSubscription(ada.subscriptionId, CANCELLED_AT)).toBe(true);
+          const rows = await repo.listSubscribers(product.id);
+          expect(Object.fromEntries(rows.map((row) => [row.subscriptionId, row.status]))).toEqual({
+            [ada.subscriptionId]: "cancelled",
+            [grace.subscriptionId]: "active",
+          });
+        });
+
+        it("AC4: a cancelled subscription holding an unspent week credit owes a refund", async () => {
+          const signup = await confirmed();
+          await repo.closePickupWeek(product.id, "2027-01-03", null, CLOSED_AT);
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await listed(signup.subscriptionId)).toMatchObject({ status: "cancelled", refundOwed: true });
+        });
+
+        it("AC4: a cancelled subscription with no week credit owes none", async () => {
+          const signup = await confirmed();
+          expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+          expect(await listed(signup.subscriptionId)).toMatchObject({ status: "cancelled", refundOwed: false });
+        });
+
+        it("AC4: an active subscription holding an unspent week credit owes none: it will use it", async () => {
+          const signup = await confirmed();
+          await repo.closePickupWeek(product.id, "2027-01-03", null, CLOSED_AT);
+          expect(await listed(signup.subscriptionId)).toMatchObject({ status: "active", refundOwed: false });
+        });
       });
     });
   });

@@ -104,6 +104,22 @@ describe("AC8 — Download spreadsheet", () => {
   });
 });
 
+// Issue 139: listSubscribers gives cancelled subscriptions too; the spreadsheet keeps the active ones. One case here.
+describe("AC9 (issue 139) — the spreadsheet keeps active subscriptions only", () => {
+  it("AC9: a cancelled subscription is left out, and the active one stays", async () => {
+    await signInAs("admin");
+    const product = addSupperClub(services.repo);
+    await activeSubscriber(services.repo, product, { email: "ada@example.com", firstName: "Ada", lastName: "Okafor" }, ["2 people", "Vegan"]);
+    const tam = await pendingSignup(services.repo, product, { email: "tam@example.com", firstName: "Tam", lastName: "Nguyen" }, ["2 people", "Vegan"]);
+    await services.repo.confirmSignupRows(tam.ledgerId, `PAYMENT_${tam.ledgerId}`, tam.amountCents, new Date("2026-12-01T17:00:00.000Z"));
+    await services.repo.cancelSubscription(tam.subscriptionId, new Date("2027-02-03T17:00:00.000Z"));
+
+    const [, ...rows] = parseCsv(await (await get()).text());
+
+    expect(rows.map((row) => row[2])).toEqual(["ada@example.com"]);
+  });
+});
+
 describe("AC9 — the columns come from the product", () => {
   beforeEach(async () => {
     await signInAs("admin");

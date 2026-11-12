@@ -56,11 +56,11 @@ export function filterSubscribers(rows: Subscriber[], query: string): Subscriber
   });
 }
 
-/** In Phase 1 every row is Active; the Status column sorts, and ties on it fall to the name. */
+/** The Status column sorts on the row's own status, Active before Cancelled (issue 139); ties on it fall to the name. */
 const COLUMN: Record<Exclude<SortKey, "name">, (row: Subscriber) => string> = {
   meal: (row) => mealLabel(row.options),
   joined: (row) => row.joinedDate,
-  status: () => "",
+  status: (row) => row.status,
 };
 
 /** A new list in `sort`'s order. A tie breaks on name, ascending, even when the column is descending. */

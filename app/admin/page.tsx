@@ -16,7 +16,7 @@ import { titled } from "../page-title";
 export const generateMetadata = titled("admin.members.title");
 
 /**
- * The Supper Club's members: who holds an active subscription, with search and sorting in the browser and a link
+ * The Supper Club's members: who holds an active or cancelled subscription, with search and sorting in the browser and a link
  * to the spreadsheet. The count is the held spots, so it matches what closes signup and can run above the rows
  * while a signup is mid-payment.
  */
@@ -64,7 +64,8 @@ export default async function Admin() {
                     joined: t("admin.members.joined"),
                     status: t("admin.members.status"),
                   },
-                  active: t("admin.members.active"),
+                  status: { active: t("account.active"), cancelled: t("account.cancelled") },
+                  refundOwed: t("admin.members.refundOwed"),
                   sortBy: t("admin.members.sortBy"),
                   sortLabels: {
                     name: t("admin.members.name"),

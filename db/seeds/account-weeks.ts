@@ -12,6 +12,11 @@
  * next cutoff on is touched, so the admin calendar or SQL can close, reopen and move those weeks and both pages
  * follow.
  *
+ * Issue 139: a second member, `cancel.member@example.com`, active with the same paid weeks and no week credit, for the
+ * plain cancel (`weeks.member` is the cancel with "Refund owed"): its week for the latest past week, which the closure
+ * below reaches after it was paid, is a `skipped` row, so the closure grants it nothing. Every run puts both
+ * subscriptions back to `active` with `cancelled_at` null, so a cancel tried by hand is undone by running the seed again.
+ *
  * Every row is upserted on a key of its own (the member's email, a fixed subscription id, a ledger row's
  * subscription and pickup date, a week's product and Sunday, a week credit's ledger row) and puts back only the
  * columns it names. Every timestamp is derived from a week's date, never from the clock, so a second run changes
@@ -23,11 +28,18 @@ import { cutoffInstant, pastWeeks } from "../../src/pickup-week.js";
 import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 import { seed as supperClub } from "./supper-club.js";
 
-const EMAIL = "weeks.member@example.com";
 const PICKS = ["Portioned for 4", "Standard"];
 
-/** A fixed subscription id, so a second run finds the row it made. The subscribers seed's run from …000000000001 to …00000000000c. */
-const SUBSCRIPTION_ID = "5eed0000-0000-4000-8000-0000000000f1";
+/**
+ * A member and the fixed subscription id that lets a second run find the row it made. The subscribers seed's ids run from
+ * …000000000001 to …00000000000c.
+ */
+type Subscriber = { email: string; firstName: string; lastName: string; phone: string; subscriptionId: string };
+
+const WEEKS_MEMBER: Subscriber = { email: "weeks.member@example.com", firstName: "Weeks", lastName: "Member", phone: "(216) 555-0155", subscriptionId: "5eed0000-0000-4000-8000-0000000000f1" };
+/** Issue 139: the plain cancel, active with paid weeks and no week credit, to the cancel with "Refund owed" the first holds. */
+const CANCEL_MEMBER: Subscriber = { email: "cancel.member@example.com", firstName: "Cancel", lastName: "Member", phone: "(216) 555-0156", subscriptionId: "5eed0000-0000-4000-8000-0000000000f2" };
+const SUBSCRIPTION_ID = WEEKS_MEMBER.subscriptionId;
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -90,63 +102,72 @@ export async function seed(db: Client): Promise<void> {
   const chargedAt = (week: string): string => cutoffInstant(settings, week).toISOString();
   const signupAt = chargedAt(product.first_pickup);
 
-  const member = await db.query<{ id: string }>(
-    `insert into members (email, language, role, first_name, last_name, phone, email_confirmed_at)
-     values ($1, 'en', 'member', 'Weeks', 'Member', '(216) 555-0155', $2)
-     on conflict (email) do update
-       set language = excluded.language,
-           role = excluded.role,
-           first_name = excluded.first_name,
-           last_name = excluded.last_name,
-           phone = excluded.phone,
-           email_confirmed_at = coalesce(members.email_confirmed_at, excluded.email_confirmed_at)
-     returning id`,
-    [EMAIL, signupAt],
-  );
-  const memberId = member.rows[0]?.id;
-  if (memberId === undefined) throw new Error("account-weeks seed: the member upsert returned no id");
-
-  await db.query(
-    `insert into subscriptions (id, member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents, created_at)
-     values ($1, $2, $3, 'active', $4, $5, $6, $6, $5)
-     on conflict (id) do update
-       set member_id = excluded.member_id,
-           product_id = excluded.product_id,
-           status = excluded.status,
-           consent_text = excluded.consent_text,
-           consent_at = excluded.consent_at,
-           first_charge_cents = excluded.first_charge_cents,
-           weekly_cents = excluded.weekly_cents,
-           created_at = excluded.created_at`,
-    [SUBSCRIPTION_ID, memberId, product.id, `I agree to a weekly charge of $${cents / 100} until I cancel.`, signupAt, cents],
-  );
-
-  // The one set of picks, from the subscription's first ledger week (the signup's), so every paid week reads it. A
-  // run after a switch starts the member over from it: a set from any other week is deleted.
-  await db.query("delete from subscription_options where subscription_id = $1 and from_week <> $2::date", [SUBSCRIPTION_ID, product.first_pickup]);
-  for (const option of picked) {
-    await db.query(
-      `insert into subscription_options (subscription_id, option_type_id, option_id, from_week)
-       values ($1, $2, $3, $4::date)
-       on conflict (subscription_id, option_type_id, from_week) do update set option_id = excluded.option_id`,
-      [SUBSCRIPTION_ID, option.type_id, option.id, product.first_pickup],
+  // Each member's subscription, active with `cancelled_at` null whatever an earlier run or a cancel made of it, its one set
+  // of picks, and a paid row for every charged week but the closed-unpaid one. `skippedWeek`, when given, is a `skipped`
+  // row instead of a paid one, so the closure below grants that week nothing.
+  const subscribe = async ({ email, firstName, lastName, phone, subscriptionId }: Subscriber, skippedWeek?: string): Promise<void> => {
+    const member = await db.query<{ id: string }>(
+      `insert into members (email, language, role, first_name, last_name, phone, email_confirmed_at)
+       values ($1, 'en', 'member', $2, $3, $4, $5)
+       on conflict (email) do update
+         set language = excluded.language,
+             role = excluded.role,
+             first_name = excluded.first_name,
+             last_name = excluded.last_name,
+             phone = excluded.phone,
+             email_confirmed_at = coalesce(members.email_confirmed_at, excluded.email_confirmed_at)
+       returning id`,
+      [email, firstName, lastName, phone, signupAt],
     );
-  }
+    const memberId = member.rows[0]?.id;
+    if (memberId === undefined) throw new Error("account-weeks seed: the member upsert returned no id");
 
-  for (const week of charged) {
-    if (week === closedUnpaid) continue;
     await db.query(
-      `insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, square_payment_id, paid_at)
-       values ($1, $2::date, $3, 'paid', 1, $4, $5)
-       on conflict (subscription_id, pickup_date) do update
-         set amount_cents = excluded.amount_cents,
+      `insert into subscriptions (id, member_id, product_id, status, consent_text, consent_at, first_charge_cents, weekly_cents, created_at)
+       values ($1, $2, $3, 'active', $4, $5, $6, $6, $5)
+       on conflict (id) do update
+         set member_id = excluded.member_id,
+             product_id = excluded.product_id,
              status = excluded.status,
-             attempt = excluded.attempt,
-             square_payment_id = excluded.square_payment_id,
-             paid_at = excluded.paid_at`,
-      [SUBSCRIPTION_ID, week, cents, `SEED_WEEKS_PAYMENT_${week}`, chargedAt(week)],
+             cancelled_at = null,
+             consent_text = excluded.consent_text,
+             consent_at = excluded.consent_at,
+             first_charge_cents = excluded.first_charge_cents,
+             weekly_cents = excluded.weekly_cents,
+             created_at = excluded.created_at`,
+      [subscriptionId, memberId, product.id, `I agree to a weekly charge of $${cents / 100} until I cancel.`, signupAt, cents],
     );
-  }
+
+    // The one set of picks, from the subscription's first ledger week (the signup's), so every paid week reads it. A
+    // run after a switch starts the member over from it: a set from any other week is deleted.
+    await db.query("delete from subscription_options where subscription_id = $1 and from_week <> $2::date", [subscriptionId, product.first_pickup]);
+    for (const option of picked) {
+      await db.query(
+        `insert into subscription_options (subscription_id, option_type_id, option_id, from_week)
+         values ($1, $2, $3, $4::date)
+         on conflict (subscription_id, option_type_id, from_week) do update set option_id = excluded.option_id`,
+        [subscriptionId, option.type_id, option.id, product.first_pickup],
+      );
+    }
+
+    for (const week of charged) {
+      if (week === closedUnpaid) continue;
+      const paid = week !== skippedWeek;
+      await db.query(
+        `insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, square_payment_id, paid_at)
+         values ($1, $2::date, $3, $4, 1, $5, $6)
+         on conflict (subscription_id, pickup_date) do update
+           set amount_cents = excluded.amount_cents,
+               status = excluded.status,
+               attempt = excluded.attempt,
+               square_payment_id = excluded.square_payment_id,
+               paid_at = excluded.paid_at`,
+        [subscriptionId, week, paid ? cents : 0, paid ? "paid" : "skipped", paid ? `SEED_WEEKS_PAYMENT_${week}` : null, paid ? chargedAt(week) : null],
+      );
+    }
+  };
+  await subscribe(WEEKS_MEMBER);
+  await subscribe(CANCEL_MEMBER, latestPast);
 
   const close = async (week: string, closedAt: string, note: string): Promise<void> => {
     await db.query(

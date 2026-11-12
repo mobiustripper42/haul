@@ -40,6 +40,16 @@ export function alertTexts(html: string): string[] {
 }
 
 /**
+ * Issue 139: every run of visible text, as `textsOf` gives them, but with emphasis (`<strong>`, `<b>`, `<em>`) read
+ * through rather than as a break and spaces collapsed, so a sentence with a bold part reads as one run. `alsoInline`
+ * names more tags to read through, `span` on a screen with no badge, so two sentences in one line read as one.
+ */
+export function sentencesOf(html: string, alsoInline: readonly string[] = []): string[] {
+  const inline = new RegExp(`</?(?:${["strong", "b", "em", ...alsoInline].join("|")})\\b[^>]*>`, "g");
+  return textsOf(withoutScripts(html).replace(inline, "")).map((text) => text.replace(/\s+/g, " "));
+}
+
+/**
  * Of `wanted`, the texts the screen shows, in the order it shows them, so a test can say "A comes
  * before B" without naming everything else on the page: `expect(inOrder(html, [a, b])).toEqual([a, b])`.
  */

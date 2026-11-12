@@ -370,3 +370,25 @@ describe("issue 138 — the meal card", () => {
     }
   });
 });
+
+// Issue 139: a cancelled subscription's Upcoming weeks. That only paid rows stay, with no button, is upcomingRows'
+// (src/account-weeks.test.ts); here one case goes through the page.
+describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
+  it("AC5: only the paid weeks to come are listed, with no Skip or Unskip, and the meal card has no Switch size or menu, even at ?switch=1", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-02-07", "paid", 4500);
+    await services.repo.addLedgerRow(subscriptionId, "2027-03-07", "paid", 4500);
+    await services.repo.skipWeek(subscriptionId, "2027-02-28");
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    for (const query of [{}, { switch: "1" }]) {
+      const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
+      const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
+      expect(rows).toEqual([
+        [titleOf("2027-02-07"), "Paid", "Paid"],
+        [titleOf("2027-03-07"), "Paid", "Paid"],
+      ]);
+      expect(html).not.toContain("<form");
+      expect(textsOf(html)).not.toContain("Switch size or menu");
+    }
+  });
+});

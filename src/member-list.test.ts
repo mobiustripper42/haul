@@ -17,6 +17,8 @@ const row = (over: Partial<Subscriber> = {}): Subscriber => ({
     { typeName: "Which menu?", optionName: "Vegan" },
   ],
   joinedDate: "2026-12-01",
+  status: "active",
+  refundOwed: false,
   ...over,
 });
 
@@ -193,6 +195,18 @@ describe("AC6 — the sort", () => {
 
     it.each(["asc", "desc"] as const)("AC6: on status, where every row is Active in Phase 1, %s", (direction) => {
       expect(sorted(tied({}), "status", direction)).toEqual(NAMES);
+    });
+
+    // Issue 139: the Status column reads each row's own status.
+    it("AC9 (issue 139): on status, ascending, Active before Cancelled; descending, Cancelled first; ties on name, ascending, both ways", () => {
+      const rows = [
+        row({ lastName: "Castillo", firstName: "Marco", status: "cancelled" }),
+        row({ lastName: "Abara", firstName: "Chidi" }),
+        row({ lastName: "Bennett", firstName: "Rosa", status: "cancelled" }),
+        row({ lastName: "Diaz", firstName: "Lena" }),
+      ];
+      expect(sorted(rows, "status", "asc")).toEqual(["Abara, Chidi", "Diaz, Lena", "Bennett, Rosa", "Castillo, Marco"]);
+      expect(sorted(rows, "status", "desc")).toEqual(["Bennett, Rosa", "Castillo, Marco", "Abara, Chidi", "Diaz, Lena"]);
     });
   });
 
