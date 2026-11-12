@@ -178,6 +178,14 @@ describe("AC4 (issue 156) — a save that broke a rule", () => {
     expect(attributesOf(html, "input").find((input) => input.name === "firstName")).toMatchObject({ "aria-invalid": "true" });
     expect(valuesOf(html)).toMatchObject({ firstName: "", lastName: "Byron", phone: "216-555-0199" });
   });
+
+  // Review of commit f65a2b3: the draft cookie lives ten minutes, so a member can come back to an error with none.
+  it("AC4: with error=firstName and no draft cookie (expired), the form holds the member's stored details, not blank fields", async () => {
+    await ada("es");
+    const { html } = await render({ error: "firstName" });
+    expect(valuesOf(html)).toMatchObject({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "(216) 555-0134" });
+    expect(selectedLanguages(html)).toEqual(["es"]);
+  });
 });
 
 describe("AC5 (issue 156) — the page's language", () => {

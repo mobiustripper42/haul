@@ -7,7 +7,7 @@
  * when a change has expired, are the core's (`src/email-change.test.ts`); the repository compares no code and no time.
  */
 import { beforeEach, describe, expect, it } from "vitest";
-import type { Member } from "../members.js";
+import { DuplicateEmailError, type Member } from "../members.js";
 import type { Repository } from "../ports/repository.js";
 import { CODE_TTL_MS, hashCode } from "../sign-in/code.js";
 
@@ -124,6 +124,28 @@ export function runEmailChangeContract(name: string, make: () => Promise<Reposit
       await repo.applyEmailChange(member.id, LATER);
       expect((await repo.findMemberByEmail(NEW))?.id).toBe(member.id);
       expect(await repo.findMemberByEmail(OLD)).toBeNull();
+    });
+
+    // Review of commit f65a2b3: an address taken since the request is an ordinary outcome, as a duplicate is to
+    // createMember (repository-contract.ts), so meeting it inside withActor must not break the transaction.
+    it("AC15: applyEmailChange to an address another member has taken since throws DuplicateEmailError without breaking the transaction — a later query in the same withActor runs, and the attempt counted before is kept", async () => {
+      const member = await ada();
+      await start(member.id);
+      await repo.createMember({ email: NEW });
+      let applied: unknown = "not thrown";
+      const run = repo.withActor({ member: member.id }, async (scoped) => {
+        await scoped.countEmailChangeAttempt(member.id);
+        try {
+          await scoped.applyEmailChange(member.id, LATER);
+        } catch (error) {
+          applied = error;
+        }
+        return scoped.findMemberById(member.id);
+      });
+      await expect(run).resolves.toMatchObject({ id: member.id, email: OLD });
+      expect(applied).toBeInstanceOf(DuplicateEmailError);
+      expect((await repo.findEmailChange(member.id))?.attempts).toBe(1);
+      expect((await repo.findMemberById(member.id))?.email).toBe(OLD);
     });
 
     it("AC14: dropEmailChange deletes the member's row and leaves their email alone; with none it resolves", async () => {
