@@ -87,6 +87,8 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
   const switchOn = switchWeek(upcoming);
   const switchesFrom = upcoming.find((row) => row.week.weekOf === switchOn);
   const open = query?.switch === ACCOUNT_WEEKS_SWITCH_OPEN && switchesFrom !== undefined;
+  // Nothing more is charged once cancelled, so the intro line, which says when a week is charged, and the weekly price are left out.
+  const cancelled = confirmation.status === "cancelled";
 
   return (
     <>
@@ -94,11 +96,11 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.weeks.title")}</Heading>
-          <Hint>{t("account.weeks.intro")}</Hint>
+          {!cancelled && <Hint>{t("account.weeks.intro")}</Hint>}
           {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <Notice icon="alert">{t("account.weeks.cutoffPassed")}</Notice>}
           <Card width="fill">
             <Heading level={2}>{t("header.yourMeal")}</Heading>
-            <p>{[mealLabel(confirmation.options), t("supperClub.price", { price: formatUsdWhole(confirmation.weeklyCents) })].join(SEPARATOR)}</p>
+            <p>{[mealLabel(confirmation.options), ...(cancelled ? [] : [t("supperClub.price", { price: formatUsdWhole(confirmation.weeklyCents) })])].join(SEPARATOR)}</p>
             {notStarted && <Hint>{t("account.weeks.switchFrom", { week: listedWeekTitle(t, notStarted.week, language) })}</Hint>}
             {open ? (
               <form action={switchMeal} className="flex flex-col gap-5">
