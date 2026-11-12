@@ -40,7 +40,7 @@ describe("AC12 — the check on the real repo", () => {
 
 const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
 
-describe("AC13 — the list is exactly these sixteen entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these twenty-nine entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
@@ -80,6 +80,12 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         // Issue 139: the member's cancel and the admin's write the subscription's status, which the trigger records.
         "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
         "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
+        // Issue 156: Your details. A save and a resend count in sign-in's request limit; a confirm records the change;
+        // Keep the old email records nothing (its reason is the entry's own).
+        "app/account/details/actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
+        "app/account/details/actions.ts#confirmEmailChange": { records: ["email_changed"] },
+        "app/account/details/actions.ts#resendEmailChange": { records: ["rate_limit_refusal"] },
+        "app/account/details/actions.ts#keepOldEmail": AUDIT_ENTRY_POINTS["app/account/details/actions.ts#keepOldEmail"] ?? { none: "an entry for keepOldEmail" },
       }),
     );
   });

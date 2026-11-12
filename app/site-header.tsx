@@ -4,18 +4,19 @@ import { MenuButton } from "../components/ui/menu-button";
 import { SiteBar } from "../components/ui/site-bar";
 import { getTranslator } from "./language";
 import { LanguageSwitcher } from "./language-switcher";
-import { ACCOUNT_HISTORY_PATH, ACCOUNT_PATH, ACCOUNT_WEEKS_PATH, ADMIN_PATH } from "./paths";
+import { ACCOUNT_DETAILS_PATH, ACCOUNT_HISTORY_PATH, ACCOUNT_PATH, ACCOUNT_WEEKS_PATH, ADMIN_PATH } from "./paths";
 import { getSignedInMember } from "./session";
 import { signOut } from "./sign-in/actions";
 import { PANE_SIGN_IN_PAGES } from "./supper-club/paths";
 
-type Current = "admin" | "account" | "weeks" | "history";
+type Current = "admin" | "account" | "weeks" | "history" | "details";
 
 /** The signed-in header's links in order, drawn twice from here: in the row, and in the Menu's panel. Admin is for admins only. */
 const ACCOUNT_LINKS: readonly { current: Current; href: string; label: MessageKey; adminOnly?: true }[] = [
   { current: "account", href: ACCOUNT_PATH, label: "header.yourMeal" },
   { current: "weeks", href: ACCOUNT_WEEKS_PATH, label: "header.weeks" },
   { current: "history", href: ACCOUNT_HISTORY_PATH, label: "header.history" },
+  { current: "details", href: ACCOUNT_DETAILS_PATH, label: "header.details" },
   { current: "admin", href: ADMIN_PATH, label: "header.admin", adminOnly: true },
 ];
 

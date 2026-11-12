@@ -24,6 +24,29 @@ export function deliverSignInLink(email: EmailPort, member: Member, url: string,
   return email.send({ to: member.email, subject, text });
 }
 
+/**
+ * The code that confirms an email change (issue 156), to the new address, in the member's email language:
+ * sign-in's code email builder with its own subject and sentence.
+ */
+export function deliverEmailChangeCode(
+  email: EmailPort,
+  change: { member: Member; newEmail: string; code: string },
+  siteUrl: string,
+): Promise<EmailReceipt> {
+  const { subject, text } = renderEmail("emailChangeCode", change.member.language, { code: change.code, minutes: CODE_TTL_MS / 60_000 }, siteUrl);
+  return email.send({ to: change.newEmail, subject, text });
+}
+
+/** The notice to the old address once a change is confirmed, naming the new one, in the member's email language. */
+export function deliverEmailChangedNotice(
+  email: EmailPort,
+  change: { member: Member; oldEmail: string; newEmail: string },
+  siteUrl: string,
+): Promise<EmailReceipt> {
+  const { subject, text } = renderEmail("emailChanged", change.member.language, { email: change.newEmail }, siteUrl);
+  return email.send({ to: change.oldEmail, subject, text });
+}
+
 /** Where a link's token lands: the one-button page, which redeems nothing until it is pressed. */
 export function signInLinkUrl(siteUrl: string, token: string): string {
   return siteLink(siteUrl, `/sign-in/link?token=${token}`);

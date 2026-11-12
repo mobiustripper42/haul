@@ -19,6 +19,7 @@ export const es = {
   "header.history": "Historial",
   "header.menu": "Menú",
   "header.account": "Cuenta",
+  "header.details": "Sus datos",
   "account.title": "Su Supper Club",
   "account.active": "Activo",
   "account.cancelled": "Cancelado",
@@ -272,6 +273,21 @@ export const es = {
     "Enviamos un código de 6 dígitos a {email}. Ingréselo para confirmar su correo. Vence en {minutes} minutos.",
   "createAccount.confirm": "Confirmar correo",
   "createAccount.spam": "¿No le llegó el correo? Revise su carpeta de spam.",
+  "details.emailHelp":
+    "Así inicia sesión. Cambiarlo envía un código de 6 dígitos a la nueva dirección, y se convierte en su correo de inicio de sesión una vez confirmado.",
+  "details.saved": "Guardado. Sus datos están al día.",
+  "details.keepOldEmail": "Conservar el correo anterior",
+  "details.codeTitle": "Revise su nuevo correo",
+  "details.codeSent":
+    "Enviamos un código de 6 dígitos a {email}. Ingréselo para confirmar el cambio. Hasta entonces inicia sesión con la dirección anterior.",
+  "details.invalidCode": "Ese código no coincide o ya venció. Revíselo e intente de nuevo, o pida un código nuevo.",
+  "details.squareFailed": "No pudimos actualizar su correo en este momento. Intente el código de nuevo en un minuto.",
+  "details.codeEmail.subject": "Confirme su nuevo correo para Ohio City Farm",
+  "details.codeEmail.body":
+    "Su código es {code}. Ingréselo en la página Sus datos para confirmar esta dirección. Funciona durante {minutes} minutos. Si usted no lo pidió, ignore este correo.",
+  "details.changedEmail.subject": "Se cambió su correo de inicio de sesión de Ohio City Farm",
+  "details.changedEmail.body":
+    "El correo de inicio de sesión de su cuenta de Ohio City Farm ahora es {email}. Si usted hizo este cambio, no tiene que hacer nada. Si no, comuníquese con la granja.",
   "email.signInCode.subject": "Su código de inicio de sesión del OCF Member Portal",
   "email.signInCode.body":
     "Su código de inicio de sesión es {code}.\n\nVence en {minutes} minutos. Si usted no lo pidió, puede ignorar este correo.",

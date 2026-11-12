@@ -20,6 +20,9 @@ export const ACCOUNT_WEEKS_SWITCH_OPEN = "1";
 /** A member's History. */
 export const ACCOUNT_HISTORY_PATH = "/account/history";
 
+/** A member's Your details. */
+export const ACCOUNT_DETAILS_PATH = "/account/details";
+
 /** The admin's page, the header's Admin button. */
 export const ADMIN_PATH = "/admin";
 

@@ -12,7 +12,7 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlus
   | { href: string; back?: boolean; current?: boolean }
   | (Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "style" | "children"> & {
       href?: never;
-      back?: never;
+      back?: boolean;
       current?: never;
     })
 );
@@ -20,7 +20,7 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlus
 /**
  * A button, or with `href` a link in the same look. It adds no attribute it is not given (issue 38, AC7,
  * AC8). A link's `current` marks the page it opens as the one showing: `aria-current="page"`, filled
- * sage-soft. `nowrap` keeps the label on one line, for the header's buttons, which wrap as a row instead.
+ * sage-soft. `back` adds the back arrow, to a link or to a submit button. `nowrap` keeps the label on one line, for the header's buttons, which wrap as a row instead.
  */
 export function Button(props: ButtonProps) {
   const { kind, full, flush, nowrap, children, href, back, current, ...rest } = props;
@@ -32,7 +32,7 @@ export function Button(props: ButtonProps) {
       </a>
     );
   }
-  const className = [`btn-${kind}`, full && "w-full", flushClass(flush), nowrap && "btn-nowrap"].filter(Boolean).join(" ");
+  const className = [`btn-${kind}`, back && "back-link", full && "w-full", flushClass(flush), nowrap && "btn-nowrap"].filter(Boolean).join(" ");
   return (
     <button {...rest} className={className}>
       {children}

@@ -372,3 +372,34 @@ describe("issue 56 — FakePayments' new methods", () => {
     expect(await rejectionOf(call(fake, customer.id))).toBe(failure);
   });
 });
+
+// Issue 156: setCustomerEmail, as setCustomerReference is tested above.
+describe("issue 156 — FakePayments' setCustomerEmail", () => {
+  it("AC11: on a customer it never made it rejects with PaymentsError, as Square's 404 does", async () => {
+    const error = await rejectionOf(new FakePayments().setCustomerEmail({ customerId: "NEVER_MADE", email: "ada.new@example.com" }));
+    expect(error).toBeInstanceOf(PaymentsError);
+  });
+
+  it("AC11: it checks its input first", async () => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    expect(await rejectionOf(fake.setCustomerEmail({ customerId: customer.id, email: "" }))).toBeInstanceOf(RangeError);
+    expect(fake.customers[0]?.email).toBe("ada@example.com");
+  });
+
+  it("AC11: failNext(error) makes the next setCustomerEmail reject with that very error, and the email stays", async () => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    const failure = new Error("outage");
+    fake.failNext(failure);
+    expect(await rejectionOf(fake.setCustomerEmail({ customerId: customer.id, email: "ada.new@example.com" }))).toBe(failure);
+    expect(fake.customers[0]?.email).toBe("ada@example.com");
+  });
+
+  it("AC11: the new email comes back on customers too", async () => {
+    const fake = new FakePayments();
+    const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
+    await fake.setCustomerEmail({ customerId: customer.id, email: "ada.new@example.com" });
+    expect(fake.customers[0]?.email).toBe("ada.new@example.com");
+  });
+});

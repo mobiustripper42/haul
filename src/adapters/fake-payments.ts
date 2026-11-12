@@ -140,6 +140,13 @@ export class FakePayments implements PaymentsPort {
     customer.referenceId = input.referenceId;
   }
 
+  async setCustomerEmail(input: { customerId: string; email: string }): Promise<void> {
+    this.begin("setCustomerEmail", input);
+    const customer = this.customerList.find((candidate) => candidate.id === input.customerId);
+    if (customer === undefined) throw notFound(`Customer ${input.customerId} not found`);
+    customer.email = input.email;
+  }
+
   /** Paid charges only, as Square's lookup counts COMPLETED ones only. `since` is ignored: `FakeCharge` has no time. */
   async findPaymentByReference(input: { referenceId: string; since: Date }): Promise<{ paymentId: string; amountCents: number } | null> {
     this.begin("findPaymentByReference", input);

@@ -6,6 +6,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type EmailChange,
   type MemberSubscription,
   type MemberWeeks,
   type PendingSignup,
@@ -18,6 +19,7 @@ import {
 import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
+import { CODE_TTL_MS } from "../sign-in/code.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
 
@@ -69,6 +71,8 @@ export class InMemoryRepository implements Repository {
   private readonly subscriptions = new Map<string, StoredSubscription>();
   private readonly ledger = new Map<string, StoredLedger>();
   private readonly weekCredits = new Map<string, StoredWeekCredit>();
+  /** Member id → their pending email change. Replaced, never mutated, like the maps above. */
+  private readonly emailChanges = new Map<string, EmailChange>();
   private readonly products: ProductWithOptions[] = [];
   /** `<product id>|<week_of>` → the changed week. Replaced, never mutated, like the maps above. */
   private readonly pickupWeeks = new Map<string, ChangedWeek>();
@@ -127,6 +131,52 @@ export class InMemoryRepository implements Repository {
   async confirmMemberEmail(memberId: string, now: Date): Promise<void> {
     const member = this.members.get(memberId);
     if (member && member.emailConfirmedAt === null) this.members.set(memberId, { ...member, emailConfirmedAt: new Date(now) });
+  }
+
+  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member> {
+    const member = this.members.get(memberId);
+    if (!member) throw new Error(`saveMemberDetails: no member ${memberId}`);
+    // A new object, not a mutation: `withActor` restores the map's entries on rollback.
+    const replaced: Member = { ...member, ...details };
+    this.members.set(memberId, replaced);
+    return copy(replaced);
+  }
+
+  async startEmailChange(input: { memberId: string; newEmail: string; codeHash: string; now: Date }): Promise<void> {
+    this.emailChanges.set(input.memberId, {
+      memberId: input.memberId,
+      newEmail: normalizeEmail(input.newEmail),
+      codeHash: input.codeHash,
+      expiresAt: new Date(input.now.getTime() + CODE_TTL_MS),
+      attempts: 0,
+    });
+  }
+
+  async findEmailChange(memberId: string): Promise<EmailChange | null> {
+    const change = this.emailChanges.get(memberId);
+    return change ? { ...change, expiresAt: new Date(change.expiresAt) } : null;
+  }
+
+  async countEmailChangeAttempt(memberId: string): Promise<number> {
+    const change = this.emailChanges.get(memberId);
+    if (!change) return 0;
+    this.emailChanges.set(memberId, { ...change, attempts: change.attempts + 1 });
+    return change.attempts + 1;
+  }
+
+  async applyEmailChange(memberId: string, now: Date): Promise<Member> {
+    const member = this.members.get(memberId);
+    const change = this.emailChanges.get(memberId);
+    if (!member || !change) throw new Error(`applyEmailChange: no pending change for member ${memberId}`);
+    if (this.find((m) => m.email === change.newEmail && m.id !== memberId)) throw new DuplicateEmailError(change.newEmail);
+    const replaced: Member = { ...member, email: change.newEmail, emailConfirmedAt: new Date(now) };
+    this.members.set(memberId, replaced);
+    this.emailChanges.delete(memberId);
+    return copy(replaced);
+  }
+
+  async dropEmailChange(memberId: string): Promise<void> {
+    this.emailChanges.delete(memberId);
   }
 
   async findProductByName(name: string): Promise<ProductWithOptions | null> {
@@ -523,6 +573,7 @@ export class InMemoryRepository implements Repository {
     const ledger = new Map(this.ledger);
     const weekCredits = new Map(this.weekCredits);
     const pickupWeeks = new Map(this.pickupWeeks);
+    const emailChanges = new Map(this.emailChanges);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
 
@@ -542,6 +593,8 @@ export class InMemoryRepository implements Repository {
       for (const [id, credit] of weekCredits) this.weekCredits.set(id, credit);
       this.pickupWeeks.clear();
       for (const [key, week] of pickupWeeks) this.pickupWeeks.set(key, week);
+      this.emailChanges.clear();
+      for (const [id, change] of emailChanges) this.emailChanges.set(id, change);
       this.signIn.restore(signIn);
       this.recorded.splice(0, this.recorded.length, ...recorded);
       throw error;

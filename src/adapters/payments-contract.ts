@@ -227,6 +227,20 @@ export function runPaymentsContract(
       expect(found.find((c) => c.id === customer.id)?.referenceId).toBe(referenceId);
     });
 
+    // Issue 156: the member's new email goes to their Square customer, the match key.
+    it("AC11 (issue 156): setCustomerEmail moves a customer to the new email: the new address finds it, and the old one no longer does", { timeout }, async () => {
+      const payments = await make();
+      const before = freshEmail();
+      const after = freshEmail();
+      const customer = await payments.createCustomer({ email: before, idempotencyKey: freshKey() });
+      await searchUntil(payments, before, (cs) => cs.some((c) => c.id === customer.id));
+      await payments.setCustomerEmail({ customerId: customer.id, email: after });
+      const found = await searchUntil(payments, after, (cs) => cs.some((c) => c.id === customer.id));
+      expect(found.find((c) => c.id === customer.id)?.email).toBe(after);
+      const left = await searchUntil(payments, before, (cs) => !cs.some((c) => c.id === customer.id));
+      expect(left.map((c) => c.id)).not.toContain(customer.id);
+    });
+
     it("AC10 (issue 56): findPaymentByReference finds a paid charge made with that referenceId", { timeout }, async () => {
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);

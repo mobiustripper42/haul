@@ -5,6 +5,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type EmailChange,
   type MemberSubscription,
   type MemberWeeks,
   type PendingSignup,
@@ -17,6 +18,7 @@ import {
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
+import { CODE_TTL_MS } from "../sign-in/code.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
 
@@ -48,6 +50,8 @@ const toMember = (row: MemberRow): Member => ({
   emailConfirmedAt: row.email_confirmed_at,
   squareCustomerId: row.square_customer_id,
 });
+
+type EmailChangeRow = { member_id: string; new_email: string; code_hash: string; expires_at: Date; attempts: number };
 
 type ProductRow = {
   id: string;
@@ -219,6 +223,76 @@ export class PostgresRepository implements Repository {
       memberId,
       now,
     ]);
+  }
+
+  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member> {
+    const { rows } = await this.db.query<MemberRow>(
+      `update members set first_name = $2, last_name = $3, phone = $4, language = $5 where id = $1 returning ${MEMBER_COLUMNS}`,
+      [memberId, details.firstName, details.lastName, details.phone, details.language],
+    );
+    if (!rows[0]) throw new Error(`saveMemberDetails: no member ${memberId}`);
+    return toMember(rows[0]);
+  }
+
+  async startEmailChange(input: { memberId: string; newEmail: string; codeHash: string; now: Date }): Promise<void> {
+    await this.db.query(
+      `insert into email_changes (member_id, new_email, code_hash, created_at, expires_at, attempts)
+       values ($1, $2, $3, $4, $5, 0)
+       on conflict (member_id) do update
+         set new_email = excluded.new_email,
+             code_hash = excluded.code_hash,
+             created_at = excluded.created_at,
+             expires_at = excluded.expires_at,
+             attempts = 0`,
+      [input.memberId, normalizeEmail(input.newEmail), input.codeHash, input.now, new Date(input.now.getTime() + CODE_TTL_MS)],
+    );
+  }
+
+  async findEmailChange(memberId: string): Promise<EmailChange | null> {
+    if (!UUID_SHAPE.test(memberId)) return null;
+    const { rows } = await this.db.query<EmailChangeRow>(
+      "select member_id, new_email, code_hash, expires_at, attempts from email_changes where member_id = $1",
+      [memberId],
+    );
+    return rows[0]
+      ? { memberId: rows[0].member_id, newEmail: rows[0].new_email, codeHash: rows[0].code_hash, expiresAt: rows[0].expires_at, attempts: rows[0].attempts }
+      : null;
+  }
+
+  async countEmailChangeAttempt(memberId: string): Promise<number> {
+    if (!UUID_SHAPE.test(memberId)) return 0;
+    const { rows } = await this.db.query<{ attempts: number }>(
+      "update email_changes set attempts = attempts + 1 where member_id = $1 returning attempts",
+      [memberId],
+    );
+    return rows[0]?.attempts ?? 0;
+  }
+
+  /**
+   * One statement: the pending row is deleted and its address becomes the member's email, confirmed at `now`. A
+   * unique violation is another member holding the address, raised as `DuplicateEmailError`.
+   */
+  async applyEmailChange(memberId: string, now: Date): Promise<Member> {
+    try {
+      const { rows } = await this.db.query<MemberRow>(
+        `with change as (delete from email_changes where member_id = $1 returning new_email)
+         update members set email = change.new_email, email_confirmed_at = $2
+           from change
+          where members.id = $1
+         returning ${MEMBER_COLUMNS.split(", ").map((column) => `members.${column}`).join(", ")}`,
+        [memberId, now],
+      );
+      if (!rows[0]) throw new Error(`applyEmailChange: no pending change for member ${memberId}`);
+      return toMember(rows[0]);
+    } catch (error) {
+      if ((error as { code?: string }).code === "23505") throw new DuplicateEmailError("the new email");
+      throw error;
+    }
+  }
+
+  async dropEmailChange(memberId: string): Promise<void> {
+    if (!UUID_SHAPE.test(memberId)) return;
+    await this.db.query("delete from email_changes where member_id = $1", [memberId]);
   }
 
   async findProductByName(name: string): Promise<ProductWithOptions | null> {
