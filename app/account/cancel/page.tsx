@@ -57,9 +57,9 @@ export default async function CancelSupperClub() {
             </p>
             {credits > 0 && (
               <Notice icon="info">
-                {/* One span, so the bold lead and its sentence run on beside the icon, not as two flex columns. */}
+                {/* One span beside the icon: the bold lead on its own line, its sentence under it, not as two flex columns. */}
                 <span>
-                  <strong className="font-semibold text-teal">{credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}</strong>{" "}
+                  <strong className="block font-semibold text-teal">{credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}</strong>{" "}
                   {t("account.cancel.refund")}
                 </span>
               </Notice>

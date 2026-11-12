@@ -48,9 +48,9 @@ export default async function Account() {
           <Heading>{t("account.title")}</Heading>
           {cancelled && (
             <Notice icon="info">
-              {/* One span, so the bold lead and its sentences run on beside the icon, not as two flex columns. */}
+              {/* One span beside the icon: the bold lead on its own line, its sentences under it, not as two flex columns. */}
               <span>
-                <strong className="font-semibold text-teal">{t("account.cancelledNotice")}</strong>{" "}
+                <strong className="block font-semibold text-teal">{t("account.cancelledNotice")}</strong>{" "}
                 {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
               </span>
             </Notice>
