@@ -753,7 +753,8 @@ export class PostgresRepository implements Repository {
   async createMenu(input: MenuInput): Promise<Menu> {
     if (!this.scoped) return this.withActor(null, (repo) => repo.createMenu(input));
     const { rows } = await this.db.query<{ id: string }>("insert into menus (name) values ($1) returning id", [input.name]);
-    const id = rows[0]?.id ?? "";
+    const id = rows[0]?.id;
+    if (id === undefined) throw new Error("createMenu: the insert returned no id");
     await this.insertMenuTexts(id, input.texts);
     const menu = await this.findMenu(id);
     if (!menu) throw new Error("createMenu: the menu vanished after the insert");

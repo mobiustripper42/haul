@@ -1,5 +1,6 @@
 // The full pages' paths: the one home for them, imported by each flow's actions and pages. A plain file,
 // so a page linking to the other flow doesn't pull in that flow's services.
+import { MENU_FROM_PARAM } from "./admin/menus/shared";
 import type { FlowPages } from "./sign-in/shared";
 
 /** A member's account home. */
@@ -36,7 +37,7 @@ export const ADMIN_MENU_NEW_PATH = "/admin/menus/new";
 /** Edit menu. */
 export const adminMenuPath = (id: string): string => `${ADMIN_MENUS_PATH}/${encodeURIComponent(id)}`;
 /** New menu, filled from the menu given (Duplicate). */
-export const duplicateMenuPath = (id: string): string => `${ADMIN_MENU_NEW_PATH}?${new URLSearchParams({ from: id })}`;
+export const duplicateMenuPath = (id: string): string => `${ADMIN_MENU_NEW_PATH}?${new URLSearchParams({ [MENU_FROM_PARAM]: id })}`;
 
 /** A member's cancel confirm (issue 139). */
 export const ACCOUNT_CANCEL_PATH = "/account/cancel";

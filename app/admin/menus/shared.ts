@@ -12,3 +12,6 @@ export const menuTextField = (optionId: string): string => `text:${optionId}`;
 
 /** The query parameter a save sends the list, holding the saved menu's id. */
 export const MENU_SAVED_PARAM = "saved";
+
+/** The query parameter Duplicate's link sends New menu, holding the id of the menu to copy. */
+export const MENU_FROM_PARAM = "from";

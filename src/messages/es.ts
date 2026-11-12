@@ -101,7 +101,7 @@ export const es = {
   "admin.menus.new": "Nuevo menú",
   "admin.menus.saved": "Se guardó {name}.",
   "admin.menus.search": "Buscar",
-  "admin.menus.searchPlaceholder": "Un plato o el nombre de un menú",
+  "admin.menus.searchPlaceholder": "Un plato o un menú",
   "admin.menus.noMatch": "Ningún menú coincide con \"{q}\".",
   "admin.menus.edit": "Editar",
   "admin.menus.duplicate": "Duplicar",

@@ -13,7 +13,7 @@ import { AdminNav } from "../../admin-nav";
 import { createMenu } from "../actions";
 import { menuFormText } from "../form-text";
 import { MenuForm } from "../menu-form";
-import type { MenuFormState } from "../shared";
+import { MENU_FROM_PARAM, type MenuFormState } from "../shared";
 
 export const generateMetadata = titled("admin.menu.newTitle");
 
@@ -31,7 +31,7 @@ export default async function NewMenu({ searchParams }: { searchParams: Promise<
   const [t, query] = await Promise.all([getTranslator(), searchParams]);
   const repo = getRepository();
   const options = menuOptions(await requireSupperClub(repo));
-  const from = one(query.from);
+  const from = one(query[MENU_FROM_PARAM]);
   const original = from === undefined ? null : await repo.findMenu(from);
   const state: MenuFormState = original
     ? { name: t("admin.menus.copyName", { name: original.name }), texts: original.texts, errors: null }

@@ -231,7 +231,7 @@ function MenuPanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
         </>
       ) : (
         <>
-          <div className="max-w-xs">
+          <div className="max-w-card">
             <Field label={t("admin.weeks.menuLabel")} htmlFor={id}>
               <Select
                 id={id}
