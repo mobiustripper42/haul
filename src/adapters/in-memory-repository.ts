@@ -14,7 +14,8 @@ import {
   type Subscriber,
   type WeekCredit,
 } from "../ports/repository.js";
-import { clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -30,9 +31,11 @@ type StoredSubscription = {
   firstChargeCents: number;
   weeklyCents: number;
   createdAt: Date;
-  /** Option type id → option id. */
-  optionIds: Record<string, string>;
+  /** The subscription's sets of picks, each option type id → option id from the week it starts at (`from_week`). */
+  sets: StoredSet[];
 };
+
+type StoredSet = { fromWeek: string; optionIds: Record<string, string> };
 
 type StoredLedger = {
   id: string;
@@ -174,7 +177,7 @@ export class InMemoryRepository implements Repository {
       weeklyCents: subscription.weeklyCents,
       pickupDate: ledger.pickupDate,
       createdAt: new Date(subscription.createdAt),
-      optionIds: Object.values(subscription.optionIds),
+      optionIds: Object.values(this.newestSet(subscription)?.optionIds ?? {}),
     };
   }
 
@@ -194,7 +197,8 @@ export class InMemoryRepository implements Repository {
       firstChargeCents: input.firstChargeCents,
       weeklyCents: input.weeklyCents,
       createdAt: existing?.createdAt ?? new Date(),
-      optionIds: { ...input.choices },
+      // A retry replaces the pending subscription's set: it has no history.
+      sets: [{ fromWeek: input.pickupDate, optionIds: { ...input.choices } }],
     };
     const before = existing && this.ledgerOf(existing.id);
     // A decline charged nothing, so the next try is a new attempt with no card; a pending row keeps both.
@@ -269,6 +273,7 @@ export class InMemoryRepository implements Repository {
     const ledger = subscription && this.ledgerOf(subscription.id);
     if (!subscription || !ledger?.paidAt) return null;
     const week = pickupWeek(ledger.pickupDate, this.pickupWeeks.get(weekKey(subscription.productId, ledger.pickupDate)) ?? null);
+    const newest = this.newestSet(subscription);
     return {
       subscriptionId: subscription.id,
       pickupDate: ledger.pickupDate,
@@ -277,7 +282,9 @@ export class InMemoryRepository implements Repository {
       chargedDate: clevelandDate(ledger.paidAt),
       firstChargeCents: subscription.firstChargeCents,
       weeklyCents: subscription.weeklyCents,
-      options: this.optionsOf(subscription),
+      options: this.optionsNamed(subscription, newest?.optionIds ?? {}),
+      optionsFromWeek: newest?.fromWeek ?? "",
+      choices: { ...newest?.optionIds },
     };
   }
 
@@ -349,7 +356,7 @@ export class InMemoryRepository implements Repository {
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
     const paid = [...this.ledger.values()]
       .filter((row) => row.subscriptionId === subscriptionId && row.status === "paid")
-      .map((row) => ({ weekOf: row.pickupDate, amountCents: row.amountCents }));
+      .map((row) => ({ weekOf: row.pickupDate, amountCents: row.amountCents, options: this.optionsNamed(this.subscriptions.get(subscriptionId), this.setInEffect(subscriptionId, row.pickupDate)?.optionIds ?? {}) }));
     const weekCredits = [...this.weekCredits.values()].flatMap((credit) => {
       const row = this.ledger.get(credit.grantedFor);
       return credit.subscriptionId === subscriptionId && credit.spentOn === null && row ? [{ grantedForWeek: row.pickupDate }] : [];
@@ -373,6 +380,22 @@ export class InMemoryRepository implements Repository {
     return row ? this.ledger.delete(row.id) : false;
   }
 
+  /**
+   * The picks from `fromWeek` on are `choices`: every set from that week on is deleted and the new one inserted at it,
+   * unless it equals the set in effect for the week before (then it only deletes). The sets ending as they were is
+   * "unchanged", and writes nothing, `weekly_cents` included.
+   */
+  async switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged"> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (!subscription) return "unchanged";
+    const before = this.setInEffect(subscriptionId, addDays(fromWeek, -7));
+    const kept = subscription.sets.filter((set) => set.fromWeek < fromWeek);
+    const sets = before && sameChoices(before.optionIds, choices) ? kept : [...kept, { fromWeek, optionIds: { ...choices } }];
+    if (JSON.stringify(sets.map(setKey)) === JSON.stringify(subscription.sets.map(setKey))) return "unchanged";
+    this.subscriptions.set(subscriptionId, { ...subscription, sets, weeklyCents });
+    return "switched";
+  }
+
   /** A test seam on the fake only, not on `Repository`: a week credit spent on a later week's ledger row, as the charge run (2.2b) will. */
   async spendWeekCredit(weekCreditId: string, ledgerId: string): Promise<void> {
     const credit = this.weekCredits.get(weekCreditId);
@@ -394,20 +417,6 @@ export class InMemoryRepository implements Repository {
     });
   }
 
-  /** A test seam on the fake only, not on `Repository`: replaces a subscription's picks, as a switch would. */
-  async setSubscriptionOptions(subscriptionId: string, optionIds: string[]): Promise<void> {
-    const subscription = this.subscriptions.get(subscriptionId);
-    const product = subscription && this.products.find((p) => p.id === subscription.productId);
-    if (!subscription || !product) return;
-    const picked = Object.fromEntries(
-      product.optionTypes.flatMap((type) => {
-        const option = type.options.find((o) => optionIds.includes(o.id));
-        return option ? [[type.id, option.id]] : [];
-      }),
-    );
-    this.subscriptions.set(subscriptionId, { ...subscription, optionIds: picked });
-  }
-
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     return [...this.subscriptions.values()]
       .filter((s) => s.productId === productId && s.status === "active")
@@ -423,7 +432,7 @@ export class InMemoryRepository implements Repository {
             lastName: member.lastName,
             email: member.email,
             phone: member.phone,
-            options: this.optionsOf(subscription),
+            options: this.optionsNamed(subscription, this.newestSet(subscription)?.optionIds ?? {}),
             joinedDate: clevelandDate(paidAt),
           },
         ];
@@ -538,7 +547,8 @@ export class InMemoryRepository implements Repository {
         grantedFor: row.id,
         spentOn: null,
         grantedAt: new Date(now),
-        optionIds: { ...subscription.optionIds },
+        // DEC-033: the set in effect for the week the row answers for, not the subscription's picks at the grant.
+        optionIds: { ...this.setInEffect(subscription.id, row.pickupDate)?.optionIds },
       });
     }
   }
@@ -551,11 +561,23 @@ export class InMemoryRepository implements Repository {
     );
   }
 
-  /** The options a subscription picked, in option-type position order. */
-  private optionsOf(subscription: StoredSubscription): Subscriber["options"] {
-    const product = this.products.find((p) => p.id === subscription.productId);
+  /** The set in effect for `weekOf`: the subscription's set with the latest `fromWeek` on or before it. The one home of the rule. */
+  private setInEffect(subscriptionId: string, weekOf: string): StoredSet | undefined {
+    return [...(this.subscriptions.get(subscriptionId)?.sets ?? [])]
+      .filter((set) => set.fromWeek <= weekOf)
+      .sort((a, b) => b.fromWeek.localeCompare(a.fromWeek))[0];
+  }
+
+  /** The newest set: the one with the latest `fromWeek`, whatever week it starts from. */
+  private newestSet(subscription: StoredSubscription): StoredSet | undefined {
+    return [...subscription.sets].sort((a, b) => b.fromWeek.localeCompare(a.fromWeek))[0];
+  }
+
+  /** The options of a set, named, in option-type position order. */
+  private optionsNamed(subscription: StoredSubscription | undefined, optionIds: Record<string, string>): Subscriber["options"] {
+    const product = this.products.find((p) => p.id === subscription?.productId);
     return (product?.optionTypes ?? []).flatMap((type) => {
-      const picked = type.options.find((option) => option.id === subscription.optionIds[type.id]);
+      const picked = type.options.find((option) => option.id === optionIds[type.id]);
       return picked ? [{ typeName: type.name, optionName: picked.name }] : [];
     });
   }
@@ -579,6 +601,9 @@ const copy = (member: Member): Member => ({
   createdAt: new Date(member.createdAt),
   emailConfirmedAt: member.emailConfirmedAt && new Date(member.emailConfirmedAt),
 });
+
+/** A set as a comparable string: its week and its picks in type id order. */
+const setKey = (set: StoredSet): [string, [string, string][]] => [set.fromWeek, Object.entries(set.optionIds).sort(([a], [b]) => a.localeCompare(b))];
 
 const weekKey = (productId: string, weekOf: string): string => `${productId}|${weekOf}`;
 

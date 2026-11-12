@@ -83,6 +83,20 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
     expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2026-10-25"]);
   });
 
+  it("AC4 (issue 138): every subscription's picks start from its first ledger week, 2026-10-25", async () => {
+    await runSeed("subscribers", url);
+
+    const { rows } = await pool.query<{ from_week: string; picks: number }>(
+      `select to_char(so.from_week, 'YYYY-MM-DD') as from_week, count(*)::int as picks
+         from subscription_options so
+         join subscriptions s on s.id = so.subscription_id
+         join products p on p.id = s.product_id
+        where p.name = 'Supper Club'
+        group by so.from_week`,
+    );
+    expect(rows).toEqual([{ from_week: "2026-10-25", picks: 24 }]);
+  });
+
   it("AC12 (seed): none of the members has a Square customer", async () => {
     await runSeed("subscribers", url);
 

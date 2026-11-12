@@ -164,6 +164,23 @@ describe("AC3 (issue 136) — the subscription's picks and weekly price", () => 
   });
 });
 
+// Issue 138: the newest set is findSignupConfirmation's (src/adapters/signup-contract.ts); here the page shows it once.
+describe("AC5 (issue 138) — after a switch", () => {
+  it("AC5: the page shows the newest picks and the new weekly price, though they start at a week to come", async () => {
+    const member = await ada();
+    await subscribed(member);
+    signIn(member);
+    const confirmation = await services.repo.findSignupConfirmation(member.id, product.id);
+    const vegan = Object.fromEntries(
+      product.optionTypes.map((type) => [type.id, type.options.find((option) => ["3–4 people", "Vegan"].includes(option.name))?.id ?? "no such option"]),
+    );
+    await services.repo.switchPicks(confirmation?.subscriptionId ?? "no subscription", vegan, "2027-03-07", 8000);
+    const { runs, text } = await render();
+    expect(runs).toContain("3–4 people · Vegan");
+    expect(text).toContain(t("supperClub.next.charge", { price: formatUsdWhole(8000) }));
+  });
+});
+
 describe("AC3b (issue 136) — the next pickup", () => {
   it('AC3b: for a member whose first week is past, it is the first listed week: "Next pickup: February 7 and 8", then the where line', async () => {
     const member = await ada();

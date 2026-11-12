@@ -2,9 +2,10 @@
  * The week credit repository contract, run against both adapters like `runRepositoryContract` (DEC-010).
  *
  * `runWeekCreditContract` is issue 149's: closing and reopening a week, and the week credits closing grants. It
- * takes `addProduct` and two seams each adapter's repository test file passes in: `addLedgerRow`, a ledger row
- * as the charge run would write it, and `setSubscriptionOptions`, a subscription's picks replaced as a switch
- * would (task 2.6). The fake has a method for each; Postgres writes them with raw SQL.
+ * takes `addProduct` and the seams each adapter's repository test file passes in: `addLedgerRow`, a ledger row
+ * as the charge run would write it, and `spendWeekCredit`, a week credit spent as the charge run will. The fake has
+ * a method for each; Postgres writes them with raw SQL. A subscription's picks change only through `switchPicks`
+ * (issue 138), which is on the port.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { ChangedWeek } from "../pickup-week.js";
@@ -19,7 +20,6 @@ export function runWeekCreditContract(
   make: () => Promise<Repository>,
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
   addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<void>,
-  setSubscriptionOptions: (subscriptionId: string, optionIds: string[]) => Promise<void>,
   spendWeekCredit: (weekCreditId: string, ledgerId: string) => Promise<void>,
   reset?: () => Promise<void>,
 ): void {
@@ -53,6 +53,19 @@ export function runWeekCreditContract(
       Object.fromEntries(on.optionTypes.map((type, i) => [type.id, ids[i] ?? "no such option"]));
 
     const sorted = (ids: readonly string[] | undefined) => [...(ids ?? [])].sort();
+
+    /** Issue 138: the set at `size` and `menu` of `product` as a read gives it: each type's name and its option's. */
+    const meal = (size: number, menu: number): { typeName: string; optionName: string }[] => {
+      const [sizes, menus] = product.optionTypes;
+      return [
+        { typeName: sizes?.name ?? "no size type", optionName: sizes?.options[size]?.name ?? "no such size" },
+        { typeName: menus?.name ?? "no menu type", optionName: menus?.options[menu]?.name ?? "no such menu" },
+      ];
+    };
+
+    /** Issue 138: `switchPicks` to the options at `size` and `menu` from `fromWeek` on, at `weeklyCents`. */
+    const switchTo = (subscriptionId: string, size: number, menu: number, fromWeek: string, weeklyCents: number) =>
+      repo.switchPicks(subscriptionId, choicesOf(picks(size, menu)), fromWeek, weeklyCents);
 
     /** A new member's pending rows for `week`, picking `ids`. */
     const pendingFor = async (week: string, ids: string[] = picks(0, 0), on: ProductWithOptions = product): Promise<PendingSignup> => {
@@ -179,9 +192,19 @@ export function runWeekCreditContract(
         expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 1))]);
       });
 
-      it("AC4: the picks are the subscription's at the grant: changed before the closing, the week credit holds the new ones", async () => {
+      // Issue 138, DEC-033: a week credit holds the set in effect for the week of the ledger row it answers for.
+      it("AC4: a switch made before the closing starts at a later week, so the week credit holds the paid week's picks", async () => {
         const signup = await paidFor(WEEK, picks(0, 0));
-        await setSubscriptionOptions(signup.subscriptionId, picks(1, 0));
+        await switchTo(signup.subscriptionId, 1, 0, NEXT, 8000);
+        await close(WEEK);
+        expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(0, 0))]);
+      });
+
+      it("AC4 (issue 138): a week credit holds the set in effect for the week it answers for: neither the signup's nor the newest", async () => {
+        const signup = await paidFor(EARLIER, picks(0, 0));
+        await switchTo(signup.subscriptionId, 1, 0, WEEK, 8000);
+        await addLedgerRow(signup.subscriptionId, WEEK, "paid", 8000);
+        await switchTo(signup.subscriptionId, 1, 1, NEXT, 8000);
         await close(WEEK);
         expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 0))]);
       });
@@ -189,7 +212,7 @@ export function runWeekCreditContract(
       it("AC4: changing the subscription's picks after the grant does not change the week credit", async () => {
         const signup = await paidFor(WEEK, picks(1, 1));
         await close(WEEK);
-        await setSubscriptionOptions(signup.subscriptionId, picks(0, 0));
+        await switchTo(signup.subscriptionId, 0, 0, WEEK, 5000);
         expect((await credits()).map((credit) => sorted(credit.optionIds))).toEqual([sorted(picks(1, 1))]);
       });
     });
@@ -324,8 +347,8 @@ export function runWeekCreditContract(
         const signup = await paidFor(EARLIER);
         await addLedgerRow(signup.subscriptionId, WEEK, "paid", 4200);
         expect((await weeksOf(signup.subscriptionId)).paid).toEqual([
-          { weekOf: EARLIER, amountCents: 5000 },
-          { weekOf: WEEK, amountCents: 4200 },
+          { weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) },
+          { weekOf: WEEK, amountCents: 4200, options: meal(0, 0) },
         ]);
       });
 
@@ -334,7 +357,7 @@ export function runWeekCreditContract(
         await addLedgerRow(signup.subscriptionId, WEEK, "pending", 5000);
         await addLedgerRow(signup.subscriptionId, NEXT, "declined", 5000);
         await paidFor(WEEK);
-        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000 }]);
+        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) }]);
       });
 
       it("AC5 (issue 155): its unspent week credits, each with the week of the paid row it was granted for; another subscription's are not its", async () => {
@@ -379,7 +402,7 @@ export function runWeekCreditContract(
         const signup = await paidFor(EARLIER);
         expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(true);
         expect(await skippedOf(signup.subscriptionId)).toEqual([WEEK]);
-        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000 }]);
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) }]);
       });
 
       it("AC1: each week skipped is a row of its own, and another subscription's row for the week does not stand in the way", async () => {
@@ -438,6 +461,119 @@ export function runWeekCreditContract(
       it("AC4: unskipWeek for a week with no ledger row is false", async () => {
         const signup = await paidFor(EARLIER);
         expect(await repo.unskipWeek(signup.subscriptionId, WEEK)).toBe(false);
+      });
+    });
+
+    // Issue 138: picks are dated sets. The picks for a week are the set with the latest from_week on or before it,
+    // read here through listMemberWeeks' paid rows: the one place the rule's edges are tested (the week credit's grant
+    // takes one case through it, above). Then switchPicks' own rules, the price among them, read back through
+    // findSignupConfirmation: the newest set, its from_week, and the subscription's weekly_cents. The repository
+    // checks no cutoff and no switch week (app/account/weeks/actions.test.ts does), so a switch here starts where told.
+    describe("issue 138 — dated picks and switchPicks", () => {
+      const FEB_7 = "2027-02-07";
+
+      /** A new member's signup for EARLIER at the first size and menu, charged at 5000: the member's id and the subscription's. */
+      const subscribed = async (): Promise<{ memberId: string; subscriptionId: string }> => {
+        const memberId = (await repo.createMember({ email: `member-${++members}@example.com` })).id;
+        const signup = await repo.savePendingSignup({
+          memberId,
+          productId: product.id,
+          choices: choicesOf(picks(0, 0)),
+          firstChargeCents: 5000,
+          weeklyCents: 5000,
+          pickupDate: EARLIER,
+          consentText: "I agree to a weekly charge of $50.",
+          consentAt: PAID_AT,
+        });
+        expect(await confirm(signup)).toBe("confirmed");
+        return { memberId, subscriptionId: signup.subscriptionId };
+      };
+
+      /** Each paid week's set, by week. */
+      const paidMeals = async (subscriptionId: string) =>
+        Object.fromEntries((await repo.listMemberWeeks(subscriptionId)).paid.map((row) => [row.weekOf, row.options]));
+
+      /** The newest set, the week it starts from, and the weekly price, as the account pages read them. */
+      const newest = async (memberId: string) => {
+        const found = await repo.findSignupConfirmation(memberId, product.id);
+        return found && { options: found.options, optionsFromWeek: found.optionsFromWeek, weeklyCents: found.weeklyCents };
+      };
+
+      describe("AC4 — the set in effect for a week", () => {
+        it("AC4: a paid week reads the set in effect for it: before the switch week the signup's, on it and after it the new one", async () => {
+          const { subscriptionId } = await subscribed();
+          for (const week of [WEEK, NEXT, FEB_7]) await addLedgerRow(subscriptionId, week, "paid", 5000);
+          await switchTo(subscriptionId, 1, 1, WEEK, 8000);
+          expect(await paidMeals(subscriptionId)).toEqual({ [EARLIER]: meal(0, 0), [WEEK]: meal(1, 1), [NEXT]: meal(1, 1), [FEB_7]: meal(1, 1) });
+        });
+
+        it("AC4: a week between two sets reads the earlier of them, not the newest", async () => {
+          const { subscriptionId } = await subscribed();
+          for (const week of [WEEK, NEXT, FEB_7]) await addLedgerRow(subscriptionId, week, "paid", 5000);
+          await switchTo(subscriptionId, 1, 0, WEEK, 8000);
+          await switchTo(subscriptionId, 1, 1, FEB_7, 8000);
+          expect(await paidMeals(subscriptionId)).toEqual({ [EARLIER]: meal(0, 0), [WEEK]: meal(1, 0), [NEXT]: meal(1, 0), [FEB_7]: meal(1, 1) });
+        });
+      });
+
+      describe("AC1, AC7 — switchPicks", () => {
+        it('AC1: switchPicks stores the set from the switch week on and the price given as weekly_cents, and says "switched"; another subscription is untouched', async () => {
+          const ada = await subscribed();
+          const grace = await subscribed();
+          expect(await switchTo(ada.subscriptionId, 1, 1, WEEK, 8000)).toBe("switched");
+          expect(await newest(ada.memberId)).toEqual({ options: meal(1, 1), optionsFromWeek: WEEK, weeklyCents: 8000 });
+          expect(await newest(grace.memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
+        });
+
+        it("AC7: a switch deletes every set from the switch week on: a later set is replaced, not kept", async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          await addLedgerRow(subscriptionId, FEB_7, "paid", 8000);
+          await switchTo(subscriptionId, 1, 1, FEB_7, 8000);
+          expect(await switchTo(subscriptionId, 1, 0, WEEK, 8000)).toBe("switched");
+          expect((await paidMeals(subscriptionId))[FEB_7]).toEqual(meal(1, 0));
+          expect(await newest(memberId)).toEqual({ options: meal(1, 0), optionsFromWeek: WEEK, weeklyCents: 8000 });
+        });
+
+        it("AC7: switching back to the set in effect before the switch week removes the dated set, adding no identical one", async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          await switchTo(subscriptionId, 1, 1, WEEK, 8000);
+          expect(await switchTo(subscriptionId, 0, 0, WEEK, 5000)).toBe("switched");
+          expect(await newest(memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
+        });
+
+        it("AC7: a save that deletes a set starting after the switch week is switched, though the switch week's own picks stay the same", async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          await addLedgerRow(subscriptionId, FEB_7, "paid", 8000);
+          await switchTo(subscriptionId, 1, 1, FEB_7, 8000);
+          expect(await switchTo(subscriptionId, 0, 0, WEEK, 5000)).toBe("switched");
+          expect((await paidMeals(subscriptionId))[FEB_7]).toEqual(meal(0, 0));
+          expect(await newest(memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
+        });
+
+        it('AC7: a save whose sets would end as they were, the set in effect at the switch week, writes nothing, weekly_cents included: "unchanged"', async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          expect(await switchTo(subscriptionId, 0, 0, WEEK, 4200)).toBe("unchanged");
+          expect(await newest(memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
+        });
+
+        it('AC7: a save of the set already stored at the switch week writes nothing, weekly_cents included: "unchanged"', async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          await switchTo(subscriptionId, 1, 1, WEEK, 8000);
+          expect(await switchTo(subscriptionId, 1, 1, WEEK, 7000)).toBe("unchanged");
+          expect(await newest(memberId)).toEqual({ options: meal(1, 1), optionsFromWeek: WEEK, weeklyCents: 8000 });
+        });
+
+        it("AC1: a switch that its withActor rolls back stores nothing: the picks and weekly_cents stay", async () => {
+          const { memberId, subscriptionId } = await subscribed();
+          const failure = new Error("fn failed after switching");
+          await expect(
+            repo.withActor({ member: memberId }, async (r) => {
+              await r.switchPicks(subscriptionId, choicesOf(picks(1, 1)), WEEK, 8000);
+              throw failure;
+            }),
+          ).rejects.toBe(failure);
+          expect(await newest(memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
+        });
       });
     });
   });

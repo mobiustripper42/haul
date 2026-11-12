@@ -12,7 +12,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { redirectOf } from "../../screen-test-helpers";
-import { skipWeek, unskipWeek } from "./actions";
+import { skipWeek, switchMeal, unskipWeek } from "./actions";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -235,5 +235,79 @@ describe("AC5 (issue 137) — a Week credit week", () => {
     await services.repo.closePickupWeek(product.id, PAST_CUTOFF, null, new Date("2027-02-02T15:00:00.000Z"));
     await expect(redirectOf(skipWeek(form({ week: OPEN })))).resolves.toBe(WEEKS_PATH);
     expect(await skippedOf(subscriptionId)).toEqual([OPEN]);
+  });
+});
+
+// Issue 138: switchMeal. Which week is the switch week is switchWeek's and which forms are read strictChoices'
+// (src/switch-meal.test.ts); what switchPicks stores, and when it is "unchanged", its contract's
+// (src/adapters/week-credit-contract.ts). These hold each of the action's own branches once: the write as the member,
+// the cutoff read at the request, the match against the switch week, a refused form, the gate, and an unchanged save.
+// Ada's picks are each type's first option, 3–4 people and Standard, at a stored $45 a week: the picks' price today
+// is $80, so a save that wrote the price would show it. Her switch week is February 14, the first listed week whose
+// cutoff has not passed.
+describe("issue 138 — switchMeal", () => {
+  /** Each option type's id → the id of its option named in `names`. */
+  const choiceOf = (names: string[]): Record<string, string> =>
+    Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => names.includes(option.name))?.id ?? "no such option"]));
+
+  /** The switch form: the week posted, and an option per type. */
+  const switchForm = (week: string, choices: Record<string, string>): FormData => form({ week, ...choices });
+
+  /** The member's newest set, the week it starts from, and the weekly price. */
+  const mealOf = async (memberId: string) => {
+    const found = await services.repo.findSignupConfirmation(memberId, product.id);
+    return found && { options: found.options, optionsFromWeek: found.optionsFromWeek, weeklyCents: found.weeklyCents };
+  };
+
+  it("AC1: a save on the switch week stores the picks from that week on, priced as signup prices them, as the member, and goes back to Upcoming weeks", async () => {
+    const { memberId } = await ada();
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe(WEEKS_PATH);
+    expect(await mealOf(memberId)).toEqual({
+      options: [
+        { typeName: "How many people", optionName: "2 people" },
+        { typeName: "Which menu", optionName: "Vegan" },
+      ],
+      optionsFromWeek: OPEN,
+      weeklyCents: 5000,
+    });
+    expect(withActor).toHaveBeenCalledWith({ member: memberId }, expect.any(Function));
+  });
+
+  it("AC3: a save posting a week whose cutoff has passed goes back with the cutoff Notice, and stores nothing", async () => {
+    const { memberId } = await ada();
+    const before = await mealOf(memberId);
+    await expect(redirectOf(switchMeal(switchForm(PAST_CUTOFF, choiceOf(["2 people", "Vegan"])))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
+    expect(await mealOf(memberId)).toEqual(before);
+  });
+
+  it("AC3: a save posting a listed week before its cutoff that is not the switch week goes back with no Notice, and stores nothing", async () => {
+    const { memberId } = await ada();
+    const before = await mealOf(memberId);
+    await expect(redirectOf(switchMeal(switchForm("2027-02-21", choiceOf(["2 people", "Vegan"]))))).resolves.toBe(WEEKS_PATH);
+    expect(await mealOf(memberId)).toEqual(before);
+  });
+
+  it("AC6: a form strictChoices refuses, a type with no option, goes back with no Notice, and stores nothing", async () => {
+    const { memberId } = await ada();
+    const before = await mealOf(memberId);
+    const [size] = product.optionTypes;
+    const only = { [size?.id ?? "no size type"]: size?.options[1]?.id ?? "no such option" };
+    await expect(redirectOf(switchMeal(switchForm(OPEN, only)))).resolves.toBe(WEEKS_PATH);
+    expect(await mealOf(memberId)).toEqual(before);
+  });
+
+  it("AC6: a signed-in member with no active, paid subscription is sent to /supper-club", async () => {
+    const member = await services.repo.createMember({ email: "ada@example.com" });
+    signIn(member.id);
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe("/supper-club");
+  });
+
+  it('AC7: an "unchanged" save of the picks held leaves weekly_cents as stored, though their price today differs, and goes back with no Notice', async () => {
+    const { memberId } = await ada();
+    const before = await mealOf(memberId);
+    expect(before?.weeklyCents).toBe(4500);
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["3–4 people", "Standard"]))))).resolves.toBe(WEEKS_PATH);
+    expect(await mealOf(memberId)).toEqual(before);
   });
 });

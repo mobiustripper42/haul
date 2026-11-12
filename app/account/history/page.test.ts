@@ -168,6 +168,22 @@ describe("AC7 (issue 137) — a past skipped week", () => {
   });
 });
 
+// Issue 138: which set a paid week reads is the repository contract's (src/adapters/week-credit-contract.ts); here
+// the page shows each paid week's own set once, after a switch.
+describe("AC4 (issue 138) — a paid week's picks, after a switch", () => {
+  it("AC4: each paid week shows the picks it was charged for: the week a switch starts from its new meal, the week before it the signup's", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 8000);
+    const vegan = Object.fromEntries(
+      product.optionTypes.map((type) => [type.id, type.options.find((option) => ["3–4 people", "Vegan"].includes(option.name))?.id ?? "no such option"]),
+    );
+    await services.repo.switchPicks(subscriptionId, vegan, "2027-01-10", 8000);
+    const { rows } = await render();
+    expect(rowTitled(rows, titleOf(JAN_3))?.[1]).toBe(MEAL);
+    expect(rowTitled(rows, titleOf("2027-01-10"))?.[1]).toBe("3–4 people · Vegan");
+  });
+});
+
 describe("AC8 (issue 155) — no past weeks", () => {
   it("AC8: a member whose first week has not passed sees the heading and the intro line only: no card and no message", async () => {
     await subscribedAda("2027-02-07");

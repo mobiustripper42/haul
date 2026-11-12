@@ -14,6 +14,7 @@ import {
   type WeekCredit,
 } from "../ports/repository.js";
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
+import { sameChoices } from "../switch-meal.js";
 import { isSoldOut, type ProductOptionType, type ProductWithOptions } from "../products.js";
 import type { SaveHold, SignInCode } from "../sign-in/store.js";
 import { createPool, type Pool, type PoolClient } from "./pg-connect.js";
@@ -112,6 +113,18 @@ const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12
 
 /** A timestamptz column as its day in Cleveland, `YYYY-MM-DD`. Only ever given a column name written in this file. */
 const clevelandDay = (column: string): string => `to_char(${column} at time zone 'America/New_York', 'YYYY-MM-DD')`;
+
+/**
+ * A `where` condition on `subscription_options so`: the row belongs to the set in effect for the week `weekExpr` gives
+ * (DEC-033), the set with the latest `from_week` on or before it. The one home of the rule, used by `listMemberWeeks`,
+ * `grantWeekCredits` and `switchPicks`. `weekExpr` is only ever an expression written in this file.
+ */
+const inEffectFor = (weekExpr: string): string =>
+  `so.from_week = (select max(latest.from_week) from subscription_options latest
+                    where latest.subscription_id = so.subscription_id and latest.from_week <= ${weekExpr})`;
+
+/** A `where` condition on `subscription_options so`: the row belongs to the subscription's newest set, whatever week it starts from. */
+const NEWEST_SET = `so.from_week = (select max(newest.from_week) from subscription_options newest where newest.subscription_id = so.subscription_id)`;
 
 /**
  * The hold both saves share, as a `where` clause appended to the statement (and its parameters): the
@@ -329,18 +342,14 @@ export class PostgresRepository implements Repository {
     );
     const subscriptionId = (rows[0] as { id: string }).id;
 
+    // The one set, at the ledger row's week. A pending subscription has no history, so a retry replaces it.
     const typeIds = Object.keys(input.choices);
     const optionIds = typeIds.map((typeId) => input.choices[typeId]);
+    await this.db.query("delete from subscription_options where subscription_id = $1", [subscriptionId]);
     await this.db.query(
-      `delete from subscription_options where subscription_id = $1 and option_type_id <> all($2::uuid[])`,
-      [subscriptionId, typeIds],
-    );
-    await this.db.query(
-      `insert into subscription_options (subscription_id, option_type_id, option_id)
-       select $1, picked.option_type_id, picked.option_id from unnest($2::uuid[], $3::uuid[]) as picked (option_type_id, option_id)
-       on conflict (subscription_id, option_type_id) do update set option_id = excluded.option_id
-         where subscription_options.option_id is distinct from excluded.option_id`,
-      [subscriptionId, typeIds, optionIds],
+      `insert into subscription_options (subscription_id, option_type_id, option_id, from_week)
+       select $1, picked.option_type_id, picked.option_id, $4::date from unnest($2::uuid[], $3::uuid[]) as picked (option_type_id, option_id)`,
+      [subscriptionId, typeIds, optionIds, input.pickupDate],
     );
 
     const ledger = await this.db.query<{ id: string; status: string }>(
@@ -509,6 +518,7 @@ export class PostgresRepository implements Repository {
     const row = found.rows[0];
     if (!row) return null;
     const week = pickupWeek(row.pickup_date, { weekOf: row.pickup_date, closedAt: null, note: null, firstDay: row.first_day, lastDay: row.last_day });
+    const newest = (await this.optionsOf([row.id])).get(row.id);
     return {
       subscriptionId: row.id,
       pickupDate: row.pickup_date,
@@ -517,7 +527,9 @@ export class PostgresRepository implements Repository {
       chargedDate: row.charged_date,
       firstChargeCents: row.first_charge_cents,
       weeklyCents: row.weekly_cents,
-      options: (await this.optionsOf([row.id])).get(row.id) ?? [],
+      options: newest?.options ?? [],
+      optionsFromWeek: newest?.fromWeek ?? "",
+      choices: newest?.choices ?? {},
     };
   }
 
@@ -601,7 +613,7 @@ export class PostgresRepository implements Repository {
 
   /**
    * A week credit for each `paid` ledger row of the product's subscriptions for the week that has none, granted at
-   * `now`, with a copy of the subscription's picks beside it; with `ledgerId`, for that row alone. The one home for
+   * `now`, with a copy of the set in effect for the row's week beside it (DEC-033); with `ledgerId`, for that row alone. The one home for
    * granting, called by closing and by a confirmation that lands after the week closed. The caller holds the
    * product row's lock.
    */
@@ -619,7 +631,9 @@ export class PostgresRepository implements Repository {
     await this.db.query(
       `insert into week_credit_options (week_credit_id, option_type_id, option_id)
        select c.id, so.option_type_id, so.option_id
-         from week_credits c join subscription_options so on so.subscription_id = c.subscription_id
+         from week_credits c
+         join ledger l on l.id = c.granted_for
+         join subscription_options so on so.subscription_id = c.subscription_id and ${inEffectFor("l.pickup_date")}
         where c.id = any($1::uuid[])`,
       [rows.map((row) => row.id)],
     );
@@ -670,12 +684,22 @@ export class PostgresRepository implements Repository {
 
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
     if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [], skipped: [] };
-    const [paid, weekCredits, skipped] = await Promise.all([
+    const [paid, paidOptions, weekCredits, skipped] = await Promise.all([
       this.db.query<{ week_of: string; amount_cents: number }>(
         `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents
            from ledger
           where subscription_id = $1 and status = 'paid'
           order by pickup_date`,
+        [subscriptionId],
+      ),
+      this.db.query<{ week_of: string; type_name: string; option_name: string }>(
+        `select to_char(l.pickup_date, 'YYYY-MM-DD') as week_of, t.name as type_name, o.name as option_name
+           from ledger l
+           join subscription_options so on so.subscription_id = l.subscription_id and ${inEffectFor("l.pickup_date")}
+           join option_types t on t.id = so.option_type_id
+           join options o on o.id = so.option_id
+          where l.subscription_id = $1 and l.status = 'paid'
+          order by t.position, t.name`,
         [subscriptionId],
       ),
       this.db.query<{ granted_for_week: string }>(
@@ -695,7 +719,11 @@ export class PostgresRepository implements Repository {
       ),
     ]);
     return {
-      paid: paid.rows.map((row) => ({ weekOf: row.week_of, amountCents: row.amount_cents })),
+      paid: paid.rows.map((row) => ({
+        weekOf: row.week_of,
+        amountCents: row.amount_cents,
+        options: paidOptions.rows.filter((option) => option.week_of === row.week_of).map((option) => ({ typeName: option.type_name, optionName: option.option_name })),
+      })),
       weekCredits: weekCredits.rows.map((row) => ({ grantedForWeek: row.granted_for_week })),
       skipped: skipped.rows.map((row) => row.week_of),
     };
@@ -721,6 +749,48 @@ export class PostgresRepository implements Repository {
       [subscriptionId, weekOf],
     );
     return rowCount === 1;
+  }
+
+  /**
+   * One transaction under the subscription row's lock: every set from `fromWeek` on is deleted and the new one
+   * inserted at it, unless it equals the set in effect for the week before (then it only deletes), and `weekly_cents`
+   * is set. The sets ending as they were is "unchanged", and writes nothing, `weekly_cents` included.
+   */
+  async switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged"> {
+    if (!UUID_SHAPE.test(subscriptionId)) return "unchanged";
+    if (!this.scoped) return this.withActor(null, (repo) => repo.switchPicks(subscriptionId, choices, fromWeek, weeklyCents));
+    const { rows: locked } = await this.db.query("select id from subscriptions where id = $1 for update", [subscriptionId]);
+    if (locked.length === 0) return "unchanged";
+    const [previous, stored] = await Promise.all([
+      this.db.query<{ option_type_id: string; option_id: string }>(
+        `select so.option_type_id, so.option_id from subscription_options so
+          where so.subscription_id = $1 and ${inEffectFor("$2::date - 7")}`,
+        [subscriptionId, fromWeek],
+      ),
+      this.db.query<{ from_week: string; option_type_id: string; option_id: string }>(
+        `select to_char(from_week, 'YYYY-MM-DD') as from_week, option_type_id, option_id from subscription_options
+          where subscription_id = $1 and from_week >= $2::date`,
+        [subscriptionId, fromWeek],
+      ),
+    ]);
+    const before = Object.fromEntries(previous.rows.map((row) => [row.option_type_id, row.option_id]));
+    const insert = previous.rows.length === 0 || !sameChoices(before, choices);
+    // What is stored from the switch week on would end as it was when it is exactly the one set to insert, or nothing.
+    const storedWeeks = new Set(stored.rows.map((row) => row.from_week));
+    const storedChoices = Object.fromEntries(stored.rows.map((row) => [row.option_type_id, row.option_id]));
+    const unchanged = insert ? storedWeeks.size === 1 && storedWeeks.has(fromWeek) && sameChoices(storedChoices, choices) : storedWeeks.size === 0;
+    if (unchanged) return "unchanged";
+    await this.db.query("delete from subscription_options where subscription_id = $1 and from_week >= $2::date", [subscriptionId, fromWeek]);
+    if (insert) {
+      const typeIds = Object.keys(choices);
+      await this.db.query(
+        `insert into subscription_options (subscription_id, option_type_id, option_id, from_week)
+         select $1, picked.option_type_id, picked.option_id, $4::date from unnest($2::uuid[], $3::uuid[]) as picked (option_type_id, option_id)`,
+        [subscriptionId, typeIds, typeIds.map((typeId) => choices[typeId]), fromWeek],
+      );
+    }
+    await this.db.query("update subscriptions set weekly_cents = $2 where id = $1", [subscriptionId, weeklyCents]);
+    return "switched";
   }
 
   /**
@@ -757,26 +827,31 @@ export class PostgresRepository implements Repository {
       lastName: row.last_name,
       email: row.email,
       phone: row.phone,
-      options: options.get(row.id) ?? [],
+      options: options.get(row.id)?.options ?? [],
       joinedDate: row.joined,
     }));
   }
 
-  /** The options each subscription picked, in option-type position order, by subscription id. */
-  private async optionsOf(subscriptionIds: string[]): Promise<Map<string, Subscriber["options"]>> {
-    const { rows } = await this.db.query<{ subscription_id: string; type_name: string; option_name: string }>(
-      `select so.subscription_id, t.name as type_name, o.name as option_name
+  /**
+   * The newest set of each subscription, by subscription id: its `from_week`, its options by option type id, and the
+   * options named in option-type position order.
+   */
+  private async optionsOf(subscriptionIds: string[]): Promise<Map<string, { fromWeek: string; choices: Record<string, string>; options: Subscriber["options"] }>> {
+    const { rows } = await this.db.query<{ subscription_id: string; from_week: string; option_type_id: string; option_id: string; type_name: string; option_name: string }>(
+      `select so.subscription_id, to_char(so.from_week, 'YYYY-MM-DD') as from_week, so.option_type_id, so.option_id,
+              t.name as type_name, o.name as option_name
          from subscription_options so
          join option_types t on t.id = so.option_type_id
          join options o on o.id = so.option_id
-        where so.subscription_id = any($1::uuid[])
+        where so.subscription_id = any($1::uuid[]) and ${NEWEST_SET}
         order by t.position, t.name`,
       [subscriptionIds],
     );
-    const bySubscription = new Map<string, Subscriber["options"]>();
+    const bySubscription = new Map<string, { fromWeek: string; choices: Record<string, string>; options: Subscriber["options"] }>();
     for (const row of rows) {
-      const picked = bySubscription.get(row.subscription_id) ?? [];
-      picked.push({ typeName: row.type_name, optionName: row.option_name });
+      const picked = bySubscription.get(row.subscription_id) ?? { fromWeek: row.from_week, choices: {}, options: [] };
+      picked.choices[row.option_type_id] = row.option_id;
+      picked.options.push({ typeName: row.type_name, optionName: row.option_name });
       bySubscription.set(row.subscription_id, picked);
     }
     return bySubscription;

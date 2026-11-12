@@ -14,6 +14,8 @@ export const ACCOUNT_WEEKS_PATH = "/account/weeks";
 
 /** The `error` a refused Skip or Unskip sends Upcoming weeks when the week's cutoff has passed (issue 137). */
 export const ACCOUNT_WEEKS_CUTOFF_ERROR = "cutoff";
+/** The value of Upcoming weeks' `switch` query that opens the meal card's pickers (issue 138). */
+export const ACCOUNT_WEEKS_SWITCH_OPEN = "1";
 
 /** A member's History. */
 export const ACCOUNT_HISTORY_PATH = "/account/history";

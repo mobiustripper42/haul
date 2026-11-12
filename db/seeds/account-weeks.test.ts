@@ -108,6 +108,15 @@ describe.skipIf(!up)(`AC11 — the account-weeks seed against <test db>_account_
     expect(await picksOf("subscription_options", "subscription_id", subscriptionId)).toHaveLength(types.length);
   });
 
+  it("AC4 (issue 138): the subscription's one set of picks starts from its first ledger week, October 25, so every paid week reads it", async () => {
+    const { subscriptionId } = await seeded();
+    const { rows } = await pool.query<{ from_week: string }>(
+      "select distinct to_char(from_week, 'YYYY-MM-DD') as from_week from subscription_options where subscription_id = $1",
+      [subscriptionId],
+    );
+    expect(rows).toEqual([{ from_week: OCT_25 }]);
+  });
+
   it("AC11: paid rows for every week from October 25 through the latest week whose cutoff has passed, except one past week, neither October 25 nor the latest", async () => {
     const { subscriptionId, charged, past, latestPast } = await seeded();
     const paid = await paidWeeks(subscriptionId);
