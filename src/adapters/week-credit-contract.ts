@@ -10,7 +10,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Language } from "../i18n.js";
 import type { Member } from "../members.js";
-import type { ChangedWeek } from "../pickup-week.js";
+import { cutoffInstant, type ChangedWeek } from "../pickup-week.js";
 import type { PendingSignup, Repository, WeekDue } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { BOX, UUID } from "./contract-helpers.js";
@@ -21,7 +21,7 @@ export function runWeekCreditContract(
   name: string,
   make: () => Promise<Repository>,
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
-  addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<void>,
+  addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<string>,
   spendWeekCredit: (weekCreditId: string, ledgerId: string) => Promise<void>,
   reset?: () => Promise<void>,
 ): void {
@@ -661,7 +661,7 @@ export function runWeekCreditContract(
       const bySubscription = (a: { subscriptionId: string }, b: { subscriptionId: string }) => a.subscriptionId.localeCompare(b.subscriptionId);
 
       const due = async (week: string = WEEK, of: ProductWithOptions = product): Promise<WeekDue[]> =>
-        [...(await repo.listWeekDue(of.id, week))].sort(bySubscription);
+        [...(await repo.listWeekDue(of.id, week, cutoffInstant(of, week)))].sort(bySubscription);
 
       /** The row expected for `who`: its subscription, its member as created, and the email it gets. */
       const row = (who: Joined, notice: WeekDue["notice"]): WeekDue => ({ subscriptionId: who.signup.subscriptionId, member: who.member, notice });
@@ -741,7 +741,7 @@ export function runWeekCreditContract(
 
         it("AC4: a product id that isn't a UUID gives nothing", async () => {
           await paid(WEEK);
-          expect(await repo.listWeekDue("not-a-uuid", WEEK)).toEqual([]);
+          expect(await repo.listWeekDue("not-a-uuid", WEEK, cutoffInstant(product, WEEK))).toEqual([]);
         });
       });
 
@@ -756,6 +756,17 @@ export function runWeekCreditContract(
           await repo.reopenPickupWeek(product.id, WEEK);
           await close(WEEK, null, LATER);
           expect(await due()).toEqual(expected);
+        });
+      });
+
+      // Issue 134: the charge run's due predicate, shared, so the week-closed email and the charge cannot disagree. Its
+      // other edges are the enrolWeek contract's (src/adapters/charge-run-contract.ts); a cancel before the cutoff is
+      // AC4's case above.
+      describe("AC13 (issue 134) — due as of the cutoff", () => {
+        it("AC13: a subscription cancelled at or after the week's cutoff is due: won't be charged", async () => {
+          const grace = await paid(EARLIER);
+          expect(await repo.cancelSubscription(grace.signup.subscriptionId, cutoffInstant(product, WEEK))).toBe(true);
+          expect(await due()).toEqual([row(grace, "noCharge")]);
         });
       });
     });
@@ -787,6 +798,37 @@ export function runWeekCreditContract(
         await close(WEEK);
         await repo.reopenPickupWeek(product.id, WEEK);
         expect(await close(WEEK, null, LATER)).toBe(true);
+      });
+    });
+
+    // Issue 134: the charge run confirms a row whose subscription is active or cancelled; only a pending subscription
+    // (a signup) turns active. The charge run takes one case through it (src/charge-run.test.ts).
+    describe("AC6 (issue 134) — confirmSignupRows keeps a subscription that is not pending", () => {
+      const CANCELLED_AT = new Date("2027-01-19T15:00:00.000Z");
+      const CONFIRMED_AT = new Date("2027-01-19T16:00:00.000Z");
+
+      it("AC6: a paid row on a cancelled subscription is confirmed, and the subscription stays cancelled with its cancel time", async () => {
+        const memberId = (await repo.createMember({ email: `member-${++members}@example.com` })).id;
+        const signup = await repo.savePendingSignup({
+          memberId,
+          productId: product.id,
+          choices: choicesOf(picks(0, 0)),
+          firstChargeCents: 5000,
+          weeklyCents: 5000,
+          pickupDate: EARLIER,
+          consentText: "I agree to a weekly charge of $50.",
+          consentAt: PAID_AT,
+        });
+        expect(await confirm(signup)).toBe("confirmed");
+        const ledgerId = await addLedgerRow(signup.subscriptionId, WEEK, "pending", 5000);
+        expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
+        expect(await repo.confirmSignupRows(ledgerId, `PAYMENT_${ledgerId}`, 5000, CONFIRMED_AT)).toBe("confirmed");
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid.map((row) => row.weekOf).sort()).toEqual([EARLIER, WEEK]);
+        expect(await repo.findMemberSubscription(memberId, product.id)).toMatchObject({
+          subscriptionId: signup.subscriptionId,
+          status: "cancelled",
+          cancelledAt: CANCELLED_AT,
+        });
       });
     });
   });

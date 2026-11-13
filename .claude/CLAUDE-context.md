@@ -104,8 +104,10 @@ The first money paths, from task 1.2 (the Square port):
 - `src/customer-match.ts`
 - `src/signup.ts`
 - `src/pickup-week.ts`
+- `src/charge-run.ts`
+- `src/ledger-charge.ts`
 
-Task 1.4 (the signup charge) added the last two. Task 2.2 (the charge run) adds its paths here.
+Task 1.4 (the signup charge) added `src/signup.ts` and `src/pickup-week.ts`. Task 2.2 (the charge run) added `src/charge-run.ts` and `src/ledger-charge.ts`.
 
 ## Migration Protocol (project)
 

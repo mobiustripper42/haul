@@ -40,7 +40,7 @@ export async function closeWeek(formData: FormData): Promise<void> {
     const { repo, product, week } = found;
     const note = noteField(formData);
     const due = await repo.withActor({ member: admin.id }, async (scoped) =>
-      (await scoped.closePickupWeek(product.id, week.weekOf, note, now)) ? scoped.listWeekDue(product.id, week.weekOf) : [],
+      (await scoped.closePickupWeek(product.id, week.weekOf, note, now)) ? scoped.listWeekDue(product.id, week.weekOf, week.cutoff) : [],
     );
     for (const { member, notice } of due) {
       sendAfterResponse(

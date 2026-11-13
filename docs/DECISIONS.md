@@ -34,6 +34,7 @@ in the sibling repo and are background, not rulings for Haul.
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff
 - DEC-005 — Refunds and store credit are manual; a late closure earns a week credit
+- DEC-034 — The charge run enrols only the week whose cutoff last passed
 
 ### Data model
 - DEC-006 — Product choices are option types and options, priced by sum
