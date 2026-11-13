@@ -27,8 +27,9 @@ export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 /**
  * What an event row says beyond its name, written to `audit_log.detail` (DEC-028): `customerIds` on
  * `square_customer_duplicates`, `customerId` on `square_customer_linked`, `ledgerId` on `card_declined`
- * and `charge_outcome_unknown`, and the provider's `code` on `card_declined`. A charge that did not match its
- * ledger row adds both amounts to `charge_outcome_unknown`. Never a provider's text.
+ * and `charge_outcome_unknown`, and the provider's `code` on `card_declined`, and on `charge_outcome_unknown` when the
+ * error that left the outcome unknown was a `PaymentsError`. A charge that did not match its ledger row adds both
+ * amounts to `charge_outcome_unknown`. Never a provider's text.
  */
 export type AuditEventDetail = {
   customerId?: string;
@@ -159,6 +160,26 @@ export type MemberWeeks = {
   skipped: string[];
 };
 
+/**
+ * Issue 134: a `pending` ledger row whose subscription has a card, as the charge run settles it. `createdAt` is the
+ * subscription's, for a lookup's `since`; `closed` is whether the row's week is closed; `lastPickupDay` is the week's
+ * last pickup day, the moved one for a moved week, `YYYY-MM-DD`.
+ */
+export type PendingCharge = {
+  ledgerId: string;
+  subscriptionId: string;
+  subscriptionStatus: "pending" | "active" | "cancelled";
+  memberId: string;
+  customerId: string;
+  cardId: string;
+  amountCents: number;
+  attempt: number;
+  pickupDate: string;
+  createdAt: Date;
+  closed: boolean;
+  lastPickupDay: string;
+};
+
 /** Issue 156: a member's email change waiting for its code, one per member. */
 export type EmailChange = { memberId: string; newEmail: string; codeHash: string; expiresAt: Date; attempts: number };
 
@@ -245,9 +266,26 @@ export interface Repository extends SignInStore, RateLimitStore {
   /**
    * Issue 151: the product's subscriptions due the week, each with its member and which email it gets. "First week" is
    * the subscription's earliest `paid` ledger row, as `findMemberSubscription` reads it. Empty for a product id that
-   * isn't a UUID.
+   * isn't a UUID. Issue 134: due as of `cutoff`, the week's cutoff instant, the one `enrolWeek` reads: a subscription
+   * cancelled at or after it is due.
    */
-  listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]>;
+  listWeekDue(productId: string, weekOf: string, cutoff: Date): Promise<WeekDue[]>;
+  /**
+   * Issue 134: inserts a `pending` row for `weekOf`, attempt 1, at the sum of the picks in effect for it, for each of the
+   * product's subscriptions due it as of `cutoff`, with `on conflict (subscription_id, pickup_date) do nothing`; nothing
+   * for a closed week. Returns the rows inserted; 0 for a product id that isn't a UUID.
+   */
+  enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number>;
+  /**
+   * Issue 134: the product's `pending` ledger rows whose subscription has a card, oldest `pickup_date` first, then
+   * subscription `created_at`.
+   */
+  listPendingCharges(productId: string): Promise<PendingCharge[]>;
+  /**
+   * Issue 134: deletes the row only when it is `pending`, its subscription is not `pending` and its week is closed; true
+   * when it deleted; false for an id that isn't a UUID. It checks no date.
+   */
+  dropClosedWeekRow(ledgerId: string): Promise<boolean>;
   /** Per week key from `from` on, the `paid` ledger rows and the week credits granted. */
   listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>>;
   /**

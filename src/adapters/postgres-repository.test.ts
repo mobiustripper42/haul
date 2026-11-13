@@ -6,6 +6,7 @@ import type { Actor, PendingSignup } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
+import { runChargeRunContract } from "./charge-run-contract.js";
 import { BOX as SWITCH_BOX } from "./contract-helpers.js";
 import { runEmailChangeContract } from "./email-change-contract.js";
 import { createPool } from "./pg-connect.js";
@@ -89,13 +90,17 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     return found as ProductWithOptions;
   };
 
-  /** A ledger row as the charge run writes it: a paid row carries its payment's time. */
-  const addLedgerRow = async (subscriptionId: string, pickupDate: string, status: PendingSignup["ledgerStatus"], amountCents: number): Promise<void> => {
-    await pool.query(
+  /** A ledger row as the charge run writes it, and its id: a paid row carries its payment's time. */
+  const addLedgerRow = async (subscriptionId: string, pickupDate: string, status: PendingSignup["ledgerStatus"], amountCents: number): Promise<string> => {
+    const { rows } = await pool.query<{ id: string }>(
       `insert into ledger (subscription_id, pickup_date, amount_cents, status, paid_at)
-       values ($1, $2::date, $3, $4, case when $4 = 'paid' then '2027-01-11T15:00:00Z'::timestamptz end)`,
+       values ($1, $2::date, $3, $4, case when $4 = 'paid' then '2027-01-11T15:00:00Z'::timestamptz end)
+       returning id`,
       [subscriptionId, pickupDate, amountCents, status],
     );
+    const id = rows[0]?.id;
+    if (id === undefined) throw new Error(`no ledger row was written for ${subscriptionId} on ${pickupDate}`);
+    return id;
   };
 
   /** Issue 155: a week credit spent on a later week's ledger row, as the charge run (2.2b) will spend one. */
@@ -105,6 +110,9 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   };
 
   runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
+
+  // Issue 134: the charge run's repository methods, through the same seams.
+  runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
 
   // Issue 156: a member's own details and their pending email change, in email_changes.
   runEmailChangeContract("postgres", async () => repo, truncateAll);

@@ -72,13 +72,8 @@ export function cutoffInstant(product: ProductWithOptions, weekOf: string): Date
   return new Date(clevelandInstant(cutoffDate(product, weekOf), product.cutoffTime));
 }
 
-/**
- * The first Sunday on or after the product's first pickup date whose cutoff has not passed (docs/SPEC.md §7.2,
- * §7.3), and that is not closed in `changed`, as a week. A Sunday's cutoff is the product's cutoff weekday and
- * time, on the latest such weekday on or before it. The cutoff is the ordinary Sunday's whatever `changed` says:
- * a week closed or moved after its cutoff has passed was already skipped by the cutoff.
- */
-export function firstPickup(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): PickupWeek {
+/** The first Sunday on or after the product's first Sunday whose cutoff has not passed at `now`, closed or not. */
+function firstSundayOpenAt(product: ProductWithOptions, now: Date): string {
   let sunday = firstSunday(product);
   const cutoffOf = (pickup: string): number => cutoffInstant(product, pickup).getTime();
 
@@ -87,10 +82,34 @@ export function firstPickup(product: ProductWithOptions, now: Date, changed: Cha
   if (weeksBehind > 0) sunday = addDays(sunday, weeksBehind * 7);
 
   while (now.getTime() >= cutoffOf(sunday)) sunday = addDays(sunday, 7);
+  return sunday;
+}
 
+/**
+ * The first Sunday on or after the product's first pickup date whose cutoff has not passed (docs/SPEC.md §7.2,
+ * §7.3), and that is not closed in `changed`, as a week. A Sunday's cutoff is the product's cutoff weekday and
+ * time, on the latest such weekday on or before it. The cutoff is the ordinary Sunday's whatever `changed` says:
+ * a week closed or moved after its cutoff has passed was already skipped by the cutoff.
+ */
+export function firstPickup(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): PickupWeek {
+  let sunday = firstSundayOpenAt(product, now);
   const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
   while (byWeek.get(sunday)?.closedAt != null) sunday = addDays(sunday, 7);
   return pickupWeek(sunday, byWeek.get(sunday) ?? null);
+}
+
+/**
+ * The latest Sunday key on or after the product's first Sunday whose `cutoffInstant` is at or before `now`, closed or
+ * not (issue 134, DEC-034): the one week the charge run enrols. Null when none has passed.
+ */
+export function latestCutoffWeek(product: ProductWithOptions, now: Date): string | null {
+  const latest = addDays(firstSundayOpenAt(product, now), -7);
+  return latest >= firstSunday(product) ? latest : null;
+}
+
+/** Whether the week's last pickup day is before `today`, a Cleveland date (`YYYY-MM-DD`): its pickup is over. */
+export function pickupOver(week: PickupWeek, today: string): boolean {
+  return week.lastDay < today;
 }
 
 /** A date's weekday as a word, as the locale writes it: "Saturday", "sábado". `pickupWhereLine` capitalises the line. */
@@ -199,7 +218,7 @@ function currentSunday(product: ProductWithOptions, today: string, byWeek: Map<s
   // Weeks long past are skipped in one step, two short of the answer: a week's last day is at most 8 days after its Sunday.
   const weeksBehind = Math.floor((Date.parse(`${today}T00:00:00Z`) - Date.parse(`${sunday}T00:00:00Z`)) / (7 * DAY_MS)) - 2;
   if (weeksBehind > 0) sunday = addDays(sunday, weeksBehind * 7);
-  while (pickupWeek(sunday, byWeek.get(sunday) ?? null).lastDay < today) sunday = addDays(sunday, 7);
+  while (pickupOver(pickupWeek(sunday, byWeek.get(sunday) ?? null), today)) sunday = addDays(sunday, 7);
   return sunday;
 }
 

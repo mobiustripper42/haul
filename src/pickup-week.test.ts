@@ -9,6 +9,7 @@ import {
   firstPickupLine,
   formatPickupDate,
   formatShortDate,
+  latestCutoffWeek,
   listedWeekTitle,
   nextPickup,
   pastWeeks,
@@ -405,5 +406,49 @@ describe("AC2, AC6 (issue 155) — a member's weeks", () => {
         canReopen: false,
       });
     });
+  });
+});
+
+// Issue 134: the one week a charge run enrols, the latest whose cutoff has passed (DEC-034). January 3's cutoff is
+// the end of Monday 2026-12-28 in Cleveland, 2026-12-29T05:00Z; January 10's is 2027-01-05T05:00Z. The rule's edges
+// are owned here; src/charge-run.test.ts takes the run through it.
+describe("AC3 (issue 134) — latestCutoffWeek", () => {
+  it("AC3: before the first Sunday's cutoff there is none: null", () => {
+    expect(latestCutoffWeek(product(), new Date("2026-12-29T04:59:59.999Z"))).toBeNull();
+  });
+
+  it("AC3: at the first Sunday's cutoff instant it is that Sunday", () => {
+    expect(latestCutoffWeek(product(), new Date("2026-12-29T05:00:00.000Z"))).toBe("2027-01-03");
+  });
+
+  it("AC3: a moment before the next cutoff it is still the earlier week, not the one whose cutoff has not passed", () => {
+    expect(latestCutoffWeek(product(), new Date("2027-01-05T04:59:59.999Z"))).toBe("2027-01-03");
+  });
+
+  it("AC3: at the next cutoff it is the next week, not the earlier one", () => {
+    expect(latestCutoffWeek(product(), new Date("2027-01-05T05:00:00.000Z"))).toBe("2027-01-10");
+  });
+
+  it("AC3: long after the first pickup it is the latest week whose cutoff has passed, not an earlier one", () => {
+    // Tuesday 2027-03-02: March 7's cutoff passed at the end of Monday the 1st; March 14's has not.
+    expect(latestCutoffWeek(product(), new Date("2027-03-02T17:00:00.000Z"))).toBe("2027-03-07");
+  });
+
+  // Clocks go forward on Sunday 2027-03-14, so March 21's cutoff, the end of Monday the 15th, is 04:00Z.
+  it("AC3: the cutoff is Cleveland's midnight after clocks go forward: 23:59 EDT is still March 14's week, 00:00 is March 21's", () => {
+    expect(latestCutoffWeek(product(), new Date("2027-03-16T03:59:00.000Z"))).toBe("2027-03-14");
+    expect(latestCutoffWeek(product(), new Date("2027-03-16T04:00:00.000Z"))).toBe("2027-03-21");
+  });
+
+  it("AC3: never a week before the product's first Sunday: a first pickup date of Tuesday January 5 has none until January 10's cutoff", () => {
+    const tuesday = product({ firstPickupDate: "2027-01-05" });
+    expect(latestCutoffWeek(tuesday, new Date("2027-01-04T17:00:00.000Z"))).toBeNull();
+    expect(latestCutoffWeek(tuesday, new Date("2027-01-05T05:00:00.000Z"))).toBe("2027-01-10");
+  });
+
+  it("AC3: the cutoff is the product's setting: Friday 18:00 before March 7", () => {
+    const friday = product({ cutoffWeekday: 5, cutoffTime: "18:00:00" });
+    expect(latestCutoffWeek(friday, new Date("2027-03-05T22:59:00.000Z"))).toBe("2027-02-28");
+    expect(latestCutoffWeek(friday, new Date("2027-03-05T23:00:00.000Z"))).toBe("2027-03-07");
   });
 });

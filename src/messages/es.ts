@@ -346,6 +346,8 @@ export const es = {
   "email.weekClosed.subject": "Sin recogida del Supper Club el {week}",
   "email.weekClosedCredit.body": "La granja está cerrada el {week}: no hay recogida. Ya pagó esta semana, así que tiene un crédito de semana.",
   "email.weekClosedNoCharge.body": "La granja está cerrada el {week}: no hay recogida, y no se le cobrará.",
+  "email.receipt.subject": "Recibo: recogida del Supper Club el {week}",
+  "email.receipt.body": "Cobrado el {date}: {amount}, por su recogida del Supper Club el {week}.",
   "email.legalTerms": "Términos: {url}",
   "email.legalPrivacy": "Privacidad: {url}",
   "legal.terms.title": "Términos de servicio",

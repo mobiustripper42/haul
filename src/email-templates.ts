@@ -9,6 +9,7 @@ export type EmailTemplates = {
   emailChanged: { email: string };
   weekClosedCredit: { week: string };
   weekClosedNoCharge: { week: string };
+  receipt: { amount: string; date: string; week: string };
 };
 
 const KEYS = {
@@ -18,6 +19,7 @@ const KEYS = {
   emailChanged: { subject: "details.changedEmail.subject", body: "details.changedEmail.body" },
   weekClosedCredit: { subject: "email.weekClosed.subject", body: "email.weekClosedCredit.body", closing: "email.signupConfirmation.questions" },
   weekClosedNoCharge: { subject: "email.weekClosed.subject", body: "email.weekClosedNoCharge.body", closing: "email.signupConfirmation.questions" },
+  receipt: { subject: "email.receipt.subject", body: "email.receipt.body", closing: "email.signupConfirmation.questions" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey }>;
 
 /** The site's address and a path, with one slash between them whatever the address ends in. */

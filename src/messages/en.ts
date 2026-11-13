@@ -342,6 +342,8 @@ export const en = {
   "email.weekClosed.subject": "No Supper Club pickup {week}",
   "email.weekClosedCredit.body": "The farm is closed {week}: there is no pickup. You already paid for this week, so you have a week credit.",
   "email.weekClosedNoCharge.body": "The farm is closed {week}: there is no pickup, and you won't be charged for it.",
+  "email.receipt.subject": "Receipt: Supper Club pickup {week}",
+  "email.receipt.body": "Charged {date}: {amount}, for your Supper Club pickup {week}.",
   "email.legalTerms": "Terms: {url}",
   "email.legalPrivacy": "Privacy: {url}",
   "legal.terms.title": "Terms of service",

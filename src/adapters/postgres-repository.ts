@@ -9,6 +9,7 @@ import {
   type EmailChange,
   type MemberSubscription,
   type MemberWeeks,
+  type PendingCharge,
   type PendingSignup,
   type PendingSignupInput,
   type Repository,
@@ -130,6 +131,25 @@ const clevelandDay = (column: string): string => `to_char(${column} at time zone
 const inEffectFor = (weekExpr: string): string =>
   `so.from_week = (select max(latest.from_week) from subscription_options latest
                     where latest.subscription_id = so.subscription_id and latest.from_week <= ${weekExpr})`;
+
+/**
+ * A condition: the week `weekExpr` of the product `productExpr` is closed (`pickup_weeks.closed_at` set). The one home of
+ * the rule, used by `confirmSignupRows`, `enrolWeek`, `listPendingCharges` and `dropClosedWeekRow`. Both arguments are
+ * only ever expressions written in this file.
+ */
+const weekClosed = (productExpr: string, weekExpr: string): string =>
+  `exists (select 1 from pickup_weeks w where w.product_id = ${productExpr} and w.week_of = ${weekExpr} and w.closed_at is not null)`;
+
+/**
+ * A condition on `subscriptions s`: the subscription is due the week `weekParam` (`$n`) as of the cutoff instant
+ * `cutoffParam` (`$n`), issue 134 AC1. It is `active`, or `cancelled` at or after the cutoff; the week is on or after the
+ * first it paid for; and it has no `skipped` row for it. Whether it already holds a row for the week is `enrolWeek`'s
+ * alone (its `on conflict`). The one home of the rule, shared by `listWeekDue` and `enrolWeek`.
+ */
+const dueAsOf = (weekParam: string, cutoffParam: string): string =>
+  `((s.status = 'active' or (s.status = 'cancelled' and s.cancelled_at >= ${cutoffParam}::timestamptz))
+    and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= ${weekParam}::date
+    and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = ${weekParam}::date and l.status = 'skipped'))`;
 
 /** A `where` condition on `subscription_options so`: the row belongs to the subscription's newest set, whatever week it starts from. */
 const NEWEST_SET = `so.from_week = (select max(newest.from_week) from subscription_options newest where newest.subscription_id = so.subscription_id)`;
@@ -567,11 +587,11 @@ export class PostgresRepository implements Repository {
       paymentId,
       now,
     ]);
-    await this.db.query("update subscriptions set status = 'active' where id = $1", [row.subscription_id]);
+    // Only a signup's subscription turns active: a charge run's row on an active or a cancelled one leaves its status.
+    await this.db.query("update subscriptions set status = 'active' where id = $1 and status = 'pending'", [row.subscription_id]);
     const { rows: weeks } = await this.db.query<{ product_id: string; pickup_date: string; closed: boolean }>(
       `select s.product_id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date,
-              exists (select 1 from pickup_weeks w
-                       where w.product_id = s.product_id and w.week_of = l.pickup_date and w.closed_at is not null) as closed
+              ${weekClosed("s.product_id", "l.pickup_date")} as closed
          from ledger l join subscriptions s on s.id = l.subscription_id
         where l.id = $1`,
       [ledgerId],
@@ -873,7 +893,7 @@ export class PostgresRepository implements Repository {
     }));
   }
 
-  async listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]> {
+  async listWeekDue(productId: string, weekOf: string, cutoff: Date): Promise<WeekDue[]> {
     if (!UUID_SHAPE.test(productId)) return [];
     const { rows } = await this.db.query<MemberRow & { subscription_id: string; notice: WeekDue["notice"] }>(
       `select s.id as subscription_id, ${MEMBER_COLUMNS.split(", ").map((column) => `m.${column}`).join(", ")},
@@ -883,13 +903,95 @@ export class PostgresRepository implements Repository {
          join members m on m.id = s.member_id
         where s.product_id = $1
           and (exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status = 'paid')
-               or (s.status = 'active'
-                   and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status = 'skipped')
-                   and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= $2::date))
+               or ${dueAsOf("$2", "$3")})
         order by s.created_at, s.id`,
-      [productId, weekOf],
+      [productId, weekOf, cutoff],
     );
     return rows.map((row) => ({ subscriptionId: row.subscription_id, member: toMember(row), notice: row.notice }));
+  }
+
+  /**
+   * One statement: a `pending` row, attempt 1, for every subscription of the product due `weekOf` as of `cutoff`, at the
+   * sum of the prices of the picks in effect for the week (DEC-033), none for a closed week. A subscription already
+   * holding a row for the week is left as it is. Returns the rows inserted.
+   */
+  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number> {
+    if (!UUID_SHAPE.test(productId)) return 0;
+    const { rowCount } = await this.db.query(
+      `insert into ledger (subscription_id, pickup_date, amount_cents, status)
+       select s.id, $2::date, picked.cents, 'pending'
+         from subscriptions s
+         cross join lateral (select sum(o.price_cents)::int as cents
+                               from subscription_options so join options o on o.id = so.option_id
+                              where so.subscription_id = s.id and ${inEffectFor("$2::date")}) picked
+        where s.product_id = $1 and ${dueAsOf("$2", "$3")} and picked.cents is not null
+          and not ${weekClosed("s.product_id", "$2::date")}
+        order by s.created_at, s.id
+       on conflict (subscription_id, pickup_date) do nothing`,
+      [productId, weekOf, cutoff],
+    );
+    return rowCount ?? 0;
+  }
+
+  /**
+   * The product's `pending` rows whose subscription has a card, and a member with a Square customer, oldest week first,
+   * then the subscription's `created_at`: each with whether its week is closed and its week's last pickup day.
+   */
+  async listPendingCharges(productId: string): Promise<PendingCharge[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const { rows } = await this.db.query<{
+      ledger_id: string;
+      subscription_id: string;
+      status: PendingCharge["subscriptionStatus"];
+      member_id: string;
+      customer_id: string;
+      card_id: string;
+      amount_cents: number;
+      attempt: number;
+      pickup_date: string;
+      created_at: Date;
+      closed: boolean;
+      first_day: string | null;
+      last_day: string | null;
+    }>(
+      `select l.id as ledger_id, s.id as subscription_id, s.status, s.member_id, m.square_customer_id as customer_id,
+              s.square_card_id as card_id, l.amount_cents, l.attempt, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date,
+              s.created_at, ${weekClosed("s.product_id", "l.pickup_date")} as closed,
+              to_char(w.first_day, 'YYYY-MM-DD') as first_day, to_char(w.last_day, 'YYYY-MM-DD') as last_day
+         from ledger l
+         join subscriptions s on s.id = l.subscription_id
+         join members m on m.id = s.member_id
+         left join pickup_weeks w on w.product_id = s.product_id and w.week_of = l.pickup_date
+        where s.product_id = $1 and l.status = 'pending' and s.square_card_id is not null and m.square_customer_id is not null
+        order by l.pickup_date, s.created_at, l.id`,
+      [productId],
+    );
+    return rows.map((row) => ({
+      ledgerId: row.ledger_id,
+      subscriptionId: row.subscription_id,
+      subscriptionStatus: row.status,
+      memberId: row.member_id,
+      customerId: row.customer_id,
+      cardId: row.card_id,
+      amountCents: row.amount_cents,
+      attempt: row.attempt,
+      pickupDate: row.pickup_date,
+      createdAt: row.created_at,
+      closed: row.closed,
+      lastPickupDay: pickupWeek(row.pickup_date, { weekOf: row.pickup_date, closedAt: null, note: null, firstDay: row.first_day, lastDay: row.last_day }).lastDay,
+    }));
+  }
+
+  /** Deletes the row when it is `pending`, its subscription is not `pending` and its week is closed. The date condition is the run's. */
+  async dropClosedWeekRow(ledgerId: string): Promise<boolean> {
+    if (!UUID_SHAPE.test(ledgerId)) return false;
+    const { rowCount } = await this.db.query(
+      `delete from ledger l using subscriptions s
+        where l.id = $1 and s.id = l.subscription_id and l.status = 'pending' and s.status <> 'pending'
+          and ${weekClosed("s.product_id", "l.pickup_date")}`,
+      [ledgerId],
+    );
+    return rowCount === 1;
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {

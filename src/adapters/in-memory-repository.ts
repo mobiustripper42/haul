@@ -10,6 +10,7 @@ import {
   type EmailChange,
   type MemberSubscription,
   type MemberWeeks,
+  type PendingCharge,
   type PendingSignup,
   type PendingSignupInput,
   type Repository,
@@ -20,7 +21,7 @@ import {
 } from "../ports/repository.js";
 import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
-import { isSoldOut, type ProductInput, type ProductWithOptions } from "../products.js";
+import { isSoldOut, priceOfChoices, type ProductInput, type ProductWithOptions } from "../products.js";
 import { CODE_TTL_MS } from "../sign-in/code.js";
 import { MemorySignInStore } from "../sign-in/memory-store.js";
 import type { SignInCode } from "../sign-in/store.js";
@@ -319,7 +320,8 @@ export class InMemoryRepository implements Repository {
     if (row.amountCents !== amountCents) return "mismatch";
     this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now) });
     const subscription = this.subscriptions.get(row.subscriptionId);
-    if (subscription) this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
+    // Only a signup's subscription turns active: a charge run's row on an active or a cancelled one leaves its status.
+    if (subscription?.status === "pending") this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
     // A week that closed while the signup was paying: the week credit is granted here, as closing would have.
     if (subscription && this.pickupWeeks.get(weekKey(subscription.productId, row.pickupDate))?.closedAt != null) {
       this.grantWeekCredits(subscription.productId, row.pickupDate, now, ledgerId);
@@ -470,20 +472,96 @@ export class InMemoryRepository implements Repository {
     }));
   }
 
-  async listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]> {
+  async listWeekDue(productId: string, weekOf: string, cutoff: Date): Promise<WeekDue[]> {
     return [...this.subscriptions.values()]
       .filter((subscription) => subscription.productId === productId)
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
       .flatMap((subscription): WeekDue[] => {
         const member = this.members.get(subscription.memberId);
         if (!member) return [];
-        const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id);
         const due = (notice: WeekDue["notice"]): WeekDue[] => [{ subscriptionId: subscription.id, member: copy(member), notice }];
+        const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id);
         if (rows.some((row) => row.status === "paid" && row.pickupDate === weekOf)) return due("weekCredit");
-        const firstPaid = rows.filter((row) => row.status === "paid").map((row) => row.pickupDate).sort()[0];
-        const skipped = rows.some((row) => row.status === "skipped" && row.pickupDate === weekOf);
-        return subscription.status === "active" && firstPaid !== undefined && firstPaid <= weekOf && !skipped ? due("noCharge") : [];
+        return this.isDueAsOf(subscription, weekOf, cutoff) ? due("noCharge") : [];
       });
+  }
+
+  /**
+   * One `pending` row, attempt 1, for each of the product's subscriptions due `weekOf` as of `cutoff` and holding no row
+   * for it, at the sum of the picks in effect for the week (DEC-033); none for a closed week. Returns the rows written.
+   */
+  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number> {
+    const product = this.products.find((p) => p.id === productId);
+    if (!product || this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null) return 0;
+    let enrolled = 0;
+    const due = [...this.subscriptions.values()]
+      .filter((subscription) => subscription.productId === productId && this.isDueAsOf(subscription, weekOf, cutoff))
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
+    for (const subscription of due) {
+      const picks = this.setInEffect(subscription.id, weekOf);
+      const holds = [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.pickupDate === weekOf);
+      if (!picks || holds) continue;
+      await this.addLedgerRow(subscription.id, weekOf, "pending", priceOfChoices(product, picks.optionIds));
+      enrolled++;
+    }
+    return enrolled;
+  }
+
+  /** The product's `pending` rows whose subscription has a card and whose member has a Square customer, oldest week first, then the subscription's `created_at`. */
+  async listPendingCharges(productId: string): Promise<PendingCharge[]> {
+    return [...this.ledger.values()]
+      .flatMap((row): { row: StoredLedger; subscription: StoredSubscription; customerId: string; cardId: string }[] => {
+        const subscription = this.subscriptions.get(row.subscriptionId);
+        const customerId = subscription && this.members.get(subscription.memberId)?.squareCustomerId;
+        if (row.status !== "pending" || subscription?.productId !== productId || !subscription.squareCardId || !customerId) return [];
+        return [{ row, subscription, customerId, cardId: subscription.squareCardId }];
+      })
+      .sort(
+        (a, b) =>
+          a.row.pickupDate.localeCompare(b.row.pickupDate) ||
+          a.subscription.createdAt.getTime() - b.subscription.createdAt.getTime() ||
+          a.row.id.localeCompare(b.row.id),
+      )
+      .map(({ row, subscription, customerId, cardId }) => {
+        const changed = this.pickupWeeks.get(weekKey(productId, row.pickupDate)) ?? null;
+        return {
+          ledgerId: row.id,
+          subscriptionId: subscription.id,
+          subscriptionStatus: subscription.status,
+          memberId: subscription.memberId,
+          customerId,
+          cardId,
+          amountCents: row.amountCents,
+          attempt: row.attempt,
+          pickupDate: row.pickupDate,
+          createdAt: new Date(subscription.createdAt),
+          closed: changed?.closedAt != null,
+          lastPickupDay: pickupWeek(row.pickupDate, changed).lastDay,
+        };
+      });
+  }
+
+  /** Deletes the row when it is `pending`, its subscription is not `pending` and its week is closed. The date condition is the run's. */
+  async dropClosedWeekRow(ledgerId: string): Promise<boolean> {
+    const row = this.ledger.get(ledgerId);
+    const subscription = row && this.subscriptions.get(row.subscriptionId);
+    if (!row || !subscription || row.status !== "pending" || subscription.status === "pending") return false;
+    if (this.pickupWeeks.get(weekKey(subscription.productId, row.pickupDate))?.closedAt == null) return false;
+    return this.ledger.delete(ledgerId);
+  }
+
+  /**
+   * Issue 134: whether the subscription is due `weekOf` as of `cutoff`: `active`, or `cancelled` at or after the cutoff;
+   * the week on or after the first it paid for; no `skipped` row for it. Whether it already holds a row for the week is
+   * `enrolWeek`'s alone. The one home of the rule, shared by `listWeekDue` and `enrolWeek`.
+   */
+  private isDueAsOf(subscription: StoredSubscription, weekOf: string, cutoff: Date): boolean {
+    const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id);
+    const firstPaid = rows.filter((row) => row.status === "paid").map((row) => row.pickupDate).sort()[0];
+    const skipped = rows.some((row) => row.status === "skipped" && row.pickupDate === weekOf);
+    const live =
+      subscription.status === "active" || (subscription.status === "cancelled" && subscription.cancelledAt !== null && subscription.cancelledAt.getTime() >= cutoff.getTime());
+    return live && firstPaid !== undefined && firstPaid <= weekOf && !skipped;
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
@@ -552,8 +630,8 @@ export class InMemoryRepository implements Repository {
     if (credit) this.weekCredits.set(weekCreditId, { ...credit, spentOn: ledgerId });
   }
 
-  /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write. */
-  async addLedgerRow(subscriptionId: string, pickupDate: string, status: StoredLedger["status"], amountCents: number): Promise<void> {
+  /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write, and its id. */
+  async addLedgerRow(subscriptionId: string, pickupDate: string, status: StoredLedger["status"], amountCents: number): Promise<string> {
     const id = randomUUID();
     this.ledger.set(id, {
       id,
@@ -565,6 +643,7 @@ export class InMemoryRepository implements Repository {
       squarePaymentId: null,
       paidAt: status === "paid" ? new Date() : null,
     });
+    return id;
   }
 
   async listSubscribers(productId: string): Promise<Subscriber[]> {
