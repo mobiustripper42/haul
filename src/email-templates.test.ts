@@ -109,3 +109,41 @@ describe("AC7 (issue 63) — siteLink, moved here so the footer can use it", () 
     expect(siteLink(siteUrl, path)).toBe(link);
   });
 });
+
+// Issue 151: the two emails closing a week sends, one subject key between them. `{week}` is the week's title as the
+// caller builds it (the close action's test holds that, app/admin/weeks/actions.test.ts). Their questions line is the
+// signup confirmation's key, rendered through a template's `closing` after the body; the templates above, with none,
+// render as their tests hold.
+describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharge", () => {
+  const WEEK = "February 14 and 15";
+  // Existing copy, read from the catalog rather than typed.
+  const t = createTranslator("en");
+  const CLOSE = `${t("email.signupConfirmation.questions")}\n\n${t("email.signOff")}\n\n${FOOTER}`;
+
+  it("AC6: weekClosedCredit in English is exactly the subject and the body, a blank line, the questions line, a blank line, the sign-off, a blank line and the footer", () => {
+    expect(renderEmail("weekClosedCredit", "en", { week: WEEK }, SITE_URL)).toEqual({
+      subject: "No Supper Club pickup February 14 and 15",
+      text: `The farm is closed February 14 and 15: there is no pickup. You already paid for this week, so you have a week credit.\n\n${CLOSE}`,
+    });
+  });
+
+  it("AC6: weekClosedNoCharge in English has the same subject and its own body, then the same lines", () => {
+    expect(renderEmail("weekClosedNoCharge", "en", { week: WEEK }, SITE_URL)).toEqual({
+      subject: "No Supper Club pickup February 14 and 15",
+      text: `The farm is closed February 14 and 15: there is no pickup, and you won't be charged for it.\n\n${CLOSE}`,
+    });
+  });
+
+  it.each([
+    ["weekClosedCredit", "email.weekClosedCredit.body"],
+    ["weekClosedNoCharge", "email.weekClosedNoCharge.body"],
+  ] as const)(
+    "AC6: %s in the stand-in Spanish catalog is only catalog values: the shared subject key, its body, the signup confirmation's questions line, the sign-off and the footer",
+    (name, body) => {
+      expect(renderEmail(name, "es", { week: WEEK }, SITE_URL)).toEqual({
+        subject: "«email.weekClosed.subject»",
+        text: `«${body}»\n\n«email.signupConfirmation.questions»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
+      });
+    },
+  );
+});

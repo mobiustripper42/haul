@@ -153,6 +153,8 @@ and 4.
   week has no pickup and no charge. An admin may add a note to it, shown only on the calendar.
   Closing a week emails every subscription due that week, in the member's language, saying there is
   no pickup and whether they hold a week credit or simply won't be charged.
+  A subscription is due a week when it is active, the week is on or after the first week it paid for,
+  and it has not skipped it; one charged for the week is due whatever its status.
   Every subscription already charged for that week, at signup or
   by the run at its cutoff, gets a **week credit**: the next week it takes is made and not charged.
   A subscription not yet charged simply isn't. A week credit is a meal of the size that was charged,

@@ -7,6 +7,8 @@ export type EmailTemplates = {
   signInLink: { link: string; minutes: number };
   emailChangeCode: { code: string; minutes: number };
   emailChanged: { email: string };
+  weekClosedCredit: { week: string };
+  weekClosedNoCharge: { week: string };
 };
 
 const KEYS = {
@@ -14,7 +16,9 @@ const KEYS = {
   signInLink: { subject: "email.signInLink.subject", body: "email.signInLink.body" },
   emailChangeCode: { subject: "details.codeEmail.subject", body: "details.codeEmail.body" },
   emailChanged: { subject: "details.changedEmail.subject", body: "details.changedEmail.body" },
-} as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey }>;
+  weekClosedCredit: { subject: "email.weekClosed.subject", body: "email.weekClosedCredit.body", closing: "email.signupConfirmation.questions" },
+  weekClosedNoCharge: { subject: "email.weekClosed.subject", body: "email.weekClosedNoCharge.body", closing: "email.signupConfirmation.questions" },
+} as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey }>;
 
 /** The site's address and a path, with one slash between them whatever the address ends in. */
 export function siteLink(siteUrl: string, path: string): string {
@@ -34,7 +38,10 @@ export function withSignOff(t: Translator, body: string): string {
   return `${body}\n\n${t("email.signOff")}`;
 }
 
-/** The subject, and the body, a blank line, the sign-off every email shares, a blank line, then the legal footer. */
+/**
+ * The subject, and the body, a blank line, the template's `closing` line if it has one and a blank line after it, the
+ * sign-off every email shares, a blank line, then the legal footer.
+ */
 export function renderEmail<N extends keyof EmailTemplates>(
   name: N,
   language: Language,
@@ -44,8 +51,9 @@ export function renderEmail<N extends keyof EmailTemplates>(
   const t = createTranslator(language);
   const keys = KEYS[name];
   const fill: Record<string, string | number> = values;
+  const body = t(keys.body, fill);
   return {
     subject: t(keys.subject, fill),
-    text: `${withSignOff(t, t(keys.body, fill))}\n\n${legalFooter(t, siteUrl)}`,
+    text: `${withSignOff(t, "closing" in keys ? `${body}\n\n${t(keys.closing, fill)}` : body)}\n\n${legalFooter(t, siteUrl)}`,
   };
 }

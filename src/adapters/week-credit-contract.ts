@@ -8,8 +8,10 @@
  * (issue 138), which is on the port.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Language } from "../i18n.js";
+import type { Member } from "../members.js";
 import type { ChangedWeek } from "../pickup-week.js";
-import type { PendingSignup, Repository } from "../ports/repository.js";
+import type { PendingSignup, Repository, WeekDue } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { BOX, UUID } from "./contract-helpers.js";
 
@@ -622,6 +624,169 @@ export function runWeekCreditContract(
         await spendWeekCredit(spent.id, nextCredit.grantedFor);
         expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
         expect(await refundOwedOf(signup.subscriptionId)).toBe(true);
+      });
+    });
+
+    // Issue 151: who is due a week, as closing it reads them to email each one (docs/SPEC.md §7.2). A `paid` row for
+    // the week, whatever the subscription's status, is a week credit; otherwise an active subscription whose first paid
+    // week is on or before it, with no `paid` or `skipped` row for it, won't be charged; anything else is not listed.
+    // The rule's cases are owned here, on both adapters; the close action takes one of each through it
+    // (app/admin/weeks/actions.test.ts). The list's order is not part of the contract, so it is sorted here.
+    describe("issue 151 — listWeekDue", () => {
+      type Joined = { member: Member; signup: PendingSignup };
+
+      /** A new member in `language` with pending rows for `week` on `on`. */
+      const joined = async (week: string, language: Language = "en", on: ProductWithOptions = product): Promise<Joined> => {
+        const member = await repo.createMember({ email: `member-${++members}@example.com`, language });
+        const signup = await repo.savePendingSignup({
+          memberId: member.id,
+          productId: on.id,
+          choices: choicesOf(picks(0, 0, on), on),
+          firstChargeCents: 5000,
+          weeklyCents: 5000,
+          pickupDate: week,
+          consentText: "I agree to a weekly charge of $50.",
+          consentAt: PAID_AT,
+        });
+        return { member, signup };
+      };
+
+      /** A new member's active subscription whose first paid week is `week`. */
+      const paid = async (week: string, language: Language = "en", on?: ProductWithOptions): Promise<Joined> => {
+        const who = await joined(week, language, on);
+        expect(await confirm(who.signup)).toBe("confirmed");
+        return who;
+      };
+
+      const bySubscription = (a: { subscriptionId: string }, b: { subscriptionId: string }) => a.subscriptionId.localeCompare(b.subscriptionId);
+
+      const due = async (week: string = WEEK, of: ProductWithOptions = product): Promise<WeekDue[]> =>
+        [...(await repo.listWeekDue(of.id, week))].sort(bySubscription);
+
+      /** The row expected for `who`: its subscription, its member as created, and the email it gets. */
+      const row = (who: Joined, notice: WeekDue["notice"]): WeekDue => ({ subscriptionId: who.signup.subscriptionId, member: who.member, notice });
+
+      describe("AC1, AC5 — a paid row for the week is a week credit", () => {
+        it("AC1: a subscription that paid for the week at signup is due a week credit, with its member, saved language included", async () => {
+          const ana = await paid(WEEK, "es");
+          expect(await due()).toEqual([row(ana, "weekCredit")]);
+        });
+
+        it("AC1: a paid row the charge run wrote for the week is a week credit too, read with no close", async () => {
+          const grace = await paid(EARLIER);
+          await addLedgerRow(grace.signup.subscriptionId, WEEK, "paid", 5000);
+          expect(await due()).toEqual([row(grace, "weekCredit")]);
+        });
+
+        it("AC5: a cancelled subscription with a paid row for the week is due a week credit", async () => {
+          const ada = await paid(WEEK);
+          expect(await repo.cancelSubscription(ada.signup.subscriptionId, LATER)).toBe(true);
+          expect(await due()).toEqual([row(ada, "weekCredit")]);
+        });
+      });
+
+      describe("AC2, AC3 — an active subscription with no paid row for the week", () => {
+        it("AC2: one whose first paid week is earlier, with no row for this one, won't be charged", async () => {
+          const grace = await paid(EARLIER);
+          expect(await due()).toEqual([row(grace, "noCharge")]);
+        });
+
+        it.each(["declined", "pending"] as const)("AC2: a %s row for the week counts as no paid row: won't be charged", async (status) => {
+          const grace = await paid(EARLIER);
+          await addLedgerRow(grace.signup.subscriptionId, WEEK, status, 5000);
+          expect(await due()).toEqual([row(grace, "noCharge")]);
+        });
+
+        it("AC1, AC2: one list carries both kinds, each subscription with its own notice", async () => {
+          const ada = await paid(WEEK);
+          const grace = await paid(EARLIER);
+          expect(await due()).toEqual([row(ada, "weekCredit"), row(grace, "noCharge")].sort(bySubscription));
+        });
+
+        it("AC3: one that skipped the week is not listed, while another that did not still is", async () => {
+          const ada = await paid(EARLIER);
+          const grace = await paid(EARLIER);
+          expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(true);
+          expect(await due()).toEqual([row(grace, "noCharge")]);
+        });
+      });
+
+      describe("AC4 — not due", () => {
+        it("AC4: a subscription whose first paid week is after this one is not listed", async () => {
+          await paid(NEXT);
+          expect(await due()).toEqual([]);
+        });
+
+        it("AC4: a pending signup with no paid row is not listed: for the week, its row pending or declined, or for an earlier week", async () => {
+          await joined(WEEK);
+          const declined = await joined(WEEK);
+          await repo.recordSignupDecline(declined.signup.ledgerId);
+          await joined(EARLIER);
+          expect(await due()).toEqual([]);
+        });
+
+        it("AC4: a cancelled subscription with no paid row for the week is not listed", async () => {
+          const grace = await paid(EARLIER);
+          expect(await repo.cancelSubscription(grace.signup.subscriptionId, LATER)).toBe(true);
+          expect(await due()).toEqual([]);
+        });
+
+        it("AC4: another product's subscriptions are its own list, not this product's", async () => {
+          const crate = await addProduct({ ...BOX, name: "Crate" });
+          const ada = await paid(WEEK);
+          const crateAda = await paid(WEEK, "en", crate);
+          expect(await due()).toEqual([row(ada, "weekCredit")]);
+          expect(await due(WEEK, crate)).toEqual([row(crateAda, "weekCredit")]);
+        });
+
+        it("AC4: a product id that isn't a UUID gives nothing", async () => {
+          await paid(WEEK);
+          expect(await repo.listWeekDue("not-a-uuid", WEEK)).toEqual([]);
+        });
+      });
+
+      describe("AC8 — the list does not depend on the closing", () => {
+        it("AC8: it is the same before the week closes, after, and after a reopen and a second close", async () => {
+          const ada = await paid(WEEK);
+          const grace = await paid(EARLIER);
+          const expected = [row(ada, "weekCredit"), row(grace, "noCharge")].sort(bySubscription);
+          expect(await due()).toEqual(expected);
+          await close(WEEK);
+          expect(await due()).toEqual(expected);
+          await repo.reopenPickupWeek(product.id, WEEK);
+          await close(WEEK, null, LATER);
+          expect(await due()).toEqual(expected);
+        });
+      });
+    });
+
+    // Issue 151: closePickupWeek says whether this call closed the week, so a stale form reaching the close sends no
+    // email; the action's test takes one closed case and one open-with-row case through it. A row whose `closed_at` is
+    // null, a moved or a noted week, is open.
+    describe("issue 151 — closePickupWeek's answer", () => {
+      it("AC7: true when it closes a week with no row", async () => {
+        expect(await close(WEEK)).toBe(true);
+      });
+
+      it.each([
+        ["moved", { firstDay: "2027-01-23", lastDay: "2027-01-24", note: null }],
+        ["noted", { firstDay: null, lastDay: null, note: "Heads up" }],
+      ] as const)("AC7: true for a week whose row has closed_at null, a %s week, which it closes", async (_what, over) => {
+        await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, ...over });
+        expect(await close(WEEK)).toBe(true);
+        expect((await changedWeek())?.closedAt).toEqual(CLOSED_AT);
+      });
+
+      it("AC7: false for a week already closed, which keeps its first closing time", async () => {
+        expect(await close(WEEK, "Kitchen flooded", CLOSED_AT)).toBe(true);
+        expect(await close(WEEK, "Kitchen flooded", LATER)).toBe(false);
+        expect((await changedWeek())?.closedAt).toEqual(CLOSED_AT);
+      });
+
+      it("AC8: true again for a week reopened and closed again", async () => {
+        await close(WEEK);
+        await repo.reopenPickupWeek(product.id, WEEK);
+        expect(await close(WEEK, null, LATER)).toBe(true);
       });
     });
   });

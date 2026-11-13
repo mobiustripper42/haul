@@ -17,6 +17,8 @@ type Subscriber = {
   firstName: string;
   lastName: string;
   phone: string;
+  /** The language saved on the member: the one the emails to them come in. */
+  language: "en" | "es";
   /** The option names picked, one from each option type, in the order of the type. */
   picks: [size: string, menu: string];
   /** The day the first payment cleared, in Cleveland. */
@@ -24,18 +26,18 @@ type Subscriber = {
 };
 
 const SUBSCRIBERS: readonly Subscriber[] = [
-  { email: "chidi.abara@example.com", firstName: "Chidi", lastName: "Abara", phone: "(216) 555-0142", picks: ["Portioned for 4", "Standard"], joined: "2026-12-01" },
-  { email: "rosa.bennett@example.com", firstName: "Rosa", lastName: "Bennett", phone: "(216) 555-0187", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-01" },
-  { email: "marco.castillo@example.com", firstName: "Marco", lastName: "Castillo", phone: "(440) 555-0123", picks: ["Portioned for 4", "Standard"], joined: "2026-12-02" },
-  { email: "linh.dang@example.com", firstName: "Linh", lastName: "Dang", phone: "(216) 555-0166", picks: ["Portioned for 2", "Standard"], joined: "2026-12-02" },
-  { email: "grace.ellison@example.com", firstName: "Grace", lastName: "Ellison", phone: "(216) 555-0119", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-03" },
-  { email: "yusuf.farah@example.com", firstName: "Yusuf", lastName: "Farah", phone: "(216) 555-0158", picks: ["Portioned for 4", "Standard"], joined: "2026-12-04" },
-  { email: "ana.gutierrez@example.com", firstName: "Ana", lastName: "Gutierrez", phone: "(440) 555-0171", picks: ["Portioned for 4", "Vegan"], joined: "2026-12-05" },
-  { email: "rami.haddad@example.com", firstName: "Rami", lastName: "Haddad", phone: "(216) 555-0134", picks: ["Portioned for 2", "Standard"], joined: "2026-12-07" },
-  { email: "ben.kowalski@example.com", firstName: "Ben", lastName: "Kowalski", phone: "(216) 555-0149", picks: ["Portioned for 2", "Standard"], joined: "2026-12-08" },
-  { email: "thandi.mbeki@example.com", firstName: "Thandi", lastName: "Mbeki", phone: "(216) 555-0195", picks: ["Portioned for 4", "Standard"], joined: "2026-12-09" },
-  { email: "tam.nguyen@example.com", firstName: "Tam", lastName: "Nguyen", phone: "(216) 555-0110", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-11" },
-  { email: "ada.okafor@example.com", firstName: "Ada", lastName: "Okafor", phone: "(440) 555-0182", picks: ["Portioned for 4", "Standard"], joined: "2026-12-12" },
+  { email: "chidi.abara@example.com", firstName: "Chidi", lastName: "Abara", phone: "(216) 555-0142", language: "en", picks: ["Portioned for 4", "Standard"], joined: "2026-12-01" },
+  { email: "rosa.bennett@example.com", firstName: "Rosa", lastName: "Bennett", phone: "(216) 555-0187", language: "en", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-01" },
+  { email: "marco.castillo@example.com", firstName: "Marco", lastName: "Castillo", phone: "(440) 555-0123", language: "en", picks: ["Portioned for 4", "Standard"], joined: "2026-12-02" },
+  { email: "linh.dang@example.com", firstName: "Linh", lastName: "Dang", phone: "(216) 555-0166", language: "en", picks: ["Portioned for 2", "Standard"], joined: "2026-12-02" },
+  { email: "grace.ellison@example.com", firstName: "Grace", lastName: "Ellison", phone: "(216) 555-0119", language: "en", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-03" },
+  { email: "yusuf.farah@example.com", firstName: "Yusuf", lastName: "Farah", phone: "(216) 555-0158", language: "en", picks: ["Portioned for 4", "Standard"], joined: "2026-12-04" },
+  { email: "ana.gutierrez@example.com", firstName: "Ana", lastName: "Gutierrez", phone: "(440) 555-0171", language: "es", picks: ["Portioned for 4", "Vegan"], joined: "2026-12-05" },
+  { email: "rami.haddad@example.com", firstName: "Rami", lastName: "Haddad", phone: "(216) 555-0134", language: "en", picks: ["Portioned for 2", "Standard"], joined: "2026-12-07" },
+  { email: "ben.kowalski@example.com", firstName: "Ben", lastName: "Kowalski", phone: "(216) 555-0149", language: "en", picks: ["Portioned for 2", "Standard"], joined: "2026-12-08" },
+  { email: "thandi.mbeki@example.com", firstName: "Thandi", lastName: "Mbeki", phone: "(216) 555-0195", language: "en", picks: ["Portioned for 4", "Standard"], joined: "2026-12-09" },
+  { email: "tam.nguyen@example.com", firstName: "Tam", lastName: "Nguyen", phone: "(216) 555-0110", language: "en", picks: ["Portioned for 2", "Vegan"], joined: "2026-12-11" },
+  { email: "ada.okafor@example.com", firstName: "Ada", lastName: "Okafor", phone: "(440) 555-0182", language: "en", picks: ["Portioned for 4", "Standard"], joined: "2026-12-12" },
 ];
 
 /** A fixed subscription id for the nth subscriber, so a second run finds the row it made. */
@@ -74,7 +76,7 @@ export async function seed(db: Client): Promise<void> {
 
     const member = await db.query<{ id: string }>(
       `insert into members (email, language, role, first_name, last_name, phone, email_confirmed_at)
-       values ($1, 'en', 'member', $2, $3, $4, $5)
+       values ($1, $6, 'member', $2, $3, $4, $5)
        on conflict (email) do update
          set language = excluded.language,
              role = excluded.role,
@@ -83,7 +85,7 @@ export async function seed(db: Client): Promise<void> {
              phone = excluded.phone,
              email_confirmed_at = coalesce(members.email_confirmed_at, excluded.email_confirmed_at)
        returning id`,
-      [who.email, who.firstName, who.lastName, who.phone, paidAt],
+      [who.email, who.firstName, who.lastName, who.phone, paidAt, who.language],
     );
     const memberId = member.rows[0]?.id;
     if (memberId === undefined) throw new Error("subscribers seed: the member upsert returned no id");
