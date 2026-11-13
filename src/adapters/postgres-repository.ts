@@ -15,6 +15,7 @@ import {
   type SignupConfirmation,
   type Subscriber,
   type WeekCredit,
+  type WeekDue,
 } from "../ports/repository.js";
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
@@ -688,10 +689,15 @@ export class PostgresRepository implements Repository {
    * week is closed, its closing time and days kept if it already was, and every `paid` ledger row for it gets its
    * week credit. A second close grants nothing new: a week credit is unique by the ledger row it answers for.
    */
-  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void> {
-    if (!UUID_SHAPE.test(productId)) return;
+  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<boolean> {
+    if (!UUID_SHAPE.test(productId)) return false;
     if (!this.scoped) return this.withActor(null, (repo) => repo.closePickupWeek(productId, weekOf, note, now));
     await this.db.query("select id from products where id = $1 for update", [productId]);
+    // Read under the lock, so two closes of one week cannot both find it open.
+    const before = await this.db.query<{ closed: boolean }>(
+      "select closed_at is not null as closed from pickup_weeks where product_id = $1 and week_of = $2::date",
+      [productId, weekOf],
+    );
     await this.db.query(
       `insert into pickup_weeks (product_id, week_of, closed_at, note)
        values ($1, $2::date, $3, $4)
@@ -700,6 +706,7 @@ export class PostgresRepository implements Repository {
       [productId, weekOf, now, note],
     );
     await this.grantWeekCredits(productId, weekOf, now);
+    return before.rows[0]?.closed !== true;
   }
 
   /**
@@ -864,6 +871,25 @@ export class PostgresRepository implements Repository {
       grantedAt: row.granted_at,
       optionIds: row.option_ids,
     }));
+  }
+
+  async listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const { rows } = await this.db.query<MemberRow & { subscription_id: string; notice: WeekDue["notice"] }>(
+      `select s.id as subscription_id, ${MEMBER_COLUMNS.split(", ").map((column) => `m.${column}`).join(", ")},
+              case when exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status = 'paid')
+                   then 'weekCredit' else 'noCharge' end as notice
+         from subscriptions s
+         join members m on m.id = s.member_id
+        where s.product_id = $1
+          and (exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status = 'paid')
+               or (s.status = 'active'
+                   and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status = 'skipped')
+                   and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= $2::date))
+        order by s.created_at, s.id`,
+      [productId, weekOf],
+    );
+    return rows.map((row) => ({ subscriptionId: row.subscription_id, member: toMember(row), notice: row.notice }));
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {

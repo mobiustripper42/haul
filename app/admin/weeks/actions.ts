@@ -5,11 +5,13 @@
 // A form that asks for what the screen never offers (a closed week's move, an open week's note, a reopen after the
 // cutoff, a week that is not listed) goes back to the weeks and writes nothing; only a stale form reaches those.
 import { redirect } from "next/navigation";
-import { checkMove, isDate, pickupWeek } from "@core/pickup-week.js";
+import { renderEmail } from "@core/email-templates.js";
+import { createTranslator } from "@core/i18n.js";
+import { checkMove, isDate, pickupWeek, weekTitle } from "@core/pickup-week.js";
 import { ADMIN_WEEKS_PATH } from "../../paths";
-import { getRepository } from "../../services";
+import { getEmail, getRepository, getSiteUrl } from "../../services";
 import { requireAdmin } from "../../session";
-import { textField } from "../../sign-in/shared";
+import { sendAfterResponse, textField } from "../../sign-in/shared";
 import { loadCalendar } from "./calendar";
 
 /** A note as saved: trimmed, and no note at all when nothing is left (`note` is `nonblank_text`). */
@@ -24,7 +26,12 @@ async function weekOf(formData: FormData, now: Date) {
   return week ? { repo, product, week, row: changed.find((changedWeek) => changedWeek.weekOf === key) ?? null } : null;
 }
 
-/** Closes the week with the note given, granting a week credit to every subscription charged for it. */
+/**
+ * Closes the week with the note given, granting a week credit to every subscription charged for it, then emails each
+ * subscription due the week (docs/SPEC.md §7.2) after the response, one `after` apiece, so a failed send is logged and
+ * never undoes the close. The due list is read in the close's own transaction, and only when this call closed the
+ * week: a stale form reaching an already closed week sends nothing. The note is never in an email.
+ */
 export async function closeWeek(formData: FormData): Promise<void> {
   const admin = await requireAdmin();
   const now = new Date();
@@ -32,7 +39,22 @@ export async function closeWeek(formData: FormData): Promise<void> {
   if (found) {
     const { repo, product, week } = found;
     const note = noteField(formData);
-    await repo.withActor({ member: admin.id }, (scoped) => scoped.closePickupWeek(product.id, week.weekOf, note, now));
+    const due = await repo.withActor({ member: admin.id }, async (scoped) =>
+      (await scoped.closePickupWeek(product.id, week.weekOf, note, now)) ? scoped.listWeekDue(product.id, week.weekOf) : [],
+    );
+    for (const { member, notice } of due) {
+      sendAfterResponse(
+        member.id,
+        async () => member,
+        async () => {
+          const siteUrl = getSiteUrl();
+          const title = weekTitle(createTranslator(member.language), pickupWeek(week.weekOf, null), member.language);
+          const { subject, text } = renderEmail(notice === "weekCredit" ? "weekClosedCredit" : "weekClosedNoCharge", member.language, { week: title }, siteUrl);
+          await getEmail().send({ to: member.email, subject, text });
+        },
+        "week closed email not delivered",
+      );
+    }
   }
   redirect(ADMIN_WEEKS_PATH);
 }

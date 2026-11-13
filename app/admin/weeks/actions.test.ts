@@ -3,8 +3,13 @@
 // move check's and the cutoff's edges are src/pickup-week-calendar.test.ts's, and the week credits' are the
 // repository contract's (src/adapters/week-credit-contract.ts). These hold what each action does with them.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { FakeEmail } from "@core/adapters/fake-email.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import type { ChangedWeek } from "@core/pickup-week.js";
+import { legalFooter, renderEmail } from "@core/email-templates.js";
+import { createTranslator, type Language } from "@core/i18n.js";
+import type { Member } from "@core/members.js";
+import { pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import { EmailSendError, type EmailMessage } from "@core/ports/email.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -16,8 +21,11 @@ import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./act
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
   repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
+  email: undefined as unknown as import("@core/ports/email.js").EmailPort,
   secret: "test-session-secret-that-is-long-enough-0123456789",
+  siteUrl: "https://members.example.test",
 }));
+const scheduled = vi.hoisted(() => ({ tasks: [] as unknown[] }));
 
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("../../next-headers-fake");
@@ -27,13 +35,16 @@ vi.mock("next/headers", async () => {
   };
 });
 vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect }));
-vi.mock("next/server", () => ({ after: () => {} }));
+vi.mock("next/server", () => ({
+  after: (task: unknown) => {
+    scheduled.tasks.push(task);
+  },
+}));
 vi.mock("../../services", () => ({
   getRepository: () => services.repo,
-  getEmail: () => {
-    throw new Error("the weeks actions send no email");
-  },
+  getEmail: () => services.email,
   getSessionSecret: () => services.secret,
+  getSiteUrl: () => services.siteUrl,
 }));
 
 // Wednesday, February 3, noon in Cleveland. The week of February 7 is past its cutoff (the end of Monday,
@@ -331,5 +342,186 @@ describe("AC9–AC11, AC13, AC14 (issue 140) — assignMenu", () => {
     }
     await expect(assign(OPEN, autumn.id)).resolves.toBe(where);
     expect(await weekMenus()).toEqual(new Map());
+  });
+});
+
+// Issue 151: closing a week emails each subscription due it. Who is due is listWeekDue's contract
+// (src/adapters/week-credit-contract.ts), as is closePickupWeek's answer; the words are src/email-templates.test.ts's.
+// These hold what the action does with them: one `after` per email, run here as Next runs them after the response;
+// the member's saved language; nothing for a week already closed; a failed send logged and the rest sent, the close
+// standing.
+describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
+  const SITE_URL = services.siteUrl;
+  const NOTE = "Kitchen flooded";
+  let email: FakeEmail;
+
+  beforeEach(() => {
+    scheduled.tasks = [];
+    email = new FakeEmail();
+    services.email = email;
+  });
+
+  /** Runs what `after` captured, as Next does once the response has gone. */
+  const runScheduled = async (): Promise<void> => {
+    for (const task of scheduled.tasks.splice(0)) await (task as () => Promise<void>)();
+  };
+
+  const close = (week: string, note = "") => redirectOf(closeWeek(form({ week, note })));
+
+  /** A new member in `language` with an active subscription whose first paid week is `week`. */
+  const subscribed = async (week: string, language: Language = "en"): Promise<{ member: Member; signup: PendingSignup }> => {
+    const member = await services.repo.createMember({ email: `member-${++members}@example.com`, language });
+    const signup = await services.repo.savePendingSignup({
+      memberId: member.id,
+      productId: product.id,
+      choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+      firstChargeCents: 8000,
+      weeklyCents: 8000,
+      pickupDate: week,
+      consentText: "I agree to a weekly charge of $80.",
+      consentAt: new Date("2027-01-20T15:00:00.000Z"),
+    });
+    await services.repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, new Date("2027-01-20T15:00:05.000Z"));
+    return { member, signup };
+  };
+
+  /** The week's title as the account pages show a closed week: its ordinary days, whatever its move. */
+  const titleOf = (week: string, language: Language): string => weekTitle(createTranslator(language), pickupWeek(week, null), language);
+
+  /** The email `to` gets: the template rendered for `week` in `language`, read from the catalog rather than typed. */
+  const emailFor = (to: string, name: "weekClosedCredit" | "weekClosedNoCharge", week: string, language: Language = "en"): EmailMessage => ({
+    to,
+    ...renderEmail(name, language, { week: titleOf(week, language) }, SITE_URL),
+  });
+
+  it("AC1: closing a week sends the week-credit email to a subscription that paid for it, after the response, and lands on the weeks", async () => {
+    const { member } = await subscribed(OPEN);
+    await expect(close(OPEN, NOTE)).resolves.toBe(WEEKS_PATH);
+    expect(email.sent).toEqual([]);
+    expect(scheduled.tasks).toHaveLength(1);
+    await runScheduled();
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+  });
+
+  it("AC2: a subscription from an earlier week with nothing for this one gets the won't-be-charged email", async () => {
+    const { member } = await subscribed(PAST_CUTOFF);
+    await close(OPEN, NOTE);
+    await runScheduled();
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN)]);
+  });
+
+  it("AC3: a subscription that skipped the week gets nothing, while another that did not still does", async () => {
+    const skipper = await subscribed(PAST_CUTOFF);
+    const other = await subscribed(PAST_CUTOFF);
+    expect(await services.repo.skipWeek(skipper.signup.subscriptionId, OPEN)).toBe(true);
+    await close(OPEN);
+    expect(scheduled.tasks).toHaveLength(1);
+    await runScheduled();
+    expect(email.sent).toEqual([emailFor(other.member.email, "weekClosedNoCharge", OPEN)]);
+  });
+
+  describe("AC6 — the member's saved language, catalog wording", () => {
+    const es = createTranslator("es");
+    /** What follows a body: the questions line, the sign-off and the legal footer, existing copy read from the catalog. */
+    const SPANISH_CLOSE = `${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`;
+
+    it("AC6: a member whose saved language is Spanish gets the week-credit email in Spanish, the week's title in Spanish", async () => {
+      const { member } = await subscribed(OPEN, "es");
+      await close(OPEN, NOTE);
+      await runScheduled();
+      const week = titleOf(OPEN, "es");
+      expect(email.sent).toEqual([
+        {
+          to: member.email,
+          subject: `Sin recogida del Supper Club el ${week}`,
+          text: `La granja está cerrada el ${week}: no hay recogida. Ya pagó esta semana, así que tiene un crédito de semana.\n\n${SPANISH_CLOSE}`,
+        },
+      ]);
+    });
+
+    it("AC6: and the won't-be-charged email in Spanish", async () => {
+      const { member } = await subscribed(PAST_CUTOFF, "es");
+      await close(OPEN, NOTE);
+      await runScheduled();
+      const week = titleOf(OPEN, "es");
+      expect(email.sent).toEqual([
+        {
+          to: member.email,
+          subject: `Sin recogida del Supper Club el ${week}`,
+          text: `La granja está cerrada el ${week}: no hay recogida, y no se le cobrará.\n\n${SPANISH_CLOSE}`,
+        },
+      ]);
+    });
+
+    it("AC6: neither email carries the admin's note", async () => {
+      await subscribed(OPEN);
+      await subscribed(PAST_CUTOFF);
+      await close(OPEN, NOTE);
+      await runScheduled();
+      expect(email.sent).toHaveLength(2);
+      for (const message of email.sent) expect(`${message.subject}\n${message.text}`).not.toContain(NOTE);
+    });
+
+    it("AC6: {week} is the week's ordinary days even when the week was moved", async () => {
+      const moved = changed(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" });
+      // The moved title differs from the ordinary one, so the expectation below can tell them apart.
+      expect(weekTitle(createTranslator("en"), pickupWeek(OPEN, moved), "en")).not.toBe(titleOf(OPEN, "en"));
+      await save(moved);
+      const { member } = await subscribed(OPEN);
+      await close(OPEN);
+      await runScheduled();
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+    });
+  });
+
+  describe("AC7 — whether this close closed it", () => {
+    it("AC7: a week already closed sends nothing: back to the weeks, no email scheduled", async () => {
+      await subscribed(OPEN);
+      await save(changed(OPEN, { closedAt: CLOSED_AT, note: NOTE }));
+      await expect(close(OPEN, NOTE)).resolves.toBe(WEEKS_PATH);
+      expect(scheduled.tasks).toEqual([]);
+      await runScheduled();
+      expect(email.sent).toEqual([]);
+    });
+
+    it("AC7: a week with a row but no closing, a note on it, is open: closing it sends", async () => {
+      await save(changed(OPEN, { note: "Heads up" }));
+      const { member } = await subscribed(OPEN);
+      await close(OPEN, NOTE);
+      await runScheduled();
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+    });
+  });
+
+  it("AC8: a week reopened before its cutoff and closed again sends its emails again", async () => {
+    const { member } = await subscribed(OPEN);
+    await close(OPEN, NOTE);
+    await runScheduled();
+    await expect(redirectOf(reopenWeek(form({ week: OPEN })))).resolves.toBe(WEEKS_PATH);
+    await close(OPEN, NOTE);
+    await runScheduled();
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN), emailFor(member.email, "weekClosedCredit", OPEN)]);
+  });
+
+  it("AC9: a send that fails is logged with that member's id; every other email still goes, each from its own `after`, and the week stays closed", async () => {
+    const ada = await subscribed(OPEN);
+    const grace = await subscribed(OPEN);
+    services.email = {
+      send: async (message) => {
+        if (message.to === ada.member.email) throw new EmailSendError("Resend", 422, "the to field is invalid");
+        return email.send(message);
+      },
+    };
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      await expect(close(OPEN, NOTE)).resolves.toBe(WEEKS_PATH);
+      expect(scheduled.tasks).toHaveLength(2);
+      await expect(runScheduled()).resolves.toBeUndefined();
+      expect(email.sent).toEqual([emailFor(grace.member.email, "weekClosedCredit", OPEN)]);
+      expect(errors.mock.calls.map(([, fields]) => fields)).toEqual([expect.objectContaining({ memberId: ada.member.id })]);
+      expect((await rowOf(OPEN))?.closedAt).toEqual(NOW);
+    } finally {
+      errors.mockRestore();
+    }
   });
 });

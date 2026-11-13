@@ -141,6 +141,13 @@ export type WeekCredit = {
 };
 
 /**
+ * Issue 151: a subscription due a week, as closing it reads them to email each member (docs/SPEC.md §7.2): `weekCredit`
+ * for a `paid` row for the week, whatever the subscription's status; `noCharge` for an active subscription whose first
+ * paid week is on or before it, with no `paid` or `skipped` row for it.
+ */
+export type WeekDue = { subscriptionId: string; member: Member; notice: "weekCredit" | "noCharge" };
+
+/**
  * A subscription's weeks as its account pages read them (issue 155): its `paid` ledger rows, each with the week's
  * Sunday key and the amount charged, its unspent week credits, each with the Sunday key of the ledger row it
  * was granted for, and (issue 137) the Sunday keys of its `skipped` rows.
@@ -228,12 +235,19 @@ export interface Repository extends SignInStore, RateLimitStore {
   savePickupWeek(productId: string, week: ChangedWeek): Promise<void>;
   /**
    * Closes the week, keeping an existing `closed_at`, saves the note, and grants a week credit per `paid` ledger
-   * row of the product for that week, copying the subscription's picks; all under the product row's lock.
+   * row of the product for that week, copying the subscription's picks; all under the product row's lock. True when
+   * this call closed the week (no row, or a row whose `closed_at` is null), false when it was already closed.
    */
-  closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void>;
+  closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<boolean>;
   /** Clears `closed_at` and the note, deletes the week credits granted for the week, and deletes an empty row. */
   reopenPickupWeek(productId: string, weekOf: string): Promise<void>;
   listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]>;
+  /**
+   * Issue 151: the product's subscriptions due the week, each with its member and which email it gets. "First week" is
+   * the subscription's earliest `paid` ledger row, as `findMemberSubscription` reads it. Empty for a product id that
+   * isn't a UUID.
+   */
+  listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]>;
   /** Per week key from `from` on, the `paid` ledger rows and the week credits granted. */
   listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>>;
   /**

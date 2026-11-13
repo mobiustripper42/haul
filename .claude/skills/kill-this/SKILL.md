@@ -61,7 +61,7 @@ If there is nothing to commit, surface that and stop here — no PR for no code.
 - **On `main` (solo flow, unprotected main):** `git push origin main`. Skip Steps 3+4 — no PR. Go to Step 5.
 - **On a `task/*`, `claude/<slug>`, or feature branch:** `git push -u origin $BRANCH`. Continue.
 
-Capture `SUBJECT=$(git log -1 --format=%s)` for the PR title.
+Build the PR title from the issue the PR closes, never from a commit: `SUBJECT=$(gh issue view <N> --json title -q .title)`, as it stands (`Phase X.Y — <title>`). A commit subject is as long as whoever wrote the last commit made it; the issue title is short and fixed before any code exists. No issue, the first commit's subject on the branch.
 
 ## Step 3 — Code review, in the background
 

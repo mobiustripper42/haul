@@ -16,6 +16,7 @@ import {
   type SignupConfirmation,
   type Subscriber,
   type WeekCredit,
+  type WeekDue,
 } from "../ports/repository.js";
 import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
@@ -390,8 +391,11 @@ export class InMemoryRepository implements Repository {
     else this.pickupWeeks.set(key, copyWeek(week));
   }
 
-  /** Closes the week, keeping an existing closing time and the days, and grants its week credits. */
-  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<void> {
+  /**
+   * Closes the week, keeping an existing closing time and the days, and grants its week credits. True when this call
+   * closed the week, false when it was already closed.
+   */
+  async closePickupWeek(productId: string, weekOf: string, note: string | null, now: Date): Promise<boolean> {
     const existing = this.pickupWeeks.get(weekKey(productId, weekOf));
     await this.savePickupWeek(productId, {
       weekOf,
@@ -401,6 +405,7 @@ export class InMemoryRepository implements Repository {
       lastDay: existing?.lastDay ?? null,
     });
     this.grantWeekCredits(productId, weekOf, now);
+    return !existing?.closedAt;
   }
 
   /** Withdraws the week's week credits, clears the closing and the note, and drops the row if nothing is left. */
@@ -463,6 +468,22 @@ export class InMemoryRepository implements Repository {
       grantedAt: new Date(credit.grantedAt),
       optionIds: Object.values(credit.optionIds),
     }));
+  }
+
+  async listWeekDue(productId: string, weekOf: string): Promise<WeekDue[]> {
+    return [...this.subscriptions.values()]
+      .filter((subscription) => subscription.productId === productId)
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
+      .flatMap((subscription): WeekDue[] => {
+        const member = this.members.get(subscription.memberId);
+        if (!member) return [];
+        const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id);
+        const due = (notice: WeekDue["notice"]): WeekDue[] => [{ subscriptionId: subscription.id, member: copy(member), notice }];
+        if (rows.some((row) => row.status === "paid" && row.pickupDate === weekOf)) return due("weekCredit");
+        const firstPaid = rows.filter((row) => row.status === "paid").map((row) => row.pickupDate).sort()[0];
+        const skipped = rows.some((row) => row.status === "skipped" && row.pickupDate === weekOf);
+        return subscription.status === "active" && firstPaid !== undefined && firstPaid <= weekOf && !skipped ? due("noCharge") : [];
+      });
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
