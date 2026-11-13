@@ -24,6 +24,7 @@ const LINES = {
   closed: "account.marker.closed",
   closedPaid: "account.history.closedPaid",
   skipped: "account.weeks.skipped",
+  weekCredit: "account.weeks.weekCredit",
 } as const satisfies Record<HistoryRow["line"], string>;
 
 /**

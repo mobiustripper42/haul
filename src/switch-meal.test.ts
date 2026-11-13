@@ -50,7 +50,7 @@ const week = (weekOf: string, { closed = false, cutoffPassed = false } = {}): Ad
 
 /** A member's ledger: the weeks paid, the weeks their unspent week credits were granted for, and the weeks skipped. */
 const ledger = ({ paid = [], weekCredits = [], skipped = [] }: { paid?: string[]; weekCredits?: string[]; skipped?: string[] } = {}): MemberWeeks => ({
-  paid: paid.map((weekOf) => ({ weekOf, amountCents: 4500, options: [] })),
+  paid: paid.map((weekOf) => ({ weekOf, amountCents: 4500, weekCredit: false, options: [] })),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
   skipped,
 });

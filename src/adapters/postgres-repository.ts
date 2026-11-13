@@ -7,6 +7,7 @@ import {
   type Actor,
   type AuditEvent,
   type EmailChange,
+  type EnrolledWeek,
   type MemberSubscription,
   type MemberWeeks,
   type PendingCharge,
@@ -131,6 +132,22 @@ const clevelandDay = (column: string): string => `to_char(${column} at time zone
 const inEffectFor = (weekExpr: string): string =>
   `so.from_week = (select max(latest.from_week) from subscription_options latest
                     where latest.subscription_id = so.subscription_id and latest.from_week <= ${weekExpr})`;
+
+/**
+ * Issue 150, AC6: a `select` of `option_type_id, option_id`, the picks of the paid ledger row `ledgerExpr` (a uuid
+ * expression): those of the week credit spent on it when there is one, else the set in effect for the row's week
+ * (DEC-033). The one home of the rule, used by `listMemberWeeks` and `grantWeekCredits`; used as
+ * `join lateral (${rowPicks("l.id")}) picks on true`. `ledgerExpr` is only ever an expression written in this file.
+ */
+const rowPicks = (ledgerExpr: string): string =>
+  `select spent_options.option_type_id, spent_options.option_id
+     from week_credit_options spent_options join week_credits spent_credit on spent_credit.id = spent_options.week_credit_id
+    where spent_credit.spent_on = ${ledgerExpr}
+   union all
+   select so.option_type_id, so.option_id
+     from ledger picked_row join subscription_options so on so.subscription_id = picked_row.subscription_id
+    where picked_row.id = ${ledgerExpr} and ${inEffectFor("picked_row.pickup_date")}
+      and not exists (select 1 from week_credits spent_credit where spent_credit.spent_on = ${ledgerExpr})`;
 
 /**
  * A condition: the week `weekExpr` of the product `productExpr` is closed (`pickup_weeks.closed_at` set). The one home of
@@ -838,7 +855,7 @@ export class PostgresRepository implements Repository {
 
   /**
    * A week credit for each `paid` ledger row of the product's subscriptions for the week that has none, granted at
-   * `now`, with a copy of the set in effect for the row's week beside it (DEC-033); with `ledgerId`, for that row alone. The one home for
+   * `now`, with a copy of the row's picks beside it (`rowPicks`: DEC-033, and the spent week credit's for a row one paid); with `ledgerId`, for that row alone. The one home for
    * granting, called by closing and by a confirmation that lands after the week closed. The caller holds the
    * product row's lock.
    */
@@ -855,10 +872,9 @@ export class PostgresRepository implements Repository {
     if (rows.length === 0) return;
     await this.db.query(
       `insert into week_credit_options (week_credit_id, option_type_id, option_id)
-       select c.id, so.option_type_id, so.option_id
+       select c.id, picks.option_type_id, picks.option_id
          from week_credits c
-         join ledger l on l.id = c.granted_for
-         join subscription_options so on so.subscription_id = c.subscription_id and ${inEffectFor("l.pickup_date")}
+         join lateral (${rowPicks("c.granted_for")}) picks on true
         where c.id = any($1::uuid[])`,
       [rows.map((row) => row.id)],
     );
@@ -911,26 +927,55 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * One statement: a `pending` row, attempt 1, for every subscription of the product due `weekOf` as of `cutoff`, at the
-   * sum of the prices of the picks in effect for the week (DEC-033), none for a closed week. A subscription already
-   * holding a row for the week is left as it is. Returns the rows inserted.
+   * One statement: a row, attempt 1, for every subscription of the product due `weekOf` as of `cutoff`, none for a closed
+   * week; a subscription already holding a row for the week is left as it is (issue 150). A subscription holding an unspent
+   * week credit granted for an earlier week gets its row `paid` at 0 cents, `paid_at` the cutoff, with its oldest such week
+   * credit spent on it (by the granted-for week, then the credit's id) whatever its picks sum to; else one whose picks
+   * in effect for the week (DEC-033) sum to 0 cents gets the same row, spending nothing; any other gets a `pending` row at
+   * the sum. The spend rides on the insert, so a row that conflicts spends nothing. Returns what it wrote, by kind.
    */
-  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number> {
-    if (!UUID_SHAPE.test(productId)) return 0;
-    const { rowCount } = await this.db.query(
-      `insert into ledger (subscription_id, pickup_date, amount_cents, status)
-       select s.id, $2::date, picked.cents, 'pending'
-         from subscriptions s
-         cross join lateral (select sum(o.price_cents)::int as cents
-                               from subscription_options so join options o on o.id = so.option_id
-                              where so.subscription_id = s.id and ${inEffectFor("$2::date")}) picked
-        where s.product_id = $1 and ${dueAsOf("$2", "$3")} and picked.cents is not null
-          and not ${weekClosed("s.product_id", "$2::date")}
-        order by s.created_at, s.id
-       on conflict (subscription_id, pickup_date) do nothing`,
+  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek> {
+    if (!UUID_SHAPE.test(productId)) return { pending: 0, zeroCents: 0, byWeekCredit: [] };
+    const { rows } = await this.db.query<{ ledger_id: string; member_id: string; status: string; by_credit: boolean }>(
+      `with due as (
+         select s.id as subscription_id, s.member_id, s.created_at, picked.cents,
+                (select c.id from week_credits c join ledger granted on granted.id = c.granted_for
+                  where c.subscription_id = s.id and c.spent_on is null and granted.pickup_date < $2::date
+                  order by granted.pickup_date, c.id limit 1) as credit_id
+           from subscriptions s
+           cross join lateral (select sum(o.price_cents)::int as cents
+                                 from subscription_options so join options o on o.id = so.option_id
+                                where so.subscription_id = s.id and ${inEffectFor("$2::date")}) picked
+          where s.product_id = $1 and ${dueAsOf("$2", "$3")}
+            and not ${weekClosed("s.product_id", "$2::date")}
+       ), inserted as (
+         insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, paid_at)
+         select subscription_id, $2::date,
+                case when credit_id is not null then 0 else cents end,
+                case when credit_id is not null or cents = 0 then 'paid' else 'pending' end,
+                1,
+                case when credit_id is not null or cents = 0 then $3::timestamptz end
+           from due
+          where credit_id is not null or cents is not null
+          order by created_at, subscription_id
+         on conflict (subscription_id, pickup_date) do nothing
+         returning id, subscription_id, status
+       ), spent as (
+         update week_credits c set spent_on = inserted.id
+           from due join inserted on inserted.subscription_id = due.subscription_id
+          where c.id = due.credit_id
+         returning inserted.id as ledger_id
+       )
+       select inserted.id as ledger_id, due.member_id, inserted.status, (inserted.id in (select ledger_id from spent)) as by_credit
+         from inserted join due on due.subscription_id = inserted.subscription_id
+        order by due.created_at, due.subscription_id`,
       [productId, weekOf, cutoff],
     );
-    return rowCount ?? 0;
+    return {
+      pending: rows.filter((row) => row.status === "pending").length,
+      zeroCents: rows.filter((row) => row.status === "paid" && !row.by_credit).length,
+      byWeekCredit: rows.filter((row) => row.by_credit).map((row) => ({ ledgerId: row.ledger_id, memberId: row.member_id })),
+    };
   }
 
   /**
@@ -1011,8 +1056,9 @@ export class PostgresRepository implements Repository {
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
     if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [], skipped: [] };
     const [paid, paidOptions, weekCredits, skipped] = await Promise.all([
-      this.db.query<{ week_of: string; amount_cents: number }>(
-        `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents
+      this.db.query<{ week_of: string; amount_cents: number; week_credit: boolean }>(
+        `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents,
+                exists (select 1 from week_credits c where c.spent_on = ledger.id) as week_credit
            from ledger
           where subscription_id = $1 and status = 'paid'
           order by pickup_date`,
@@ -1021,9 +1067,9 @@ export class PostgresRepository implements Repository {
       this.db.query<{ week_of: string; type_name: string; option_name: string }>(
         `select to_char(l.pickup_date, 'YYYY-MM-DD') as week_of, t.name as type_name, o.name as option_name
            from ledger l
-           join subscription_options so on so.subscription_id = l.subscription_id and ${inEffectFor("l.pickup_date")}
-           join option_types t on t.id = so.option_type_id
-           join options o on o.id = so.option_id
+           join lateral (${rowPicks("l.id")}) picks on true
+           join option_types t on t.id = picks.option_type_id
+           join options o on o.id = picks.option_id
           where l.subscription_id = $1 and l.status = 'paid'
           order by t.position, t.name`,
         [subscriptionId],
@@ -1048,6 +1094,7 @@ export class PostgresRepository implements Repository {
       paid: paid.rows.map((row) => ({
         weekOf: row.week_of,
         amountCents: row.amount_cents,
+        weekCredit: row.week_credit,
         options: paidOptions.rows.filter((option) => option.week_of === row.week_of).map((option) => ({ typeName: option.type_name, optionName: option.option_name })),
       })),
       weekCredits: weekCredits.rows.map((row) => ({ grantedForWeek: row.granted_for_week })),

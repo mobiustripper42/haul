@@ -2,10 +2,10 @@
  * The week credit repository contract, run against both adapters like `runRepositoryContract` (DEC-010).
  *
  * `runWeekCreditContract` is issue 149's: closing and reopening a week, and the week credits closing grants. It
- * takes `addProduct` and the seams each adapter's repository test file passes in: `addLedgerRow`, a ledger row
- * as the charge run would write it, and `spendWeekCredit`, a week credit spent as the charge run will. The fake has
- * a method for each; Postgres writes them with raw SQL. A subscription's picks change only through `switchPicks`
- * (issue 138), which is on the port.
+ * takes `addProduct` and the seam each adapter's repository test file passes in: `addLedgerRow`, a ledger row
+ * as the charge run would write it. The fake has a method for it; Postgres writes it with raw SQL. A week credit is
+ * spent only through `enrolWeek` (issue 150), and a subscription's picks change only through `switchPicks` (issue
+ * 138), both on the port.
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Language } from "../i18n.js";
@@ -22,7 +22,6 @@ export function runWeekCreditContract(
   make: () => Promise<Repository>,
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
   addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<string>,
-  spendWeekCredit: (weekCreditId: string, ledgerId: string) => Promise<void>,
   reset?: () => Promise<void>,
 ): void {
   // Issue 149. The weeks are BOX's: January 24's cutoff is the end of Monday the 18th. The repository checks no
@@ -349,8 +348,8 @@ export function runWeekCreditContract(
         const signup = await paidFor(EARLIER);
         await addLedgerRow(signup.subscriptionId, WEEK, "paid", 4200);
         expect((await weeksOf(signup.subscriptionId)).paid).toEqual([
-          { weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) },
-          { weekOf: WEEK, amountCents: 4200, options: meal(0, 0) },
+          { weekOf: EARLIER, amountCents: 5000, weekCredit: false, options: meal(0, 0) },
+          { weekOf: WEEK, amountCents: 4200, weekCredit: false, options: meal(0, 0) },
         ]);
       });
 
@@ -359,7 +358,7 @@ export function runWeekCreditContract(
         await addLedgerRow(signup.subscriptionId, WEEK, "pending", 5000);
         await addLedgerRow(signup.subscriptionId, NEXT, "declined", 5000);
         await paidFor(WEEK);
-        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) }]);
+        expect((await weeksOf(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, weekCredit: false, options: meal(0, 0) }]);
       });
 
       it("AC5 (issue 155): its unspent week credits, each with the week of the paid row it was granted for; another subscription's are not its", async () => {
@@ -374,14 +373,10 @@ export function runWeekCreditContract(
       it("AC5 (issue 155): a week credit the charge run spent is left out", async () => {
         const signup = await paidFor(WEEK);
         await close(WEEK);
-        const [spent] = await credits(WEEK);
-        // NEXT's paid row, the charge the week credit is spent on. Its id is read from the week credit closing NEXT
-        // grants for it: the contract shows a run row's id nowhere else.
-        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
+        // Issue 150: NEXT enrolled spends WEEK's week credit on NEXT's row; NEXT then closed grants a week credit for that
+        // row, unspent.
+        await repo.enrolWeek(product.id, NEXT, cutoffInstant(product, NEXT));
         await close(NEXT);
-        const [nextCredit] = await credits(NEXT);
-        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
-        await spendWeekCredit(spent.id, nextCredit.grantedFor);
         expect((await weeksOf(signup.subscriptionId)).weekCredits).toEqual([{ grantedForWeek: NEXT }]);
       });
 
@@ -404,7 +399,7 @@ export function runWeekCreditContract(
         const signup = await paidFor(EARLIER);
         expect(await repo.skipWeek(signup.subscriptionId, WEEK)).toBe(true);
         expect(await skippedOf(signup.subscriptionId)).toEqual([WEEK]);
-        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, options: meal(0, 0) }]);
+        expect((await repo.listMemberWeeks(signup.subscriptionId)).paid).toEqual([{ weekOf: EARLIER, amountCents: 5000, weekCredit: false, options: meal(0, 0) }]);
       });
 
       it("AC1: each week skipped is a row of its own, and another subscription's row for the week does not stand in the way", async () => {
@@ -599,16 +594,8 @@ export function runWeekCreditContract(
       it("AC4: a cancelled subscription whose only week credit the charge run spent owes no refund", async () => {
         const signup = await paidFor(WEEK);
         await close(WEEK);
-        const [spent] = await credits(WEEK);
-        // NEXT's paid row, the charge the week credit is spent on; its id is read from the week credit closing NEXT grants.
-        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
-        await close(NEXT);
-        const [nextCredit] = await credits(NEXT);
-        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
-        await spendWeekCredit(spent.id, nextCredit.grantedFor);
-        // NEXT reopened: its own week credit is withdrawn, so the one spent on NEXT's charge is the subscription's only one.
-        await repo.reopenPickupWeek(product.id, NEXT);
-        expect(await credits(NEXT)).toEqual([]);
+        // Issue 150: NEXT enrolled spends WEEK's week credit, the subscription's only one, on NEXT's row.
+        await repo.enrolWeek(product.id, NEXT, cutoffInstant(product, NEXT));
         expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
         expect(await refundOwedOf(signup.subscriptionId)).toBe(false);
       });
@@ -616,12 +603,9 @@ export function runWeekCreditContract(
       it("AC4: a cancelled subscription with one week credit spent and one not owes a refund", async () => {
         const signup = await paidFor(WEEK);
         await close(WEEK);
-        const [spent] = await credits(WEEK);
-        await addLedgerRow(signup.subscriptionId, NEXT, "paid", 5000);
+        // Issue 150: NEXT enrolled spends WEEK's week credit on NEXT's row; NEXT then closed grants one for that row, unspent.
+        await repo.enrolWeek(product.id, NEXT, cutoffInstant(product, NEXT));
         await close(NEXT);
-        const [nextCredit] = await credits(NEXT);
-        if (!spent || !nextCredit) throw new Error("closing WEEK and NEXT granted no week credit to spend");
-        await spendWeekCredit(spent.id, nextCredit.grantedFor);
         expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
         expect(await refundOwedOf(signup.subscriptionId)).toBe(true);
       });

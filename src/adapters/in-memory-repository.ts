@@ -8,6 +8,7 @@ import {
   type Actor,
   type AuditEvent,
   type EmailChange,
+  type EnrolledWeek,
   type MemberSubscription,
   type MemberWeeks,
   type PendingCharge,
@@ -487,24 +488,34 @@ export class InMemoryRepository implements Repository {
   }
 
   /**
-   * One `pending` row, attempt 1, for each of the product's subscriptions due `weekOf` as of `cutoff` and holding no row
-   * for it, at the sum of the picks in effect for the week (DEC-033); none for a closed week. Returns the rows written.
+   * A row, attempt 1, for each of the product's subscriptions due `weekOf` as of `cutoff` and holding no row for it; none for
+   * a closed week (issue 150). A subscription holding an unspent week credit granted for an earlier week gets its row
+   * `paid` at 0 cents, paid at the cutoff, with its oldest such week credit (by the granted-for week, then the credit's id)
+   * spent on it, whatever its picks sum to; else one whose picks in effect for the week (DEC-033) sum to 0 cents gets the
+   * same row, spending nothing; any other gets a `pending` row at the sum. Returns what it wrote, by kind.
    */
-  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number> {
+  async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek> {
+    const written: EnrolledWeek = { pending: 0, zeroCents: 0, byWeekCredit: [] };
     const product = this.products.find((p) => p.id === productId);
-    if (!product || this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null) return 0;
-    let enrolled = 0;
+    if (!product || this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null) return written;
     const due = [...this.subscriptions.values()]
       .filter((subscription) => subscription.productId === productId && this.isDueAsOf(subscription, weekOf, cutoff))
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
     for (const subscription of due) {
       const picks = this.setInEffect(subscription.id, weekOf);
       const holds = [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.pickupDate === weekOf);
-      if (!picks || holds) continue;
-      await this.addLedgerRow(subscription.id, weekOf, "pending", priceOfChoices(product, picks.optionIds));
-      enrolled++;
+      const credit = this.unspentCreditsBefore(subscription.id, weekOf)[0];
+      if ((!picks && !credit) || holds) continue;
+      const cents = picks ? priceOfChoices(product, picks.optionIds) : 0;
+      const paid = credit !== undefined || cents === 0;
+      const ledgerId = await this.addLedgerRow(subscription.id, weekOf, paid ? "paid" : "pending", credit ? 0 : cents, paid ? cutoff : undefined);
+      if (credit) {
+        this.weekCredits.set(credit.id, { ...credit, spentOn: ledgerId });
+        written.byWeekCredit.push({ ledgerId, memberId: subscription.memberId });
+      } else if (paid) written.zeroCents++;
+      else written.pending++;
     }
-    return enrolled;
+    return written;
   }
 
   /** The product's `pending` rows whose subscription has a card and whose member has a Square customer, oldest week first, then the subscription's `created_at`. */
@@ -584,7 +595,12 @@ export class InMemoryRepository implements Repository {
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
     const paid = [...this.ledger.values()]
       .filter((row) => row.subscriptionId === subscriptionId && row.status === "paid")
-      .map((row) => ({ weekOf: row.pickupDate, amountCents: row.amountCents, options: this.optionsNamed(this.subscriptions.get(subscriptionId), this.setInEffect(subscriptionId, row.pickupDate)?.optionIds ?? {}) }));
+      .map((row) => ({
+        weekOf: row.pickupDate,
+        amountCents: row.amountCents,
+        weekCredit: this.spentCreditOn(row.id) !== undefined,
+        options: this.optionsNamed(this.subscriptions.get(subscriptionId), this.rowPicks(row)),
+      }));
     const weekCredits = [...this.weekCredits.values()].flatMap((credit) => {
       const row = this.ledger.get(credit.grantedFor);
       return credit.subscriptionId === subscriptionId && credit.spentOn === null && row ? [{ grantedForWeek: row.pickupDate }] : [];
@@ -624,14 +640,8 @@ export class InMemoryRepository implements Repository {
     return "switched";
   }
 
-  /** A test seam on the fake only, not on `Repository`: a week credit spent on a later week's ledger row, as the charge run (2.2b) will. */
-  async spendWeekCredit(weekCreditId: string, ledgerId: string): Promise<void> {
-    const credit = this.weekCredits.get(weekCreditId);
-    if (credit) this.weekCredits.set(weekCreditId, { ...credit, spentOn: ledgerId });
-  }
-
   /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write, and its id. */
-  async addLedgerRow(subscriptionId: string, pickupDate: string, status: StoredLedger["status"], amountCents: number): Promise<string> {
+  async addLedgerRow(subscriptionId: string, pickupDate: string, status: StoredLedger["status"], amountCents: number, paidAt?: Date): Promise<string> {
     const id = randomUUID();
     this.ledger.set(id, {
       id,
@@ -641,7 +651,7 @@ export class InMemoryRepository implements Repository {
       status,
       attempt: 1,
       squarePaymentId: null,
-      paidAt: status === "paid" ? new Date() : null,
+      paidAt: status === "paid" ? new Date(paidAt ?? Date.now()) : null,
     });
     return id;
   }
@@ -792,8 +802,8 @@ export class InMemoryRepository implements Repository {
         grantedFor: row.id,
         spentOn: null,
         grantedAt: new Date(now),
-        // DEC-033: the set in effect for the week the row answers for, not the subscription's picks at the grant.
-        optionIds: { ...this.setInEffect(subscription.id, row.pickupDate)?.optionIds },
+        // The row's picks (`rowPicks`): not the subscription's picks at the grant.
+        optionIds: { ...this.rowPicks(row) },
       });
     }
   }
@@ -811,6 +821,31 @@ export class InMemoryRepository implements Repository {
     return [...(this.subscriptions.get(subscriptionId)?.sets ?? [])]
       .filter((set) => set.fromWeek <= weekOf)
       .sort((a, b) => b.fromWeek.localeCompare(a.fromWeek))[0];
+  }
+
+  /**
+   * Issue 150, AC6: the picks of a paid ledger row, option type id → option id: those of the week credit spent on it when
+   * there is one, else the set in effect for the row's week (DEC-033). The one home of the rule, used by `listMemberWeeks`
+   * and `grantWeekCredits`.
+   */
+  private rowPicks(row: StoredLedger): Record<string, string> {
+    return this.spentCreditOn(row.id)?.optionIds ?? this.setInEffect(row.subscriptionId, row.pickupDate)?.optionIds ?? {};
+  }
+
+  /** The week credit spent on the ledger row, if one is. */
+  private spentCreditOn(ledgerId: string): StoredWeekCredit | undefined {
+    return [...this.weekCredits.values()].find((credit) => credit.spentOn === ledgerId);
+  }
+
+  /** The subscription's unspent week credits granted for a week before `weekOf`, oldest first by that week, then by id. */
+  private unspentCreditsBefore(subscriptionId: string, weekOf: string): StoredWeekCredit[] {
+    return [...this.weekCredits.values()]
+      .flatMap((credit) => {
+        const granted = this.ledger.get(credit.grantedFor);
+        return credit.subscriptionId === subscriptionId && credit.spentOn === null && granted && granted.pickupDate < weekOf ? [{ credit, week: granted.pickupDate }] : [];
+      })
+      .sort((a, b) => a.week.localeCompare(b.week) || a.credit.id.localeCompare(b.credit.id))
+      .map(({ credit }) => credit);
   }
 
   /** The newest set: the one with the latest `fromWeek`, whatever week it starts from. */

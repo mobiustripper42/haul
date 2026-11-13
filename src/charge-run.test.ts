@@ -9,12 +9,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
 import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
+import { upcomingRows } from "./account-weeks.js";
 import { CHARGE_RUN_ACTOR, runCharges, type ChargeRunReport } from "./charge-run.js";
-import { legalFooter } from "./email-templates.js";
+import { legalFooter, renderEmail } from "./email-templates.js";
 import { createTranslator, type Language } from "./i18n.js";
 import type { Member } from "./members.js";
 import { formatUsdWhole } from "./money.js";
-import { formatPickupDate, pickupWeek, weekTitle } from "./pickup-week.js";
+import { formatPickupDate, pickupWeek, upcomingWeeks, weekTitle } from "./pickup-week.js";
 import { EmailSendError } from "./ports/email.js";
 import { PaymentsError } from "./ports/payments.js";
 import type { Actor, PendingCharge, PendingSignup } from "./ports/repository.js";
@@ -91,9 +92,10 @@ const picks = (size = 0, menu = 0): Record<string, string> => {
 type Subscriber = { member: Member; customerId: string; cardId: string | null; signup: PendingSignup };
 
 /**
- * A member with a Square customer and a signup for `firstWeek` at `choices`: a card saved at Square and bound to the
- * row unless `card` is false, and the first week paid (the subscription active) unless `paid` is false, which leaves
- * a stranded signup. Each is created a moment after the last, so the run's order between them is fixed.
+ * A member with a Square customer, unless `customer` is false (issue 150; then `card` must be false too), and a signup
+ * for `firstWeek` at `choices`: a card saved at Square and bound to the row unless `card` is false, and the first week
+ * paid (the subscription active) unless `paid` is false, which leaves a stranded signup. Each is created a moment after
+ * the last, so the run's order between them is fixed.
  */
 async function subscriber({
   language = "en",
@@ -101,13 +103,14 @@ async function subscriber({
   firstWeek = FIRST,
   card = true,
   paid = true,
-}: { language?: Language; choices?: Record<string, string>; firstWeek?: string; card?: boolean; paid?: boolean } = {}): Promise<Subscriber> {
+  customer = true,
+}: { language?: Language; choices?: Record<string, string>; firstWeek?: string; card?: boolean; paid?: boolean; customer?: boolean } = {}): Promise<Subscriber> {
   await new Promise((resolve) => setTimeout(resolve, 2));
   const n = ++members;
   const emailAddress = `member-${n}@example.com`;
   const saved = await repo.saveAccount({ email: emailAddress, firstName: `Member${n}`, lastName: "Lovelace", phone: "216-555-0100", language });
-  const customerId = payments.addCustomer({ email: emailAddress, createdAt: SIGNED_UP_AT, updatedAt: SIGNED_UP_AT }).id;
-  await repo.setMemberSquareCustomer(saved.id, customerId);
+  const customerId = customer ? payments.addCustomer({ email: emailAddress, createdAt: SIGNED_UP_AT, updatedAt: SIGNED_UP_AT }).id : "no customer";
+  if (customer) await repo.setMemberSquareCustomer(saved.id, customerId);
   const priceCents = priceOfChoices(product, choices);
   const signup = await repo.savePendingSignup({
     memberId: saved.id,
@@ -700,5 +703,142 @@ describe("AC12 — the report", () => {
     vi.spyOn(payments, "charge").mockImplementation(async (input) => (input.cardId === silent.cardId ? Promise.reject(noAnswer()) : real(input)));
     expect(await run()).toEqual(report({ enrolled: 3, paid: 2, declined: 1, unknown: 1 }));
     expect(repo.events().filter((event) => event.kind === "charge_outcome_unknown")).toHaveLength(1);
+  });
+});
+
+// Issue 150: a week credit is spent at enrolment. Which credit, on which subscription, and the 0-cent rule are the
+// repository's (src/adapters/charge-run-contract.ts owns the spend's edges); here the run's part: the receipt for each
+// row a week credit paid, sent after the enrol commits; that such a row, and a 0-cent one, never reaches the settle;
+// the report; and one fixture on which upcomingRows' prediction and the spend agree. The receipt's words are
+// src/email-templates.test.ts's; here it is rendered as the run must send it.
+describe("issue 150 — a week paid by a week credit", () => {
+  const en = createTranslator("en");
+  const es = createTranslator("es");
+  const JAN_24 = "2027-01-24";
+  const TITLE = weekTitle(en, pickupWeek(WEEK, null), "en");
+
+  /** The week credit receipt `who` gets for the week titled `week`, in their language. */
+  const weekCreditReceipt = (who: Subscriber, week: string) => ({ to: who.member.email, ...renderEmail("weekCreditReceipt", who.member.language, { week }, SITE_URL) });
+
+  /** The weeks of `who`'s paid rows a week credit paid. */
+  const paidByWeekCredit = async (who: Subscriber): Promise<string[]> =>
+    (await repo.listMemberWeeks(who.signup.subscriptionId)).paid.filter((row) => row.weekCredit).map((row) => row.weekOf).sort();
+
+  // In each case below, FIRST, every subscriber's signup week, closes after it was paid: each holds one unspent week
+  // credit, which WEEK, the week the run at RUN_AT enrols, takes.
+
+  it("AC3: a week a week credit paid gets the week credit receipt, to the member in English, naming the week, and no other email", async () => {
+    const ada = await subscriber();
+    await close(FIRST);
+    await run();
+    expect(email.sent).toEqual([weekCreditReceipt(ada, TITLE)]);
+  });
+
+  it("AC3: a member whose language is Spanish gets it in Spanish", async () => {
+    const ana = await subscriber({ language: "es" });
+    await close(FIRST);
+    await run();
+    expect(email.sent).toEqual([weekCreditReceipt(ana, weekTitle(es, pickupWeek(WEEK, null), "es"))]);
+  });
+
+  it("AC3: a moved week is named by its moved days, as the receipt names it", async () => {
+    const ada = await subscriber();
+    await close(FIRST);
+    await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-09", lastDay: "2027-01-10" });
+    await run();
+    expect(email.sent).toEqual([weekCreditReceipt(ada, weekTitle(en, { weekOf: WEEK, firstDay: "2027-01-09", lastDay: "2027-01-10" }, "en"))]);
+  });
+
+  it("AC3: a second firing enrols no new row, so it sends no second receipt", async () => {
+    const ada = await subscriber();
+    await close(FIRST);
+    await run();
+    expect(await run()).toEqual(report());
+    expect(email.sent).toEqual([weekCreditReceipt(ada, TITLE)]);
+  });
+
+  it("AC3: a failed send is logged as an email step with its errorFields, never its message, and undoes nothing: the week stays paid by the week credit and the other member gets theirs", async () => {
+    const ada = await subscriber();
+    const grace = await subscriber();
+    await close(FIRST);
+    const failure = new EmailSendError("Resend", 503, "the provider's whole reply, with an address in it");
+    const send = email.send.bind(email);
+    vi.spyOn(email, "send").mockImplementation(async (message) => (message.to === ada.member.email ? Promise.reject(failure) : send(message)));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    await run();
+    expect(await paidByWeekCredit(ada)).toEqual([WEEK]);
+    expect(email.sent).toEqual([weekCreditReceipt(grace, TITLE)]);
+    expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ step: "email", ...errorFields(failure) }));
+    expect(inspect(logged.mock.calls, { depth: 5 })).not.toContain("the provider's whole reply");
+  });
+
+  it("AC3: due is not about the card: a member with no card and no Square customer has the week paid by the week credit, and gets its receipt", async () => {
+    const ada = await subscriber({ card: false, customer: false });
+    await close(FIRST);
+    expect(await run()).toEqual(report({ enrolled: 1 }));
+    expect(email.sent).toEqual([weekCreditReceipt(ada, TITLE)]);
+  });
+
+  it("AC4: a week a week credit paid never reaches the settle: no charge, no lookup, no event; it counts in enrolled", async () => {
+    await subscriber();
+    await close(FIRST);
+    const charge = vi.spyOn(payments, "charge");
+    const find = vi.spyOn(payments, "findPaymentByReference");
+    expect(await run()).toEqual(report({ enrolled: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(find).not.toHaveBeenCalled();
+    expect(repo.events()).toEqual([]);
+  });
+
+  it("AC4: beside a charged week, each counts once in enrolled, and only the charged one is charged and paid by the run", async () => {
+    const ada = await subscriber();
+    await close(FIRST);
+    // Grace starts at WEEK, paid at signup, so she holds no week credit. The run on Tuesday January 12 enrols NEXT for both.
+    const grace = await subscriber({ firstWeek: WEEK });
+    expect(await run(new Date("2027-01-12T12:00:00.000Z"), () => new Date("2027-01-12T12:00:30.000Z"))).toEqual(report({ weekOf: NEXT, enrolled: 2, paid: 1 }));
+    expect(payments.charges.map((charge) => charge.customerId)).toEqual([grace.customerId]);
+    expect(await paidByWeekCredit(ada)).toEqual([NEXT]);
+  });
+
+  it("AC5: a week whose picks sum to 0 cents, with no week credit, is enrolled paid: counted in enrolled, never charged, no event and no email", async () => {
+    // A Supper Club whose only size and menu are free.
+    repo = new InMemoryRepository();
+    product = repo.addProduct({
+      name: "Supper Club",
+      cap: 50,
+      firstPickupDate: FIRST,
+      cutoffWeekday: 1,
+      cutoffTime: "24:00:00",
+      optionTypes: [
+        { name: "How many people?", position: 1, options: [{ name: "A taste", priceCents: 0, position: 1 }] },
+        { name: "Which menu?", position: 2, options: [{ name: "Standard", priceCents: 0, position: 1 }] },
+      ],
+    });
+    const ada = await subscriber();
+    const charge = vi.spyOn(payments, "charge");
+    expect(await run()).toEqual(report({ enrolled: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(repo.events()).toEqual([]);
+    expect(email.sent).toEqual([]);
+    expect((await repo.listMemberWeeks(ada.signup.subscriptionId)).paid.map((row) => [row.weekOf, row.amountCents, row.weekCredit]).sort()).toEqual([
+      [FIRST, 0, false],
+      [WEEK, 0, false],
+    ]);
+  });
+
+  it("AC7: the week upcomingRows marks Week credit before the runs is the week the run pays by the week credit, past a closed week and a skipped one", async () => {
+    // Ada's week credit is granted for FIRST; January 10 is closed and January 17 skipped, so it lands on January 24.
+    const ada = await subscriber();
+    await close(FIRST);
+    await close(WEEK);
+    expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
+    const weeks = upcomingWeeks(product, RUN_AT, await repo.listChangedWeeks(product.id, FIRST), FIRST);
+    const predicted = upcomingRows(weeks, await repo.listMemberWeeks(ada.signup.subscriptionId), product)
+      .filter((row) => row.marker === "weekCredit")
+      .map((row) => row.week.weekOf);
+    expect(predicted).toEqual([JAN_24]);
+    // A firing after each week's cutoff in turn: January 10's, January 17's, January 24's.
+    for (const at of ["2027-01-05T12:00:00.000Z", "2027-01-12T12:00:00.000Z", "2027-01-19T12:00:00.000Z"]) await run(new Date(at), () => new Date(at));
+    expect(await paidByWeekCredit(ada)).toEqual(predicted);
   });
 });

@@ -1,4 +1,4 @@
-import { createTranslator } from "./i18n.js";
+import { createTranslator, type Language } from "./i18n.js";
 import { renderEmail } from "./email-templates.js";
 import { recordDecline, sendCharge } from "./ledger-charge.js";
 import { formatUsdWhole } from "./money.js";
@@ -11,8 +11,9 @@ import { errorFields, recordEventAs } from "./record-event.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
 /**
- * The charge run (issue 134; DEC-003, DEC-004, DEC-034). Each firing writes a `pending` ledger row for every subscription
- * due the latest week whose cutoff has passed, then settles every `pending` row it can: a charge on the card on file, or,
+ * The charge run (issue 134; DEC-003, DEC-004, DEC-034, DEC-035). Each firing writes a ledger row for every subscription
+ * due the latest week whose cutoff has passed: `pending` to charge, or (issue 150) `paid` at 0 cents where a week credit
+ * paid the week, which its member is emailed, or its picks sum to 0 cents. It then settles every `pending` row it can: a charge on the card on file, or,
  * where a charge must not be sent, a lookup of what Square already took. The ledger is the queue, so a firing over the
  * same state writes no second row, charges with the same key and emails once. Every write runs under
  * `CHARGE_RUN_ACTOR`, and the provider calls run between `withActor` commits, never inside one. One row's failure never
@@ -46,7 +47,10 @@ export async function runCharges(deps: ChargeRunDeps): Promise<ChargeRunReport> 
   const weekOf = latestCutoffWeek(product, now);
   const report: ChargeRunReport = { weekOf, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0 };
   if (weekOf !== null) {
-    report.enrolled = await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.enrolWeek(product.id, weekOf, cutoffInstant(product, weekOf)));
+    const enrolled = await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.enrolWeek(product.id, weekOf, cutoffInstant(product, weekOf)));
+    report.enrolled = enrolled.pending + enrolled.zeroCents + enrolled.byWeekCredit.length;
+    // After the commit, as the receipt is: a row paid by a week credit is paid, and its member is told so.
+    for (const row of enrolled.byWeekCredit) await sendWeekCreditReceipt(deps, product.id, weekOf, row.memberId);
   }
   for (const row of await repo.listPendingCharges(product.id)) {
     try {
@@ -136,15 +140,33 @@ async function sendEmail(deps: ChargeRunDeps, productId: string, row: PendingCha
       if (confirmation) await deliverSignupConfirmation(email, member, confirmation, accountUrl, siteUrl);
       return;
     }
-    // The week's days as the week has them now, so a moved week is named by its moved days.
-    const changed = (await repo.listChangedWeeks(productId, row.pickupDate)).find((week) => week.weekOf === row.pickupDate) ?? null;
-    const week = weekTitle(createTranslator(member.language), pickupWeek(row.pickupDate, changed), member.language);
+    const week = await weekNamed(deps, productId, row.pickupDate, member.language);
     const { subject, text } = renderEmail(
       "receipt",
       member.language,
       { amount: formatUsdWhole(row.amountCents), date: formatPickupDate(clevelandDate(paidAt), member.language), week },
       siteUrl,
     );
+    await email.send({ to: member.email, subject, text });
+  } catch (error) {
+    logFailure("email", error);
+  }
+}
+
+/** The week's title in `language`, the week's days as the week has them now, so a moved week is named by its moved days. */
+async function weekNamed(deps: ChargeRunDeps, productId: string, pickupDate: string, language: Language): Promise<string> {
+  const changed = (await deps.repo.listChangedWeeks(productId, pickupDate)).find((week) => week.weekOf === pickupDate) ?? null;
+  return weekTitle(createTranslator(language), pickupWeek(pickupDate, changed), language);
+}
+
+/** The receipt for a week a week credit paid, to its member: a failed send is logged and undoes nothing, as the receipt's. */
+async function sendWeekCreditReceipt(deps: ChargeRunDeps, productId: string, pickupDate: string, memberId: string): Promise<void> {
+  const { repo, email, siteUrl } = deps;
+  try {
+    const member = await repo.findMemberById(memberId);
+    if (!member) return;
+    const week = await weekNamed(deps, productId, pickupDate, member.language);
+    const { subject, text } = renderEmail("weekCreditReceipt", member.language, { week }, siteUrl);
     await email.send({ to: member.email, subject, text });
   } catch (error) {
     logFailure("email", error);

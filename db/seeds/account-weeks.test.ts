@@ -158,6 +158,45 @@ describe.skipIf(!up)(`AC11 — the account-weeks seed against <test db>_account_
     expect(await picksOf("week_credit_options", "week_credit_id", credits[0]?.id ?? "")).toEqual(picks);
   });
 
+  // Issue 150, AC11: a by-hand charge run (AC12) spends weeks.member's week credit on a row for the week after the
+  // latest charged one, and leaves cancel.member a pending row there; running the seed again puts both members back.
+  // The rows are written here as the run writes them, by SQL, so the seed's undo is tested without the run.
+  it("AC11: after a week credit spent by hand and rows written after the latest charged week, a second run leaves one unspent week credit and no row after that week", async () => {
+    const { subscriptionId, charged, latestPast } = await seeded();
+    const after = addDays(charged.at(-1) ?? OCT_25, 7);
+    const cancelSubscriptionId = (
+      await pool.query<{ id: string }>("select s.id from subscriptions s join members m on m.id = s.member_id where m.email = 'cancel.member@example.com'")
+    ).rows[0]?.id;
+    const paidByCredit = (
+      await pool.query<{ id: string }>(
+        `insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, paid_at) values ($1, $2::date, 0, 'paid', 1, now()) returning id`,
+        [subscriptionId, after],
+      )
+    ).rows[0]?.id;
+    const spent = await pool.query("update week_credits set spent_on = $2 where subscription_id = $1 and spent_on is null", [subscriptionId, paidByCredit]);
+    expect(spent.rowCount).toBe(1);
+    await pool.query(`insert into ledger (subscription_id, pickup_date, amount_cents, status) values ($1, $2::date, 5000, 'pending')`, [cancelSubscriptionId, after]);
+
+    await runSeed("account-weeks", url);
+
+    const credits = (
+      await pool.query<{ spent_on: string | null; granted_week: string }>(
+        `select c.spent_on, to_char(l.pickup_date, 'YYYY-MM-DD') as granted_week
+           from week_credits c join ledger l on l.id = c.granted_for
+          where c.subscription_id = $1`,
+        [subscriptionId],
+      )
+    ).rows;
+    expect(credits).toEqual([{ spent_on: null, granted_week: latestPast }]);
+    const later = (
+      await pool.query<{ week: string }>(
+        "select to_char(pickup_date, 'YYYY-MM-DD') as week from ledger where subscription_id = any($1::uuid[]) and pickup_date > $2::date",
+        [[subscriptionId, cancelSubscriptionId], charged.at(-1)],
+      )
+    ).rows;
+    expect(later).toEqual([]);
+  });
+
   // Issue 139, AC15: the seed also makes cancel.member@example.com, the plain cancel to weeks.member's cancel with a
   // refund owed, and every run puts both back to active, so a cancel tried by hand is undone by running it again.
   describe("issue 139 — the two members a cancel is tried on", () => {

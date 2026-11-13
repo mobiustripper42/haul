@@ -154,8 +154,11 @@ export type WeekDue = { subscriptionId: string; member: Member; notice: "weekCre
  * was granted for, and (issue 137) the Sunday keys of its `skipped` rows.
  */
 export type MemberWeeks = {
-  /** Issue 138: `options` is the set of picks in effect for the week, in option-type position order. */
-  paid: { weekOf: string; amountCents: number; options: { typeName: string; optionName: string }[] }[];
+  /**
+   * Issue 138: `options` is the set of picks in effect for the week, in option-type position order. Issue 150:
+   * `weekCredit` is whether a week credit paid the row.
+   */
+  paid: { weekOf: string; amountCents: number; weekCredit: boolean; options: { typeName: string; optionName: string }[] }[];
   weekCredits: { grantedForWeek: string }[];
   skipped: string[];
 };
@@ -179,6 +182,12 @@ export type PendingCharge = {
   closed: boolean;
   lastPickupDay: string;
 };
+
+/**
+ * Issue 150: what `enrolWeek` wrote: `pending` rows to charge, rows paid at 0 cents for a 0-cent set (`zeroCents`), and
+ * the rows a week credit paid (`byWeekCredit`), each with its member, for the run's receipts.
+ */
+export type EnrolledWeek = { pending: number; zeroCents: number; byWeekCredit: { ledgerId: string; memberId: string }[] };
 
 /** Issue 156: a member's email change waiting for its code, one per member. */
 export type EmailChange = { memberId: string; newEmail: string; codeHash: string; expiresAt: Date; attempts: number };
@@ -275,7 +284,7 @@ export interface Repository extends SignInStore, RateLimitStore {
    * product's subscriptions due it as of `cutoff`, with `on conflict (subscription_id, pickup_date) do nothing`; nothing
    * for a closed week. Returns the rows inserted; 0 for a product id that isn't a UUID.
    */
-  enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<number>;
+  enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek>;
   /**
    * Issue 134: the product's `pending` ledger rows whose subscription has a card, oldest `pickup_date` first, then
    * subscription `created_at`.

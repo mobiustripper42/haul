@@ -14,15 +14,14 @@ runRepositoryContract(
   async () => contractRepo.events().map((event) => event.actor),
 );
 
-// Issue 149: closing and reopening weeks, and the week credits, through the fake's test seams; issue 155 adds the
-// spending of a week credit.
+// Issue 149: closing and reopening weeks, and the week credits, through the fake's test seams; issue 150 spends a
+// week credit through enrolWeek.
 let weekRepo: InMemoryRepository;
 runWeekCreditContract(
   "in-memory",
   async () => (weekRepo = new InMemoryRepository()),
   async (input) => weekRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => weekRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
-  (weekCreditId, ledgerId) => weekRepo.spendWeekCredit(weekCreditId, ledgerId),
 );
 
 // Issue 134: the charge run's repository methods, through the same seams.
@@ -32,7 +31,6 @@ runChargeRunContract(
   async () => (chargeRepo = new InMemoryRepository()),
   async (input) => chargeRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => chargeRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
-  (weekCreditId, ledgerId) => chargeRepo.spendWeekCredit(weekCreditId, ledgerId),
 );
 
 // Issue 156: a member's own details and their pending email change.

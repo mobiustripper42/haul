@@ -2,6 +2,7 @@
 // `<test db>_repository`, created if absent, migrated once, truncated before each test.
 // Without a reachable Postgres it skips locally and fails in CI (AC8).
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { cutoffInstant } from "../pickup-week.js";
 import type { Actor, PendingSignup } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
@@ -103,16 +104,75 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     return id;
   };
 
-  /** Issue 155: a week credit spent on a later week's ledger row, as the charge run (2.2b) will spend one. */
-  const spendWeekCredit = async (weekCreditId: string, ledgerId: string): Promise<void> => {
-    const { rowCount } = await pool.query("update week_credits set spent_on = $2 where id = $1", [weekCreditId, ledgerId]);
-    expect(rowCount, `no week credit ${weekCreditId} to spend`).toBe(1);
-  };
-
-  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
+  runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
 
   // Issue 134: the charge run's repository methods, through the same seams.
-  runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, spendWeekCredit, truncateAll);
+  runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
+
+  // Issue 150: Postgres only. The contract reads a row paid at enrolment through listMemberWeeks and listPendingCharges;
+  // its paid_at, attempt and payment id, and the week credit's spent_on, are read here, from the tables.
+  describe("issue 150 — a row paid at enrolment, in its tables", () => {
+    const EARLIER = "2027-01-17";
+    const WEEK = "2027-01-24";
+    const CONSENT_AT = new Date("2027-01-05T15:00:00.000Z");
+    const PAID_AT = new Date("2027-01-05T15:00:05.000Z");
+    const CLOSED_AT = new Date("2027-01-20T15:00:00.000Z");
+    const FREE_BOX: ProductInput = {
+      ...SWITCH_BOX,
+      name: "Free box",
+      optionTypes: SWITCH_BOX.optionTypes.map((type) => ({ ...type, options: type.options.map((option) => ({ ...option, priceCents: 0 })) })),
+    };
+
+    /** A new member's active subscription to `product`, its first week EARLIER paid at signup; its id. */
+    const paidSignup = async (product: ProductWithOptions, email: string): Promise<string> => {
+      const member = await repo.createMember({ email });
+      const signup = await repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: EARLIER,
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: CONSENT_AT,
+      });
+      expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, PAID_AT)).toBe("confirmed");
+      return signup.subscriptionId;
+    };
+
+    /** The subscription's WEEK row as stored, and the ids of the week credits spent on it. */
+    const weekRow = async (subscriptionId: string) =>
+      (
+        await pool.query<{ status: string; amount_cents: number; attempt: number; square_payment_id: string | null; paid_at: Date | null; spent_by: string[] }>(
+          `select l.status, l.amount_cents, l.attempt, l.square_payment_id, l.paid_at,
+                  array(select c.id::text from week_credits c where c.spent_on = l.id) as spent_by
+             from ledger l where l.subscription_id = $1 and l.pickup_date = $2::date`,
+          [subscriptionId, WEEK],
+        )
+      ).rows;
+
+    it("AC1: a row a week credit paid is paid, 0 cents, attempt 1, no Square payment, paid at the week's cutoff, and the week credit's spent_on is its id", async () => {
+      await truncateAll();
+      const product = await addProduct(SWITCH_BOX);
+      const subscriptionId = await paidSignup(product, "ada@example.com");
+      await repo.closePickupWeek(product.id, EARLIER, null, CLOSED_AT);
+      const [credit] = await repo.listWeekCredits(product.id, EARLIER);
+      await repo.enrolWeek(product.id, WEEK, cutoffInstant(product, WEEK));
+      expect(await weekRow(subscriptionId)).toEqual([
+        { status: "paid", amount_cents: 0, attempt: 1, square_payment_id: null, paid_at: cutoffInstant(product, WEEK), spent_by: [credit?.id] },
+      ]);
+    });
+
+    it("AC5: a row whose picks sum to 0 cents is written the same way, and spends no week credit", async () => {
+      await truncateAll();
+      const product = await addProduct(FREE_BOX);
+      const subscriptionId = await paidSignup(product, "ada@example.com");
+      await repo.enrolWeek(product.id, WEEK, cutoffInstant(product, WEEK));
+      expect(await weekRow(subscriptionId)).toEqual([
+        { status: "paid", amount_cents: 0, attempt: 1, square_payment_id: null, paid_at: cutoffInstant(product, WEEK), spent_by: [] },
+      ]);
+    });
+  });
 
   // Issue 156: a member's own details and their pending email change, in email_changes.
   runEmailChangeContract("postgres", async () => repo, truncateAll);
