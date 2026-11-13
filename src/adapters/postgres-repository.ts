@@ -963,7 +963,7 @@ export class PostgresRepository implements Repository {
        ), spent as (
          update week_credits c set spent_on = inserted.id
            from due join inserted on inserted.subscription_id = due.subscription_id
-          where c.id = due.credit_id
+          where c.id = due.credit_id and c.spent_on is null
          returning inserted.id as ledger_id
        )
        select inserted.id as ledger_id, due.member_id, inserted.status, (inserted.id in (select ledger_id from spent)) as by_credit

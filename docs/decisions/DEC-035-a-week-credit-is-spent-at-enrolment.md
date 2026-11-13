@@ -3,7 +3,7 @@ schema: 1
 id: DEC-035
 title: "A week credit is spent at enrolment, as a paid 0-cent row"
 topic: "Payments"
-status: "draft"
+status: "active"
 date: "2026-11-13"
 ruling: "A week credit is spent when the charge run enrols a week: the row is written paid at 0 cents with no Square payment, and a 0-cent set is written the same way, so neither is ever pending or charged."
 claims:
