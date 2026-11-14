@@ -5,7 +5,6 @@ import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
 import { Checkbox } from "../../../components/ui/checkbox";
 import { Heading } from "../../../components/ui/heading";
-import { Hint } from "../../../components/ui/hint";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { AccountFields, readDraft } from "../../account-fields";
@@ -100,12 +99,9 @@ export default async function YourDetails({
         <Card width="fill">
           <form action={saveDetails} noValidate className="flex flex-col gap-6">
             {await AccountFields({ values, failing, emailHelp: "details.emailHelp" })}
-            <div className="flex flex-col gap-1">
-              <Checkbox name="menuEmails" defaultChecked={member.menuEmails}>
-                {t("details.menuEmails")}
-              </Checkbox>
-              <Hint>{t("details.menuEmailsHint")}</Hint>
-            </div>
+            <Checkbox name="menuEmails" defaultChecked={member.menuEmails} hint={t("details.menuEmailsHint")}>
+              {t("details.menuEmails")}
+            </Checkbox>
             <Button kind="primary" full type="submit">
               {t("details.save")}
             </Button>
