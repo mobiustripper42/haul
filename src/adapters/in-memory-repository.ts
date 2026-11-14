@@ -675,6 +675,7 @@ export class InMemoryRepository implements Repository {
             joinedDate: clevelandDate(paidAt),
             status: subscription.status as "active" | "cancelled",
             refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
+            cardDeclined: subscription.status === "active" && [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.status === "declined"),
           },
         ];
       });

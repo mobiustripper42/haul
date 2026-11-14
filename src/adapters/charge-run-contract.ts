@@ -569,5 +569,33 @@ export function runChargeRunContract(
         expect((await rowsOf(ada)).map((row) => row.ledgerId)).toEqual([ledgerId]);
       });
     });
+
+    // Issue 135: the flag the admin's list and member page show. Its rule is owned here; the three screens take one
+    // shown and one not-shown row through it. A declined row retried to paid is task 2.13's.
+    describe("AC4 (issue 135) — listSubscribers' cardDeclined", () => {
+      const cardDeclinedOf = async (who: Subscriber) =>
+        (await repo.listSubscribers(product.id)).find((row) => row.subscriptionId === who.signup.subscriptionId)?.cardDeclined;
+
+      it("AC4: an active subscription holding a declined ledger row is cardDeclined", async () => {
+        const ada = await subscriber();
+        await addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
+        expect(await cardDeclinedOf(ada)).toBe(true);
+      });
+
+      it("AC4: a cancelled subscription holding a declined ledger row is not", async () => {
+        const ada = await subscriber();
+        await addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
+        expect(await repo.cancelSubscription(ada.signup.subscriptionId, CLOSED_AT)).toBe(true);
+        expect(await cardDeclinedOf(ada)).toBe(false);
+      });
+
+      it("AC4: an active subscription with no declined row, its rows paid, pending and skipped, is not", async () => {
+        const ada = await subscriber();
+        await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+        await addLedgerRow(ada.signup.subscriptionId, NEXT, "paid", 5000);
+        expect(await repo.skipWeek(ada.signup.subscriptionId, FEB_7)).toBe(true);
+        expect(await cardDeclinedOf(ada)).toBe(false);
+      });
+    });
   });
 }

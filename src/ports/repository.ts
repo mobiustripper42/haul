@@ -126,6 +126,7 @@ export type Subscriber = {
   joinedDate: string;
   status: "active" | "cancelled";
   refundOwed: boolean;
+  cardDeclined: boolean;
 };
 
 /**

@@ -19,9 +19,9 @@ in the sibling repo and are background, not rulings for Haul.
 ## Index
 
 ### Stack & hosting
-- DEC-001 — Stack: Next.js, Postgres on Crunchy Bridge, Vercel
-- DEC-002 — Cloudflare's proxy sits in front of Vercel
-- DEC-003 — Vercel Cron drives every scheduled run, and every run is idempotent
+- DEC-001 — Stack: Next.js and Postgres; the hosts are chosen when their accounts exist
+- DEC-002 — Cloudflare's proxy sits in front of the app host
+- DEC-003 — Every scheduled run is idempotent; the scheduler is chosen with the host
 - DEC-010 — Outside services sit behind ports with fakes; real adapters are chosen late
 - DEC-011 — Vitest and ESLint; the gate type-checks, lints, tests and builds
 - DEC-012 — Dev and build run on webpack, not Turbopack

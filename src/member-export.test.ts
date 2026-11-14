@@ -23,6 +23,7 @@ const row = (over: Partial<Subscriber> = {}): Subscriber => ({
   joinedDate: "2026-12-01",
   status: "active",
   refundOwed: false,
+  cardDeclined: false,
   ...over,
 });
 

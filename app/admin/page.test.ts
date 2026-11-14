@@ -237,6 +237,33 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     });
   });
 
+  // Issue 135: which rows carry the flag is listSubscribers' (src/adapters/charge-run-contract.ts), and the list's markup
+  // is app/admin/members-list.test.ts's. Here the page hands the list each row's flag and the word, new copy typed once.
+  describe("AC4 (issue 135) — Card declined on the list", () => {
+    it("AC4: the list gets an active subscription holding a declined week with cardDeclined true, another without it false, and the word Card declined", async () => {
+      const product = addSupperClub(services.repo);
+      const rosa = await pendingSignup(services.repo, product, ROSA, PICKS);
+      await services.repo.confirmSignupRows(rosa.ledgerId, `PAYMENT_${rosa.ledgerId}`, rosa.amountCents, new Date("2026-12-01T17:00:00.000Z"));
+      await services.repo.addLedgerRow(rosa.subscriptionId, "2027-01-10", "declined", 5000);
+      await activeSubscriber(services.repo, product, CHIDI, PICKS);
+
+      const { list, rows } = await page();
+
+      expect(Object.fromEntries(rows.map((row) => [row.email, row.cardDeclined]))).toEqual({ "rosa@example.com": true, "chidi@example.com": false });
+      expect(list?.props.text).toMatchObject({ cardDeclined: "Card declined" });
+    });
+
+    it("AC4: in Spanish the word is Tarjeta rechazada", async () => {
+      const product = addSupperClub(services.repo);
+      await activeSubscriber(services.repo, product, ROSA, PICKS);
+      request.current.cookies.lang = "es";
+
+      const { list } = await page();
+
+      expect(list?.props.text).toMatchObject({ cardDeclined: "Tarjeta rechazada" });
+    });
+  });
+
   describe("AC11 — Joined on the screen", () => {
     it("AC11: a payment at 22:30 on December 1 in Cleveland, already December 2 in UTC, reads Dec 1", async () => {
       const product = addSupperClub(services.repo);

@@ -65,7 +65,8 @@ export default async function AdminMember({
             <SubscriptionStatus
               status={row.status}
               refundOwed={row.refundOwed}
-              words={{ status: t(SUBSCRIPTION_BADGES[row.status].key), refundOwed: t("admin.members.refundOwed") }}
+              cardDeclined={row.cardDeclined}
+              words={{ status: t(SUBSCRIPTION_BADGES[row.status].key), refundOwed: t("admin.members.refundOwed"), cardDeclined: t("admin.members.cardDeclined") }}
             />
           </div>
           {confirming && (

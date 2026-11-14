@@ -1169,7 +1169,7 @@ export class PostgresRepository implements Repository {
   /**
    * The active and cancelled subscriptions to the product, each with its member and the date its first paid row was
    * paid, in Cleveland. A subscription with no paid row is left out: only a paid row makes one active. `refundOwed`
-   * is a cancelled subscription holding a week credit not yet spent. Stable by the date joined, then by id.
+   * is a cancelled subscription holding a week credit not yet spent; `cardDeclined` an active one holding a declined row. Stable by the date joined, then by id.
    */
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     if (!UUID_SHAPE.test(productId)) return [];
@@ -1182,11 +1182,14 @@ export class PostgresRepository implements Repository {
       joined: string;
       status: "active" | "cancelled";
       refund_owed: boolean;
+      card_declined: boolean;
     }>(
       `select s.id, m.first_name, m.last_name, m.email, m.phone,
               ${clevelandDay("paid.first_paid_at")} as joined, s.status,
               (s.status = 'cancelled'
-                and exists (select 1 from week_credits c where c.subscription_id = s.id and c.spent_on is null)) as refund_owed
+                and exists (select 1 from week_credits c where c.subscription_id = s.id and c.spent_on is null)) as refund_owed,
+              (s.status = 'active'
+                and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'declined')) as card_declined
          from subscriptions s
          join members m on m.id = s.member_id
          join lateral (
@@ -1208,6 +1211,7 @@ export class PostgresRepository implements Repository {
       joinedDate: row.joined,
       status: row.status,
       refundOwed: row.refund_owed,
+      cardDeclined: row.card_declined,
     }));
   }
 

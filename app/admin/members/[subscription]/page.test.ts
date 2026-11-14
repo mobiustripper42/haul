@@ -259,3 +259,25 @@ describe("AC4, AC9 (issue 139) — a cancelled subscription", () => {
     expect(sentences).not.toContain("Refund owed");
   });
 });
+
+// Issue 135: which subscriptions carry the flag is listSubscribers' (src/adapters/charge-run-contract.ts); the word's
+// wording is app/admin/page.test.ts's, so it is read from the catalog here.
+describe("AC4 (issue 135) — Card declined beside the status", () => {
+  it("AC4: an active subscription holding a declined week reads its name, Active, then Card declined beside it", async () => {
+    await signInAs("admin");
+    const subscriptionId = await rosa();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "declined", 5000);
+    const { sentences } = await render(subscriptionId);
+    const wanted = ["Bennett, Rosa", en["account.active"], en["admin.members.cardDeclined"]];
+    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
+  });
+
+  it("AC4: an active subscription with no declined week reads Active alone", async () => {
+    await signInAs("admin");
+    const subscriptionId = await rosa();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 5000);
+    const { sentences } = await render(subscriptionId);
+    expect(sentences).toContain(en["account.active"]);
+    expect(sentences).not.toContain(en["admin.members.cardDeclined"]);
+  });
+});

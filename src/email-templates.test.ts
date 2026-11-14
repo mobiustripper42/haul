@@ -171,3 +171,14 @@ describe("AC3 (issue 150) — renderEmail weekCreditReceipt", () => {
     });
   });
 });
+
+// Issue 135: the email a decline sends. Its words, filled with the week, the amount and the link, are new copy typed once
+// in src/charge-run.test.ts, which renders it as the run sends it; here, which keys the template reads.
+describe("AC3 (issue 135) — renderEmail cardDeclined", () => {
+  it("AC3: cardDeclined in the stand-in Spanish catalog is only catalog values: its own subject and body, the signup confirmation's questions line, the sign-off and the footer", () => {
+    expect(renderEmail("cardDeclined", "es", { week: "February 14 and 15", amount: "$50", link: "https://members.example.test/account" }, SITE_URL)).toEqual({
+      subject: "«email.cardDeclined.subject»",
+      text: `«email.cardDeclined.body»\n\n«email.signupConfirmation.questions»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
+    });
+  });
+});

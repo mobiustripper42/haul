@@ -16,6 +16,7 @@ const TEXT: MembersListText = {
   columns: { name: "Who", email: "Mail", phone: "Ring", meal: "Food", joined: "When", status: "State" },
   status: { active: "On", cancelled: "Off" },
   refundOwed: "Owed back",
+  cardDeclined: "Card bounced",
   sortBy: "Order by",
   sortLabels: { name: "By who", joined: "By when", meal: "By food", status: "By state" },
   joinedLine: "{meal} since {date}",
@@ -35,6 +36,7 @@ const subscriber = (over: Partial<Subscriber> = {}): Subscriber => ({
   joinedDate: "2026-12-01",
   status: "active",
   refundOwed: false,
+  cardDeclined: false,
   ...over,
 });
 
@@ -149,6 +151,18 @@ describe("AC4, AC9 (issue 139) — status, refund owed and the member page", () 
       ["Abara, Chidi", TEXT.status.cancelled, expect.not.stringMatching(TEXT.refundOwed)],
       ["Bennett, Rosa", TEXT.status.active, expect.not.stringMatching(TEXT.refundOwed)],
       ["Castillo, Marco", TEXT.status.cancelled, TEXT.refundOwed],
+    ]);
+  });
+
+  // Issue 135: an active row holding a declined week says so beside its badge, as Refund owed does. Which rows hold one
+  // is listSubscribers' (src/adapters/charge-run-contract.ts); the word is the page's (app/admin/page.test.ts).
+  it("AC4 (issue 135): an active row with a card declined adds its word beside the badge, in the status cell and in the stacked row; the other does not", () => {
+    const DECLINED = subscriber({ firstName: "Chidi", lastName: "Abara", email: "chidi@example.com", cardDeclined: true });
+    const html = render([ROSA, DECLINED]);
+    expect(tableRows(html).map((row) => row.at(-1))).toEqual([`${TEXT.status.active} ${TEXT.cardDeclined}`, TEXT.status.active]);
+    expect(stackedRows(html).map((row) => row.slice(0, 3))).toEqual([
+      ["Abara, Chidi", TEXT.status.active, TEXT.cardDeclined],
+      ["Bennett, Rosa", TEXT.status.active, expect.not.stringMatching(TEXT.cardDeclined)],
     ]);
   });
 

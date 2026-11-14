@@ -687,6 +687,7 @@ export function runSignupContract(
             joinedDate: "2026-11-06",
             status: "active",
             refundOwed: false,
+            cardDeclined: false,
           },
         ]);
       });
