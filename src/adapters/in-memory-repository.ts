@@ -305,9 +305,11 @@ export class InMemoryRepository implements Repository {
     ).length;
   }
 
-  async recordSignupDecline(ledgerId: string): Promise<void> {
+  async recordSignupDecline(ledgerId: string): Promise<boolean> {
     const row = this.ledger.get(ledgerId);
-    if (row?.status === "pending") this.ledger.set(ledgerId, { ...row, status: "declined" });
+    if (row?.status !== "pending") return false;
+    this.ledger.set(ledgerId, { ...row, status: "declined" });
+    return true;
   }
 
   async confirmSignupRows(

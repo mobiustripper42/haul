@@ -3,7 +3,7 @@ schema: 1
 id: DEC-003
 title: "Every scheduled run is idempotent; the scheduler is chosen with the host"
 topic: "Stack & hosting"
-status: "draft"
+status: "active"
 date: "2026-10-25"
 ruling: "Each scheduled run is safe to fire twice or to miss, because work is recorded before it is done and picked up by the next run. What fires it is the host's scheduler, chosen in task 1.8; no run is built against one scheduler's shape."
 claims:
@@ -17,7 +17,8 @@ revisit_if: "A missed or doubled run actually costs a member a charge or an emai
 Drafted 2026-10-25 naming Vercel Cron and marked active; put back to draft 2026-11-13, when the
 charge run reached its trigger with no host account made and no scheduled run built (Eric). The
 idempotency half is the decision; the scheduler half waits for task 1.8. The charge run's trigger is
-a route any scheduler can hit with a bearer secret (task 2.3), so the choice costs no rewrite.
+a route any scheduler can hit with a bearer secret (task 2.3), so the choice costs no rewrite. Active
+again with task 2.3, which built that route on the idempotency half; the scheduler is issue 177.
 
 No scheduler promises exactly-once delivery, so correctness cannot depend on one. The charge
 run writes a ledger row before charging and uses it as the idempotency key; a run that dies leaves

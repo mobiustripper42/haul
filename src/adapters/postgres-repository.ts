@@ -558,9 +558,10 @@ export class PostgresRepository implements Repository {
     return rows[0]?.held ?? 0;
   }
 
-  async recordSignupDecline(ledgerId: string): Promise<void> {
-    if (!UUID_SHAPE.test(ledgerId)) return;
-    await this.db.query("update ledger set status = 'declined' where id = $1 and status = 'pending'", [ledgerId]);
+  async recordSignupDecline(ledgerId: string): Promise<boolean> {
+    if (!UUID_SHAPE.test(ledgerId)) return false;
+    const { rowCount } = await this.db.query("update ledger set status = 'declined' where id = $1 and status = 'pending'", [ledgerId]);
+    return rowCount === 1;
   }
 
   /**

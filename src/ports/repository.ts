@@ -243,7 +243,12 @@ export interface Repository extends SignInStore, RateLimitStore {
    * ledger row pending. A declined row and a cardless one hold none, so a decline releases its spot with no write.
    */
   countHeldSpots(productId: string): Promise<number>;
-  recordSignupDecline(ledgerId: string): Promise<void>;
+  /**
+   * Turns a pending ledger row declined. True only when this call made that change; false when the row was no
+   * longer pending (paid, or already declined by another firing) or does not exist, so only the writer that
+   * flipped it acts on the decline.
+   */
+  recordSignupDecline(ledgerId: string): Promise<boolean>;
   /**
    * Flips the rows when `amountCents` is the ledger's `amount_cents`; "mismatch" leaves them pending. A row
    * already paid is "already" whatever the amount, so a replay never reads as a mismatch.

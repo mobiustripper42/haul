@@ -91,17 +91,20 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
     } else {
       const result = await sendCharge(payments, { row, cardId: row.cardId, customerId: row.customerId });
       if (result.outcome === "declined") {
-        await recordDecline(repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, result.code);
+        const flipped = await recordDecline(repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, result.code);
         report.declined++;
-        await sendMemberEmail(deps, row.memberId, async (member) => {
-          const week = await weekNamed(deps, productId, row.pickupDate, member.language);
-          return renderEmail(
-            "cardDeclined",
-            member.language,
-            { week, amount: formatUsdWhole(row.amountCents), link: deps.accountUrl },
-            deps.siteUrl,
-          );
-        });
+        // Only the firing that turned the row declined emails: a loser of the race has nothing to tell the member.
+        if (flipped) {
+          await sendMemberEmail(deps, row.memberId, async (member) => {
+            const week = await weekNamed(deps, productId, row.pickupDate, member.language);
+            return renderEmail(
+              "cardDeclined",
+              member.language,
+              { week, amount: formatUsdWhole(row.amountCents), link: deps.accountUrl },
+              deps.siteUrl,
+            );
+          });
+        }
         return;
       }
       ({ paymentId } = result);

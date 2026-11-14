@@ -6,11 +6,15 @@ import type { Actor, Repository } from "./ports/repository.js";
  * (`src/charge-run.ts`): one home for the key a row and its attempt make and for the decline write.
  */
 
-/** The decline write: the ledger row to declined, and the event that records it, in one commit. */
-export async function recordDecline(repo: Repository, actor: Actor, memberId: string, ledgerId: string, code: string): Promise<void> {
-  await repo.withActor(actor, async (scoped) => {
-    await scoped.recordSignupDecline(ledgerId);
+/**
+ * The decline write: the ledger row to declined, and the event that records it, in one commit. True when this
+ * call turned the row declined; false when it was no longer pending, so the caller does not act on it twice.
+ */
+export async function recordDecline(repo: Repository, actor: Actor, memberId: string, ledgerId: string, code: string): Promise<boolean> {
+  return repo.withActor(actor, async (scoped) => {
+    const flipped = await scoped.recordSignupDecline(ledgerId);
     await scoped.recordEvent({ kind: "card_declined", memberId, detail: { ledgerId, code } });
+    return flipped;
   });
 }
 
