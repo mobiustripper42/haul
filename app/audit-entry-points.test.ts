@@ -90,6 +90,8 @@ describe("AC13 — the list is exactly these thirty-two entries, and issue 56's 
         "app/admin/menus/actions.ts#createMenu": { none: "writes menus and menu_texts; audited by trigger" },
         "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },
         "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
+        // Issue 135: the cron route fires the charge run, which records a decline and an outcome it cannot know.
+        "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown"] },
       }),
     );
   });

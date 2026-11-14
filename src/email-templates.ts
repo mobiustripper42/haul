@@ -11,6 +11,7 @@ export type EmailTemplates = {
   weekClosedNoCharge: { week: string };
   receipt: { amount: string; date: string; week: string };
   weekCreditReceipt: { week: string };
+  cardDeclined: { week: string; amount: string; link: string };
 };
 
 const KEYS = {
@@ -22,6 +23,7 @@ const KEYS = {
   weekClosedNoCharge: { subject: "email.weekClosed.subject", body: "email.weekClosedNoCharge.body", closing: "email.signupConfirmation.questions" },
   receipt: { subject: "email.receipt.subject", body: "email.receipt.body", closing: "email.signupConfirmation.questions" },
   weekCreditReceipt: { subject: "email.receipt.subject", body: "email.weekCreditReceipt.body", closing: "email.signupConfirmation.questions" },
+  cardDeclined: { subject: "email.cardDeclined.subject", body: "email.cardDeclined.body", closing: "email.signupConfirmation.questions" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey }>;
 
 /** The site's address and a path, with one slash between them whatever the address ends in. */

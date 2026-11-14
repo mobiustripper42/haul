@@ -19,7 +19,7 @@ import { SubscriptionStatus } from "../subscription-badges";
 /**
  * The words the page has translated for this list, which a client component cannot get for itself. `noMatch`
  * holds `{q}` and `joinedLine` holds `{meal}` and `{date}`, filled here as the admin types. `status` is the word for
- * each subscription status, and `refundOwed` the one a cancelled row holding an unspent week credit adds beside it.
+ * each subscription status, `refundOwed` the one a cancelled row holding an unspent week credit adds beside it and `cardDeclined` the one an active row holding a declined charge adds.
  */
 export type MembersListText = {
   search: string;
@@ -28,6 +28,7 @@ export type MembersListText = {
   columns: Record<"name" | "email" | "phone" | "meal" | "joined" | "status", string>;
   status: Record<"active" | "cancelled", string>;
   refundOwed: string;
+  cardDeclined: string;
   sortBy: string;
   sortLabels: Record<SortKey, string>;
   joinedLine: string;
@@ -47,8 +48,15 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
   const shown = sortSubscribers(filterSubscribers(rows, query), sort);
   /** The row's name, linking to its member page. */
   const nameOf = (row: Subscriber) => <TextLink href={adminMemberPath(row.subscriptionId)}>{subscriberName(row)}</TextLink>;
-  /** The row's status badge, with "Refund owed" beside it when one is owed. */
-  const statusOf = (row: Subscriber) => <SubscriptionStatus status={row.status} refundOwed={row.refundOwed} words={{ status: text.status[row.status], refundOwed: text.refundOwed }} />;
+  /** The row's status badge, with "Refund owed" and "Card declined" beside it when they apply. */
+  const statusOf = (row: Subscriber) => (
+    <SubscriptionStatus
+      status={row.status}
+      refundOwed={row.refundOwed}
+      cardDeclined={row.cardDeclined}
+      words={{ status: text.status[row.status], refundOwed: text.refundOwed, cardDeclined: text.cardDeclined }}
+    />
+  );
 
   const header = (id: keyof MembersListText["columns"], key?: SortKey): DataTableColumn => ({
     id,

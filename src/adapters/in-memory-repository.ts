@@ -305,9 +305,11 @@ export class InMemoryRepository implements Repository {
     ).length;
   }
 
-  async recordSignupDecline(ledgerId: string): Promise<void> {
+  async recordSignupDecline(ledgerId: string): Promise<boolean> {
     const row = this.ledger.get(ledgerId);
-    if (row?.status === "pending") this.ledger.set(ledgerId, { ...row, status: "declined" });
+    if (row?.status !== "pending") return false;
+    this.ledger.set(ledgerId, { ...row, status: "declined" });
+    return true;
   }
 
   async confirmSignupRows(
@@ -675,6 +677,7 @@ export class InMemoryRepository implements Repository {
             joinedDate: clevelandDate(paidAt),
             status: subscription.status as "active" | "cancelled",
             refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
+            cardDeclined: subscription.status === "active" && [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.status === "declined"),
           },
         ];
       });

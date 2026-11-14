@@ -559,15 +559,14 @@ describe("AC7 — the receipt", () => {
 });
 
 describe("AC8 — a decline", () => {
-  it("AC8: a decline turns the row declined and records card_declined with the ledger id and the provider's code under the charge run, sends no email, and the run goes on", async () => {
+  it("AC8: a decline turns the row declined and records card_declined with the ledger id and the provider's code under the charge run, and the run goes on", async () => {
     const ada = await subscriber();
-    const grace = await subscriber();
+    await subscriber();
     payments.declineCard(ada.cardId ?? "no card", "INSUFFICIENT_FUNDS");
     expect(await run()).toEqual(report({ enrolled: 2, paid: 1, declined: 1 }));
     const ledgerId = payments.charges.find((charge) => charge.cardId === ada.cardId)?.referenceId;
     expect(ledgerId).toBeDefined();
     expect(repo.events()).toEqual([{ kind: "card_declined", memberId: ada.member.id, detail: { ledgerId, code: "INSUFFICIENT_FUNDS" }, actor: CHARGE_RUN }]);
-    expect(email.sent.map((message) => message.to)).toEqual([grace.member.email]);
     expect(await paidWeeks(ada)).toEqual([FIRST]);
     expect(await pendingIds()).toEqual([]);
   });
@@ -840,5 +839,98 @@ describe("issue 150 — a week paid by a week credit", () => {
     // A firing after each week's cutoff in turn: January 10's, January 17's, January 24's.
     for (const at of ["2027-01-05T12:00:00.000Z", "2027-01-12T12:00:00.000Z", "2027-01-19T12:00:00.000Z"]) await run(new Date(at), () => new Date(at));
     expect(await paidByWeekCredit(ada)).toEqual(predicted);
+  });
+});
+
+// Issue 135: the email a decline sends its member, right after the decline is recorded. Its words are new copy, typed
+// here once (the template's keys are src/email-templates.test.ts's); the questions line, the sign-off and the footer are
+// existing copy, read from the catalog. What a decline records is AC8's, above.
+describe("issue 135 — AC3: the decline email", () => {
+  const en = createTranslator("en");
+  const es = createTranslator("es");
+  const TITLE = weekTitle(en, pickupWeek(WEEK, null), "en");
+
+  it("AC3: the declined row's member gets one email in English: the subject naming the week, the body with the amount, the week, the meal still made and the account link, then the questions line, the sign-off and the footer", async () => {
+    const ada = await subscriber({ choices: picks(1, 1) });
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    expect(await run()).toEqual(report({ enrolled: 1, declined: 1 }));
+    expect(email.sent).toEqual([
+      {
+        to: ada.member.email,
+        subject: `Card declined: Supper Club pickup ${TITLE}`,
+        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal is still being made. Please update your card at ${ACCOUNT_URL}.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+      },
+    ]);
+  });
+
+  it("AC3: a member whose language is Spanish gets it in Spanish", async () => {
+    const ana = await subscriber({ language: "es" });
+    payments.declineCard(ana.cardId ?? "no card", "GENERIC_DECLINE");
+    await run();
+    const week = weekTitle(es, pickupWeek(WEEK, null), "es");
+    expect(email.sent).toEqual([
+      {
+        to: ana.member.email,
+        subject: `Tarjeta rechazada: recogida del Supper Club el ${week}`,
+        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida se prepara igual. Actualice su tarjeta en ${ACCOUNT_URL}.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+      },
+    ]);
+  });
+
+  it("AC3: the link is the account URL the run is given, not one the run builds from the site address", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    const accountUrl = "https://account.example.test/elsewhere";
+    await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl });
+    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Please update your card at ${accountUrl}.`)]);
+  });
+
+  it("AC3: a moved week is named by its moved days", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-09", lastDay: "2027-01-10" });
+    await run();
+    const moved = weekTitle(en, { weekOf: WEEK, firstDay: "2027-01-09", lastDay: "2027-01-10" }, "en");
+    expect(email.sent.map((message) => message.subject)).toEqual([`Card declined: Supper Club pickup ${moved}`]);
+  });
+
+  it("AC3: a failed send is logged as an email step with its errorFields, never its message, and undoes nothing: the row stays declined, card_declined stands, and the next member gets their receipt", async () => {
+    const ada = await subscriber();
+    const grace = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "INSUFFICIENT_FUNDS");
+    const failure = new EmailSendError("Resend", 503, "the provider's whole reply, with an address in it");
+    const send = email.send.bind(email);
+    vi.spyOn(email, "send").mockImplementation(async (message) => (message.to === ada.member.email ? Promise.reject(failure) : send(message)));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await run()).toEqual(report({ enrolled: 2, paid: 1, declined: 1 }));
+    expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ step: "email", ...errorFields(failure) }));
+    expect(inspect(logged.mock.calls, { depth: 5 })).not.toContain("the provider's whole reply");
+    expect(repo.events()).toEqual([expect.objectContaining({ kind: "card_declined", memberId: ada.member.id })]);
+    expect(await pendingIds()).toEqual([]);
+    // The declined row is still there: it stands in the way of a skip.
+    expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(false);
+    expect(email.sent.map((message) => message.to)).toEqual([grace.member.email]);
+  });
+
+  it("AC3: a second firing sends nothing, since the row is declined, not pending", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    await run();
+    expect(await run(new Date("2027-01-06T15:00:00.000Z"))).toEqual(report());
+    expect(email.sent.map((message) => [message.to, message.subject])).toEqual([[ada.member.email, `Card declined: Supper Club pickup ${TITLE}`]]);
+  });
+
+  it("AC3 (review): a decline whose row someone else turned declined between the listing and the decline write sends no email", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    // The race: an overlapping firing, or the member's own retry, records the decline while this run's charge is out.
+    const real = payments.charge.bind(payments);
+    vi.spyOn(payments, "charge").mockImplementation(async (input) => {
+      await repo.recordSignupDecline(input.referenceId ?? "no reference");
+      return real(input);
+    });
+    await run();
+    expect(payments.charges.map((charge) => charge.result.outcome)).toEqual(["declined"]);
+    expect(email.sent).toEqual([]);
   });
 });

@@ -66,6 +66,7 @@ export default async function Admin() {
                   },
                   status: { active: t("account.active"), cancelled: t("account.cancelled") },
                   refundOwed: t("admin.members.refundOwed"),
+                  cardDeclined: t("admin.members.cardDeclined"),
                   sortBy: t("admin.members.sortBy"),
                   sortLabels: {
                     name: t("admin.members.name"),
