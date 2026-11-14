@@ -12,6 +12,9 @@ export type EmailTemplates = {
   receipt: { amount: string; date: string; week: string };
   weekCreditReceipt: { week: string };
   cardDeclined: { week: string; amount: string; link: string };
+  // Issue 141: the menu email's `heading` and `pickupLine` are the catalog's `menu.heading` and `menu.pickup`, already rendered.
+  menuEmail: { heading: string; menus: string; meals: string; pickupLine: string; date: string; link: string; offLink: string };
+  missingMenu: { weeks: string; weekday: string; link: string };
 };
 
 const KEYS = {
@@ -24,7 +27,9 @@ const KEYS = {
   receipt: { subject: "email.receipt.subject", body: "email.receipt.body", closing: "email.signupConfirmation.questions" },
   weekCreditReceipt: { subject: "email.receipt.subject", body: "email.weekCreditReceipt.body", closing: "email.signupConfirmation.questions" },
   cardDeclined: { subject: "email.cardDeclined.subject", body: "email.cardDeclined.body", closing: "email.signupConfirmation.questions" },
-} as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey }>;
+  menuEmail: { subject: "email.menu.subject", body: "email.menu.body", unsubscribe: "email.menu.unsubscribe" },
+  missingMenu: { subject: "email.missingMenu.subject", body: "email.missingMenu.body" },
+} as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey; unsubscribe?: MessageKey }>;
 
 /** The site's address and a path, with one slash between them whatever the address ends in. */
 export function siteLink(siteUrl: string, path: string): string {
@@ -46,7 +51,8 @@ export function withSignOff(t: Translator, body: string): string {
 
 /**
  * The subject, and the body, a blank line, the template's `closing` line if it has one and a blank line after it, the
- * sign-off every email shares, a blank line, then the legal footer.
+ * sign-off every email shares, a blank line, the template's `unsubscribe` line and a blank line after it if it has one
+ * (the menu email alone), then the legal footer.
  */
 export function renderEmail<N extends keyof EmailTemplates>(
   name: N,
@@ -60,6 +66,6 @@ export function renderEmail<N extends keyof EmailTemplates>(
   const body = t(keys.body, fill);
   return {
     subject: t(keys.subject, fill),
-    text: `${withSignOff(t, "closing" in keys ? `${body}\n\n${t(keys.closing, fill)}` : body)}\n\n${legalFooter(t, siteUrl)}`,
+    text: `${withSignOff(t, "closing" in keys ? `${body}\n\n${t(keys.closing, fill)}` : body)}\n\n${"unsubscribe" in keys ? `${t(keys.unsubscribe, fill)}\n\n` : ""}${legalFooter(t, siteUrl)}`,
   };
 }

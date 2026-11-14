@@ -28,6 +28,7 @@ const member = (over: Partial<Member> = {}): Member => ({
   phone: "216-555-0100",
   emailConfirmedAt: new Date("2026-10-01T12:00:00.000Z"),
   squareCustomerId: null,
+  menuEmails: true,
   ...over,
 });
 
