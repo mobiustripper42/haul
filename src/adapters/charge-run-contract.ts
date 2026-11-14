@@ -597,5 +597,24 @@ export function runChargeRunContract(
         expect(await cardDeclinedOf(ada)).toBe(false);
       });
     });
+
+    // Issue 135 review: the run emails a decline only when its own write turned the row declined, so the write says
+    // whether it did, as confirmSignupRows says "confirmed".
+    describe("AC3 (review) (issue 135) — recordSignupDecline says whether it turned the row declined", () => {
+      it("AC3 (review): recordSignupDecline is true on a pending row, which is then no longer pending, and false on the same row called again", async () => {
+        const ada = await subscriber();
+        const ledgerId = await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+        expect(await repo.recordSignupDecline(ledgerId)).toBe(true);
+        expect(await rowsOf(ada)).toEqual([]);
+        expect(await repo.recordSignupDecline(ledgerId)).toBe(false);
+      });
+
+      it("AC3 (review): recordSignupDecline is false on a paid row, and the row stays paid", async () => {
+        const ada = await subscriber();
+        const ledgerId = await addLedgerRow(ada.signup.subscriptionId, WEEK, "paid", 5000);
+        expect(await repo.recordSignupDecline(ledgerId)).toBe(false);
+        expect((await repo.listMemberWeeks(ada.signup.subscriptionId)).paid.map((row) => row.weekOf).sort()).toEqual([EARLIER, WEEK]);
+      });
+    });
   });
 }

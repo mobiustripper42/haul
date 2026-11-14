@@ -919,4 +919,18 @@ describe("issue 135 — AC3: the decline email", () => {
     expect(await run(new Date("2027-01-06T15:00:00.000Z"))).toEqual(report());
     expect(email.sent.map((message) => [message.to, message.subject])).toEqual([[ada.member.email, `Card declined: Supper Club pickup ${TITLE}`]]);
   });
+
+  it("AC3 (review): a decline whose row someone else turned declined between the listing and the decline write sends no email", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    // The race: an overlapping firing, or the member's own retry, records the decline while this run's charge is out.
+    const real = payments.charge.bind(payments);
+    vi.spyOn(payments, "charge").mockImplementation(async (input) => {
+      await repo.recordSignupDecline(input.referenceId);
+      return real(input);
+    });
+    await run();
+    expect(payments.charges.map((charge) => charge.result.outcome)).toEqual(["declined"]);
+    expect(email.sent).toEqual([]);
+  });
 });
