@@ -94,9 +94,9 @@ const form = (fields: Record<string, string>): FormData => {
   return data;
 };
 
-/** Ada's details as the form posts them, with `over` changed. */
+/** Ada's details as the form posts them, the menu email box ticked, with `over` changed. */
 const details = (over: Record<string, string> = {}): FormData =>
-  form({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "216-555-0100", language: "en", ...over });
+  form({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "216-555-0100", language: "en", menuEmails: "on", ...over });
 
 /** Runs every callback handed to `after`, in order. */
 async function runScheduled(): Promise<void> {
@@ -433,6 +433,36 @@ describe("AC17 (issue 156) — the audit trail", () => {
     expect(entry("saveDetails")).toEqual({ records: ["rate_limit_refusal"] });
     expect(entry("resendEmailChange")).toEqual({ records: ["rate_limit_refusal"] });
     expect(entry("keepOldEmail")).toEqual({ none: expect.stringMatching(/\S/) });
+  });
+});
+
+// Issue 141: Save stores the menu email checkbox with the rest of the details. A ticked box posts "on"; an unticked one
+// posts nothing (components/ui/checkbox.tsx), which is off.
+describe("AC9 (issue 141) — the menu email checkbox", () => {
+  /** Ada's details as the form posts them with the box unticked: no menuEmails field at all. */
+  const unticked = (over: Record<string, string> = {}): FormData => {
+    const data = details(over);
+    data.delete("menuEmails");
+    return data;
+  };
+
+  it("AC9: a save with the box unticked stores menu emails off, with the rest of the details", async () => {
+    const member = await ada();
+    expect(await redirectOf(saveDetails(unticked({ firstName: "Adaline" })))).toBe(`${PAGE}?saved=1`);
+    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", menuEmails: false });
+  });
+
+  it("AC9: a save with the box ticked stores menu emails on again", async () => {
+    const member = await ada();
+    await redirectOf(saveDetails(unticked()));
+    expect(await redirectOf(saveDetails(details()))).toBe(`${PAGE}?saved=1`);
+    expect((await reload(member)).menuEmails).toBe(true);
+  });
+
+  it("AC9: a save with a new email stores the box straight away too, before the code is confirmed", async () => {
+    const member = await ada();
+    expect(await redirectOf(saveDetails(unticked({ email: NEW })))).toBe(PAGE);
+    expect((await reload(member)).menuEmails).toBe(false);
   });
 });
 

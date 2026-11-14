@@ -22,6 +22,8 @@ export type Member = {
   phone: string | null;
   emailConfirmedAt: Date | null;
   squareCustomerId: string | null;
+  /** Issue 141: whether the weekly menu email goes to the member; sign-in codes, receipts and card notices ignore it. */
+  menuEmails: boolean;
 };
 
 /** The member's name as a person reads it, "First Last", whichever is stored; `null` with neither. */

@@ -21,6 +21,8 @@ export const AUDIT_EVENT_KINDS = [
   "sold_out",
   // Issue 156: the event kind the interface names. Which entry records it is the task's (AUDIT_ENTRY_POINTS).
   "email_changed",
+  // Issue 141: the missing-menu email's event; the menu run's route records it (AUDIT_ENTRY_POINTS).
+  "menu_reminder_sent",
 ] as const;
 export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 
@@ -40,7 +42,13 @@ export type AuditEventDetail = {
   ledgerCents?: number;
   from?: string;
   to?: string;
+  // Issue 141: the weeks a missing-menu email named, ascending, and the run's Cleveland date it went out on.
+  weeks?: string[];
+  date?: string;
 };
+
+/** Issue 141: a box a week makes: a `paid` or `declined` ledger row, its member and the picks in effect for the week. */
+export type WeekMade = { subscriptionId: string; member: Member; options: { typeName: string; optionName: string }[] };
 
 export type AuditEvent =
   | { kind: Exclude<AuditEventKind, "rate_limit_refusal">; memberId: string; detail?: AuditEventDetail }
@@ -211,7 +219,7 @@ export interface Repository extends SignInStore, RateLimitStore {
   saveAccount(input: AccountDetails): Promise<Member>;
   confirmMemberEmail(memberId: string, now: Date): Promise<void>;
   /** Issue 156: the member's name, phone and language; the email is left alone. */
-  saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member>;
+  saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language; menuEmails: boolean }): Promise<Member>;
   /** Issue 156: `expires_at = now + CODE_TTL_MS`, `attempts = 0`, replacing any row the member has. */
   startEmailChange(input: { memberId: string; newEmail: string; codeHash: string; now: Date }): Promise<void>;
   /** Issue 156: the member's row, even once expired; the caller compares `expiresAt`. Null when none. */
@@ -333,6 +341,13 @@ export interface Repository extends SignInStore, RateLimitStore {
   listWeekMenus(productId: string, from: string): Promise<Map<string, string>>;
   /** Issue 140: null deletes the week's row; false, writing nothing, for an unknown menu. */
   assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean>;
+  // Issue 141: a week's menu and the stamp that sends its email once, the boxes a week makes, the admins, the event dated, the preference.
+  findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null>;
+  markWeekMenuSent(productId: string, weekOf: string, now: Date): Promise<boolean>;
+  listWeekMade(productId: string, weekOf: string): Promise<WeekMade[]>;
+  listAdmins(): Promise<Member[]>;
+  hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean>;
+  setMenuEmails(memberId: string, on: boolean): Promise<Member | null>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

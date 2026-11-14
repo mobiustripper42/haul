@@ -6,6 +6,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type AuditEventKind,
   type EmailChange,
   type EnrolledWeek,
   type MemberSubscription,
@@ -18,6 +19,7 @@ import {
   type Subscriber,
   type WeekCredit,
   type WeekDue,
+  type WeekMade,
 } from "../ports/repository.js";
 import { pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
@@ -37,10 +39,11 @@ type MemberRow = {
   phone: string | null;
   email_confirmed_at: Date | null;
   square_customer_id: string | null;
+  menu_emails: boolean;
 };
 
 const MEMBER_COLUMNS =
-  "id, email, language, role, created_at, first_name, last_name, phone, email_confirmed_at, square_customer_id";
+  "id, email, language, role, created_at, first_name, last_name, phone, email_confirmed_at, square_customer_id, menu_emails";
 
 const toMember = (row: MemberRow): Member => ({
   id: row.id,
@@ -53,6 +56,7 @@ const toMember = (row: MemberRow): Member => ({
   phone: row.phone,
   emailConfirmedAt: row.email_confirmed_at,
   squareCustomerId: row.square_customer_id,
+  menuEmails: row.menu_emails,
 });
 
 type EmailChangeRow = { member_id: string; new_email: string; code_hash: string; expires_at: Date; attempts: number };
@@ -265,10 +269,10 @@ export class PostgresRepository implements Repository {
     ]);
   }
 
-  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member> {
+  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language; menuEmails: boolean }): Promise<Member> {
     const { rows } = await this.db.query<MemberRow>(
-      `update members set first_name = $2, last_name = $3, phone = $4, language = $5 where id = $1 returning ${MEMBER_COLUMNS}`,
-      [memberId, details.firstName, details.lastName, details.phone, details.language],
+      `update members set first_name = $2, last_name = $3, phone = $4, language = $5, menu_emails = $6 where id = $1 returning ${MEMBER_COLUMNS}`,
+      [memberId, details.firstName, details.lastName, details.phone, details.language, details.menuEmails],
     );
     if (!rows[0]) throw new Error(`saveMemberDetails: no member ${memberId}`);
     return toMember(rows[0]);
@@ -852,6 +856,80 @@ export class PostgresRepository implements Repository {
       [productId, weekOf, menuId],
     );
     return rowCount === 1;
+  }
+
+  /** Issue 141: the week's menu as it is now, and when its email went out; null for a week with none. */
+  async findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null> {
+    if (!UUID_SHAPE.test(productId)) return null;
+    const { rows } = await this.db.query<{ menu_id: string; sent_at: Date | null }>(
+      "select menu_id, sent_at from week_menus where product_id = $1 and week_of = $2::date",
+      [productId, weekOf],
+    );
+    const found = rows[0];
+    const menu = found ? (await this.readMenus(found.menu_id))[0] : undefined;
+    return found && menu ? { menu, sentAt: found.sent_at } : null;
+  }
+
+  /** Issue 141: stamps the week's menu sent at `now`; true only when it held a menu not yet stamped. */
+  async markWeekMenuSent(productId: string, weekOf: string, now: Date): Promise<boolean> {
+    if (!UUID_SHAPE.test(productId)) return false;
+    const { rowCount } = await this.db.query(
+      "update week_menus set sent_at = $3::timestamptz where product_id = $1 and week_of = $2::date and sent_at is null",
+      [productId, weekOf, now],
+    );
+    return rowCount === 1;
+  }
+
+  /** Issue 141: a `paid` or `declined` row of the week for each subscription of the product, oldest subscription first, with the picks `rowPicks` holds. */
+  async listWeekMade(productId: string, weekOf: string): Promise<WeekMade[]> {
+    if (!UUID_SHAPE.test(productId)) return [];
+    const [made, picked] = await Promise.all([
+      this.db.query<MemberRow & { subscription_id: string }>(
+        `select s.id as subscription_id, ${MEMBER_COLUMNS.split(", ").map((column) => `m.${column}`).join(", ")}
+           from subscriptions s
+           join members m on m.id = s.member_id
+          where s.product_id = $1
+            and exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = $2::date and l.status in ('paid', 'declined'))
+          order by s.created_at, s.id`,
+        [productId, weekOf],
+      ),
+      this.db.query<{ subscription_id: string; type_name: string; option_name: string }>(
+        `select l.subscription_id, t.name as type_name, o.name as option_name
+           from ledger l
+           join subscriptions s on s.id = l.subscription_id
+           join lateral (${rowPicks("l.id")}) picks on true
+           join option_types t on t.id = picks.option_type_id
+           join options o on o.id = picks.option_id
+          where s.product_id = $1 and l.pickup_date = $2::date and l.status in ('paid', 'declined')
+          order by t.position, t.name`,
+        [productId, weekOf],
+      ),
+    ]);
+    return made.rows.map((row) => ({
+      subscriptionId: row.subscription_id,
+      member: toMember(row),
+      options: picked.rows.filter((option) => option.subscription_id === row.subscription_id).map((option) => ({ typeName: option.type_name, optionName: option.option_name })),
+    }));
+  }
+
+  async listAdmins(): Promise<Member[]> {
+    const { rows } = await this.db.query<MemberRow>(`select ${MEMBER_COLUMNS} from members where role = 'admin' order by created_at, id`);
+    return rows.map(toMember);
+  }
+
+  /** Issue 141: whether an event of the kind carries `detail.date` equal to the date. */
+  async hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean> {
+    const { rows } = await this.db.query<{ found: boolean }>(
+      "select exists (select 1 from audit_log where operation = 'event' and event = $1 and detail ->> 'date' = $2) as found",
+      [kind, clevelandDate],
+    );
+    return rows[0]?.found === true;
+  }
+
+  async setMenuEmails(memberId: string, on: boolean): Promise<Member | null> {
+    if (!UUID_SHAPE.test(memberId)) return null;
+    const { rows } = await this.db.query<MemberRow>(`update members set menu_emails = $2 where id = $1 returning ${MEMBER_COLUMNS}`, [memberId, on]);
+    return rows[0] ? toMember(rows[0]) : null;
   }
 
   /**

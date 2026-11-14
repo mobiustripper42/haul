@@ -50,6 +50,7 @@ npm run test                 # vitest run; add a path to run one file. The Postg
 npm run test:square          # the payments contract against Square's real sandbox (src/adapters/square-payments.sandbox.ts). By hand, never in verify or CI: needs the network and SQUARE_SANDBOX_ACCESS_TOKEN and SQUARE_SANDBOX_LOCATION_ID in .env.local; deletes the customers it creates, and leaves cards and payments in the sandbox account
 npm run square:seed          # makes the Square sandbox customers task 1.4's by-hand checks need (db/square-sandbox-customers.ts). By hand, never in verify or CI: needs the network and the sandbox variables in .env.local, and leaves customers in the sandbox account
 npm run charge-run [-- --now <ISO instant>] [url]   # fires the charge run once on haul_dev (or the URL given), prints its report and each email; Square when configured, else a fake. By hand, never in verify or CI; the cron route is task 2.3 (db/charge-run.ts)
+npm run menu-run [-- --now <ISO instant>] [url]     # fires the menu run once on haul_dev (or the URL given), prints its report and each email, a fake printing to the console; needs MENU_EMAIL_WEEKDAY in .env.local. By hand, never in verify or CI (db/menu-run.ts)
 npm run test:e2e             # playwright test: desktop and mobile on a next dev server on port 4100, over haul_test_e2e. Needs `npm run db:up`; not in verify
 
 # Database (docker-compose.yml)

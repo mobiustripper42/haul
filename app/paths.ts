@@ -1,5 +1,6 @@
 // The full pages' paths: the one home for them, imported by each flow's actions and pages. A plain file,
 // so a page linking to the other flow doesn't pull in that flow's services.
+import { MENU_EMAILS_OFF_PATH, MENU_EMAILS_PATH } from "@core/menu-email-paths.js";
 import { MENU_FROM_PARAM } from "./admin/menus/shared";
 import type { FlowPages } from "./sign-in/shared";
 
@@ -41,6 +42,15 @@ export const duplicateMenuPath = (id: string): string => `${ADMIN_MENU_NEW_PATH}
 
 /** A member's cancel confirm (issue 139). */
 export const ACCOUNT_CANCEL_PATH = "/account/cancel";
+
+/** The public menu page (issue 141). */
+export const MENU_PATH = "/menu";
+/** The menu emails page and its off route have one home in core, which the email's link is built in. */
+export { MENU_EMAILS_PATH, MENU_EMAILS_OFF_PATH };
+/** The menu emails page for a member: the member and the token that proves the link is theirs. */
+export const menuEmailsPath = (memberId: string, token: string): string => `${MENU_EMAILS_PATH}?${new URLSearchParams({ m: memberId, t: token })}`;
+/** The off route for a member. */
+export const menuEmailsOffPath = (memberId: string, token: string): string => `${MENU_EMAILS_OFF_PATH}?${new URLSearchParams({ m: memberId, t: token })}`;
 
 /** The admin's page for one subscription (issue 139). */
 export const adminMemberPath = (subscriptionId: string): string => `/admin/members/${encodeURIComponent(subscriptionId)}`;

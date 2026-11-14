@@ -182,3 +182,45 @@ describe("AC3 (issue 135) — renderEmail cardDeclined", () => {
     });
   });
 });
+
+// Issue 141: the menu email and the missing-menu email. Their words, filled as the run fills them, are new copy typed
+// once in src/menu-run.test.ts, which renders them as the run sends them; here, that each is only catalog values, and
+// the line the menu email alone puts between the sign-off and the footer.
+describe("AC5, AC6 (issue 141) — renderEmail menuEmail and missingMenu", () => {
+  /** Every value a stand-in of its own, so a render that writes a word itself shows it beside them. */
+  const MENU_VALUES = {
+    heading: "⟦heading⟧",
+    menus: "⟦menus⟧",
+    meals: "⟦meals⟧",
+    pickupLine: "⟦pickupLine⟧",
+    date: "⟦date⟧",
+    link: "⟦link⟧",
+    offLink: "⟦offLink⟧",
+  };
+  const MISSING_VALUES = { weeks: "⟦weeks⟧", weekday: "⟦weekday⟧", link: "⟦link⟧" };
+
+  /** What is left of a stand-in Spanish render once its catalog values and the values given are taken out: nothing but space. */
+  const leftOver = (text: string, values: Record<string, string>): string =>
+    Object.values(values)
+      .reduce((rest, value) => rest.split(value).join(""), text)
+      .replace(/«[\w.]+»/g, "")
+      .trim();
+
+  it("AC5: menuEmail in the stand-in Spanish catalog is only catalog values and the values given: its subject a key, nothing written by the template", () => {
+    const { subject, text } = renderEmail("menuEmail", "es", MENU_VALUES, SITE_URL);
+    expect(subject).toMatch(/^«[\w.]+»$/);
+    expect(leftOver(text, MENU_VALUES)).toBe("");
+  });
+
+  it("AC5: menuEmail puts one line of its own between the sign-off and the legal footer", () => {
+    const { text } = renderEmail("menuEmail", "es", MENU_VALUES, SITE_URL);
+    expect(text).toMatch(/«email\.signOff»\n+«[\w.]+»\n+«email\.legalTerms»\n«email\.legalPrivacy»$/);
+  });
+
+  it("AC6: missingMenu in the stand-in Spanish catalog is only catalog values and the values given: its subject a key, nothing written by the template", () => {
+    const { subject, text } = renderEmail("missingMenu", "es", MISSING_VALUES, SITE_URL);
+    expect(subject).toMatch(/^«[\w.]+»$/);
+    expect(leftOver(text, MISSING_VALUES)).toBe("");
+    expect(text.endsWith(`«email.signOff»\n\n${STAND_IN_FOOTER}`)).toBe(true);
+  });
+});

@@ -31,6 +31,7 @@ const member = (firstName: string | null): Member => ({
   phone: null,
   emailConfirmedAt: null,
   squareCustomerId: null,
+  menuEmails: true,
 });
 
 const CONFIRMATION = {

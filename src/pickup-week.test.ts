@@ -11,6 +11,7 @@ import {
   formatShortDate,
   latestCutoffWeek,
   listedWeekTitle,
+  menuEmailDate,
   nextPickup,
   pastWeeks,
   pickupWeek,
@@ -450,5 +451,34 @@ describe("AC3 (issue 134) — latestCutoffWeek", () => {
     const friday = product({ cutoffWeekday: 5, cutoffTime: "18:00:00" });
     expect(latestCutoffWeek(friday, new Date("2027-03-05T22:59:00.000Z"))).toBe("2027-02-28");
     expect(latestCutoffWeek(friday, new Date("2027-03-05T23:00:00.000Z"))).toBe("2027-03-07");
+  });
+});
+
+// Issue 141: the day a week's menu email goes out, the first date after the week's cutoff date whose weekday is
+// MENU_EMAIL_WEEKDAY (Sunday 0). January 17's cutoff date is Monday the 11th. The rule's edges are owned here;
+// src/menu-run.test.ts takes the run through it.
+describe("AC2 (issue 141) — menuEmailDate", () => {
+  it.each([
+    [2, "2027-01-12", "Tuesday, the day after the cutoff date"],
+    [4, "2027-01-14", "Thursday"],
+    [6, "2027-01-16", "Saturday"],
+    [0, "2027-01-17", "Sunday, the week's own Sunday"],
+  ])("AC2: weekday %i gives %s (%s)", (weekday, date) => {
+    expect(menuEmailDate(product(), "2027-01-17", weekday)).toBe(date);
+  });
+
+  it("AC2: the cutoff date's own weekday is the week after it, never the cutoff date itself", () => {
+    expect(menuEmailDate(product(), "2027-01-17", 1)).toBe("2027-01-18");
+  });
+
+  it("AC2: it follows the product's cutoff day: a Friday cutoff for March 7 is Friday March 5, so Saturday is March 6 and Friday March 12", () => {
+    const friday = product({ cutoffWeekday: 5, cutoffTime: "18:00:00" });
+    expect(menuEmailDate(friday, "2027-03-07", 6)).toBe("2027-03-06");
+    expect(menuEmailDate(friday, "2027-03-07", 5)).toBe("2027-03-12");
+  });
+
+  it("AC2: across a month's end: January 31's cutoff date is Monday January 25, so Wednesday is January 27 and Monday February 1", () => {
+    expect(menuEmailDate(product(), "2027-01-31", 3)).toBe("2027-01-27");
+    expect(menuEmailDate(product(), "2027-01-31", 1)).toBe("2027-02-01");
   });
 });
