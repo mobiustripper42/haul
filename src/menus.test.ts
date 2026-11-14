@@ -3,7 +3,7 @@
 // (`assignedWeeks`), the search (`filterMenus`) and a row's one-line text (`menuLine`). The actions, pages and
 // adapters that use them check one accepted and one refused case through them.
 import { describe, expect, it } from "vitest";
-import { assignedWeeks, checkMenu, filterMenus, menuLine, menuOptions, menuText, type Menu } from "./menus.js";
+import { assignedWeeks, checkMenu, filterMenus, menuLine, menuLines, menuOptions, menuSections, menuText, type Menu } from "./menus.js";
 import { upcomingWeeks, type ChangedWeek } from "./pickup-week.js";
 import type { ProductOption, ProductWithOptions } from "./products.js";
 
@@ -196,5 +196,50 @@ describe("AC1 — menuLine", () => {
 
   it("AC1: one dish is itself", () => {
     expect(menuLine("Squash soup")).toBe("Squash soup");
+  });
+});
+
+// Issue 141: a menu text's lines, the one home the list's menuLine, the menu email and the menu page share, and the
+// sections the email and the page both draw from a menu. The email and the page take one case each through them.
+describe("AC5, AC7 (issue 141) — menuLines", () => {
+  it("AC5: the non-blank lines, each trimmed, in order", () => {
+    expect(menuLines("  Squash soup  \n\n   \nRye bread\n Apple cake ")).toEqual(["Squash soup", "Rye bread", "Apple cake"]);
+  });
+
+  it("AC5: one dish is one line", () => {
+    expect(menuLines("Squash soup")).toEqual(["Squash soup"]);
+  });
+
+  it("AC5: a text of only spaces and line breaks has no lines", () => {
+    expect(menuLines("  \n \n")).toEqual([]);
+  });
+});
+
+describe("AC5, AC7 (issue 141) — menuSections", () => {
+  const menu = (texts: Record<string, string>): Menu => ({ id: "autumn", name: "Autumn harvest", texts, updatedAt: new Date("2027-02-01T12:00:00.000Z") });
+
+  it("AC5: one section per menu option, in position order, each the option's name and its text's lines", () => {
+    const reversed = product();
+    const menuType = reversed.optionTypes[1];
+    if (menuType) menuType.options = [VEGAN, STANDARD];
+    const autumn = menu({ [VEGAN.id]: "Lentil soup\n\n  Rye bread ", [STANDARD.id]: "Squash soup\nRye bread" });
+    expect(menuSections(reversed, autumn)).toEqual([
+      { name: "Standard", lines: ["Squash soup", "Rye bread"] },
+      { name: "Vegan", lines: ["Lentil soup", "Rye bread"] },
+    ]);
+  });
+
+  it("AC5: an option the menu holds no text for is still a section, with no lines", () => {
+    expect(menuSections(product(), menu({ [STANDARD.id]: "Squash soup" }))).toEqual([
+      { name: "Standard", lines: ["Squash soup"] },
+      { name: "Vegan", lines: [] },
+    ]);
+  });
+
+  it("AC5: a text for an option that is not a menu option is not a section", () => {
+    expect(menuSections(product(), menu({ [STANDARD.id]: "Squash soup", [VEGAN.id]: "Lentil soup", "option-four": "Four of everything" })).map((section) => section.name)).toEqual([
+      "Standard",
+      "Vegan",
+    ]);
   });
 });

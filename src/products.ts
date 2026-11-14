@@ -34,6 +34,25 @@ export function priceOfChoices(product: ProductWithOptions, choices: Record<stri
   return total;
 }
 
+/** The type's cheapest option, the first by position among equals; undefined for a type with no options. */
+function cheapestOption(type: ProductOptionType): ProductOption | undefined {
+  return [...type.options].sort((a, b) => a.priceCents - b.priceCents || a.position - b.position)[0];
+}
+
+/**
+ * The cheapest option of each type as choices (the menu page's join panel price, through `priceOfChoices`), and the name
+ * of the cheapest option of the first type, by position, that is not the menu type: the size. Null with no such type.
+ */
+export function cheapestChoices(product: ProductWithOptions): { choices: Record<string, string>; sizeName: string | null } {
+  const choices: Record<string, string> = {};
+  for (const type of product.optionTypes) {
+    const option = cheapestOption(type);
+    if (option) choices[type.id] = option.id;
+  }
+  const sizeType = [...product.optionTypes].sort((a, b) => a.position - b.position).find((type) => type.menuTexts !== true);
+  return { choices, sizeName: (sizeType && cheapestOption(sizeType)?.name) ?? null };
+}
+
 /** The one comparison of held spots with the cap: a cap lowered below the count still reads as sold out. */
 export function isSoldOut(product: { cap: number }, held: number): boolean {
   return held >= product.cap;

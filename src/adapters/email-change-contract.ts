@@ -40,7 +40,7 @@ export function runEmailChangeContract(name: string, make: () => Promise<Reposit
 
     it("AC3: saveMemberDetails stores first name, last name, phone and language for a confirmed member, and returns the member as stored", async () => {
       const member = await ada();
-      const saved = await repo.saveMemberDetails(member.id, { firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" });
+      const saved = await repo.saveMemberDetails(member.id, { firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es", menuEmails: true });
       const expected = { ...member, firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" };
       expect(saved).toEqual(expected);
       expect(await repo.findMemberById(member.id)).toEqual(expected);
@@ -49,7 +49,7 @@ export function runEmailChangeContract(name: string, make: () => Promise<Reposit
     it("AC8: saveMemberDetails leaves the email, its confirmation and a pending change alone", async () => {
       const member = await ada();
       await start(member.id);
-      await repo.saveMemberDetails(member.id, { firstName: "Adaline", lastName: "Lovelace", phone: "216-555-0100", language: "en" });
+      await repo.saveMemberDetails(member.id, { firstName: "Adaline", lastName: "Lovelace", phone: "216-555-0100", language: "en", menuEmails: true });
       expect(await repo.findMemberById(member.id)).toMatchObject({ email: OLD, emailConfirmedAt: CONFIRMED_AT, firstName: "Adaline" });
       expect((await repo.findEmailChange(member.id))?.newEmail).toBe(NEW);
     });

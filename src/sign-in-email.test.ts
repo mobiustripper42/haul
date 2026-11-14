@@ -26,6 +26,7 @@ const member = (language: Language): Member => ({
   phone: null,
   emailConfirmedAt: null,
   squareCustomerId: null,
+  menuEmails: true,
 });
 
 const SITE_URL = "https://members.example.test";

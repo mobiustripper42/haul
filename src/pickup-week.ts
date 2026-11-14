@@ -113,7 +113,7 @@ export function pickupOver(week: PickupWeek, today: string): boolean {
 }
 
 /** A date's weekday as a word, as the locale writes it: "Saturday", "sábado". `pickupWhereLine` capitalises the line. */
-function weekdayName(date: string, language: Language): string {
+export function weekdayName(date: string, language: Language): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, { weekday: "long", timeZone: "UTC" });
 }
 
@@ -166,7 +166,7 @@ export type AdminWeek = PickupWeek & {
 };
 
 /** A member's next pickup: the first of `weeks` not closed and with `weekOf >= firstWeek`; null when there is none. */
-export function nextPickup(weeks: AdminWeek[], firstWeek: string): PickupWeek | null {
+export function nextPickup(weeks: AdminWeek[], firstWeek: string): AdminWeek | null {
   return weeks.find((week) => week.closedAt === null && week.weekOf >= firstWeek) ?? null;
 }
 
@@ -259,6 +259,14 @@ export function isDate(value: string): boolean {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
   const time = Date.parse(`${value}T00:00:00Z`);
   return !Number.isNaN(time) && new Date(time).toISOString().slice(0, 10) === value;
+}
+
+/**
+ * The day a week's menu email goes out (issue 141): the first date after the week's cutoff date whose weekday is
+ * `weekday`, Sunday 0. Never the cutoff date itself, so the cutoff's own weekday gives the week after.
+ */
+export function menuEmailDate(product: ProductWithOptions, weekOf: string, weekday: number): string {
+  return addDays(cutoffDate(product, weekOf), ((weekday - product.cutoffWeekday + 6) % 7) + 1);
 }
 
 /** The next week's cutoff date: where a move's last day must stop, so two weeks cannot overlap. */

@@ -7,6 +7,7 @@ import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
+  type AuditEventKind,
   type EmailChange,
   type EnrolledWeek,
   type MemberSubscription,
@@ -19,6 +20,7 @@ import {
   type Subscriber,
   type WeekCredit,
   type WeekDue,
+  type WeekMade,
 } from "../ports/repository.js";
 import { addDays, clevelandDate, pickupWeek, type ChangedWeek } from "../pickup-week.js";
 import { sameChoices } from "../switch-meal.js";
@@ -84,6 +86,8 @@ export class InMemoryRepository implements Repository {
   private readonly menus = new Map<string, Menu>();
   /** Issue 140: `<product id>|<week_of>` → the menu on that week. */
   private readonly weekMenus = new Map<string, string>();
+  /** Issue 141: `<product id>|<week_of>` → when the menu on that week was emailed; deleted with the row. */
+  private readonly weekMenuSent = new Map<string, Date>();
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
   private readonly recorded: RecordedEvent[] = [];
@@ -105,6 +109,7 @@ export class InMemoryRepository implements Repository {
       phone: null,
       emailConfirmedAt: null,
       squareCustomerId: null,
+      menuEmails: true,
     };
     this.members.set(member.id, member);
     return copy(member);
@@ -141,7 +146,7 @@ export class InMemoryRepository implements Repository {
     if (member && member.emailConfirmedAt === null) this.members.set(memberId, { ...member, emailConfirmedAt: new Date(now) });
   }
 
-  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language }): Promise<Member> {
+  async saveMemberDetails(memberId: string, details: { firstName: string; lastName: string; phone: string; language: Language; menuEmails: boolean }): Promise<Member> {
     const member = this.members.get(memberId);
     if (!member) throw new Error(`saveMemberDetails: no member ${memberId}`);
     // A new object, not a mutation: `withActor` restores the map's entries on rollback.
@@ -457,11 +462,62 @@ export class InMemoryRepository implements Repository {
   async assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean> {
     if (menuId === null) {
       this.weekMenus.delete(weekKey(productId, weekOf));
+      this.weekMenuSent.delete(weekKey(productId, weekOf));
       return true;
     }
     if (!this.menus.has(menuId)) return false;
     this.weekMenus.set(weekKey(productId, weekOf), menuId);
     return true;
+  }
+
+  /** Issue 141: the week's menu as it is now, and when its email went out; null for a week with none. */
+  async findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null> {
+    const key = weekKey(productId, weekOf);
+    const menu = this.menus.get(this.weekMenus.get(key) ?? "");
+    const sentAt = this.weekMenuSent.get(key);
+    return menu ? { menu: copyMenu(menu), sentAt: sentAt ? new Date(sentAt) : null } : null;
+  }
+
+  /** Issue 141: stamps the week's menu sent at `now`; true only when it held a menu not yet stamped. */
+  async markWeekMenuSent(productId: string, weekOf: string, now: Date): Promise<boolean> {
+    const key = weekKey(productId, weekOf);
+    if (!this.weekMenus.has(key) || this.weekMenuSent.has(key)) return false;
+    this.weekMenuSent.set(key, new Date(now));
+    return true;
+  }
+
+  /** Issue 141: a `paid` or `declined` row of the week for each subscription of the product, oldest subscription first, with the picks `rowPicks` holds. */
+  async listWeekMade(productId: string, weekOf: string): Promise<WeekMade[]> {
+    return [...this.subscriptions.values()]
+      .filter((subscription) => subscription.productId === productId)
+      // Two subscriptions made in one millisecond keep the order they were made in: the map's, and the sort is stable.
+      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
+      .flatMap((subscription): WeekMade[] => {
+        const member = this.members.get(subscription.memberId);
+        const row =[...this.ledger.values()].find(
+          (found) => found.subscriptionId === subscription.id && found.pickupDate === weekOf && (found.status === "paid" || found.status === "declined"),
+        );
+        if (!member || !row) return [];
+        return [{ subscriptionId: subscription.id, member: copy(member), options: this.optionsNamed(subscription, this.rowPicks(row)) }];
+      });
+  }
+
+  async listAdmins(): Promise<Member[]> {
+    return [...this.members.values()].filter((member) => member.role === "admin").map(copy);
+  }
+
+  /** Issue 141: whether an event of the kind carries `detail.date` equal to the date. */
+  async hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean> {
+    return this.recorded.some((event) => event.kind !== "rate_limit_refusal" && event.kind === kind && event.detail?.date === clevelandDate);
+  }
+
+  async setMenuEmails(memberId: string, on: boolean): Promise<Member | null> {
+    const member = this.members.get(memberId);
+    if (!member) return null;
+    // A new object, not a mutation: `withActor` restores the map's entries on rollback.
+    const replaced: Member = { ...member, menuEmails: on };
+    this.members.set(memberId, replaced);
+    return copy(replaced);
   }
 
   async listWeekCredits(productId: string, weekOf: string): Promise<WeekCredit[]> {
@@ -739,6 +795,7 @@ export class InMemoryRepository implements Repository {
     const emailChanges = new Map(this.emailChanges);
     const menus = new Map(this.menus);
     const weekMenus = new Map(this.weekMenus);
+    const weekMenuSent = new Map(this.weekMenuSent);
     const signIn = this.signIn.snapshot();
     const recorded = this.recorded.map(copyEvent);
 
@@ -764,6 +821,8 @@ export class InMemoryRepository implements Repository {
       for (const [id, menu] of menus) this.menus.set(id, menu);
       this.weekMenus.clear();
       for (const [key, menuId] of weekMenus) this.weekMenus.set(key, menuId);
+      this.weekMenuSent.clear();
+      for (const [key, sentAt] of weekMenuSent) this.weekMenuSent.set(key, sentAt);
       this.signIn.restore(signIn);
       this.recorded.splice(0, this.recorded.length, ...recorded);
       throw error;

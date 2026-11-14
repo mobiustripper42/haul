@@ -437,5 +437,92 @@ export function runRepositoryContract(
         expect(nested).toBe("rejected");
       });
     });
+
+    // Issue 141: the menu email preference, the admins the missing-menu email goes to, and the event that sends it
+    // once a day.
+    describe("the menu email preference (issue 141)", () => {
+      const ADA: AccountDetails = { email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" };
+
+      it("AC3: a member made by createMember or by saveAccount has menu emails on", async () => {
+        const made = await repo.createMember({ email: "grace@example.com" });
+        const saved = await repo.saveAccount(ADA);
+        expect([made.menuEmails, saved.menuEmails]).toEqual([true, true]);
+        expect((await repo.findMemberById(saved.id))?.menuEmails).toBe(true);
+      });
+
+      it("AC8: setMenuEmails turns it off and back on, returns the member as stored, and touches nothing else", async () => {
+        const ada = await repo.saveAccount(ADA);
+        expect(await repo.setMenuEmails(ada.id, false)).toEqual({ ...ada, menuEmails: false });
+        expect(await repo.findMemberById(ada.id)).toEqual({ ...ada, menuEmails: false });
+        expect(await repo.findMemberByEmail(ADA.email)).toEqual({ ...ada, menuEmails: false });
+        expect(await repo.setMenuEmails(ada.id, true)).toEqual(ada);
+        expect(await repo.findMemberById(ada.id)).toEqual(ada);
+      });
+
+      it("AC8: setMenuEmails changes that member and no other", async () => {
+        const ada = await repo.saveAccount(ADA);
+        const grace = await repo.createMember({ email: "grace@example.com" });
+        await repo.setMenuEmails(ada.id, false);
+        expect((await repo.findMemberById(grace.id))?.menuEmails).toBe(true);
+      });
+
+      it.each([
+        ["an unknown id", UNKNOWN_UUID],
+        ["a string that isn't a UUID", "not-a-uuid"],
+      ])("AC8: setMenuEmails of %s is null and writes nothing", async (_what, id) => {
+        const ada = await repo.saveAccount(ADA);
+        expect(await repo.setMenuEmails(id, false)).toBeNull();
+        expect((await repo.findMemberById(ada.id))?.menuEmails).toBe(true);
+      });
+
+      it("AC9: saveMemberDetails stores menuEmails with the rest of the details, off and then on", async () => {
+        const ada = await repo.saveAccount(ADA);
+        const details = { firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" } as const;
+        expect((await repo.saveMemberDetails(ada.id, { ...details, menuEmails: false })).menuEmails).toBe(false);
+        expect((await repo.findMemberById(ada.id))?.menuEmails).toBe(false);
+        expect((await repo.saveMemberDetails(ada.id, { ...details, menuEmails: true })).menuEmails).toBe(true);
+        expect((await repo.findMemberById(ada.id))?.menuEmails).toBe(true);
+      });
+    });
+
+    describe("listAdmins (issue 141)", () => {
+      it("AC6: it is every member whose role is admin, as stored, and no other member", async () => {
+        const lenny = await repo.createMember({ email: "lenny@example.com", role: "admin" });
+        await repo.createMember({ email: "ada@example.com" });
+        const michael = await repo.createMember({ email: "michael@example.com", role: "admin", language: "es" });
+        const admins = await repo.listAdmins();
+        expect([...admins].sort((a, b) => a.email.localeCompare(b.email))).toEqual([lenny, michael]);
+      });
+
+      it("AC6: with no admin it is empty", async () => {
+        await repo.createMember({ email: "ada@example.com" });
+        expect(await repo.listAdmins()).toEqual([]);
+      });
+    });
+
+    describe("hasEventOn (issue 141)", () => {
+      const event = (memberId: string, date: string) => ({ kind: "menu_reminder_sent" as const, memberId, detail: { weeks: ["2027-01-24"], date } });
+
+      it("AC6: true once an event of the kind carries the date as detail.date, recorded inside or outside withActor", async () => {
+        const lenny = await repo.createMember({ email: "lenny@example.com", role: "admin" });
+        await repo.recordEvent(event(lenny.id, "2027-01-14"));
+        await repo.withActor({ system: "menu-run" }, (r) => r.recordEvent(event(lenny.id, "2027-01-15")));
+        expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-14")).toBe(true);
+        expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-15")).toBe(true);
+      });
+
+      it("AC6: false for another date, and for another kind on the date", async () => {
+        const lenny = await repo.createMember({ email: "lenny@example.com", role: "admin" });
+        await repo.recordEvent(event(lenny.id, "2027-01-14"));
+        await repo.recordEvent({ kind: "email_changed", memberId: lenny.id, detail: { date: "2027-01-16" } });
+        expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-13")).toBe(false);
+        expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-16")).toBe(false);
+        expect(await repo.hasEventOn("email_changed", "2027-01-14")).toBe(false);
+      });
+
+      it("AC6: with no events it is false", async () => {
+        expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-14")).toBe(false);
+      });
+    });
   });
 }

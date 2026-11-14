@@ -285,6 +285,40 @@ describe("AC14 (issue 156) — Keep the old email", () => {
   });
 });
 
+// Issue 141: the menu email checkbox. Its words are new copy, typed once here; the Language field's label and Save are
+// read from the catalog. What Save stores is ./actions.test.ts's.
+describe("AC9 (issue 141) — Email me the weekly menu", () => {
+  const LABEL = "Email me the weekly menu";
+  const HINT = "Sign-in codes, receipts and card notices always send.";
+
+  /** The form's menuEmails field: whether it is there, a checkbox, and ticked. */
+  const menuBox = (html: string) => {
+    const input = attributesOf(html, "input").find((candidate) => candidate.name === "menuEmails");
+    return { present: input !== undefined, type: input?.type, checked: input !== undefined && "checked" in input };
+  };
+
+  it("AC9: after the Language field and before Save, the form has the checkbox with its hint, ticked for a member whose menu emails are on", async () => {
+    await ada();
+    const { html } = await render();
+    const order = [en["createAccount.language"], LABEL, HINT, en["details.save"]];
+    expect(inOrder(html, order)).toEqual(order);
+    expect(menuBox(html)).toEqual({ present: true, type: "checkbox", checked: true });
+  });
+
+  it("AC9: for a member whose menu emails are off it is not ticked", async () => {
+    const member = await ada();
+    await services.repo.setMenuEmails(member.id, false);
+    expect(menuBox((await render()).html)).toEqual({ present: true, type: "checkbox", checked: false });
+  });
+
+  it("AC9: the checkbox is in the form that posts to saveDetails", async () => {
+    await ada();
+    const { element } = await render();
+    const save = findAll(element, "form").find((form) => form.props.action === saveDetails);
+    expect(menuBox(renderToStaticMarkup(createElement("div", null, save))).present).toBe(true);
+  });
+});
+
 describe("AC20 (issue 156) — a pending change is stored", () => {
   it("AC20: a member who comes back nine minutes after asking sees the code step again", async () => {
     const member = await ada();

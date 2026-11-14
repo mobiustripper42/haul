@@ -50,11 +50,20 @@ export function filterMenus(menus: Menu[], query: string): Menu[] {
   return menus.filter((menu) => [menu.name, ...Object.values(menu.texts)].some((text) => text.toLowerCase().includes(wanted)));
 }
 
-/** The text's non-blank lines, each trimmed, joined with `SEPARATOR`. */
-export function menuLine(text: string): string {
+/** The text's non-blank lines, each trimmed, in order: the one home for splitting a menu text (issue 141). */
+export function menuLines(text: string): string[] {
   return text
     .split("\n")
     .map((line) => line.trim())
-    .filter((line) => line !== "")
-    .join(SEPARATOR);
+    .filter((line) => line !== "");
+}
+
+/** The menu as the email and the page draw it (issue 141): one section per menu option, in position order, its name and its text's lines. */
+export function menuSections(product: ProductWithOptions, menu: Menu): { name: string; lines: string[] }[] {
+  return menuOptions(product).map((option) => ({ name: option.name, lines: menuLines(menu.texts[option.id] ?? "") }));
+}
+
+/** The text's non-blank lines, each trimmed, joined with `SEPARATOR`. */
+export function menuLine(text: string): string {
+  return menuLines(text).join(SEPARATOR);
 }
