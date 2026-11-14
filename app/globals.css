@@ -386,3 +386,10 @@
     display: block;
   }
 }
+
+/* On paper the site footer is left off (issue 142: the printed pickup list is one sheet). Unlayered, for the reason above. */
+@media print {
+  footer {
+    display: none;
+  }
+}

@@ -12,7 +12,8 @@
  *
  * Every row is upserted on a key of its own (a ledger row's subscription and pickup date, a week credit's ledger row, a
  * credit's pick's type) and puts back only the columns it names. Every timestamp is derived from a week's date, never
- * from the clock, so a second run changes nothing.
+ * from the clock, so a second run with the same default week changes nothing. A run on a day with another default week
+ * rotates the roles, and a week credit spent on a row that is no longer the credit row stays spent: `db:reset:dev` first.
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
 import { addDays, cutoffInstant, listableWeeks } from "../../src/pickup-week.js";

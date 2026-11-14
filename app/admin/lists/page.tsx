@@ -42,7 +42,7 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
   const active = subscribers.filter((subscriber) => subscriber.status === "active").length;
   const credits = weekCredit.length;
   const summary = t("admin.lists.summary", {
-    skipped: t("admin.lists.skipped", { n: skipped.length }),
+    skipped: t(pluralKey(language, "admin.lists.skipped", skipped.length), { n: skipped.length }),
     credits: t(pluralKey(language, "admin.lists.credits", credits), { n: credits }),
     active: t(pluralKey(language, "admin.lists.active", active), { n: active }),
   });
