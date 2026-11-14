@@ -101,7 +101,6 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
               </Button>
             </ButtonRow>
           </Card>
-          <Hint>{t("admin.lists.spreadsheetHint")}</Hint>
         </div>
       </Shell>
     </>

@@ -200,6 +200,21 @@ describe("signed in as an admin", () => {
       request.current.cookies[LANGUAGE_COOKIE] = "es";
       expect(lineText(await render({ week: FEB_7 }))).toContain(`2 miembros esta semana · ${es("admin.lists.skipped.one", { n: 1 })} · ${es("admin.lists.credits.one", { n: 1 })}.`);
     });
+
+    // Eric's review of pull request #184: the week-credit part ends the line with no "counted above", and the page
+    // carries no pointer to the member spreadsheet. Typed literally, since the tests above read these words from the catalog.
+    it("the week-credit part ends the line, with no \"counted above\", in either language", async () => {
+      await oneOfEach(services.repo, product);
+      expect(lineText(await render({ week: FEB_7 }))).toContain("2 members this week · 1 skipped · 1 week credit.");
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(lineText(await render({ week: FEB_7 }))).toContain("2 miembros esta semana · 1 omitida · 1 crédito de semana.");
+    });
+
+    it("the page has no pointer to the member spreadsheet, in either language", async () => {
+      expect(await render({ week: FEB_7 })).not.toContain("member spreadsheet");
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(await render({ week: FEB_7 })).not.toContain("hoja de cálculo de miembros");
+    });
   });
 
   describe("AC9 — the admin nav", () => {
