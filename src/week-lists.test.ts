@@ -213,11 +213,26 @@ describe("AC4, AC7 — weekSummary", () => {
       box("Portioned for 2", "Vegan", { lastName: "Castillo", firstName: "Marco", weekCredit: true }),
     ];
     const skips = [member({ lastName: "Nguyen", firstName: "Tam" }), member({ lastName: "Abara", firstName: "Chidi" })];
-    expect(weekSummary({ boxes, skips })).toEqual({ skipped: ["Abara, Chidi", "Nguyen, Tam"], weekCredit: ["Castillo, Marco", "Okafor, Ada"] });
+    expect(weekSummary({ boxes, skips })).toEqual({ skipped: ["Abara, Chidi", "Nguyen, Tam"], weekCredit: ["Castillo, Marco", "Okafor, Ada"], members: 5 });
   });
 
   it("AC4 [Lead]: a member holding two subscriptions that both skip is named twice (DEC-026)", () => {
     const skips = [member({ lastName: "Nguyen", firstName: "Lan" }), member({ lastName: "Nguyen", firstName: "Lan" })];
     expect(weekSummary({ boxes: [], skips }).skipped).toEqual(["Nguyen, Lan", "Nguyen, Lan"]);
+  });
+});
+
+// Issue 183: the week's member count has one home, here; Weekly lists only renders it (app/admin/lists/page.test.ts).
+// Who is in the week is `listWeekBoxes`'s rule (src/adapters/week-lists-contract.ts), so these count what they are given.
+describe("issue 183, AC1 — weekSummary's members", () => {
+  it("AC1: members is the week's meals plus its skips: 11 meals and 1 skip read 12", () => {
+    const boxes = Array.from({ length: 11 }, (_, at) => box(at % 2 ? "Portioned for 2" : "Portioned for 4", at % 3 ? "Standard" : "Vegan", { weekCredit: at === 0 }));
+    const skips = [member({ lastName: "Nguyen", firstName: "Lan" })];
+    expect(weekSummary({ boxes, skips }).members).toBe(12);
+  });
+
+  it("AC1 [Lead]: one per subscription: a member holding two subscriptions in the week, one a meal and one a skip, counts twice", () => {
+    const lan = { lastName: "Nguyen", firstName: "Lan", email: "lan@example.com" };
+    expect(weekSummary({ boxes: [box("Portioned for 2", "Standard", lan)], skips: [member(lan)] }).members).toBe(2);
   });
 });

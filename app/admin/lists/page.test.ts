@@ -11,6 +11,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import { listableWeeks, listedWeekTitle } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
+import { LANGUAGE_COOKIE } from "../../language";
 import { emptyRequest } from "../../next-headers-fake";
 import { attributesOf, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
 import { addSupperClub, MENUS, SIZES } from "../subscribers-fixture";
@@ -140,25 +141,79 @@ describe("signed in as an admin", () => {
       ]);
     });
 
-    it("AC4: the line counts the week's skips and week credits, and the members active now, a cancelled one left out", async () => {
-      await fourMembers(services.repo, product);
-      const tam = await subscribe(services.repo, product, TAM, ["2 people", "Vegan"]);
-      await services.repo.cancelSubscription(tam.subscriptionId, NOW);
-      expect(lineText(await render({ week: FEB_14 }))).toContain("1 skipped · 0 week credits, counted above · 4 active members.");
-    });
-
-    it('AC4: the line\'s singulars: "1 week credit", "1 active member"', async () => {
-      await oneOfEach(services.repo, product);
-      const markup = await render({ week: FEB_7 });
-      expect(lineText(markup)).toContain("1 skipped · 1 week credit, counted above · 1 active member.");
-      expect(tableRows(markup).at(-1)).toEqual(["Meals to make", "", "1"]);
-    });
-
     it("AC4: the three actions carry the week shown", async () => {
       const markup = await render({ week: FEB_14 });
       expect(linksLabelled(markup, "Download pick list")).toEqual([{ path: "/admin/lists/pick-list.csv", query: { week: FEB_14 } }]);
       expect(linksLabelled(markup, "Download skips")).toEqual([{ path: "/admin/lists/skips.csv", query: { week: FEB_14 } }]);
       expect(linksLabelled(markup, "Print pickup list")).toEqual([{ path: "/admin/lists/print", query: { week: FEB_14 } }]);
+    });
+  });
+
+  // Issue 183: the line's member count is `weekSummary`'s `members` (src/week-lists.test.ts), and who is in the week
+  // `listWeekBoxes`'s (src/adapters/week-lists-contract.ts); one fixture case per criterion here, to show the line reads
+  // that list. The members part is this issue's copy, typed once; the skipped and week-credit parts are read from the
+  // catalog in the form each case needs.
+  describe("issue 183 — the line counts the week's members", () => {
+    const es = createTranslator("es");
+
+    it("AC1: the line's member count is the week's meals plus its skips, members first", async () => {
+      await fourMembers(services.repo, product);
+      const markup = await render({ week: FEB_14 });
+      expect(tableRows(markup).at(-1)).toEqual(["Meals to make", "", "3"]);
+      expect(lineText(markup)).toContain(`4 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+    });
+
+    it("AC2: an active subscription whose first week is later than the week shown is not in its count", async () => {
+      await fourMembers(services.repo, product);
+      await subscribe(services.repo, product, TAM, ["2 people", "Vegan"], FEB_14);
+      expect(lineText(await render({ week: FEB_7 }))).toContain(`4 members this week · ${t("admin.lists.skipped.other", { n: 0 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+      expect(lineText(await render({ week: FEB_14 }))).toContain(`5 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+    });
+
+    it("AC3: a past week counts its own members: one cancelled since, holding a skip for it, is counted", async () => {
+      await oneOfEach(services.repo, product);
+      const markup = await render({ week: FEB_7 });
+      expect(tableRows(markup).at(-1)).toEqual(["Meals to make", "", "1"]);
+      expect(lineText(markup)).toContain(`2 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.one", { n: 1 })}.`);
+    });
+
+    it("AC4: a cancelled subscription with no row for the week shown and not due it is left out", async () => {
+      await fourMembers(services.repo, product);
+      const tam = await subscribe(services.repo, product, TAM, ["2 people", "Vegan"]);
+      await services.repo.cancelSubscription(tam.subscriptionId, NOW);
+      expect(lineText(await render({ week: FEB_14 }))).toContain(`4 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+    });
+
+    it('AC5: a one-member week reads "1 member this week"', async () => {
+      await oneOfEach(services.repo, product);
+      expect(lineText(await render({ week: FEB_14 }))).toContain(`1 member this week · ${t("admin.lists.skipped.other", { n: 0 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+    });
+
+    it('AC5: in Spanish, a one-member week reads "1 miembro esta semana"', async () => {
+      await oneOfEach(services.repo, product);
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(lineText(await render({ week: FEB_14 }))).toContain(`1 miembro esta semana · ${es("admin.lists.skipped.other", { n: 0 })} · ${es("admin.lists.credits.other", { n: 0 })}.`);
+    });
+
+    it('AC5: in Spanish, a two-member week reads "2 miembros esta semana"', async () => {
+      await oneOfEach(services.repo, product);
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(lineText(await render({ week: FEB_7 }))).toContain(`2 miembros esta semana · ${es("admin.lists.skipped.one", { n: 1 })} · ${es("admin.lists.credits.one", { n: 1 })}.`);
+    });
+
+    // Eric's review of pull request #184: the week-credit part ends the line with no "counted above", and the page
+    // carries no pointer to the member spreadsheet. Typed literally, since the tests above read these words from the catalog.
+    it("the week-credit part ends the line, with no \"counted above\", in either language", async () => {
+      await oneOfEach(services.repo, product);
+      expect(lineText(await render({ week: FEB_7 }))).toContain("2 members this week · 1 skipped · 1 week credit.");
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(lineText(await render({ week: FEB_7 }))).toContain("2 miembros esta semana · 1 omitida · 1 crédito de semana.");
+    });
+
+    it("the page has no pointer to the member spreadsheet, in either language", async () => {
+      expect(await render({ week: FEB_7 })).not.toContain("member spreadsheet");
+      request.current.cookies[LANGUAGE_COOKIE] = "es";
+      expect(await render({ week: FEB_7 })).not.toContain("hoja de cálculo de miembros");
     });
   });
 

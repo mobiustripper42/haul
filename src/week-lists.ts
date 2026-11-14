@@ -59,8 +59,11 @@ export function pickupRows(boxes: WeekBox[]): PickupRow[] {
   return [...boxes].sort(compareNames).map((box) => ({ name: subscriberName(box), box: mealLabel(box.options), note: box.cardDeclined ? "cardDeclined" : null }));
 }
 
-/** The names of the week's skips and of the meals a week credit paid, each "Last, First" in name order. */
-export function weekSummary(boxes: WeekBoxes): { skipped: string[]; weekCredit: string[] } {
+/**
+ * The names of the week's skips and of the meals a week credit paid, each "Last, First" in name order, and the number of
+ * the week's members: its meals plus its skips, one per subscription.
+ */
+export function weekSummary(boxes: WeekBoxes): { skipped: string[]; weekCredit: string[]; members: number } {
   const named = (members: WeekMember[]): string[] => [...members].sort(compareNames).map(subscriberName);
-  return { skipped: named(boxes.skips), weekCredit: named(boxes.boxes.filter((box) => box.weekCredit)) };
+  return { skipped: named(boxes.skips), weekCredit: named(boxes.boxes.filter((box) => box.weekCredit)), members: boxes.boxes.length + boxes.skips.length };
 }

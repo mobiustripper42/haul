@@ -59,7 +59,8 @@ export async function fourMembers(repo: InMemoryRepository, product: ProductWith
 
 /**
  * One of each for February 7: Rosa's meal paid by the week credit January 31's closing granted her, and Lan's skip,
- * Lan then cancelling, so Rosa is the one active member.
+ * Lan then cancelling. February 7 holds both rows, so it has two members; February 14 has one, Rosa due it and Lan,
+ * cancelled before its cutoff with no row for it, left out.
  */
 export async function oneOfEach(repo: InMemoryRepository, product: ProductWithOptions): Promise<void> {
   await subscribe(repo, product, ROSA, ["3–4 people", "Standard"], "2027-01-31");

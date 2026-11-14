@@ -28,7 +28,7 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 
 /**
  * Weekly lists (issue 142): the chosen week's pick list as a table of meals per combination with a total, a line counting
- * skips, week credits and active members, and the three actions: the two downloads and the printable pickup list. The
+ * the week's members, skips and week credits, and the three actions: the two downloads and the printable pickup list. The
  * week is chosen with a GET form, so the screen runs no client script.
  */
 export default async function AdminLists({ searchParams }: { searchParams: Promise<Query> }) {
@@ -36,15 +36,14 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
   const [t, language, query] = await Promise.all([getTranslator(), getLanguage(), searchParams]);
   const repo = getRepository();
   const { product, weeks, week, cutoffPassed } = await loadWeekLists(repo, new Date(), one(query[WEEK_PARAM]));
-  const [lists, subscribers] = await Promise.all([repo.listWeekBoxes(product.id, week.weekOf, week.cutoff), repo.listSubscribers(product.id)]);
+  const lists = await repo.listWeekBoxes(product.id, week.weekOf, week.cutoff);
   const list = pickList(product, lists.boxes);
-  const { skipped, weekCredit } = weekSummary(lists);
-  const active = subscribers.filter((subscriber) => subscriber.status === "active").length;
+  const { skipped, weekCredit, members } = weekSummary(lists);
   const credits = weekCredit.length;
   const summary = t("admin.lists.summary", {
+    members: t(pluralKey(language, "admin.lists.members", members), { n: members }),
     skipped: t(pluralKey(language, "admin.lists.skipped", skipped.length), { n: skipped.length }),
     credits: t(pluralKey(language, "admin.lists.credits", credits), { n: credits }),
-    active: t(pluralKey(language, "admin.lists.active", active), { n: active }),
   });
 
   return (
@@ -102,7 +101,6 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
               </Button>
             </ButtonRow>
           </Card>
-          <Hint>{t("admin.lists.spreadsheetHint")}</Hint>
         </div>
       </Shell>
     </>
