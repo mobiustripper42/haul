@@ -9,8 +9,10 @@ behaviour it should have; a section with nothing to say is "None".
 
 The Lead drafts this from the spec conversation and reads the code to fill Interfaces, to find
 what it must reuse, and to search the tests for everything it removes — readback's reuse and
-removal checks are the second look, not the first. Walk it in stops, one per reply, and wait for
-the operator's answer at each:
+removal checks are the second look, not the first. A task with a screen starts from its design:
+before stop 1 the Lead opens its approved mockups (where they live is in `.claude/ui-context.md`)
+and the built screens it changes, and the Summary and the poker estimate are drafted from them, not from
+the code alone. Walk it in stops, one per reply, and wait for the operator's answer at each:
   1. Summary and Job, together
   2. Acceptance criteria
   3. Interfaces — the [Lead] calls first, each a plain sentence: what changes and why, no file
