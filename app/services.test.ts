@@ -157,6 +157,24 @@ describe("AC17 (issue 22) — getSiteUrl", () => {
   });
 });
 
+// Issue 141: the email weekday, read from the env by the core's menuEmailWeekday (whose edge cases are
+// src/menu-run.test.ts's): one accepted and one refused case through it, and read per call.
+describe("AC2 (issue 141) — getMenuEmailWeekday", () => {
+  it("AC2: with MENU_EMAIL_WEEKDAY 4 it is 4, and it is read again at each call", async () => {
+    vi.stubEnv("MENU_EMAIL_WEEKDAY", "4");
+    const { services } = await load({ NODE_ENV: "production" });
+    expect(services.getMenuEmailWeekday()).toBe(4);
+    vi.stubEnv("MENU_EMAIL_WEEKDAY", "6");
+    expect(services.getMenuEmailWeekday()).toBe(6);
+  });
+
+  it("AC2: with MENU_EMAIL_WEEKDAY unset it throws, in every environment", async () => {
+    vi.stubEnv("MENU_EMAIL_WEEKDAY", undefined);
+    const { services } = await load({ NODE_ENV: "development" });
+    expect(() => services.getMenuEmailWeekday()).toThrow();
+  });
+});
+
 describe("AC16 (issue 57) — getFarmContactEmail", () => {
   it("AC16: with FARM_CONTACT_EMAIL set it returns it", async () => {
     vi.stubEnv("FARM_CONTACT_EMAIL", "farm@ohiocityfarm.com");

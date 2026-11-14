@@ -28,6 +28,7 @@
     "db:rebuild:dev": "tsx db/rebuild.ts",
     "square:seed": "tsx db/square-sandbox-customers.ts",
     "charge-run": "tsx db/charge-run.ts",
+    "menu-run": "tsx db/menu-run.ts",
     "gen:decisions": "node scripts/gen-decisions-index.mjs",
     "gen:dictionary": "node scripts/gen-dictionary.mjs",
     "gen:decisions-baseline": "node scripts/gen-decisions-baseline.mjs",

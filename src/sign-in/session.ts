@@ -11,8 +11,15 @@ export const SESSION_TTL_MS = 30 * 24 * 60 * 60_000;
 
 export const DEV_SESSION_SECRET = "dev-insecure-session-secret";
 
-const sign = (payloadPart: string, secret: string): string =>
+export const sign = (payloadPart: string, secret: string): string =>
   createHmac("sha256", secret).update(payloadPart).digest("base64url");
+
+/** Two signatures compared in constant time; timingSafeEqual throws on unequal lengths, so a length check comes first. */
+export function signatureMatches(given: string, expected: string): boolean {
+  const givenBytes = Buffer.from(given);
+  const expectedBytes = Buffer.from(expected);
+  return givenBytes.length === expectedBytes.length && timingSafeEqual(givenBytes, expectedBytes);
+}
 
 /** `base64url(JSON.stringify(session)) + "." + base64url(HMAC-SHA256(payload part, secret))`. */
 export function signSession(session: Session, secret: string): string {
@@ -30,10 +37,7 @@ export function verifySession(token: string, secret: string, now: Date): Session
   if (dot <= 0 || dot === token.length - 1) return { ok: false, reason: "malformed" };
   const payloadPart = token.slice(0, dot);
 
-  const given = Buffer.from(token.slice(dot + 1));
-  const expected = Buffer.from(sign(payloadPart, secret));
-  // timingSafeEqual throws on unequal lengths, so a length check comes first.
-  if (given.length !== expected.length || !timingSafeEqual(given, expected)) {
+  if (!signatureMatches(token.slice(dot + 1), sign(payloadPart, secret))) {
     return { ok: false, reason: "bad_signature" };
   }
 

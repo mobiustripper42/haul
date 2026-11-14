@@ -3,6 +3,7 @@ import { FakePayments } from "@core/adapters/fake-payments.js";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
 import { ResendEmail } from "@core/adapters/resend-email.js";
 import { SquarePayments } from "@core/adapters/square-payments.js";
+import { menuEmailWeekday } from "@core/menu-run.js";
 import type { EmailPort } from "@core/ports/email.js";
 import type { PaymentsPort } from "@core/ports/payments.js";
 import type { Repository } from "@core/ports/repository.js";
@@ -81,6 +82,11 @@ export function getPayments(): PaymentsPort {
     }
   }
   return payments;
+}
+
+/** The day the weekly menu email goes out, from `MENU_EMAIL_WEEKDAY`, read at each call; throws unless it is 0 to 6 (issue 141). */
+export function getMenuEmailWeekday(): number {
+  return menuEmailWeekday({ MENU_EMAIL_WEEKDAY: process.env.MENU_EMAIL_WEEKDAY });
 }
 
 export function getSessionSecret(): string {

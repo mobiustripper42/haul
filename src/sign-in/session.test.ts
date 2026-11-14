@@ -6,6 +6,7 @@ import {
   DEV_SESSION_SECRET,
   SESSION_TTL_MS,
   sessionSecret,
+  signatureMatches,
   signSession,
   verifySession,
   type Session,
@@ -113,5 +114,24 @@ describe("AC25 (issue 9) — sessionSecret", () => {
 
   it.each(["development", "test", undefined])("AC25: outside production (NODE_ENV %s), a missing secret returns DEV_SESSION_SECRET", (NODE_ENV) => {
     expect(sessionSecret(NODE_ENV === undefined ? {} : { NODE_ENV })).toBe(DEV_SESSION_SECRET);
+  });
+});
+
+// Issue 141: the constant-time comparison the session token and the menu email link share. The link's own cases are
+// src/menu-email-link.test.ts's.
+describe("AC8 (issue 141) — signatureMatches", () => {
+  const SIGNATURE = createHmac("sha256", SECRET).update("6f1c2a52-8f7e-4c3b-9d0a-1b2c3d4e5f60").digest("base64url");
+
+  it("AC8: a signature matches itself", () => {
+    expect(signatureMatches(SIGNATURE, `${SIGNATURE}`)).toBe(true);
+  });
+
+  it.each([
+    ["one character changed", `${SIGNATURE.slice(0, -1)}${SIGNATURE.endsWith("A") ? "B" : "A"}`],
+    ["one character short", SIGNATURE.slice(0, -1)],
+    ["one character long", `${SIGNATURE}A`],
+    ["empty", ""],
+  ])("AC8: a given signature %s does not match, and nothing throws", (_what, given) => {
+    expect(signatureMatches(given, SIGNATURE)).toBe(false);
   });
 });

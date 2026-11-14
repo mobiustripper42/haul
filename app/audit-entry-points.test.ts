@@ -92,6 +92,12 @@ describe("AC13 — the list is exactly these thirty-two entries, and issue 56's 
         "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
         // Issue 135: the cron route fires the charge run, which records a decline and an outcome it cannot know.
         "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown"] },
+        // Issue 141: the menu run's cron route records the missing-menu reminder; the off link and the menu emails page's
+        // two buttons write the member's preference, which the trigger records (their reasons are the entries' own).
+        "app/api/menu-run/route.ts#GET": { records: ["menu_reminder_sent"] },
+        "app/menu-emails/off/route.ts#GET": { none: expect.stringMatching(/\S/) },
+        "app/menu-emails/actions.ts#turnMenuEmailsOn": { none: expect.stringMatching(/\S/) },
+        "app/menu-emails/actions.ts#turnMenuEmailsOff": { none: expect.stringMatching(/\S/) },
       }),
     );
   });

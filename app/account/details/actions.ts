@@ -20,7 +20,7 @@ import { sendAfterResponse, takeRequestLimit, textField } from "../../sign-in/sh
 import { requireSubscriber } from "../subscriber";
 
 /**
- * Saves the form. Name, phone and language are stored at once, with the email changed or not (AC8); an email that
+ * Saves the form. Name, phone, language and the menu email checkbox are stored at once, with the email changed or not (AC8); an email that
  * differs from the member's, past case and spaces, then starts a change in sign-in's request limit, and the code goes
  * to the new address after the response. A rule broken stores nothing and refills the form.
  */
@@ -50,6 +50,8 @@ export async function saveDetails(formData: FormData): Promise<void> {
       lastName: details.lastName,
       phone: details.phone,
       language: details.language,
+      // An unticked box posts nothing (components/ui/checkbox.tsx), which is off.
+      menuEmails: formData.get("menuEmails") === "on",
     }),
   );
   if (normalizeEmail(details.email) === member.email) redirect(`${ACCOUNT_DETAILS_PATH}?saved=1`);
