@@ -926,7 +926,7 @@ describe("issue 135 — AC3: the decline email", () => {
     // The race: an overlapping firing, or the member's own retry, records the decline while this run's charge is out.
     const real = payments.charge.bind(payments);
     vi.spyOn(payments, "charge").mockImplementation(async (input) => {
-      await repo.recordSignupDecline(input.referenceId);
+      await repo.recordSignupDecline(input.referenceId ?? "no reference");
       return real(input);
     });
     await run();
