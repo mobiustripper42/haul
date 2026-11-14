@@ -24,6 +24,7 @@
     "db:seed:pickup-weeks": "tsx db/seed.ts pickup-weeks",
     "db:seed:subscribers": "tsx db/seed.ts subscribers",
     "db:seed:supper-club": "tsx db/seed.ts supper-club",
+    "db:seed:week-lists": "tsx db/seed.ts week-lists",
     "db:reset:dev": "tsx db/reset-dev.ts",
     "db:rebuild:dev": "tsx db/rebuild.ts",
     "square:seed": "tsx db/square-sandbox-customers.ts",

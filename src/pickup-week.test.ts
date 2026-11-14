@@ -10,6 +10,7 @@ import {
   formatPickupDate,
   formatShortDate,
   latestCutoffWeek,
+  listableWeeks,
   listedWeekTitle,
   menuEmailDate,
   nextPickup,
@@ -451,6 +452,35 @@ describe("AC3 (issue 134) — latestCutoffWeek", () => {
     const friday = product({ cutoffWeekday: 5, cutoffTime: "18:00:00" });
     expect(latestCutoffWeek(friday, new Date("2027-03-05T22:59:00.000Z"))).toBe("2027-02-28");
     expect(latestCutoffWeek(friday, new Date("2027-03-05T23:00:00.000Z"))).toBe("2027-03-07");
+  });
+});
+
+// Issue 142: the weeks the weekly lists offer. The range and the closed weeks are owned here; the screen, the two
+// downloads and the print page each take one offered and one fallen-back week through it (app/admin/lists/).
+// Wednesday, February 3, 2027, noon in Cleveland: the calendar starts at February 7, and January 31's pickup is over.
+describe("AC3 (issue 142) — listableWeeks", () => {
+  const FEB_3 = new Date("2027-02-03T17:00:00.000Z");
+  const sundaysFrom = (first: string, count: number, step = 7): string[] =>
+    Array.from({ length: count }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * step * 86_400_000).toISOString().slice(0, 10));
+  const weeksOf = (weeks: AdminWeek[]): string[] => weeks.map((week) => week.weekOf);
+  const closed = (weekOf: string): ChangedWeek => ({ weekOf, closedAt: new Date("2027-01-05T15:00:00.000Z"), note: null, firstDay: null, lastDay: null });
+
+  it("AC3: the calendar's 12 upcoming weeks oldest first, then the 4 most recent past weeks newest first", () => {
+    expect(weeksOf(listableWeeks(product(), FEB_3, []))).toEqual([...sundaysFrom("2027-02-07", 12), "2027-01-31", "2027-01-24", "2027-01-17", "2027-01-10"]);
+  });
+
+  it("AC3: each week is the one the calendar builds, a moved week's days and cutoffPassed included", () => {
+    const changed: ChangedWeek[] = [{ weekOf: "2027-02-21", closedAt: null, note: "Heads up", firstDay: "2027-02-20", lastDay: "2027-02-21" }];
+    expect(listableWeeks(product(), FEB_3, changed)).toEqual([...upcomingWeeks(product(), FEB_3, changed), ...pastWeeks(product(), FEB_3, changed, "2027-01-03").slice(0, 4)]);
+  });
+
+  it("AC3 [Lead]: a closed week is left out, upcoming or past, with no week added in its place", () => {
+    const upcoming = sundaysFrom("2027-02-07", 12).filter((weekOf) => weekOf !== "2027-02-14");
+    expect(weeksOf(listableWeeks(product(), FEB_3, [closed("2027-02-14"), closed("2027-01-24")]))).toEqual([...upcoming, "2027-01-31", "2027-01-17", "2027-01-10"]);
+  });
+
+  it("AC3: never a past week before the product's first pickup date: near its start there are fewer than 4", () => {
+    expect(weeksOf(listableWeeks(product(), new Date("2027-01-13T17:00:00.000Z"), []))).toEqual([...sundaysFrom("2027-01-17", 12), "2027-01-10", "2027-01-03"]);
   });
 });
 

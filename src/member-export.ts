@@ -8,9 +8,26 @@ const PHONE_AS_TYPED = /^[\d\s+\-().]+$/;
 const FORMULA_START = /^[=+\-@＝＋－＠]/;
 
 /** `value` as one CSV cell: a formula start is neutralised with a leading apostrophe, then RFC 4180 quoting. */
-function cell(value: string, { asTyped = false }: { asTyped?: boolean } = {}): string {
+export function cell(value: string, { asTyped = false }: { asTyped?: boolean } = {}): string {
   const safe = !asTyped && FORMULA_START.test(value) ? `'${value}` : value;
   return /[",\r\n]/.test(safe) ? `"${safe.replaceAll('"', '""')}"` : safe;
+}
+
+/**
+ * The member's columns, as cells in the order of "Last name, First name, Email, Phone", then one per option type in the
+ * order given. Neutralised against formulas, except a phone made only of digits, spaces and `+ - ( ) .`.
+ */
+export function memberCells(
+  optionTypeNames: string[],
+  member: Pick<Subscriber, "firstName" | "lastName" | "email" | "phone" | "options">,
+): string[] {
+  return [
+    cell(member.lastName ?? ""),
+    cell(member.firstName ?? ""),
+    cell(member.email),
+    cell(member.phone ?? "", { asTyped: PHONE_AS_TYPED.test(member.phone ?? "") }),
+    ...optionTypeNames.map((typeName) => cell(member.options.find((option) => option.typeName === typeName)?.optionName ?? "")),
+  ];
 }
 
 /**
@@ -20,13 +37,6 @@ function cell(value: string, { asTyped = false }: { asTyped?: boolean } = {}): s
  */
 export function subscribersCsv(optionTypeNames: string[], subscribers: Subscriber[]): string {
   const header = ["Last name", "First name", "Email", "Phone", ...optionTypeNames, "Joined"].map((name) => cell(name));
-  const rows = [...subscribers].sort(compareNames).map((subscriber) => [
-    cell(subscriber.lastName ?? ""),
-    cell(subscriber.firstName ?? ""),
-    cell(subscriber.email),
-    cell(subscriber.phone ?? "", { asTyped: PHONE_AS_TYPED.test(subscriber.phone ?? "") }),
-    ...optionTypeNames.map((typeName) => cell(subscriber.options.find((option) => option.typeName === typeName)?.optionName ?? "")),
-    cell(subscriber.joinedDate),
-  ]);
+  const rows = [...subscribers].sort(compareNames).map((subscriber) => [...memberCells(optionTypeNames, subscriber), cell(subscriber.joinedDate)]);
   return [header, ...rows].map((record) => `${record.join(",")}\r\n`).join("");
 }

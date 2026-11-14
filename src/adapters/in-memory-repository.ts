@@ -18,6 +18,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type WeekBoxes,
   type WeekCredit,
   type WeekDue,
   type WeekMade,
@@ -633,6 +634,11 @@ export class InMemoryRepository implements Repository {
     return live && firstPaid !== undefined && firstPaid <= weekOf && !skipped;
   }
 
+  /** Whether the subscription holds a `declined` ledger row, in any week: the one home of the test, shared by `listSubscribers` and `listWeekBoxes`. */
+  private holdsDeclinedRow(subscriptionId: string): boolean {
+    return [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && row.status === "declined");
+  }
+
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
     const counts = new Map<string, { paid: number; weekCredits: number }>();
     const countsOf = (week: string) => {
@@ -714,6 +720,39 @@ export class InMemoryRepository implements Repository {
     return id;
   }
 
+  /**
+   * Issue 142: the week's meals and skips of the product's `active` and `cancelled` subscriptions (a `pending` one's row
+   * is a signup in progress). A subscription holding a `paid`, `pending` or `declined` row for the week is a meal, one
+   * holding a `skipped` row a skip, and one with no row a meal when it is due the week as of `cutoff` (`isDueAsOf`). Each
+   * carries its member and its picks, named in option-type position order: the row's (`rowPicks`), else those in effect for the week.
+   */
+  async listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes> {
+    const lists: WeekBoxes = { boxes: [], skips: [] };
+    for (const subscription of this.subscriptions.values()) {
+      const member = this.members.get(subscription.memberId);
+      if (subscription.productId !== productId || (subscription.status !== "active" && subscription.status !== "cancelled") || !member) continue;
+      const row = [...this.ledger.values()].find((found) => found.subscriptionId === subscription.id && found.pickupDate === weekOf);
+      const picks = row ? this.rowPicks(row) : (this.setInEffect(subscription.id, weekOf)?.optionIds ?? {});
+      const who = {
+        subscriptionId: subscription.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        email: member.email,
+        phone: member.phone,
+        options: this.optionsNamed(subscription, picks),
+      };
+      if (row?.status === "skipped") lists.skips.push(who);
+      else if (row !== undefined || this.isDueAsOf(subscription, weekOf, cutoff)) {
+        lists.boxes.push({
+          ...who,
+          weekCredit: row !== undefined && this.spentCreditOn(row.id) !== undefined,
+          cardDeclined: this.holdsDeclinedRow(subscription.id),
+        });
+      }
+    }
+    return lists;
+  }
+
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     return [...this.subscriptions.values()]
       .filter((s) => s.productId === productId && (s.status === "active" || s.status === "cancelled"))
@@ -733,7 +772,7 @@ export class InMemoryRepository implements Repository {
             joinedDate: clevelandDate(paidAt),
             status: subscription.status as "active" | "cancelled",
             refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
-            cardDeclined: subscription.status === "active" && [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.status === "declined"),
+            cardDeclined: subscription.status === "active" && this.holdsDeclinedRow(subscription.id),
           },
         ];
       });

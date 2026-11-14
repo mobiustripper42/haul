@@ -249,6 +249,18 @@ export function pastWeeks(product: ProductWithOptions, now: Date, changed: Chang
   return weeks.reverse();
 }
 
+/** How many past weeks the weekly lists offer (issue 142). */
+export const PAST_LISTED_WEEKS = 4;
+
+/**
+ * The weeks the admin's weekly lists offer (issue 142): the calendar's upcoming weeks oldest first, then the
+ * `PAST_LISTED_WEEKS` most recent past weeks newest first, a closed week left out of either with no week added in its place.
+ */
+export function listableWeeks(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): AdminWeek[] {
+  const past = pastWeeks(product, now, changed, product.firstPickupDate).slice(0, PAST_LISTED_WEEKS);
+  return [...upcomingWeeks(product, now, changed), ...past].filter((week) => week.closedAt === null);
+}
+
 /** A listed week's title (issue 155): a closed week carries its ordinary days, its move waiting for a reopen. */
 export function listedWeekTitle(t: Translator, week: AdminWeek, language: Language): string {
   return weekTitle(t, week.closedAt === null ? week : pickupWeek(week.weekOf, null), language);

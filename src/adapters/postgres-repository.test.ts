@@ -14,6 +14,7 @@ import { createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { runWeekCreditContract } from "./week-credit-contract.js";
+import { runWeekListsContract } from "./week-lists-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
@@ -108,6 +109,9 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
 
   // Issue 134: the charge run's repository methods, through the same seams.
   runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
+
+  // Issue 142: a week's meals and skips, through the same seams.
+  runWeekListsContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
 
   // Issue 150: Postgres only. The contract reads a row paid at enrolment through listMemberWeeks and listPendingCharges;
   // its paid_at, attempt and payment id, and the week credit's spent_on, are read here, from the tables.

@@ -17,6 +17,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type WeekBoxes,
   type WeekCredit,
   type WeekDue,
   type WeekMade,
@@ -171,6 +172,12 @@ const dueAsOf = (weekParam: string, cutoffParam: string): string =>
   `((s.status = 'active' or (s.status = 'cancelled' and s.cancelled_at >= ${cutoffParam}::timestamptz))
     and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= ${weekParam}::date
     and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = ${weekParam}::date and l.status = 'skipped'))`;
+
+/**
+ * A condition on `subscriptions s`: the subscription holds a `declined` ledger row, in any week (issue 142). The one home
+ * of the test, shared by `listSubscribers` and `listWeekBoxes`.
+ */
+const HOLDS_DECLINED_ROW = `exists (select 1 from ledger declined where declined.subscription_id = s.id and declined.status = 'declined')`;
 
 /** A `where` condition on `subscription_options so`: the row belongs to the subscription's newest set, whatever week it starts from. */
 const NEWEST_SET = `so.from_week = (select max(newest.from_week) from subscription_options newest where newest.subscription_id = so.subscription_id)`;
@@ -1246,6 +1253,67 @@ export class PostgresRepository implements Repository {
   }
 
   /**
+   * Issue 142: the week's meals and skips of the product's `active` and `cancelled` subscriptions (a `pending` one's row
+   * is a signup in progress). A subscription holding a `paid`, `pending` or `declined` row for the week is a meal, one
+   * holding a `skipped` row a skip, and one with no row a meal when it is due the week as of `cutoff` (`dueAsOf`). Each
+   * carries its member and its picks, named in option-type position order: the row's (`rowPicks`), else those in effect
+   * for the week. Stable by subscription id.
+   */
+  async listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes> {
+    if (!UUID_SHAPE.test(productId)) return { boxes: [], skips: [] };
+    const { rows } = await this.db.query<{
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+      phone: string | null;
+      row_id: string | null;
+      skipped: boolean;
+      week_credit: boolean;
+      card_declined: boolean;
+    }>(
+      `select s.id, m.first_name, m.last_name, m.email, m.phone, wk.id as row_id, coalesce(wk.status = 'skipped', false) as skipped,
+              (wk.id is not null and exists (select 1 from week_credits c where c.spent_on = wk.id)) as week_credit,
+              ${HOLDS_DECLINED_ROW} as card_declined
+         from subscriptions s
+         join members m on m.id = s.member_id
+         left join ledger wk on wk.subscription_id = s.id and wk.pickup_date = $2::date
+        where s.product_id = $1 and s.status in ('active', 'cancelled')
+          and (wk.id is not null or ${dueAsOf("$2", "$3")})
+        order by s.id`,
+      [productId, weekOf, cutoff],
+    );
+    const { rows: picked } = await this.db.query<{ subscription_id: string; type_name: string; option_name: string }>(
+      `select wk.subscription_id, t.name as type_name, o.name as option_name
+         from unnest($1::uuid[], $2::uuid[]) as wk (subscription_id, ledger_id)
+         join lateral (
+           ${rowPicks("wk.ledger_id")}
+           union all
+           select so.option_type_id, so.option_id from subscription_options so
+            where wk.ledger_id is null and so.subscription_id = wk.subscription_id and ${inEffectFor("$3::date")}
+         ) picks on true
+         join option_types t on t.id = picks.option_type_id
+         join options o on o.id = picks.option_id
+        order by t.position, t.name`,
+      [rows.map((row) => row.id), rows.map((row) => row.row_id), weekOf],
+    );
+    const lists: WeekBoxes = { boxes: [], skips: [] };
+    for (const row of rows) {
+      const who = {
+        subscriptionId: row.id,
+        firstName: row.first_name,
+        lastName: row.last_name,
+        email: row.email,
+        phone: row.phone,
+        options: picked.filter((pick) => pick.subscription_id === row.id).map((pick) => ({ typeName: pick.type_name, optionName: pick.option_name })),
+      };
+      if (row.skipped) lists.skips.push(who);
+      else lists.boxes.push({ ...who, weekCredit: row.week_credit, cardDeclined: row.card_declined });
+    }
+    return lists;
+  }
+
+  /**
    * The active and cancelled subscriptions to the product, each with its member and the date its first paid row was
    * paid, in Cleveland. A subscription with no paid row is left out: only a paid row makes one active. `refundOwed`
    * is a cancelled subscription holding a week credit not yet spent; `cardDeclined` an active one holding a declined row. Stable by the date joined, then by id.
@@ -1267,8 +1335,7 @@ export class PostgresRepository implements Repository {
               ${clevelandDay("paid.first_paid_at")} as joined, s.status,
               (s.status = 'cancelled'
                 and exists (select 1 from week_credits c where c.subscription_id = s.id and c.spent_on is null)) as refund_owed,
-              (s.status = 'active'
-                and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'declined')) as card_declined
+              (s.status = 'active' and ${HOLDS_DECLINED_ROW}) as card_declined
          from subscriptions s
          join members m on m.id = s.member_id
          join lateral (
