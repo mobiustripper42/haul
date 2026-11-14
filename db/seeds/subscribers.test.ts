@@ -69,7 +69,7 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
     ]);
   });
 
-  it("AC5 (issue 102): every member's first pickup is 2027-01-10", async () => {
+  it("AC5 (issue 102): every member's first pickup is 2026-10-25", async () => {
     await runSeed("subscribers", url);
 
     const { rows } = await pool.query<{ pickup_date: string }>(
@@ -80,7 +80,21 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
         where p.name = 'Supper Club'`,
     );
     expect(rows).toHaveLength(12);
-    expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2027-01-10"]);
+    expect([...new Set(rows.map((row) => row.pickup_date))]).toEqual(["2026-10-25"]);
+  });
+
+  it("AC4 (issue 138): every subscription's picks start from its first ledger week, 2026-10-25", async () => {
+    await runSeed("subscribers", url);
+
+    const { rows } = await pool.query<{ from_week: string; picks: number }>(
+      `select to_char(so.from_week, 'YYYY-MM-DD') as from_week, count(*)::int as picks
+         from subscription_options so
+         join subscriptions s on s.id = so.subscription_id
+         join products p on p.id = s.product_id
+        where p.name = 'Supper Club'
+        group by so.from_week`,
+    );
+    expect(rows).toEqual([{ from_week: "2026-10-25", picks: 24 }]);
   });
 
   it("AC12 (seed): none of the members has a Square customer", async () => {
@@ -90,5 +104,22 @@ describe.skipIf(!up)(`AC12's seed — subscribers against <test db>_subscribers$
 
     expect(rows).toHaveLength(12);
     expect(rows.filter((row) => row.square_customer_id !== null)).toEqual([]);
+  });
+
+  // Issue 151: AC10's by-hand check reads a closed week's email in both languages, so one subscriber is Spanish.
+  it("AC10's seed (issue 151): each subscriber has a language, Ana Gutierrez's Spanish and every other's English", async () => {
+    await runSeed("subscribers", url);
+
+    const { rows } = await pool.query<{ email: string; language: string }>(
+      `select m.email, m.language
+         from members m
+         join subscriptions s on s.member_id = m.id
+         join products p on p.id = s.product_id
+        where p.name = 'Supper Club'
+        order by m.email`,
+    );
+    expect(rows).toHaveLength(12);
+    expect(rows.filter((row) => row.language === "es").map((row) => row.email)).toEqual(["ana.gutierrez@example.com"]);
+    expect(rows.filter((row) => row.language === "en")).toHaveLength(11);
   });
 });

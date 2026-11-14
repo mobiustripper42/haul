@@ -16,7 +16,7 @@ export const SORT_CHOICES: readonly Sort[] = [
 export const OPENING_SORT: Sort = { key: "name", direction: "asc" };
 
 /** Case-insensitive, accents kept: "abara" and "Abara" are one name, "Lee" comes before "Lee Kim". */
-const collator = new Intl.Collator("en", { sensitivity: "accent" });
+export const collator = new Intl.Collator("en", { sensitivity: "accent" });
 
 type Named = Pick<Subscriber, "firstName" | "lastName">;
 
@@ -30,9 +30,12 @@ export function subscriberName({ firstName, lastName }: Named): string {
   return [lastName, firstName].filter(Boolean).join(", ");
 }
 
-/** The picked options joined with " · ". */
+/** What joins the parts of one line: the picks, and phone · language. */
+export const SEPARATOR = " · ";
+
+/** The picked options joined with `SEPARATOR`. */
 export function mealLabel(options: Subscriber["options"]): string {
-  return options.map((option) => option.optionName).join(" · ");
+  return options.map((option) => option.optionName).join(SEPARATOR);
 }
 
 const digitsOf = (text: string): string => text.replace(/\D/g, "");
@@ -53,11 +56,14 @@ export function filterSubscribers(rows: Subscriber[], query: string): Subscriber
   });
 }
 
-/** In Phase 1 every row is Active; the Status column sorts, and ties on it fall to the name. */
+/** Each status's place in the Status sort, by rank rather than spelling, so a later status lands where it is put. */
+const STATUS_ORDER: Record<Subscriber["status"], string> = { active: "0", cancelled: "1" };
+
+/** The Status column sorts on the row's own status, Active before Cancelled (issue 139); ties on it fall to the name. */
 const COLUMN: Record<Exclude<SortKey, "name">, (row: Subscriber) => string> = {
   meal: (row) => mealLabel(row.options),
   joined: (row) => row.joinedDate,
-  status: () => "",
+  status: (row) => STATUS_ORDER[row.status],
 };
 
 /** A new list in `sort`'s order. A tie breaks on name, ascending, even when the column is descending. */

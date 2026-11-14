@@ -34,7 +34,10 @@ const member = (firstName: string | null): Member => ({
 });
 
 const CONFIRMATION = {
+  subscriptionId: "5eed0000-0000-4000-8000-000000000001",
   pickupDate: "2027-01-03",
+  firstDay: "2027-01-03",
+  lastDay: "2027-01-04",
   firstChargeCents: 5000,
   weeklyCents: 8550,
   chargedDate: "2026-11-07",
@@ -42,6 +45,8 @@ const CONFIRMATION = {
     { typeName: "How many people?", optionName: "2 people" },
     { typeName: "Which menu?", optionName: "Standard" },
   ],
+  optionsFromWeek: "2027-01-03",
+  choices: { size: "two", menu: "standard" },
 };
 
 async function sent(firstName: string | null) {

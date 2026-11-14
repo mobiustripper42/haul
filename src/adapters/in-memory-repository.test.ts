@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
+import { runChargeRunContract } from "./charge-run-contract.js";
+import { runEmailChangeContract } from "./email-change-contract.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
+import { runWeekCreditContract } from "./week-credit-contract.js";
 
 // Issue 71, AC5: the fake reads its event actors from events().
 let contractRepo: InMemoryRepository;
@@ -10,6 +13,30 @@ runRepositoryContract(
   async () => (contractRepo = new InMemoryRepository()),
   async () => contractRepo.events().map((event) => event.actor),
 );
+
+// Issue 149: closing and reopening weeks, and the week credits, through the fake's test seams; issue 155 adds the
+// spending of a week credit.
+let weekRepo: InMemoryRepository;
+runWeekCreditContract(
+  "in-memory",
+  async () => (weekRepo = new InMemoryRepository()),
+  async (input) => weekRepo.addProduct(input),
+  (subscriptionId, pickupDate, status, amountCents) => weekRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
+  (weekCreditId, ledgerId) => weekRepo.spendWeekCredit(weekCreditId, ledgerId),
+);
+
+// Issue 134: the charge run's repository methods, through the same seams.
+let chargeRepo: InMemoryRepository;
+runChargeRunContract(
+  "in-memory",
+  async () => (chargeRepo = new InMemoryRepository()),
+  async (input) => chargeRepo.addProduct(input),
+  (subscriptionId, pickupDate, status, amountCents) => chargeRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
+  (weekCreditId, ledgerId) => chargeRepo.spendWeekCredit(weekCreditId, ledgerId),
+);
+
+// Issue 156: a member's own details and their pending email change.
+runEmailChangeContract("in-memory", async () => new InMemoryRepository());
 
 // Issue 9, AC16–AC19: the repository is a sign-in store too, and a subject is a member.
 runSignInStoreContract("in-memory repository", async () => {

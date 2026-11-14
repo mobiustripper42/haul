@@ -40,7 +40,7 @@ describe("AC12 — the check on the real repo", () => {
 
 const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
 
-describe("AC13 — the list is exactly these sixteen entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these thirty-two entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
@@ -67,6 +67,29 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         "app/supper-club/actions.ts#resendPaneAccountCode": { records: ["rate_limit_refusal"] },
         "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
         "app/admin/members.csv/route.ts#GET": { none: "reads" },
+        // Issue 149: the weeks screen's actions write rows the audit trigger records, and record no event.
+        "app/admin/weeks/actions.ts#closeWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#reopenWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#saveWeekNote": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        "app/admin/weeks/actions.ts#moveWeek": { none: "writes pickup_weeks and week_credits; audited by trigger" },
+        // Issue 137: a member's Skip and Unskip write a ledger row the audit trigger records, and record no event.
+        "app/account/weeks/actions.ts#skipWeek": { none: "writes ledger; audited by trigger" },
+        "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
+        // Issue 138: a member's switch writes subscription_options and the weekly price, which the trigger records.
+        "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },
+        // Issue 139: the member's cancel and the admin's write the subscription's status, which the trigger records.
+        "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
+        "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
+        // Issue 156: Your details. A save and a resend count in sign-in's request limit; a confirm records the change;
+        // Keep the old email records nothing (its reason is the entry's own).
+        "app/account/details/actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
+        "app/account/details/actions.ts#confirmEmailChange": { records: ["email_changed"] },
+        "app/account/details/actions.ts#resendEmailChange": { records: ["rate_limit_refusal"] },
+        "app/account/details/actions.ts#keepOldEmail": AUDIT_ENTRY_POINTS["app/account/details/actions.ts#keepOldEmail"] ?? { none: "an entry for keepOldEmail" },
+        // Issue 140: the menu library's actions and a week's menu write rows the audit trigger records, and record no event.
+        "app/admin/menus/actions.ts#createMenu": { none: "writes menus and menu_texts; audited by trigger" },
+        "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },
+        "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
       }),
     );
   });

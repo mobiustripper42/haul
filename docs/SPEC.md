@@ -143,17 +143,28 @@ and 4.
 
 - **Pickup window:** Sunday and Monday. Members do not choose a day; they come either day.
 - **Cutoff:** the end of Monday (midnight going into Tuesday), Cleveland time — Lenny orders on
-  Tuesdays. One setting row, changeable by SQL. All changes and the weekly charge key off it.
+  Tuesdays. Set on each product, changeable by SQL. All changes and the weekly charge key off it.
   It closes the following Sunday/Monday window, six days on, and stays Monday at midnight in a week
   whose window moves.
-- **Closed weeks:** the weekend after Thanksgiving, Christmas and New Year's have no pickup and no
-  charge. Closed weeks are seeded by their window's date.
-- **Moved windows:** holiday weeks may move to Saturday and Sunday.
-- **Unexpected closure:** an admin can close an upcoming week from a screen (the kitchen flooded).
-  Before cutoff nobody is charged. After cutoff, every member charged for that week gets a **week
-  credit**: the next week they take is made and not charged. A credit is counted in meals, not
-  dollars — a meal is a meal, whatever that week's price or the member's size (V1). A skipped week
-  doesn't use it; a member who cancels with a credit unused is refunded in Square by hand (DEC-005).
+- **The admin calendar:** one admin screen, on phone and desktop, showing the upcoming pickup weeks.
+  On it an admin closes a week, moves a week's pickup days, and assigns a week's menu (§7.5).
+- **Closed weeks:** an admin closes a week from the calendar: the weekend after Thanksgiving,
+  Christmas and New Year's as well as an emergency (the kitchen flooded). Nothing is seeded. A closed
+  week has no pickup and no charge. An admin may add a note to it, shown only on the calendar.
+  Closing a week emails every subscription due that week, in the member's language, saying there is
+  no pickup and whether they hold a week credit or simply won't be charged.
+  A subscription is due a week when it is active, the week is on or after the first week it paid for,
+  and it has not skipped it; one charged for the week is due whatever its status.
+  Every subscription already charged for that week, at signup or
+  by the run at its cutoff, gets a **week credit**: the next week it takes is made and not charged.
+  A subscription not yet charged simply isn't. A week credit is a meal of the size that was charged,
+  never dollars: the next week the subscription takes is made at that size and not charged, and a
+  size switch takes effect the week after. A skipped week doesn't use
+  it; a member who cancels with a week credit unused is refunded in Square by hand (DEC-005). An
+  admin can reopen a closed week until its cutoff; reopening withdraws the week credits its closing
+  granted. After the cutoff a closure stands.
+- **Moved windows:** an admin moves a week's pickup days from the calendar, for example to Saturday
+  and Sunday. The cutoff does not move.
 
 ### 7.3 Payments and the ledger
 
@@ -195,8 +206,9 @@ Nobody is charged and then refused.
 
 ### 7.5 Menus and translation
 
-- Menus are records in a library: a standard text and a vegan text. Admins find, duplicate and
-  edit them, and assign one to each pickup week, as far ahead as they like — on phone or desktop.
+- Menus are records in a library: a text for each option of the product's menu option type (the Supper Club's: standard and vegan). Admins find, duplicate and
+  edit them, and assign one to each pickup week on the admin calendar (§7.2), as far ahead as they
+  like — on phone or desktop.
   (The library replaces the requirements' one-record-per-date model; Eric, 2026-10-25.)
 - Admins get an email when a week coming up soon has no menu.
 - Each week the assigned menu goes out by email to members picking up that week and appears on a
@@ -349,7 +361,8 @@ Viewable reports, scoped once the farm says what Square does not already give th
    10–11, 2027.
 3. *Answered 2026-11-07 (Lenny):* Portioned for 2 at $42 and Portioned for 4 at $74 (§6.1).
 4. The free gift: confirm it is dropped.
-5. Is the benefit week a closed week, and which weeks move to Saturday/Sunday?
+5. *Answered 2026-11-10 (Eric):* Lenny closes and moves weeks himself on the admin calendar (§7.2),
+   the benefit week included; the spec keeps no list.
 6. *Answered 2026-11-07 (Lenny, from Patrick):* English and Spanish are enough for now.
 7. Does Constant Contact stay for newsletters and recipes?
 8. Pickup location and hours for the Supper Club and the CSA.

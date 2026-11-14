@@ -1,6 +1,7 @@
 import { matchCustomer, sha256Key } from "./customer-match.js";
+import { recordDecline, sendCharge } from "./ledger-charge.js";
 import type { Member } from "./members.js";
-import { firstPickup } from "./pickup-week.js";
+import { clevelandDate, firstPickup } from "./pickup-week.js";
 import { isCardRefusal, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
@@ -103,6 +104,7 @@ async function prepare(
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 
   const priceCents = priceOfChoices(product, input.choices);
+  const changed = await repo.listChangedWeeks(product.id, clevelandDate(now));
   let row: PendingSignup;
   try {
     row = await repo.withActor(actor, (scoped) =>
@@ -112,7 +114,7 @@ async function prepare(
         choices: input.choices,
         firstChargeCents: priceCents,
         weeklyCents: priceCents,
-        pickupDate: firstPickup(product, now),
+        pickupDate: firstPickup(product, now, changed).weekOf,
         consentText: input.consentText,
         consentAt: now,
       }),
@@ -218,14 +220,6 @@ async function linkCustomer(deps: SignupDeps, member: Member): Promise<string> {
   return match.customerId;
 }
 
-/** The decline write: the ledger row to declined, and the event that records it, in one commit. */
-async function recordDecline(repo: Repository, actor: Actor, memberId: string, ledgerId: string, code: string): Promise<void> {
-  await repo.withActor(actor, async (scoped) => {
-    await scoped.recordSignupDecline(ledgerId);
-    await scoped.recordEvent({ kind: "card_declined", memberId, detail: { ledgerId, code } });
-  });
-}
-
 /**
  * Charges, or confirms what Square already took, and writes the result. Anything that fails from here on
  * is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
@@ -239,7 +233,7 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     const found = charge.lookupFirst
       ? await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt })
       : null;
-    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await send(payments, charge);
+    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, charge);
     if (result.outcome === "declined") {
       await recordDecline(repo, actor, memberId, row.ledgerId, result.code);
       return { outcome: "declined" };
@@ -262,24 +256,5 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     logFailure("charge", error);
     await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
     return { outcome: "unknown" };
-  }
-}
-
-/**
- * The charge, under the key the ledger row and its attempt make. A throw is Square giving no answer, and
- * the same key goes again once at once: a charge Square took comes back as that payment, not a second one.
- */
-async function send(payments: PaymentsPort, { row, cardId, customerId }: Charge): Promise<ChargeResult> {
-  const request = {
-    customerId,
-    cardId,
-    amountCents: row.amountCents,
-    idempotencyKey: `${row.ledgerId}:${row.attempt}`,
-    referenceId: row.ledgerId,
-  };
-  try {
-    return await payments.charge(request);
-  } catch {
-    return payments.charge(request);
   }
 }

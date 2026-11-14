@@ -14,6 +14,8 @@ export const AUDIT_EXEMPT: Readonly<Record<string, string>> = {
     "counters keyed by client address: auditing them would keep addresses forever, past the sweep that deletes them",
   sign_in_codes:
     "holds unsalted SHA-256 hashes of 6-digit codes, which reverse in milliseconds: auditing them would keep them after expiry",
+  email_changes:
+    "holds an unsalted SHA-256 hash of a 6-digit code, which reverses in milliseconds, and is rewritten on every guess: auditing it would keep the hash after expiry",
 };
 
 export type SchemaViolation = {

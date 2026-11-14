@@ -277,6 +277,11 @@
     @apply hidden;
   }
 
+  /* The signed-in header's Menu button: shown below 720px only, where the account row is not (see the media query after the layers). */
+  .account-menu {
+    @apply hidden;
+  }
+
   /* An alert: danger border, soft fill, an icon before the words. */
   .notice {
     @apply flex items-start gap-3 rounded-md border border-danger bg-danger-soft px-4 py-3 text-small text-ink;
@@ -305,9 +310,22 @@
     @apply bg-success;
   }
 
+  /* The information alert (issue 139): Badge's closed look, an outline on the page's tint, with a teal circled "i". */
+  .notice-info {
+    --notice-icon: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='12' cy='12' r='9'/%3E%3Cpath d='M12 11v5'/%3E%3Cpath d='M12 7.5h.01'/%3E%3C/svg%3E");
+    @apply border-border bg-surface-alt;
+  }
+  .notice-info::before {
+    @apply bg-teal;
+  }
+
   /* A quiet button set flush: its text lines up with the card's edge, and its tap area adds no height. */
   .btn-flush {
     @apply -ml-2 -my-3;
+  }
+  /* A button whose label never breaks across lines: the header's, which wrap as buttons rather than as words. */
+  .btn-nowrap {
+    @apply whitespace-nowrap;
   }
   /* The same at the right edge, for the quiet button that ends the header's row (issue 84); `-narrow` below lg only. */
   .btn-flush-end {
@@ -352,12 +370,19 @@
   }
 }
 
-/* The members list: a table from 720px (45rem) up, stacked rows below it. Unlayered, for the reason above. */
+/* The members list: a table from 720px (45rem) up, stacked rows below it; the signed-in header the same. Unlayered, for the reason above. */
 @media (width < 45rem) {
   .data-table {
     display: none;
   }
   .row-list {
     display: flex;
+  }
+  /* The signed-in header: the account links fold into the Menu button (issue 155). */
+  .account-row {
+    display: none;
+  }
+  .account-menu {
+    display: block;
   }
 }

@@ -3,7 +3,7 @@ import { resolveChoices } from "@core/choices.js";
 import type { Translator } from "@core/i18n.js";
 import { memberDisplayName, type Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
-import { firstPickup } from "@core/pickup-week.js";
+import { clevelandDate, firstPickup } from "@core/pickup-week.js";
 import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import { Button } from "../../components/ui/button";
@@ -11,9 +11,9 @@ import { ButtonRow } from "../../components/ui/button-row";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
-import { OptionPicker } from "../../components/ui/option-picker";
 import { PricePanel } from "../../components/ui/price-panel";
 import { getLanguage, getTranslator } from "../language";
+import { MealPickers } from "../meal-pickers";
 import { getFarmContactEmail, getRepository, isProduction } from "../services";
 import { getSignedInMember } from "../session";
 import { retrySupperClubPayment } from "./actions";
@@ -68,7 +68,8 @@ async function paymentSection({
 }) {
   const language = await getLanguage();
   const payError = PAY_ERRORS.find((known) => known === query.payError);
-  const pickup = firstPickup(product, new Date());
+  const now = new Date();
+  const pickup = firstPickup(product, now, await getRepository().listChangedWeeks(product.id, clevelandDate(now)));
   return (
     <PaymentSection
       prices={product.optionTypes.map((type) => ({
@@ -77,7 +78,7 @@ async function paymentSection({
       }))}
       choices={choices}
       wordings={Object.fromEntries(
-        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickup, language })]),
+        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickup.firstDay, language })]),
       )}
       payError={payError}
       text={{
@@ -170,19 +171,7 @@ export default async function SupperClub({
         ) : (
           <>
             <form method="get" action={member ? "/supper-club" : "/supper-club/continue"} className="flex flex-col gap-5">
-              {product.optionTypes.map((type, index) => (
-                <OptionPicker
-                  key={type.id}
-                  name={type.id}
-                  legend={t("supperClub.pickerLegend", { n: index + 1, name: type.name })}
-                  options={type.options.map((option) => ({
-                    value: option.id,
-                    label: option.name,
-                    ...(option.priceCents > 0 ? { detail: t("supperClub.price", { price: formatUsdWhole(option.priceCents) }) } : {}),
-                  }))}
-                  selected={choices[type.id] ?? ""}
-                />
-              ))}
+              {MealPickers({ product, selected: choices, t })}
               <Hint>{t("supperClub.switchHelp")}</Hint>
               {accountLegend}
               {member ? (

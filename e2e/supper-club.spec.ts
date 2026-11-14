@@ -16,7 +16,7 @@ import { createTranslator, LANGUAGES } from "../src/i18n.js";
 import { en } from "../src/messages/en.js";
 import { requireSupperClub } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
-import { expect, headerSignOut, outboxCount, test, waitForSignInCode } from "./fixtures";
+import { expect, expectSignedIn, outboxCount, test, waitForSignInCode } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 // The `members` seed's name for ERIC (db/seeds/members.ts).
@@ -523,7 +523,7 @@ test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the ri
   await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
   const box = (await page.locator("section").filter({ hasText: DONE_TITLE }).last().boundingBox())!;
   expect(box.x).toBeCloseTo(join.x, 0);
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 });
 
 test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone", async ({ page, request }, testInfo) => {
@@ -534,7 +534,7 @@ test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone"
   await expect(page).toHaveURL(onPath("/supper-club/done"));
   await expect(page.getByRole("heading", { name: DONE_TITLE })).toBeVisible();
   await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
-  await expect(headerSignOut(page)).toBeVisible();
+  await expectSignedIn(page);
 });
 
 test("AC5 (issue 56), AC9 (issue 97): a member with a box who opens /supper-club lands on the already page, which has no \"Go to your account\"", async ({ page, request }) => {

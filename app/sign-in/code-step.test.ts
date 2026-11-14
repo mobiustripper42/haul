@@ -6,7 +6,7 @@
 import { readdirSync, readFileSync } from "node:fs";
 import { join, relative, sep } from "node:path";
 import { fileURLToPath } from "node:url";
-import type { ReactElement } from "react";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
@@ -16,7 +16,7 @@ import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, inOrder, redirectOf } from "../screen-test-helpers";
-import { AccountCodeStep, SignInCodeStep } from "./code-step";
+import { AccountCodeStep, CodeStep, SignInCodeStep } from "./code-step";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 vi.mock("next/headers", async () => {
@@ -246,6 +246,40 @@ describe.each(STEPS)("AC2, AC3 (issue 101) — %s after a resend", (name, Step, 
       findAll(form as ReactElement, "input").filter((input) => input.props.name === "resend").map((input) => [input.props.type, String(input.props.value)]);
     expect(resendFields(resendForm)).toEqual([["hidden", "1"]]);
     expect(resendFields(codeForm)).toEqual([]);
+  });
+});
+
+// Issue 156: Your details reuses CodeStep with three additions — a caller's own `back` in place of the back link
+// ("Keep the old email" posts), a `notice` after the wrong-code notice (Square's refusal, the wait notice), and an
+// `invalidText` in place of sign-in's wrong-code line. The words here are the test's own.
+describe("issue 156 — CodeStep's back, notice and invalidText", () => {
+  const HEADING = "Check it";
+  const SENTENCE = "We sent it.";
+  const step = (extra: Record<string, unknown> = {}) =>
+    CodeStep({ heading: HEADING, sentence: SENTENCE, buttonLabel: "Confirm", verify, resend, backHref: "/flow", invalid: false, sent: false, ...extra } as Parameters<typeof CodeStep>[0]);
+  const BACK = createElement("p", null, "the caller's own back");
+  const NOTICE = createElement(Notice, { icon: "alert", children: "Something else went wrong." });
+
+  it("AC14: with back, the caller's element stands where the back link was, before the heading, and no link to backHref is drawn", async () => {
+    const html = renderToStaticMarkup(await step({ back: BACK }));
+    expect(inOrder(html, ["the caller's own back", HEADING])).toEqual(["the caller's own back", HEADING]);
+    expect(attributesOf(html, "a")).toEqual([]);
+    expect(html).not.toContain(en["signIn.differentEmail"]);
+  });
+
+  it("AC12: with invalidText, a wrong code shows that line in place of sign-in's", async () => {
+    const html = renderToStaticMarkup(await step({ invalid: true, invalidText: "That one is wrong here." }));
+    expect(alertTexts(html)).toEqual(["That one is wrong here."]);
+  });
+
+  it("AC11, AC13: notice is drawn after the wrong-code notice and above the code field", async () => {
+    const html = renderToStaticMarkup(await step({ invalid: true, notice: NOTICE }));
+    expect(alertTexts(html)).toEqual([en["signIn.invalidCode"], "Something else went wrong."]);
+    expect(inOrder(html, [SENTENCE, "Something else went wrong.", en["signIn.codeLabel"]])).toEqual([SENTENCE, "Something else went wrong.", en["signIn.codeLabel"]]);
+  });
+
+  it("AC11, AC13: notice is drawn on its own when the code was not wrong", async () => {
+    expect(alertTexts(renderToStaticMarkup(await step({ notice: NOTICE })))).toEqual(["Something else went wrong."]);
   });
 });
 

@@ -125,13 +125,17 @@ const VERIFY = [
   ["verifyPaneAccountCode", CREATE],
 ] as const;
 
+// Issue 136, AC6b: with no return path held, the pane's sign-in finishes at the account home, and its
+// Create Account still at the Supper Club page.
+const NO_RETURN_LANDING = { verifyPaneCode: ACCOUNT_PATH, verifyPaneAccountCode: "/supper-club" } as const;
+
 describe("the pane's page sets", () => {
   it("AC1: PANE_CREATE_PAGES is the Create Account pane, its code step, and /supper-club when no return path is held", () => {
     expect(PANE_CREATE_PAGES).toEqual({ start: CREATE, code: `${CREATE}/code`, done: "/supper-club" });
   });
 
-  it("AC2: PANE_SIGN_IN_PAGES is the sign-in pane, its code step, and /supper-club when no return path is held", () => {
-    expect(PANE_SIGN_IN_PAGES).toEqual({ start: SIGN_IN, code: `${SIGN_IN}/code`, done: "/supper-club" });
+  it(`AC2: PANE_SIGN_IN_PAGES is the sign-in pane, its code step, and ${ACCOUNT_PATH} when no return path is held`, () => {
+    expect(PANE_SIGN_IN_PAGES).toEqual({ start: SIGN_IN, code: `${SIGN_IN}/code`, done: ACCOUNT_PATH });
   });
 });
 
@@ -157,9 +161,9 @@ describe.each(VERIFY)("%s — a confirmed code", (name) => {
     expect(repo.events()).toEqual([{ kind: "sign_in_by_code", memberId: member.id, actor: { member: member.id } }]);
   });
 
-  it(`AC4: ${name} with no return path in the cookie lands on /supper-club`, async () => {
+  it(`AC4, AC6b: ${name} with no return path in the cookie lands on ${NO_RETURN_LANDING[name]}`, async () => {
     await memberAtCodeStep();
-    expect(await redirectOf(verify({ code: RIGHT_CODE }))).toBe("/supper-club");
+    expect(await redirectOf(verify({ code: RIGHT_CODE }))).toBe(NO_RETURN_LANDING[name]);
   });
 
   it(`AC4: ${name} with a bad return path still gives /, never /supper-club`, async () => {
@@ -273,6 +277,7 @@ describe("issue 56 — the pay actions", () => {
   const SOURCE = "cnon:card-nonce-ok";
   const CONSENT_50 = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
   const CONSENT_80 = "I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
+  const t = createTranslator("en");
 
   let product: ProductWithOptions;
   let member: Member;
@@ -406,6 +411,31 @@ describe("issue 56 — the pay actions", () => {
           "First pickup: Sunday, January 3. After that, your card is charged $80 at the end of each Monday for the following week's pickup, until you cancel. " +
           CONSENT_80,
       );
+    });
+
+    // Issue 133: the action works out the wording's first pickup itself, beside signUp's own.
+    it("AC1 (issue 133): with January 3 closed, the stored wording and the ledger row are both for January 10", async () => {
+      await repo.savePickupWeek(product.id, {
+        weekOf: "2027-01-03",
+        closedAt: new Date("2026-10-01T12:00:00.000Z"),
+        note: "Farm closed",
+        firstDay: null,
+        lastDay: null,
+      });
+      signIn();
+      const save = vi.spyOn(repo, "savePendingSignup");
+      await join(pay());
+      expect(save.mock.calls[0]?.[0]).toMatchObject({ pickupDate: "2027-01-10" });
+      expect(save.mock.calls[0]?.[0].consentText).toContain(t("supperClub.pickupLine", { date: "Sunday, January 10", price: "$80" }));
+    });
+
+    it("AC3 (issue 133): with January 3 moved to Saturday and Sunday, the stored wording names Saturday, January 2, and the row keeps January 3", async () => {
+      await repo.savePickupWeek(product.id, { weekOf: "2027-01-03", closedAt: null, note: "Moved", firstDay: "2027-01-02", lastDay: "2027-01-03" });
+      signIn();
+      const save = vi.spyOn(repo, "savePendingSignup");
+      await join(pay());
+      expect(save.mock.calls[0]?.[0]).toMatchObject({ pickupDate: "2027-01-03" });
+      expect(save.mock.calls[0]?.[0].consentText).toContain(t("supperClub.pickupLine", { date: "Saturday, January 2", price: "$80" }));
     });
 
     it("AC4: the wording and its time are stored as of now", async () => {

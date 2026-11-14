@@ -100,6 +100,24 @@ describe("AC6 (issue 56) — checkPaymentsInput on setCustomerReference", () => 
   });
 });
 
+// Issue 156: setCustomerEmail is checked as setCustomerReference is, before any request.
+describe("AC11 (issue 156) — checkPaymentsInput on setCustomerEmail", () => {
+  const VALID = { customerId: "CUSTOMER_1", email: "ada.new@example.com" };
+
+  it.each([
+    ["an empty customerId", "customerId", { ...VALID, customerId: "" }],
+    ["an empty email", "email", { ...VALID, email: "" }],
+  ])("AC11: %s throws a RangeError naming the port's field", (_label, field, input) => {
+    const error = thrownBy(() => checkPaymentsInput("setCustomerEmail", input));
+    expect(error).toBeInstanceOf(RangeError);
+    expect((error as Error).message).toContain(field);
+  });
+
+  it("AC11: a customerId and an email are accepted, which guards the refusals above", () => {
+    expect(() => checkPaymentsInput("setCustomerEmail", VALID)).not.toThrow();
+  });
+});
+
 describe("AC10a (issue 56) — isCardRefusal", () => {
   const error = (category: string) => new PaymentsError({ status: 402, category, code: "CVV_FAILURE", detail: "Declined." });
 

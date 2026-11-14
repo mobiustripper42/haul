@@ -19,13 +19,25 @@ import { fileURLToPath } from "node:url";
 import { createClient, LOCAL_HOSTS, OVERRIDE_HOST_PARAMS } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
+import { seed as accountWeeks } from "./seeds/account-weeks.js";
+import { seed as details } from "./seeds/details.js";
 import { seed as members } from "./seeds/members.js";
+import { seed as menus } from "./seeds/menus.js";
+import { seed as pickupWeeks } from "./seeds/pickup-weeks.js";
 import { seed as subscribers } from "./seeds/subscribers.js";
 import { seed as supperClub } from "./seeds/supper-club.js";
 
 export type Seed = (db: Client) => Promise<void>;
 
-export const SEEDS: Readonly<Record<string, Seed>> = { members, subscribers, "supper-club": supperClub };
+export const SEEDS: Readonly<Record<string, Seed>> = {
+  "account-weeks": accountWeeks,
+  details,
+  members,
+  menus,
+  "pickup-weeks": pickupWeeks,
+  subscribers,
+  "supper-club": supperClub,
+};
 
 /**
  * Throws unless `url` points at the local dev box. Seeds and resets are dev only. "Local" is the

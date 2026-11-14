@@ -10,7 +10,7 @@ export function RowList({
   rows,
 }: {
   before?: ReactNode;
-  rows: { id: string; title: string; badge: ReactNode; detail: string; note: string }[];
+  rows: { id: string; title: ReactNode; badge: ReactNode; detail: string; note: string }[];
 }) {
   return (
     <div className="row-list flex-col gap-3">

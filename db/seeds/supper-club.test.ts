@@ -66,7 +66,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
       )
     ).rows;
 
-  it("AC1, AC3 (issue 102): from an emptied database, products holds Supper Club with cap 50, first pickup 2027-01-10, cutoff Monday (1) at 24:00:00", async () => {
+  it("AC1, AC3 (issue 102): from an emptied database, products holds Supper Club with cap 50, first pickup 2026-10-25, cutoff Monday (1) at 24:00:00", async () => {
     await seed();
 
     expect(await supperClub()).toEqual([
@@ -74,7 +74,7 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
         id: expect.any(String),
         name: "Supper Club",
         cap: 50,
-        first_pickup_date: "2027-01-10",
+        first_pickup_date: "2026-10-25",
         cutoff_weekday: 1,
         cutoff_time: "24:00:00",
       },
@@ -176,6 +176,22 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     await seed();
 
     expect(await rows()).toEqual(before);
+  });
+
+  // Issue 140: "Which menu" is the type whose options each get a menu text, so the editor has a field per option.
+  it('AC4 (issue 140): the seed marks "Which menu" as the option type carrying menu texts, and "How many people" not', async () => {
+    await seed();
+
+    const { rows } = await pool.query<{ name: string; menu_texts: boolean }>(
+      `select t.name, t.menu_texts
+         from option_types t join products p on p.id = t.product_id
+        where p.name = 'Supper Club'
+        order by t.position, t.name`,
+    );
+    expect(rows).toEqual([
+      { name: "How many people", menu_texts: false },
+      { name: "Which menu", menu_texts: true },
+    ]);
   });
 
   // Issue 101, AC6: the names are data, in the farm's words; the picker's question mark is the catalog's (DEC-027).

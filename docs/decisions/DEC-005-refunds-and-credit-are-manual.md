@@ -3,7 +3,7 @@ schema: 1
 id: DEC-005
 title: "Refunds and store credit are manual; a late closure earns a week credit"
 topic: "Payments"
-status: "active"
+status: "superseded"
 date: "2026-10-25"
 ruling: "Haul builds no refund or store-credit flow; the farm refunds in Square's dashboard. A week closed after its cutoff earns a week credit — the next week taken is made and not charged — not a refund."
 claims:
@@ -11,6 +11,7 @@ claims:
     target: "§7.2"
   - kind: "spec"
     target: "§7.3"
+superseded_by: DEC-032
 revisit_if: "Manual refunds become a weekly chore, skip-to-credit leaves future ideas, or members want a credit worth a different box than they paid for"
 ---
 

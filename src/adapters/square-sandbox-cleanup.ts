@@ -26,6 +26,7 @@ export function recordingCustomers(payments: PaymentsPort, created: Set<string>)
     saveCard: (input) => payments.saveCard(input),
     charge: (input) => payments.charge(input),
     setCustomerReference: (input) => payments.setCustomerReference(input),
+    setCustomerEmail: (input) => payments.setCustomerEmail(input),
     findPaymentByReference: (input) => payments.findPaymentByReference(input),
   };
 }

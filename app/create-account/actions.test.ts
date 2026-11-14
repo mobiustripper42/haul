@@ -355,11 +355,11 @@ describe("AC8 — the right code on the code step", () => {
     return codeIn(email.last()?.text);
   };
 
-  it("AC8: it sets email_confirmed_at, starts a session for the member, deletes the email cookie and redirects to /", async () => {
+  it("AC8: it sets email_confirmed_at, starts a session for the member, deletes the email cookie and redirects to /account", async () => {
     const { requestAccountCode, verifyAccountCode } = await load();
     const code = await askForCode(requestAccountCode);
     vi.setSystemTime(new Date(T0.getTime() + MINUTE));
-    expect(await redirectOf(verifyAccountCode(form({ code })))).toBe("/");
+    expect(await redirectOf(verifyAccountCode(form({ code })))).toBe("/account");
 
     const member = await repo.findMemberByEmail(ADA);
     expect(member?.emailConfirmedAt).toEqual(new Date(T0.getTime() + MINUTE));
@@ -393,7 +393,7 @@ describe("AC8 — the right code on the code step", () => {
     await plantCode(before);
     request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
     const { verifyAccountCode } = await load();
-    expect(await redirectOf(verifyAccountCode(form({ code: RIGHT_CODE })))).toBe("/");
+    expect(await redirectOf(verifyAccountCode(form({ code: RIGHT_CODE })))).toBe("/account");
     expect((await repo.findMemberById(before.id))?.emailConfirmedAt).toEqual(new Date(T0.getTime() - 60 * MINUTE));
     expect(setsNamed(SESSION)).toHaveLength(1);
   });
@@ -679,5 +679,17 @@ describe("AC2 (issue 101) — resendAccountCode from the code step's resend form
     request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
     const { resendAccountCode } = await load();
     expect(await redirectOf(resendAccountCode(form({ resend: "1" })))).toBe(`${CODE_PAGE}?sent=1`);
+  });
+});
+
+// Issue 136, AC6: with no ocf_return_to, Create Account finishes at the account home. A new member there holds no
+// subscription and goes on to /supper-club: that is app/account/page.test.ts's (AC2).
+describe("AC6 (issue 136) — Create Account lands on /account", () => {
+  it("AC6: the right code with no ocf_return_to redirects to /account", async () => {
+    const { requestAccountCode, verifyAccountCode } = await load();
+    await redirectOf(requestAccountCode(details()));
+    await runScheduled();
+    const code = codeIn(email.last()?.text);
+    expect(await redirectOf(verifyAccountCode(form({ code })))).toBe("/account");
   });
 });

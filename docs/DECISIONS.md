@@ -34,6 +34,7 @@ in the sibling repo and are background, not rulings for Haul.
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff
 - DEC-005 — Refunds and store credit are manual; a late closure earns a week credit
+- DEC-034 — The charge run enrols only the week whose cutoff last passed
 
 ### Data model
 - DEC-006 — Product choices are option types and options, priced by sum
@@ -46,10 +47,14 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-026 — A member holds one or more subscriptions, to any product
 - DEC-027 — Product, option type and option names are data
 - DEC-028 — Every audit row names who acted; events only where the trigger can't tell
+- DEC-031 — A pickup week is named by its ordinary Sunday, moved or not
+- DEC-032 — A week credit is a meal of the picks that were charged
+- DEC-033 — A week credit holds the picks in effect for the week it answers for
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens
 - DEC-029 — An account is a member row whose email a sign-in code confirms
+- DEC-030 — The pickup-weeks calendar is an admin screen, not SQL
 
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class

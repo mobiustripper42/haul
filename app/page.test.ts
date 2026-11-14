@@ -1,13 +1,15 @@
 // Issue 97, AC1: / is no longer the developer placeholder; it sends everyone on to the Supper Club. The
 // unit test sees only the target: `redirect` is mocked to throw with it. That it is a temporary
 // redirect, a 307, only a real request shows (e2e/home-redirect.spec.ts). Issue 7's Spanish proof the
-// placeholder carried lives on the language switch (app/language-switcher.test.ts).
+// placeholder carried lives on the language switch (app/language-switcher.test.ts). Issue 136, AC6c: a
+// signed-in member, of any role, goes to their account home instead; signed out still goes on.
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import type { Role } from "@core/members.js";
+import { ROLES, type Role } from "@core/members.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "./next-headers-fake";
 import Home from "./page";
+import { ACCOUNT_PATH } from "./paths";
 import { redirectOf } from "./screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
@@ -45,8 +47,11 @@ describe("AC1 — / goes on to the Supper Club", () => {
     await expect(landing()).resolves.toBe("/supper-club");
   });
 
-  it.each(["member", "admin"] as const)("AC1: signed in as a %s, / redirects to /supper-club", async (role) => {
+});
+
+describe("AC6c — / sends a signed-in member to their account", () => {
+  it.each(ROLES)(`AC6c: signed in as a %s, / redirects to ${ACCOUNT_PATH}`, async (role) => {
     await signInAs(role);
-    await expect(landing()).resolves.toBe("/supper-club");
+    await expect(landing()).resolves.toBe(ACCOUNT_PATH);
   });
 });

@@ -15,9 +15,10 @@ import {
   randomCode,
   randomLinkToken,
   requestSignInCode,
+  SIGN_IN_REQUEST_LIMIT,
   verifySignInCode,
 } from "@core/sign-in/code.js";
-import { limitKeyFor } from "@core/sign-in/rate-limit.js";
+import { limitKeyFor, refusalFrom, takeRateLimit } from "@core/sign-in/rate-limit.js";
 import type { RateLimitStore } from "@core/sign-in/store.js";
 import { cleanTypedText } from "@core/typed-text.js";
 import { RETURN_TO_COOKIE, SIGN_IN_EMAIL_COOKIE, startSession } from "../session";
@@ -54,6 +55,24 @@ export const limitedText = (language: Language, minutes: number): string =>
 
 /** The minutes a refused request is told to wait: the time left in the window, rounded up, at least one. */
 export const limitedRedirectMinutes = (retryAfterMs: number): number => Math.max(1, Math.ceil(retryAfterMs / 60_000));
+
+/**
+ * Counts one request in sign-in's own limit for the client's address (issue 156). Null when it is allowed; when it is
+ * not, the window's first refusal is recorded and the minutes to wait are returned. For the actions that count a
+ * request with no sign-in around it: Your details' save with a new email and its resend.
+ */
+export async function takeRequestLimit(repo: Repository, now: Date): Promise<number | null> {
+  const clientKey = limitKeyFor(clientIpFrom(await headers()));
+  const decision = await takeRateLimit(
+    { store: limiterStore(repo), now, onFailure: (message) => console.error(message) },
+    SIGN_IN_REQUEST_LIMIT,
+    clientKey,
+  );
+  if (decision.allowed) return null;
+  const refusal = refusalFrom(decision, SIGN_IN_REQUEST_LIMIT.bucket, clientKey);
+  if (refusal) await recordEventAs(repo, null, { kind: "rate_limit_refusal", ...refusal });
+  return limitedRedirectMinutes(decision.retryAfterMs);
+}
 
 /**
  * The one writer of a flow cookie (`SIGN_IN_EMAIL_COOKIE`, `ACCOUNT_DRAFT_COOKIE`, `RETURN_TO_COOKIE`):

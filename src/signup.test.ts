@@ -176,6 +176,33 @@ describe("AC3 — the pickup a signup pays for", () => {
   });
 });
 
+// Issue 133: the closed and moved weeks' edges are src/pickup-week.test.ts's; these hold that signUp reads them.
+describe("AC1, AC3 (issue 133) — the changed weeks", () => {
+  it("AC1: with the first week closed, the ledger row is for the next open week's Sunday, January 10", async () => {
+    await repo.savePickupWeek(product.id, {
+      weekOf: "2027-01-03",
+      closedAt: new Date("2026-11-01T12:00:00.000Z"),
+      note: "Farm closed",
+      firstDay: null,
+      lastDay: null,
+    });
+    expect((await submit()).outcome).toBe("paid");
+    expect((await repo.findSignupConfirmation(member.id, product.id))?.pickupDate).toBe("2027-01-10");
+  });
+
+  it("AC3: with the first week moved to Saturday and Sunday, the ledger row keeps the ordinary Sunday, January 3", async () => {
+    await repo.savePickupWeek(product.id, { weekOf: "2027-01-03", closedAt: null, note: "Moved", firstDay: "2027-01-02", lastDay: "2027-01-03" });
+    const save = vi.spyOn(repo, "savePendingSignup");
+    expect((await submit()).outcome).toBe("paid");
+    expect(save.mock.calls.map(([input]) => input.pickupDate)).toEqual(["2027-01-03"]);
+    expect(await repo.findSignupConfirmation(member.id, product.id)).toMatchObject({
+      pickupDate: "2027-01-03",
+      firstDay: "2027-01-02",
+      lastDay: "2027-01-03",
+    });
+  });
+});
+
 describe("AC4 — what a signup records", () => {
   it("AC4: the pending rows carry the consent wording, the amounts, the pickup date and the time", async () => {
     const save = vi.spyOn(repo, "savePendingSignup");

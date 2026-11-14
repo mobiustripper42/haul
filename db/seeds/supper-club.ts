@@ -12,7 +12,9 @@ import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 const PRODUCT = {
   name: SUPPER_CLUB_PRODUCT_NAME,
   cap: 50,
-  firstPickupDate: "2027-01-10",
+  // Dev data, not Lenny's date (his first pickup weekend is January 10-11, 2027; production's date is not a seed,
+  // DEC-007). Dev runs from Sunday, October 25, 2026 so the calendar has a past, and History has weeks to show.
+  firstPickupDate: "2026-10-25",
   cutoffWeekday: 1,
   cutoffTime: "24:00",
 };
@@ -20,11 +22,14 @@ const PRODUCT = {
 const OPTION_TYPES: ReadonlyArray<{
   name: string;
   position: number;
+  /** The type whose options each get a menu text (issue 140). */
+  menuTexts: boolean;
   options: ReadonlyArray<{ name: string; priceCents: number; position: number }>;
 }> = [
   {
     name: "How many people",
     position: 1,
+    menuTexts: false,
     options: [
       { name: "Portioned for 4", priceCents: 7400, position: 1 },
       { name: "Portioned for 2", priceCents: 4200, position: 2 },
@@ -33,6 +38,7 @@ const OPTION_TYPES: ReadonlyArray<{
   {
     name: "Which menu",
     position: 2,
+    menuTexts: true,
     options: [
       { name: "Standard", priceCents: 0, position: 1 },
       { name: "Vegan", priceCents: 0, position: 2 },
@@ -57,11 +63,11 @@ export async function seed(db: Client): Promise<void> {
 
   for (const type of OPTION_TYPES) {
     const row = await db.query<{ id: string }>(
-      `insert into option_types (product_id, name, position)
-       values ($1, $2, $3)
-       on conflict (product_id, name) do update set position = excluded.position
+      `insert into option_types (product_id, name, position, menu_texts)
+       values ($1, $2, $3, $4)
+       on conflict (product_id, name) do update set position = excluded.position, menu_texts = excluded.menu_texts
        returning id`,
-      [productId, type.name, type.position],
+      [productId, type.name, type.position, type.menuTexts],
     );
     const typeId = row.rows[0]?.id;
     if (typeId === undefined) throw new Error("supper-club seed: the option type upsert returned no id");
