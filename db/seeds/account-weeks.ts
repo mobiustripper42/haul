@@ -8,9 +8,14 @@
  * rows for every week from the product's first pickup through the latest week whose cutoff has passed, except one
  * past week, which is closed with no charge; and the latest past week ("past" as History's rule: its last pickup
  * day has passed) closed after it was paid, with the week credit `closePickupWeek` would have granted, written as
- * rows: a seed holds only the transaction's client, and the repository opens a pool of its own. Nothing from the
- * next cutoff on is touched, so the admin calendar or SQL can close, reopen and move those weeks and both pages
- * follow.
+ * rows: a seed holds only the transaction's client, and the repository opens a pool of its own. The admin calendar's
+ * closes, reopens and moves of those weeks stand (`pickup_weeks` is not touched past the weeks above), so the admin
+ * calendar or SQL can close, reopen and move those weeks and both pages follow.
+ *
+ * Issue 150: a by-hand charge run (`npm run charge-run`) writes rows after the latest charged week and spends the week
+ * credit, so every run deletes every week credit of the two members (their picks go with them) and then their ledger
+ * rows after the latest charged week, in that order, since `week_credits` references `ledger` with no on-delete
+ * action; then it writes the one credit it makes, unspent.
  *
  * Issue 139: a second member, `cancel.member@example.com`, active with the same paid weeks and no week credit, for the
  * plain cancel (`weeks.member` is the cancel with "Refund owed"): its week for the latest past week, which the closure
@@ -183,19 +188,27 @@ export async function seed(db: Client): Promise<void> {
     await close(closedUnpaid, new Date(cutoffInstant(settings, closedUnpaid).getTime() - 3 * DAY_MS).toISOString(), "Closed before its cutoff, no charge (dev seed)");
   }
 
-  // An earlier run's week credit, for a week that is no longer the latest past week, and the closure that went
-  // with it: cleared, so one week at a time stands closed after it was paid. A spent credit is the charge run's,
-  // not the seed's, and stays with its closure. A closure row holding a move keeps the move.
+  // Every week credit of the two members is the seed's, spent by a by-hand charge run or not, and so is every ledger row
+  // after the latest charged week: deleted, credits first, since a spent credit points at the row it paid. The one
+  // unspent credit for the latest past week is kept and upserted below, so a second run leaves its id as it was. A closure
+  // that went with an earlier run's credit, for a week that is no longer the latest past week, is cleared too, so one week
+  // at a time stands closed after it was paid; a closure row holding a move keeps the move.
+  const subscriptionIds = [WEEKS_MEMBER.subscriptionId, CANCEL_MEMBER.subscriptionId];
   const cleared = await db.query<{ week: string }>(
     `delete from week_credits c using ledger l
-      where l.id = c.granted_for and c.subscription_id = $1 and c.spent_on is null and l.pickup_date is distinct from $2::date
+      where l.id = c.granted_for and c.subscription_id = any($1::uuid[])
+        and (c.spent_on is not null or l.pickup_date is distinct from $2::date)
       returning to_char(l.pickup_date, 'YYYY-MM-DD') as week`,
-    [SUBSCRIPTION_ID, latestPast ?? null],
+    [subscriptionIds, latestPast ?? null],
   );
-  if (cleared.rows.length > 0) {
-    const weeks = cleared.rows.map((row) => row.week);
-    await db.query("delete from pickup_weeks where product_id = $1 and week_of = any($2::date[]) and first_day is null", [product.id, weeks]);
-    await db.query("update pickup_weeks set closed_at = null, note = null where product_id = $1 and week_of = any($2::date[])", [product.id, weeks]);
+  const latestCharged = charged.at(-1);
+  if (latestCharged !== undefined) {
+    await db.query("delete from ledger where subscription_id = any($1::uuid[]) and pickup_date > $2::date", [subscriptionIds, latestCharged]);
+  }
+  const clearedWeeks = cleared.rows.map((row) => row.week).filter((week) => week !== latestPast);
+  if (clearedWeeks.length > 0) {
+    await db.query("delete from pickup_weeks where product_id = $1 and week_of = any($2::date[]) and first_day is null", [product.id, clearedWeeks]);
+    await db.query("update pickup_weeks set closed_at = null, note = null where product_id = $1 and week_of = any($2::date[])", [product.id, clearedWeeks]);
   }
 
   // Closed after it was paid, on its first pickup day at noon: the week credit closing it would have granted.

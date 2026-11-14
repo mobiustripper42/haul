@@ -184,7 +184,7 @@ describe("AC3–AC5 (issue 155) — what each marker says, left then right", () 
   });
 
   it("AC5: the week the week credit lands on says it is made and not charged, then Week credit", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-28"))).toEqual([titleOf("2027-02-28"), "Week credit: made, not charged.", "Week credit", "Skip"]);
+    expect(rowTitled(await arrange(), titleOf("2027-02-28"))).toEqual([titleOf("2027-02-28"), "Week credit used, not charged.", "Week credit", "Skip"]);
   });
 });
 

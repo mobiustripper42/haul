@@ -147,3 +147,27 @@ describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharg
     },
   );
 });
+
+// Issue 150: the receipt for a week a week credit paid. Its subject is the receipt's, its closing the receipt's; only
+// its body is its own, new copy typed here once. `{week}` is the week's title as the charge run builds it
+// (src/charge-run.test.ts holds that).
+describe("AC3 (issue 150) — renderEmail weekCreditReceipt", () => {
+  const WEEK = "February 14 and 15";
+  // Existing copy, read from the catalog rather than typed.
+  const t = createTranslator("en");
+  const CLOSE = `${t("email.signupConfirmation.questions")}\n\n${t("email.signOff")}\n\n${FOOTER}`;
+
+  it("AC3: weekCreditReceipt in English is the receipt's subject, then the body saying the week credit was used and not charged, the questions line, the sign-off and the footer", () => {
+    expect(renderEmail("weekCreditReceipt", "en", { week: WEEK }, SITE_URL)).toEqual({
+      subject: t("email.receipt.subject", { week: WEEK }),
+      text: `Your week credit was used for your Supper Club pickup February 14 and 15: not charged.\n\n${CLOSE}`,
+    });
+  });
+
+  it("AC3: weekCreditReceipt in the stand-in Spanish catalog is only catalog values: the receipt's subject key, its own body, the questions line, the sign-off and the footer", () => {
+    expect(renderEmail("weekCreditReceipt", "es", { week: WEEK }, SITE_URL)).toEqual({
+      subject: "«email.receipt.subject»",
+      text: `«email.weekCreditReceipt.body»\n\n«email.signupConfirmation.questions»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
+    });
+  });
+});

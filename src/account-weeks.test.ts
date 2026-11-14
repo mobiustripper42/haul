@@ -35,9 +35,17 @@ const MAR_7 = "2027-03-07";
 
 /** A member's ledger: the weeks paid, at 4500 each unless given, and the weeks their unspent week credits were granted for. */
 const member = (paid: (string | [string, number])[], weekCredits: string[] = []): MemberWeeks => ({
-  paid: paid.map((row) => (typeof row === "string" ? { weekOf: row, amountCents: 4500, options: [] } : { weekOf: row[0], amountCents: row[1], options: [] })),
+  paid: paid.map((row) =>
+    typeof row === "string" ? { weekOf: row, amountCents: 4500, weekCredit: false, options: [] } : { weekOf: row[0], amountCents: row[1], weekCredit: false, options: [] },
+  ),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
   skipped: [],
+});
+
+/** Issue 150: the same ledger with `weeks` paid by a week credit, at 0 cents. */
+const creditPaid = (ledger: MemberWeeks, weeks: string[]): MemberWeeks => ({
+  ...ledger,
+  paid: [...ledger.paid, ...weeks.map((weekOf) => ({ weekOf, amountCents: 0, weekCredit: true, options: [] }))],
 });
 
 /** Issue 137: the same ledger with skipped rows for `skipped`. */
@@ -56,7 +64,9 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
   });
 
   it("AC3: an open week with no paid row is Coming, charged at the end of its cutoff Monday: February 1 for February 7", () => {
-    expect(upcomingRows([week(FEB_7)], member([]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "coming", closedPaid: false, chargeDate: "2027-02-01", action: "skip" }]);
+    expect(upcomingRows([week(FEB_7)], member([]), PRODUCT)).toEqual([
+      { week: week(FEB_7), marker: "coming", closedPaid: false, weekCreditUsed: false, chargeDate: "2027-02-01", action: "skip" },
+    ]);
   });
 
   it("AC3: the charge date is the product's cutoff weekday, not a Monday in the code: Friday, February 5", () => {
@@ -65,7 +75,7 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
   });
 
   it("AC3: an open week with a paid row is Paid, with no charge date", () => {
-    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, chargeDate: null, action: null }]);
+    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null }]);
   });
 
   it("AC3: a closed week is Closed whether or not it was paid, with no charge date", () => {
@@ -182,7 +192,7 @@ const actions = (rows: UpcomingRow[]) => rows.map((row) => [row.week.weekOf, row
 describe("AC1 (issue 137) — upcomingRows: a skipped week", () => {
   it("AC1: an open week with a skipped row is Skipped, with no charge date, and its button is Unskip", () => {
     expect(upcomingRows([week(FEB_7)], skipping(member([]), [FEB_7]), PRODUCT)).toEqual([
-      { week: week(FEB_7), marker: "skipped", closedPaid: false, chargeDate: null, action: "unskip" },
+      { week: week(FEB_7), marker: "skipped", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "unskip" },
     ]);
   });
 });
@@ -255,8 +265,8 @@ describe("AC5 (issue 139) — upcomingRows for a cancelled subscription", () => 
     const weeks = [week(FEB_7), week(FEB_14, { closed: true }), week(FEB_21), week(FEB_28), week(MAR_7)];
     const ledger = skipping(member([FEB_7, FEB_14, MAR_7]), [FEB_28]);
     expect(upcomingRows(weeks, ledger, PRODUCT, true)).toEqual([
-      { week: week(FEB_7), marker: "paid", closedPaid: false, chargeDate: null, action: null },
-      { week: week(MAR_7), marker: "paid", closedPaid: false, chargeDate: null, action: null },
+      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+      { week: week(MAR_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
     ]);
   });
 
@@ -299,5 +309,75 @@ describe("issue 139 — lastPickup", () => {
     const ledger = skipping(member([JAN_17], [JAN_17]), [FEB_14]);
     const upcoming = upcomingRows([week(FEB_7), week(FEB_14)], ledger, PRODUCT);
     expect(lastPickup(upcoming, history([week(JAN_17, { closed: true })], ledger))).toBeNull();
+  });
+});
+
+// Issue 150: a paid row a week credit paid (`weekCredit` true) is a Week credit week whose week credit is used, on both
+// lists; a closed week still comes first. Where an unspent week credit lands is AC5 (issue 155)'s, above, and that the
+// run spends it on that week is src/charge-run.test.ts's.
+describe("issue 150 — a week paid by a week credit, on Upcoming weeks and History", () => {
+  const JAN_3 = "2027-01-03";
+  const JAN_17 = "2027-01-17";
+
+  it("AC10: an open week paid by a week credit is Week credit, used, with no charge date and no button; a week credit only predicted is Week credit, not used", () => {
+    // February 7 closed after it was paid; February 14 paid by a week credit; the unspent one granted for January 31
+    // passes over both to February 21.
+    const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21)];
+    const rows = upcomingRows(weeks, creditPaid(member([FEB_7], ["2027-01-31"]), [FEB_14]), PRODUCT);
+    expect(rows.slice(1)).toEqual([
+      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null },
+      { week: week(FEB_21), marker: "weekCredit", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "skip" },
+    ]);
+  });
+
+  it("AC9: a cancelled subscription's week paid by a week credit stays listed, as a paid week does: Week credit, used, no button", () => {
+    const weeks = [week(FEB_7), week(FEB_14), week(FEB_21)];
+    expect(upcomingRows(weeks, creditPaid(member([FEB_7]), [FEB_14]), PRODUCT, true)).toEqual([
+      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null },
+    ]);
+  });
+
+  it("AC8: a week paid by a week credit that later closed is Closed, closed after it was paid: closed comes first", () => {
+    const rows = upcomingRows([week(FEB_14, { closed: true })], creditPaid(member([]), [FEB_14]), PRODUCT);
+    expect(rows).toEqual([expect.objectContaining({ marker: "closed", closedPaid: true, chargeDate: null, action: null })]);
+  });
+
+  it("AC10: a past week paid by a week credit is Week credit in History, at 0, with the week credit line", () => {
+    expect(historyRows([week(JAN_17)], creditPaid(member([JAN_3]), [JAN_17]), JAN_3)).toEqual([{ week: week(JAN_17), marker: "weekCredit", amountCents: 0, line: "weekCredit" }]);
+  });
+
+  it("AC8: a past week paid by a week credit that later closed is No meal in History, closed after it was paid, at 0", () => {
+    const closed = week(JAN_17, { closed: true });
+    expect(historyRows([closed], creditPaid(member([JAN_3]), [JAN_17]), JAN_3)).toEqual([{ week: closed, marker: "noMeal", amountCents: 0, line: "closedPaid" }]);
+  });
+});
+
+// Issue 150: lastPickup over rows as upcomingRows and historyRows give them, built by hand so each case is the row
+// shape alone.
+describe("AC10 (issue 150) — lastPickup counts a week paid by a week credit", () => {
+  const upcomingRow = (weekOf: string, marker: UpcomingRow["marker"], weekCreditUsed = false): UpcomingRow => ({
+    week: week(weekOf),
+    marker,
+    closedPaid: false,
+    weekCreditUsed,
+    chargeDate: null,
+    action: null,
+  });
+  const historyRow = (weekOf: string, marker: HistoryRow["marker"], line: HistoryRow["line"]): HistoryRow => ({ week: week(weekOf), marker, amountCents: 0, line });
+
+  it("AC10: an Upcoming week paid by a week credit, after the last paid one, is the last pickup, still to come", () => {
+    const rows = [upcomingRow(FEB_7, "paid"), upcomingRow(FEB_14, "weekCredit", true)];
+    expect(lastPickup(rows, [])).toEqual({ week: week(FEB_14), passed: false });
+  });
+
+  it("AC10: with none on Upcoming weeks, a History week paid by a week credit, after the last paid one, is the last pickup, passed", () => {
+    const history = [historyRow("2027-01-24", "weekCredit", "weekCredit"), historyRow("2027-01-17", "paid", "paid")];
+    expect(lastPickup([upcomingRow(FEB_7, "coming")], history)).toEqual({ week: week("2027-01-24"), passed: true });
+  });
+
+  it("AC10: a week credit only predicted on Upcoming weeks, with no ledger row, is no pickup: the last paid week is", () => {
+    const rows = [upcomingRow(FEB_7, "paid"), upcomingRow(FEB_14, "weekCredit", false)];
+    expect(lastPickup(rows, [])).toEqual({ week: week(FEB_7), passed: false });
   });
 });

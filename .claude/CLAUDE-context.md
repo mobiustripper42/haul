@@ -49,6 +49,7 @@ npm run lint                 # app/, src/, db/, the project's tests and configs 
 npm run test                 # vitest run; add a path to run one file. The Postgres suites skip without a database
 npm run test:square          # the payments contract against Square's real sandbox (src/adapters/square-payments.sandbox.ts). By hand, never in verify or CI: needs the network and SQUARE_SANDBOX_ACCESS_TOKEN and SQUARE_SANDBOX_LOCATION_ID in .env.local; deletes the customers it creates, and leaves cards and payments in the sandbox account
 npm run square:seed          # makes the Square sandbox customers task 1.4's by-hand checks need (db/square-sandbox-customers.ts). By hand, never in verify or CI: needs the network and the sandbox variables in .env.local, and leaves customers in the sandbox account
+npm run charge-run [-- --now <ISO instant>] [url]   # fires the charge run once on haul_dev (or the URL given), prints its report and each email; Square when configured, else a fake. By hand, never in verify or CI; the cron route is task 2.3 (db/charge-run.ts)
 npm run test:e2e             # playwright test: desktop and mobile on a next dev server on port 4100, over haul_test_e2e. Needs `npm run db:up`; not in verify
 
 # Database (docker-compose.yml)
@@ -93,6 +94,7 @@ npm run check:decisions
 | Refunds and store credit are manual in Square | A default payment flow includes refunds. Here the app builds neither, and a week closed after its cutoff is a week credit, not a refund (DEC-005; `docs/SPEC.md` §7.3) |
 | Every UI string goes through translation files | A default hard-codes English and translates later. Here a bare string fails lint from task 0.4 on |
 | A pull request's "Verify by hand" setup is the dev server | The only written recipe for reaching a screen is `@ui-reviewer`'s (`.claude/ui-context.md` § Reaching a screen: port 4100, the e2e database, an env-variable line), so a default copies it into the plan for Eric (pull request #152). His setup is `npm run db:up`, `npm run db:migrate`, the seeds the task needs, `npm run dev` on port 4000 — no URLs, no env line, no port 4100 |
+| A by-hand check starts from a seed, except where it needs a real third party | A default tells Eric to sign up and click through to reach the state. Here a seed makes it, and a seed re-run undoes a by-hand run; a sandbox customer and card on file come from signing up through the dev app, and a seed re-run must leave them standing — only `db:reset:dev` clears them |
 
 ## Blast-Radius Triggers
 

@@ -773,6 +773,7 @@ export function runSignupContract(
           {
             weekOf: "2027-01-03",
             amountCents: 5000,
+            weekCredit: false,
             options: [
               { typeName: "How many people?", optionName: "3–4 people" },
               { typeName: "Which menu?", optionName: "Standard" },
