@@ -3,7 +3,6 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Heading } from "../../components/ui/heading";
 import { Shell } from "../../components/ui/shell";
-import { TextLink } from "../../components/ui/text-link";
 import { getTranslator } from "../language";
 import { titled } from "../page-title";
 import { MENU_PATH } from "../paths";
@@ -36,9 +35,11 @@ export default async function MenuEmails({ searchParams }: { searchParams: Promi
               {t(on ? "menuEmails.turnOff" : "menuEmails.turnOn")}
             </Button>
           </form>
-          <p>
-            <TextLink href={MENU_PATH}>{t("menuEmails.seeMenu")}</TextLink>
-          </p>
+          <div className="flex">
+            <Button kind="quiet" href={MENU_PATH} flush>
+              {t("menuEmails.seeMenu")}
+            </Button>
+          </div>
         </Card>
       </Shell>
     </>
