@@ -190,6 +190,25 @@ export type PendingCharge = {
  */
 export type EnrolledWeek = { pending: number; zeroCents: number; byWeekCredit: { ledgerId: string; memberId: string }[] };
 
+/**
+ * Issue 142: a subscription on a week's lists and who holds it. `options` is its picks for the week, in option-type
+ * position order.
+ */
+export type WeekMember = {
+  subscriptionId: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  phone: string | null;
+  options: { typeName: string; optionName: string }[];
+};
+
+/** Issue 142: a meal the week makes: whether a week credit paid it, and whether its card was declined. */
+export type WeekBox = WeekMember & { weekCredit: boolean; cardDeclined: boolean };
+
+/** Issue 142: a week's meals and its skips. */
+export type WeekBoxes = { boxes: WeekBox[]; skips: WeekMember[] };
+
 /** Issue 156: a member's email change waiting for its code, one per member. */
 export type EmailChange = { memberId: string; newEmail: string; codeHash: string; expiresAt: Date; attempts: number };
 
@@ -320,6 +339,8 @@ export interface Repository extends SignInStore, RateLimitStore {
    * one transaction. "unchanged", writing nothing, when the stored sets would end as they were. It checks no cutoff.
    */
   switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged">;
+  /** Issue 142: the week's meals and skips, as of `cutoff`, the week's cutoff instant. */
+  listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes>;
   /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */
   listSubscribers(productId: string): Promise<Subscriber[]>;
   /** Issue 140: every menu, newest `updatedAt` first. */

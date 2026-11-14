@@ -1,13 +1,13 @@
 import { Button } from "../../components/ui/button";
 import { getTranslator } from "../language";
-import { ADMIN_MENUS_PATH, ADMIN_PATH, ADMIN_WEEKS_PATH } from "../paths";
+import { ADMIN_LISTS_PATH, ADMIN_MENUS_PATH, ADMIN_PATH, ADMIN_WEEKS_PATH } from "../paths";
 
 /**
- * The admin screens' links, under the header: the header's single Admin button cannot name three screens. The
+ * The admin screens' links, under the header: the header's single Admin button cannot name four screens. The
  * current screen's link is marked as the page showing. Called inline, `{await AdminNav({ current })}`, as
  * `SiteHeader` is.
  */
-export async function AdminNav({ current }: { current: "members" | "menus" | "weeks" }) {
+export async function AdminNav({ current }: { current: "members" | "menus" | "weeks" | "lists" }) {
   const t = await getTranslator();
   return (
     <nav aria-label={t("header.admin")} className="flex flex-wrap gap-2">
@@ -19,6 +19,9 @@ export async function AdminNav({ current }: { current: "members" | "menus" | "we
       </Button>
       <Button kind="secondary" href={ADMIN_WEEKS_PATH} current={current === "weeks"}>
         {t("admin.nav.weeks")}
+      </Button>
+      <Button kind="secondary" href={ADMIN_LISTS_PATH} current={current === "lists"}>
+        {t("admin.nav.lists")}
       </Button>
     </nav>
   );

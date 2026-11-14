@@ -26,6 +26,7 @@ import { seed as menus } from "./seeds/menus.js";
 import { seed as pickupWeeks } from "./seeds/pickup-weeks.js";
 import { seed as subscribers } from "./seeds/subscribers.js";
 import { seed as supperClub } from "./seeds/supper-club.js";
+import { seed as weekLists } from "./seeds/week-lists.js";
 
 export type Seed = (db: Client) => Promise<void>;
 
@@ -37,6 +38,7 @@ export const SEEDS: Readonly<Record<string, Seed>> = {
   "pickup-weeks": pickupWeeks,
   subscribers,
   "supper-club": supperClub,
+  "week-lists": weekLists,
 };
 
 /**

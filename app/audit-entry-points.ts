@@ -27,6 +27,8 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown"] },
   "app/dev/outbox/route.ts#GET": { none: "dev only; reads" },
   "app/admin/members.csv/route.ts#GET": { none: "reads" },
+  "app/admin/lists/pick-list.csv/route.ts#GET": { none: "reads" },
+  "app/admin/lists/skips.csv/route.ts#GET": { none: "reads" },
   "app/account/weeks/actions.ts#skipWeek": { none: "writes ledger; audited by trigger" },
   "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
   "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },

@@ -101,7 +101,7 @@ pickup.
 | 2.2b | Spend a week credit in the charge run | — | [#150](https://github.com/mobiustripper42/haul/issues/150) · Split from 2.1 on 2026-11-10; after 2.2. Points set at its spec walk |
 | 2.3 | Cron route, real charges, decline email and flag | 5 | [#135](https://github.com/mobiustripper42/haul/issues/135) |
 | 2.9 | Weekly menu email and public menu page; missing-menu email | 5 | [#141](https://github.com/mobiustripper42/haul/issues/141) · Unsubscribe link and the preference it sets. The missing-menu email (`docs/SPEC.md` §7.5) moved here from 2.8 on 2026-11-11; re-point at spec if it grows |
-| 2.10 | Pick list, skips CSV, printable pickup list | 3 | [#142](https://github.com/mobiustripper42/haul/issues/142) |
+| 2.10 | Pick list, skips CSV, printable pickup list | 5 | [#142](https://github.com/mobiustripper42/haul/issues/142) |
 | 2.11 | Health endpoint for sheepdog | 3 | [#143](https://github.com/mobiustripper42/haul/issues/143) · Sheepdog itself is out of this plan; includes runtime-error alerts (recipient and channel decided at spec) |
 | 2.12 | Backups and witnessed restore drill | 3 | [#144](https://github.com/mobiustripper42/haul/issues/144) |
 | 2.13 | Update card and retry declined weeks | 8 | [#145](https://github.com/mobiustripper42/haul/issues/145) |

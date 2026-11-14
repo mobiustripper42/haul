@@ -5,6 +5,7 @@ import { runEmailChangeContract } from "./email-change-contract.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { runWeekCreditContract } from "./week-credit-contract.js";
+import { runWeekListsContract } from "./week-lists-contract.js";
 
 // Issue 71, AC5: the fake reads its event actors from events().
 let contractRepo: InMemoryRepository;
@@ -31,6 +32,15 @@ runChargeRunContract(
   async () => (chargeRepo = new InMemoryRepository()),
   async (input) => chargeRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => chargeRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
+);
+
+// Issue 142: a week's meals and skips, through the same seams.
+let listsRepo: InMemoryRepository;
+runWeekListsContract(
+  "in-memory",
+  async () => (listsRepo = new InMemoryRepository()),
+  async (input) => listsRepo.addProduct(input),
+  (subscriptionId, pickupDate, status, amountCents) => listsRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
 );
 
 // Issue 156: a member's own details and their pending email change.

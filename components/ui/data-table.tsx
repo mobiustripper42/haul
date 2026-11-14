@@ -5,29 +5,43 @@ export type DataTableColumn = {
   label: string;
   /** Given, the header is a button that sorts by this column, and the header says which way it is sorted. */
   sort?: { direction: "ascending" | "descending" | "none"; onSort: () => void };
+  /** A column of numbers: its header and cells, and its footer cell, are right-aligned. */
+  numeric?: boolean;
 };
 
 /**
  * A table of small cells whose sortable headers are buttons. `rows[n].cells` line up with `columns`; the first
  * cell is the row's name, set stronger. The sorted header carries `aria-sort` and the others `none`; the arrow
  * after the word is drawn from it in CSS (`.sort-button`), so no arrow is text. Below 720px the table is hidden
- * (`.data-table`), and `RowList` shows in its place.
+ * (`.data-table`), and `RowList` shows in its place, unless `always` keeps it shown. `footer`, given, is a closing row
+ * of cells lining up with `columns`, set stronger (issue 142: a total).
  */
-export function DataTable({ columns, rows }: { columns: DataTableColumn[]; rows: { id: string; cells: ReactNode[] }[] }) {
+export function DataTable({
+  columns,
+  rows,
+  footer,
+  always = false,
+}: {
+  columns: DataTableColumn[];
+  rows: { id: string; cells: ReactNode[] }[];
+  footer?: ReactNode[];
+  always?: boolean;
+}) {
+  const align = (at: number): string => (columns[at]?.numeric ? "text-right" : "text-left");
   return (
-    <div className="data-table -mx-5 overflow-x-auto px-5">
+    <div className={`${always ? "" : "data-table "}-mx-5 overflow-x-auto px-5`}>
       <table className="w-full border-collapse text-small">
         <thead>
           <tr className="border-b border-divider">
-            {columns.map((column) =>
+            {columns.map((column, at) =>
               column.sort ? (
-                <th key={column.id} scope="col" aria-sort={column.sort.direction} className="p-0 text-left">
+                <th key={column.id} scope="col" aria-sort={column.sort.direction} className={`p-0 ${align(at)}`}>
                   <button type="button" onClick={column.sort.onSort} className="sort-button">
                     {column.label}
                   </button>
                 </th>
               ) : (
-                <th key={column.id} scope="col" className="px-3 text-left text-label text-teal uppercase">
+                <th key={column.id} scope="col" className={`px-3 ${align(at)} text-label text-teal uppercase`}>
                   {column.label}
                 </th>
               ),
@@ -38,13 +52,24 @@ export function DataTable({ columns, rows }: { columns: DataTableColumn[]; rows:
           {rows.map((row) => (
             <tr key={row.id} className="border-b border-divider">
               {row.cells.map((cell, at) => (
-                <td key={columns[at]?.id ?? at} className={at === 0 ? "whitespace-nowrap p-3 text-body-strong text-teal" : "p-3"}>
+                <td key={columns[at]?.id ?? at} className={at === 0 ? `whitespace-nowrap p-3 text-body-strong text-teal ${align(at)}` : `p-3 ${align(at)}`}>
                   {cell}
                 </td>
               ))}
             </tr>
           ))}
         </tbody>
+        {footer && (
+          <tfoot>
+            <tr>
+              {footer.map((cell, at) => (
+                <td key={columns[at]?.id ?? at} className={`p-3 text-body-strong text-teal ${align(at)}`}>
+                  {cell}
+                </td>
+              ))}
+            </tr>
+          </tfoot>
+        )}
       </table>
     </div>
   );

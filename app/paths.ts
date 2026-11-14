@@ -30,6 +30,23 @@ export const ADMIN_PATH = "/admin";
 /** The admin's weeks screen: close, reopen and move pickup weeks. */
 export const ADMIN_WEEKS_PATH = "/admin/weeks";
 
+/** The admin's weekly lists (issue 142): a week's pick list, its two downloads and its printable pickup list. */
+export const ADMIN_LISTS_PATH = "/admin/lists";
+/** The query parameter naming the week the weekly lists show. */
+export const WEEK_PARAM = "week";
+const ADMIN_LISTS_PICK_LIST_CSV_PATH = "/admin/lists/pick-list.csv";
+const ADMIN_LISTS_SKIPS_CSV_PATH = "/admin/lists/skips.csv";
+const ADMIN_LISTS_PRINT_PATH = "/admin/lists/print";
+const weekQuery = (week: string): string => `?${new URLSearchParams({ [WEEK_PARAM]: week })}`;
+/** The weekly lists for a week. */
+export const adminListsPath = (week: string): string => `${ADMIN_LISTS_PATH}${weekQuery(week)}`;
+/** The pick list's download for a week. */
+export const adminPickListCsvPath = (week: string): string => `${ADMIN_LISTS_PICK_LIST_CSV_PATH}${weekQuery(week)}`;
+/** The skips' download for a week. */
+export const adminSkipsCsvPath = (week: string): string => `${ADMIN_LISTS_SKIPS_CSV_PATH}${weekQuery(week)}`;
+/** The printable pickup list for a week. */
+export const adminPickupPrintPath = (week: string): string => `${ADMIN_LISTS_PRINT_PATH}${weekQuery(week)}`;
+
 /** The admin's menu library (issue 140). */
 export const ADMIN_MENUS_PATH = "/admin/menus";
 /** New menu. */

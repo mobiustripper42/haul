@@ -59,6 +59,7 @@ npm run db:migrate           # apply pending migrations to haul_dev (or to the U
 npm run db:new-migration <name>   # scaffold db/migrations/<UTC stamp>_<name>.sql
 npm run db:seed:<name>         # load a named dev seed into haul_dev (or the URL given); re-runnable, local only
 npm run db:seed:supper-club    # the Supper Club's product, option types and options; run after a reset or rebuild
+npm run db:seed:week-lists     # the weekly lists' by-hand week: the twelve subscribers' meals, a week credit, a decline and a skip, for the default week and the one before it (runs the subscribers seed first)
 npm run db:reset:dev           # empty every table in haul_dev but the migration ledger
 npm run db:rebuild:dev         # drop and recreate haul_dev (or the URL given) empty, apply every migration; local only, does not seed
 
