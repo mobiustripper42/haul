@@ -10,7 +10,7 @@ import { runSignInStoreContract } from "../sign-in/store-contract.js";
 import { runChargeRunContract } from "./charge-run-contract.js";
 import { BOX as SWITCH_BOX } from "./contract-helpers.js";
 import { runEmailChangeContract } from "./email-change-contract.js";
-import { createPool } from "./pg-connect.js";
+import { asAppRole, createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { runWeekCreditContract } from "./week-credit-contract.js";
@@ -27,7 +27,7 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   beforeAll(async () => {
     const url = await migrateTestDatabase(TEST_DATABASE_URL, "repository");
     pool = createPool(url);
-    repo = new PostgresRepository(url);
+    repo = new PostgresRepository(asAppRole(url));
   });
 
   afterAll(async () => {
