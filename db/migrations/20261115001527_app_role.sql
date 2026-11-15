@@ -6,12 +6,16 @@
 -- psql, and safe to run from two migrations at once on one server: roles are cluster-wide, so the
 -- second create loses the race and is a no-op.
 --
--- Production creates haul_app by hand first, with a login and a password, and then migrates; this
--- file never touches an existing role's login or password. Where it has to create the role itself
--- (local, CI) the role is NOLOGIN: a test or a dev connection reaches it with `set role`.
+-- Production creates haul_app by hand first, with a login and a password, and then migrates as a user
+-- without CREATEROLE; this file never touches an existing role's login or password, and only tries to
+-- create the role when it is absent, so that user never reaches a create it may not do. Where it has to
+-- create the role itself (local, CI) the role is NOLOGIN: a test or a dev connection reaches it with
+-- `set role`. The handler covers two migrations that both saw it absent.
 do $$
 begin
-  create role haul_app nologin;
+  if not exists (select 1 from pg_roles where rolname = 'haul_app') then
+    create role haul_app nologin;
+  end if;
 exception
   when duplicate_object or unique_violation then null;
 end;

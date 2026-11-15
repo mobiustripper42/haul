@@ -72,11 +72,14 @@ export function createClient(url: string, extra: Omit<pg.ClientConfig, "connecti
 export const APP_ROLE = "haul_app";
 
 /**
- * `url` with `options=-c role=<APP_ROLE>` added, so the connection runs as the app's role. The login
- * is still whoever the URL names; `set role` is the whole of what changes.
+ * `url` with `-c role=<APP_ROLE>` added to its `options`, so the connection runs as the app's role. An
+ * `options` value already on the URL is kept, with the role setting after it. The login is still
+ * whoever the URL names; `set role` is the whole of what changes.
  */
 export function asAppRole(url: string): string {
   const parsed = new URL(url);
-  parsed.searchParams.set("options", `-c role=${APP_ROLE}`);
+  const existing = parsed.searchParams.get("options");
+  const role = `-c role=${APP_ROLE}`;
+  parsed.searchParams.set("options", existing ? `${existing} ${role}` : role);
   return parsed.toString();
 }
