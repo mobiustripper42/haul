@@ -8,7 +8,7 @@
 // The Supper Club's weeks: January 17's cutoff date is Monday the 11th, so with MENU_EMAIL_WEEKDAY 4 its email goes out
 // on Thursday the 14th. On the 14th the current week is January 17, January 10's last pickup day (the 11th) having passed.
 import { inspect } from "node:util";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { legalFooter } from "./email-templates.js";
@@ -33,7 +33,6 @@ const THURSDAY = 4;
 const SITE_URL = "https://members.example.test";
 const ACCOUNT_WEEKS_URL = "https://members.example.test/account/weeks";
 const ADMIN_WEEKS_URL = "https://members.example.test/admin/weeks";
-const MENU_URL = "https://members.example.test/menu";
 const SECRET = "s".repeat(32) + "-test-secret";
 const MENU_SUBJECT = "This week's Supper Club menu";
 
@@ -100,7 +99,6 @@ const run = (over: Partial<MenuRunDeps> = {}): Promise<MenuRunReport> =>
     siteUrl: SITE_URL,
     accountWeeksUrl: ACCOUNT_WEEKS_URL,
     adminWeeksUrl: ADMIN_WEEKS_URL,
-    menuUrl: MENU_URL,
     emailWeekday: THURSDAY,
     sessionSecret: SECRET,
     ...over,
@@ -611,5 +609,13 @@ describe("AC6 — the missing-menu email", () => {
       await repo.savePickupWeek(product.id, { weekOf: LATER, closedAt: null, note: null, firstDay: "2027-01-30", lastDay: "2027-01-31" });
       expect((await run(at("2027-01-16T17:00:00.000Z"))).reminder.weeks).toEqual([WEEK, NEXT, LATER]);
     });
+  });
+});
+
+// Issue 186, AC2: the run's inputs carry no menuUrl. A type assertion, so it bites under `npm run typecheck`
+// (tsconfig.core.json includes src), not under `vitest run`, where expectTypeOf does nothing.
+describe("Issue 186, AC2 — MenuRunDeps", () => {
+  it("AC2 (issue 186): MenuRunDeps has no menuUrl field, so a caller passing one fails typecheck", () => {
+    expectTypeOf<MenuRunDeps>().not.toHaveProperty("menuUrl");
   });
 });

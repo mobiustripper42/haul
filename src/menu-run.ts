@@ -38,7 +38,6 @@ export type MenuRunDeps = {
   siteUrl: string;
   accountWeeksUrl: string;
   adminWeeksUrl: string;
-  menuUrl: string;
   emailWeekday: number;
   sessionSecret: string;
 };

@@ -120,7 +120,7 @@ describe("AC1 — the secret fires the run", () => {
     expect(services.repo.events()).toEqual([expect.objectContaining({ kind: "menu_reminder_sent", memberId: adminId })]);
   });
 
-  it("AC1: the run is given the app's repository and email, now at the request, the site URL, the Upcoming weeks, Weeks and menu links under it, the env's weekday and the session secret", async () => {
+  it("AC1: the run is given the app's repository and email, now at the request, the site URL, the Upcoming weeks and Weeks links under it, the env's weekday and the session secret", async () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     vi.stubEnv("MENU_EMAIL_WEEKDAY", "4");
 
@@ -134,7 +134,6 @@ describe("AC1 — the secret fires the run", () => {
       siteUrl: SITE_URL,
       accountWeeksUrl: "https://members.example.test/account/weeks",
       adminWeeksUrl: "https://members.example.test/admin/weeks",
-      menuUrl: "https://members.example.test/menu",
       emailWeekday: 4,
       sessionSecret: SESSION_SECRET,
     });
