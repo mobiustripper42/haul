@@ -354,4 +354,33 @@ describe.skipIf(!up)(`AC1–AC6 — the seeds against <test db>_seed${skipped}`,
 
     expect(await row()).toEqual(before);
   });
+
+  describe("issue 60 — production's Supper Club configuration, written once", () => {
+    it("issue 60: the production flag on any seed but supper-club is refused, and writes nothing", async () => {
+      await empty();
+      await expect(runSeed("members", url, { production: true })).rejects.toThrow(/only supper-club/);
+      expect((await pool.query("select 1 from members")).rows).toEqual([]);
+    });
+
+    it("issue 60: with a product already present, supper-club --production is refused and leaves every table as it was", async () => {
+      await empty();
+      await runSeed("supper-club", url);
+      await pool.query("update options set price_cents = 9900 where name = 'Portioned for 4'");
+      const before = await snapshot();
+
+      await expect(runSeed("supper-club", url, { production: true })).rejects.toThrow(/products is not empty/);
+
+      expect(await snapshot()).toEqual(before);
+    });
+
+    it("issue 60: on an empty database, supper-club --production writes the product and its four options", async () => {
+      await empty();
+      await runSeed("supper-club", url, { production: true });
+      const { rows } = await pool.query<{ name: string; price_cents: number }>(
+        "select name, price_cents from options order by name",
+      );
+      expect(rows).toHaveLength(4);
+      expect((await pool.query("select 1 from products")).rows).toHaveLength(1);
+    });
+  });
 });
