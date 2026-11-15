@@ -25,7 +25,9 @@ export const APP_TABLE_RIGHTS = ["SELECT", "INSERT", "UPDATE", "DELETE"] as cons
  * case, as `aclexplode` returns them. A separate list from AUDIT_EXEMPT: rate_limit_hits and
  * sign_in_codes are audit-exempt but the app needs all four on them (DEC-037).
  */
-export const APP_RIGHTS_EXCEPTIONS: Readonly<Record<string, { rights: readonly string[]; reason: string }>> = {
+export type AppRightsExceptions = Readonly<Record<string, { rights: readonly string[]; reason: string }>>;
+
+export const APP_RIGHTS_EXCEPTIONS: AppRightsExceptions = {
   audit_log: {
     rights: ["SELECT"],
     reason: "the app reads the log (its repository checks for an event row) and never rewrites it; the audit trigger and audit_event() write it",
@@ -81,7 +83,7 @@ const TABLES_WITH_COUNTING_TRIGGER = `
 export async function schemaViolations(
   db: Client,
   exempt: Readonly<Record<string, string>> = AUDIT_EXEMPT,
-  appRights: Readonly<Record<string, { rights: readonly string[]; reason: string }>> = APP_RIGHTS_EXCEPTIONS,
+  appRights: AppRightsExceptions = APP_RIGHTS_EXCEPTIONS,
 ): Promise<SchemaViolation[]> {
   const violations: SchemaViolation[] = [];
 
@@ -137,7 +139,7 @@ export async function schemaViolations(
 async function appRoleViolations(
   db: Client,
   existing: ReadonlySet<string>,
-  appRights: Readonly<Record<string, { rights: readonly string[]; reason: string }>>,
+  appRights: AppRightsExceptions,
 ): Promise<SchemaViolation[]> {
   const violations: SchemaViolation[] = [];
 
@@ -146,7 +148,7 @@ async function appRoleViolations(
   const held = (
     await db.query<{ table_name: string; rights: string[] }>(
       `select c.relname as table_name,
-              coalesce(array_agg(a.privilege_type::text order by a.privilege_type) filter (where a.privilege_type is not null), '{}') as rights
+              coalesce(array_agg(distinct a.privilege_type::text order by a.privilege_type::text) filter (where a.privilege_type is not null), '{}') as rights
          from pg_class c
          left join lateral aclexplode(c.relacl) a on a.grantee = (select oid from pg_roles where rolname = $1)
         where c.relnamespace = 'public'::regnamespace and c.relkind in ('r', 'p')
