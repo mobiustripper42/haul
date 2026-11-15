@@ -17,6 +17,7 @@ describe("AC6 — the gate", () => {
       "npm run check:context",
       "npm run check:docs",
       "npm run check:denied",
+      "npm run check:migrations",
       "npm run typecheck",
       "npm run typecheck:app",
       "npm run typecheck:db",

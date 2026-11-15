@@ -2,8 +2,7 @@
  * The only module that imports `pg` (DEC-001, enforced by lint). Every connection is built here,
  * and TLS is decided here, so no caller can forget it.
  *
- * Haul's own Crunchy certificate isn't known until task 1.8; until then a non-local host is
- * trusted against node's root certificates alone.
+ * A non-local host is trusted against node's root certificates plus the farm's Crunchy team root.
  */
 import tls from "node:tls";
 import pg from "pg";
@@ -26,7 +25,27 @@ const SSL_PARAMS = ["sslmode", "sslrootcert", "sslcert", "sslkey", "sslpassword"
 /** Query parameters `pg-connection-string` lets replace the URL's authority host. */
 export const OVERRIDE_HOST_PARAMS: readonly string[] = ["host", "hostaddr"];
 
-const TRUST: DbSslConfig = { ca: [...tls.rootCertificates], rejectUnauthorized: true };
+/**
+ * The farm's Crunchy Bridge team root (issue 126). Crunchy issues each team its own self-signed
+ * root, `CN` the team id, so node's store rejects it. Committed, not configured: a CA carries only
+ * a public key, and an env var someone forgets fails at connection time, in production. Runs to
+ * 2046. Muster's `src/config/db-ssl.ts` is the same pattern, for its own team.
+ */
+export const CRUNCHY_TEAM_CA = `-----BEGIN CERTIFICATE-----
+MIIBpDCCAUqgAwIBAgIJALG7c7x0SYpdMAoGCCqGSM49BAMDMCUxIzAhBgNVBAMM
+Gmx1enJuY3piZGJkcWJoaGl5Y2J3ZHR5Z3BhMB4XDTI2MTExMDAzMjgzMVoXDTQ2
+MTEwNTAzMjgzMVowJTEjMCEGA1UEAwwabHV6cm5jemJkYmRxYmhoaXljYndkdHln
+cGEwWTATBgcqhkjOPQIBBggqhkjOPQMBBwNCAATQ7z4rMKCKQfZX7mCuedpbnKir
++IPEsZtJaULb5yUfo9QW9DHNXqtH2gG59wiZf8tl7A0Zy1MiHFeV7pjy+jVLo2Mw
+YTAPBgNVHRMBAf8EBTADAQH/MA4GA1UdDwEB/wQEAwIBBjAdBgNVHQ4EFgQUWq94
+nu0oI2upRGK2jfdxSzy2AzEwHwYDVR0jBBgwFoAUWq94nu0oI2upRGK2jfdxSzy2
+AzEwCgYIKoZIzj0EAwMDSAAwRQIgJr0nc0Rqi5XcVcQU5pW0Y0AGErHl9fYHbhyW
+vLU/K24CIQCk1hdQme+H0895OQ64w4llokcWx18le3lCu73E5O+UYA==
+-----END CERTIFICATE-----
+`;
+
+// Appended to node's roots, never substituted: `ssl: { ca }` replaces the trust store outright.
+const TRUST: DbSslConfig = { ca: [...tls.rootCertificates, CRUNCHY_TEAM_CA], rejectUnauthorized: true };
 
 /**
  * The `pg` config for a database URL: the connection string with every ssl parameter stripped,
