@@ -129,6 +129,12 @@ describe("AC9 — runSeed refuses a non-local URL before connecting", () => {
     expectNoConnection();
   });
 
+  it("issue 60: supper-club with the production flag passes the local-host guard and reaches createClient", async () => {
+    await expect(runSeed("supper-club", "postgres://haul:haul@db.example.invalid:5432/haul", { production: true })).rejects.toThrow(
+      "createClient was called",
+    );
+  });
+
   it.each(OVERRIDE_PARAMS)(
     "AC9: runSeed('members') rejects naming the %s query parameter, without connecting",
     async (_param, names, url) => {

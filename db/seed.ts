@@ -10,7 +10,8 @@
  * - Stacked (AC5): any order of seeds gives the same result.
  * - Only its own rows (AC6): a seed puts back the columns it names on the rows it names, and
  *   touches nothing else. Upsert, never delete-and-reinsert: an `id` survives a re-run.
- * - Local only (AC9): `runSeed` refuses a URL whose host is not the dev box, before connecting.
+ * - Local only (AC9): `runSeed` refuses a URL whose host is not the dev box, before connecting;
+ *   the one exception is `supper-club` with `production` (issue 60).
  * - Rows only: schema changes go through migrations (DEC-013).
  *
  * Adding a seed: a file `db/seeds/<name>.ts` exporting `seed`, a key in `SEEDS`, and a
