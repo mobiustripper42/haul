@@ -7,7 +7,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { runCharges, type ChargeRunReport } from "@core/charge-run.js";
+import { CHARGE_RUN_LEASE, runCharges, type ChargeRunReport } from "@core/charge-run.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { GET } from "./route";
@@ -112,7 +112,7 @@ describe("AC1 — the secret fires the run", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type") ?? "no content-type").toMatch(/^application\/json\b/);
-    const expected: ChargeRunReport = { weekOf: WEEK, enrolled: 3, paid: 1, declined: 1, unknown: 1, dropped: 0 };
+    const expected: ChargeRunReport = { weekOf: WEEK, enrolled: 3, paid: 1, declined: 1, unknown: 1, dropped: 0, skipped: false };
     expect(await response.json()).toEqual(expected);
     expect(Object.fromEntries(services.payments.charges.map((charge) => [charge.customerId, charge.result.outcome]))).toEqual({
       [paid.customerId]: "paid",
@@ -189,5 +189,21 @@ describe("AC2 — anything but the secret is 404, and the run never fires", () =
     vi.stubEnv("CRON_SECRET", SECRET);
 
     expect(await outcomeOf(fire(`Bearer ${SAME_LENGTH}`))).toEqual({ returned: true, status: 404 });
+  });
+});
+
+// Issue 174, AC9: a firing that finds the lease held is still a success to the scheduler, so it never retries one with
+// nothing to do. What a skipped firing leaves alone is src/charge-run.test.ts's.
+describe("issue 174 — AC9: a skipped firing", () => {
+  it("AC9: with the lease held by another firing, the route answers 200 with the skipped report as its body", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    await subscriber();
+    await services.repo.claimRunLease(CHARGE_RUN_LEASE, RUN_AT, new Date(RUN_AT.getTime() + 30 * 60_000));
+
+    const response = await fire(`Bearer ${SECRET}`);
+
+    expect(response.status).toBe(200);
+    const expected: ChargeRunReport = { weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true };
+    expect(await response.json()).toEqual(expected);
   });
 });

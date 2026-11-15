@@ -369,6 +369,13 @@ export interface Repository extends SignInStore, RateLimitStore {
   listAdmins(): Promise<Member[]>;
   hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean>;
   setMenuEmails(memberId: string, on: boolean): Promise<Member | null>;
+  /**
+   * Issue 174: a token when this call took the run's lease (none held, or the held one expired at or before `at`), held
+   * until `until`; null otherwise.
+   */
+  claimRunLease(name: string, at: Date, until: Date): Promise<string | null>;
+  /** Issue 174: deletes the run's lease only when `token` is the one it holds. */
+  releaseRunLease(name: string, token: string): Promise<void>;
   recordEvent(event: AuditEvent): Promise<void>;
   /**
    * Runs `fn` on a repository scoped to `actor`: one transaction, committed when `fn` resolves and

@@ -10,7 +10,7 @@ import { FakeEmail } from "./adapters/fake-email.js";
 import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { upcomingRows } from "./account-weeks.js";
-import { CHARGE_RUN_ACTOR, runCharges, type ChargeRunReport } from "./charge-run.js";
+import { CHARGE_RUN_ACTOR, CHARGE_RUN_LEASE, CHARGE_RUN_LEASE_MS, runCharges, type ChargeRunReport } from "./charge-run.js";
 import { legalFooter, renderEmail } from "./email-templates.js";
 import { createTranslator, type Language } from "./i18n.js";
 import type { Member } from "./members.js";
@@ -143,6 +143,8 @@ const report = (over: Partial<ChargeRunReport> = {}): ChargeRunReport => ({
   declined: 0,
   unknown: 0,
   dropped: 0,
+  // Issue 174: every report carries skipped; false on a run that held the lease.
+  skipped: false,
   ...over,
 });
 
@@ -932,5 +934,168 @@ describe("issue 135 — AC3: the decline email", () => {
     await run();
     expect(payments.charges.map((charge) => charge.result.outcome)).toEqual(["declined"]);
     expect(email.sent).toEqual([]);
+  });
+});
+
+// Issue 174: one firing at a time. The lease's own rules — when a held lease has expired, that a release needs the
+// token, one winner of a simultaneous claim — are src/adapters/run-lease-contract.ts's. Here the run's part: one held
+// case, one expired case, the token it releases with, its release on a throw, when it claims and releases, and the
+// clock it times the lease by.
+describe("issue 174 — one firing at a time", () => {
+  /** `n` minutes after `from`. */
+  const minutes = (from: Date, n: number): Date => new Date(from.getTime() + n * 60_000);
+
+  it("AC1: with no lease held, the run claims it, runs as before, and releases it when it finishes: a claim inside its lease succeeds afterwards", async () => {
+    const ada = await subscriber();
+    const claim = vi.spyOn(repo, "claimRunLease");
+    expect(await run()).toEqual(report({ enrolled: 1, paid: 1 }));
+    expect(claim).toHaveBeenCalledTimes(1);
+    expect(await paidWeeks(ada)).toEqual([FIRST, WEEK]);
+    expect(await repo.claimRunLease(CHARGE_RUN_LEASE, PAID_AT, minutes(PAID_AT, 1))).toEqual(expect.any(String));
+  });
+
+  it("AC2: with the lease held and unexpired, a firing enrols nothing, charges nothing, looks nothing up, deletes nothing, emails nobody and records no event; its report is weekOf null, every count 0, skipped true", async () => {
+    // Without the lease, a firing on Tuesday January 12 would enrol Ada for January 17 and charge it, look up the
+    // stranded signup, and delete Ada's row for January 10, a closed week whose pickup is over.
+    const ada = await subscriber();
+    await repo.addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+    await close(WEEK);
+    const stranded = await subscriber({ paid: false });
+    await squareTookSignup(stranded);
+    const at = new Date("2027-01-12T12:00:00.000Z");
+    const answeredAt = new Date("2027-01-12T12:00:30.000Z");
+    // Another firing claimed five minutes before and is still running.
+    await repo.claimRunLease(CHARGE_RUN_LEASE, minutes(answeredAt, -5), minutes(answeredAt, 25));
+    const pendingBefore = await pendingIds();
+    const chargesBefore = payments.charges.length;
+
+    const spies = {
+      enrolWeek: vi.spyOn(repo, "enrolWeek"),
+      listPendingCharges: vi.spyOn(repo, "listPendingCharges"),
+      dropClosedWeekRow: vi.spyOn(repo, "dropClosedWeekRow"),
+      withActor: vi.spyOn(repo, "withActor"),
+      recordEvent: vi.spyOn(repo, "recordEvent"),
+      charge: vi.spyOn(payments, "charge"),
+      findPaymentByReference: vi.spyOn(payments, "findPaymentByReference"),
+      send: vi.spyOn(email, "send"),
+    };
+    expect(await run(at, () => answeredAt)).toEqual({ weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true });
+    expect(Object.entries(spies).filter(([, spy]) => spy.mock.calls.length > 0).map(([method]) => method)).toEqual([]);
+
+    vi.restoreAllMocks();
+    expect(await pendingIds()).toEqual(pendingBefore);
+    expect(payments.charges).toHaveLength(chargesBefore);
+    expect(email.sent).toEqual([]);
+    expect(repo.events()).toEqual([]);
+  });
+
+  it("AC3: the lease is CHARGE_RUN_LEASE_MS, 30 minutes", () => {
+    expect(CHARGE_RUN_LEASE_MS).toBe(30 * 60_000);
+  });
+
+  it("AC3: a lease claimed more than 30 minutes before the firing and never released does not stop it: the run claims and runs", async () => {
+    const ada = await subscriber();
+    // A firing 45 minutes ago that crashed without releasing.
+    await repo.claimRunLease(CHARGE_RUN_LEASE, minutes(PAID_AT, -45), minutes(PAID_AT, -15));
+    expect(await run()).toEqual(report({ enrolled: 1, paid: 1 }));
+    expect(await paidWeeks(ada)).toEqual([FIRST, WEEK]);
+  });
+
+  it("AC4: a firing that throws partway, its product lookup failing, releases the lease with the token it claimed before the error leaves runCharges", async () => {
+    const failure = new Error("the product lookup failed");
+    vi.spyOn(repo, "findProductByName").mockRejectedValueOnce(failure);
+    const claim = vi.spyOn(repo, "claimRunLease");
+    const realRelease = repo.releaseRunLease.bind(repo);
+    const order: string[] = [];
+    // The release takes a moment, so a release the run does not wait for lands after the error.
+    const release = vi.spyOn(repo, "releaseRunLease").mockImplementation(async (name, token) => {
+      await new Promise((resolve) => setTimeout(resolve, 5));
+      await realRelease(name, token);
+      order.push("released");
+    });
+
+    await run().then(
+      () => order.push("returned"),
+      (error: unknown) => order.push(error === failure ? "threw the lookup's error" : `threw ${String(error)}`),
+    );
+
+    expect(order).toEqual(["released", "threw the lookup's error"]);
+    const token: unknown = await claim.mock.results[0]?.value;
+    expect(token).toEqual(expect.any(String));
+    expect(release.mock.calls).toEqual([[CHARGE_RUN_LEASE, token]]);
+    expect(await repo.claimRunLease(CHARGE_RUN_LEASE, PAID_AT, minutes(PAID_AT, 1))).toEqual(expect.any(String));
+  });
+
+  it("AC6: the run releases with the token its claim returned, once", async () => {
+    await subscriber();
+    const claim = vi.spyOn(repo, "claimRunLease");
+    const release = vi.spyOn(repo, "releaseRunLease");
+    await run();
+    const token: unknown = await claim.mock.results[0]?.value;
+    expect(token).toEqual(expect.any(String));
+    expect(release.mock.calls).toEqual([[CHARGE_RUN_LEASE, token]]);
+  });
+
+  it("AC7: the claim resolves before the first other repository, payments or email call, the release starts after the last one ends, and neither runs inside withActor", async () => {
+    await subscriber();
+    const stranded = await subscriber({ paid: false });
+    await squareTookSignup(stranded);
+
+    // Each call the run makes on what it is given, as name:start@<withActor depth> and name:end.
+    const log: string[] = [];
+    let depth = 0;
+    const traced = <T>(name: string, call: () => T): T => {
+      log.push(`${name}:start@${depth}`);
+      if (name === "withActor") depth++;
+      const ended = () => {
+        if (name === "withActor") depth--;
+        log.push(`${name}:end`);
+      };
+      const result = call();
+      if (!(result instanceof Promise)) {
+        ended();
+        return result;
+      }
+      return result.then(
+        (value: unknown) => {
+          ended();
+          return value;
+        },
+        (error: unknown) => {
+          ended();
+          throw error;
+        },
+      ) as T;
+    };
+    const tracedRepo = new Proxy(repo, {
+      get(target, prop) {
+        const value: unknown = Reflect.get(target, prop);
+        if (typeof value !== "function") return value;
+        return (...args: unknown[]) => traced(String(prop), () => (value as (...a: unknown[]) => unknown).apply(target, args));
+      },
+    });
+    const watch = <T extends object>(target: T, method: keyof T & string) => {
+      const real = (target[method] as (...args: unknown[]) => Promise<unknown>).bind(target);
+      vi.spyOn(target, method as never).mockImplementation(((...args: unknown[]) => traced(method, () => real(...args))) as never);
+    };
+    watch(payments, "charge");
+    watch(payments, "findPaymentByReference");
+    watch(email, "send");
+
+    await runCharges({ repo: tracedRepo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL });
+
+    expect(log.slice(0, 2)).toEqual(["claimRunLease:start@0", "claimRunLease:end"]);
+    expect(log.slice(-2)).toEqual(["releaseRunLease:start@0", "releaseRunLease:end"]);
+    const between = log.slice(2, -2);
+    expect(between.filter((entry) => entry.startsWith("claimRunLease") || entry.startsWith("releaseRunLease"))).toEqual([]);
+    expect(between).toEqual(expect.arrayContaining(["withActor:start@0", "charge:start@0", "findPaymentByReference:start@0", "send:start@0"]));
+  });
+
+  it("AC8: the lease is timed by the firing's clock, read once, not by its start: claimed with (CHARGE_RUN_LEASE, clock(), clock() + CHARGE_RUN_LEASE_MS)", async () => {
+    const claim = vi.spyOn(repo, "claimRunLease");
+    // Each reading a second after the last, and none of them RUN_AT.
+    let readings = 0;
+    await run(RUN_AT, () => new Date(PAID_AT.getTime() + 1000 * readings++));
+    expect(claim.mock.calls).toEqual([[CHARGE_RUN_LEASE, PAID_AT, new Date(PAID_AT.getTime() + CHARGE_RUN_LEASE_MS)]]);
   });
 });

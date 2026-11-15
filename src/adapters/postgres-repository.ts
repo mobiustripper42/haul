@@ -1500,6 +1500,26 @@ export class PostgresRepository implements Repository {
     return (rows[0] as { hits: number }).hits;
   }
 
+  /**
+   * One statement: insert the row, or take over a held one only if it expired at or before `at`. Two claims at once
+   * serialise on the row, and the loser's `where` fails against the winner's committed row, so it gets no row back.
+   */
+  async claimRunLease(name: string, at: Date, until: Date): Promise<string | null> {
+    const { rows } = await this.db.query<{ token: string }>(
+      `insert into run_leases (name, token, held_until) values ($1, gen_random_uuid(), $2)
+       on conflict (name) do update set token = excluded.token, held_until = excluded.held_until
+         where run_leases.held_until <= $3
+       returning token::text as token`,
+      [name, until, at],
+    );
+    return rows[0]?.token ?? null;
+  }
+
+  async releaseRunLease(name: string, token: string): Promise<void> {
+    if (!UUID_SHAPE.test(token)) return;
+    await this.db.query(`delete from run_leases where name = $1 and token = $2`, [name, token]);
+  }
+
   /** Writes the event's `audit_log` row through `audit_event()`, which writes event rows and nothing else. */
   async recordEvent(event: AuditEvent): Promise<void> {
     if (event.kind === "rate_limit_refusal") {

@@ -13,6 +13,7 @@ import { runEmailChangeContract } from "./email-change-contract.js";
 import { asAppRole, createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
+import { runRunLeaseContract } from "./run-lease-contract.js";
 import { runWeekCreditContract } from "./week-credit-contract.js";
 import { runWeekListsContract } from "./week-lists-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
@@ -23,15 +24,19 @@ const skipped = up ? "" : " — skipped: no Postgres at TEST_DATABASE_URL, run `
 describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped}`, () => {
   let pool: ReturnType<typeof createPool>;
   let repo: PostgresRepository;
+  // Issue 174: a second repository on the same database, its own pool, for the run lease's race.
+  let other: PostgresRepository;
 
   beforeAll(async () => {
     const url = await migrateTestDatabase(TEST_DATABASE_URL, "repository");
     pool = createPool(url);
     repo = new PostgresRepository(asAppRole(url));
+    other = new PostgresRepository(asAppRole(url));
   });
 
   afterAll(async () => {
     await repo?.close();
+    await other?.close();
     await pool?.end();
   });
 
@@ -180,6 +185,9 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
 
   // Issue 156: a member's own details and their pending email change, in email_changes.
   runEmailChangeContract("postgres", async () => repo, truncateAll);
+
+  // Issue 174: the run lease, raced across two PostgresRepository instances on this database.
+  runRunLeaseContract("postgres", async () => ({ repo, other }), truncateAll);
 
   // Issue 149: Postgres only. Closing and confirming take the product row's lock, so whichever lands second sees
   // the other; and a week credit's options go with it.

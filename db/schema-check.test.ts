@@ -13,9 +13,10 @@ import { APP_RIGHTS_EXCEPTIONS, AUDIT_EXEMPT, schemaViolations } from "./schema-
 import type { SchemaViolation } from "./schema-check.js";
 
 describe("AC9 — the exempt list", () => {
-  it("AC9: AUDIT_EXEMPT holds exactly audit_log, _migrations, rate_limit_hits and sign_in_codes, each with a reason", () => {
+  it("AC9: AUDIT_EXEMPT holds exactly audit_log, _migrations, rate_limit_hits, sign_in_codes, email_changes and run_leases, each with a reason", () => {
     // Issue 156: email_changes holds a code's hash and is rewritten on every guess, as sign_in_codes is (DEC-019).
-    expect(Object.keys(AUDIT_EXEMPT).sort()).toEqual(["_migrations", "audit_log", "email_changes", "rate_limit_hits", "sign_in_codes"]);
+    // Issue 174: run_leases changes every firing and holds no business data.
+    expect(Object.keys(AUDIT_EXEMPT).sort()).toEqual(["_migrations", "audit_log", "email_changes", "rate_limit_hits", "run_leases", "sign_in_codes"]);
     for (const [table, reason] of Object.entries(AUDIT_EXEMPT)) {
       expect(reason.trim(), table).not.toBe("");
     }
