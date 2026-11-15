@@ -2,7 +2,7 @@ import { matchCustomer, sha256Key } from "./customer-match.js";
 import { recordDecline, sendCharge } from "./ledger-charge.js";
 import type { Member } from "./members.js";
 import { clevelandDate, firstPickup } from "./pickup-week.js";
-import { isCardRefusal, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { isCardRefusal, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
@@ -125,13 +125,13 @@ async function prepare(
     return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(error);
   }
 
-  let cardId: string;
+  let card: Card;
   try {
-    ({ id: cardId } = await payments.saveCard({
+    card = await payments.saveCard({
       customerId,
       sourceId: input.sourceId,
       idempotencyKey: sha256Key(input.sourceId),
-    }));
+    });
   } catch (error) {
     // A card Square refuses to save is a decline; any other failure charged nothing and is an error.
     if (!isCardRefusal(error)) throw error;
@@ -140,13 +140,13 @@ async function prepare(
   }
   // The bind returns the amount and attempt to charge: the row may have been rewritten since this tab's save.
   // It also takes the spot, and refuses when the last one went after the check above.
-  const bound = await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, cardId));
+  const bound = await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, card));
   if (bound === "sold_out") return soldOut(repo, input.memberId);
   if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card was not bound"));
   return {
-    row: { ...row, squareCardId: cardId, amountCents: bound.amountCents, attempt: bound.attempt },
+    row: { ...row, squareCardId: card.id, amountCents: bound.amountCents, attempt: bound.attempt },
     productId: product.id,
-    cardId,
+    cardId: card.id,
     customerId,
     lookupFirst: false,
   };

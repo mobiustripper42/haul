@@ -369,3 +369,77 @@ describe("issue 139 — account home, cancelled and not", () => {
     expect(alertTexts(html)).toEqual([]);
   });
 });
+
+// Issue 145: account home with a declined card. Which rows are declined, and whether a row's week is closed, is the
+// repository's (listDeclinedCharges, src/adapters/charge-run-contract.ts); here one subscription with declined rows and
+// one without go through the page, with the page's own choice of week. A declined row is the fake's addLedgerRow seam,
+// as a charge run's decline leaves it. The Notice's words are new copy, typed once here; "Card declined" is the
+// admin's existing word, read from the catalog.
+describe("issue 145 — AC1: account home with a declined card", () => {
+  const JAN_17 = "2027-01-17";
+  const JAN_24 = "2027-01-24";
+  const JAN_31 = "2027-01-31";
+  const LEAD = "Your card was declined.";
+  const KEEP = "Update it to keep your meal.";
+  const UPDATE = "Update your card";
+
+  /** Ada, signed in, with an active subscription paid for January 3; its id. */
+  const subscribedAda = async (): Promise<string> => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    return rows.subscriptionId;
+  };
+
+  const declined = (subscriptionId: string, weekOf: string) => services.repo.addLedgerRow(subscriptionId, weekOf, "declined", 4500);
+
+  /** The Notices' words, the Update your card button's set aside, wherever the button sits under them. */
+  const noticeWords = (html: string): string[] => alertTexts(html).map((text) => text.replace(new RegExp(` ?${UPDATE}$`), ""));
+
+  /** Each link on the page: where it goes, and its text. */
+  const linksOf = (html: string): { href: string; text: string }[] =>
+    [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
+      href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
+      text: textsOf(inner).join(" "),
+    }));
+
+  it("AC1: an active subscription holding a declined row: the Notice names its week, Update your card goes to /account/card, and the badge reads Card declined, not Active", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_31);
+    const { html, runs } = await render();
+    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP} Your meal for ${titleOf(JAN_31)} is still made.`]);
+    expect(linksOf(html)).toContainEqual({ href: "/account/card", text: UPDATE });
+    expect(runs).toContain(en["admin.members.cardDeclined"]);
+    expect(runs).not.toContain(en["account.active"]);
+  });
+
+  it("AC1: {week} is the newest declined row whose week is not closed", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_17);
+    await declined(subscriptionId, JAN_24);
+    await declined(subscriptionId, JAN_31);
+    await close(JAN_31);
+    expect(noticeWords((await render()).html)).toEqual([`${LEAD} ${KEEP} Your meal for ${titleOf(JAN_24)} is still made.`]);
+  });
+
+  it("AC1: when every declined row is a closed week's, the Notice keeps its lead and Update it to keep your meal., and the badge still reads Card declined", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_31);
+    await close(JAN_31);
+    const { html, runs } = await render();
+    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP}`]);
+    expect(runs).toContain(en["admin.members.cardDeclined"]);
+  });
+
+  it("AC1: a cancelled subscription holding a declined row keeps the cancelled Notice and the Cancelled badge, and no declined Notice", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_31);
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toEqual([expect.stringMatching(/^Your Supper Club is cancelled\. /)]);
+    expect(runs).toContain(en["account.cancelled"]);
+    expect(runs).not.toContain(en["admin.members.cardDeclined"]);
+    expect(linksOf(html).map((link) => link.href)).not.toContain("/account/card");
+  });
+});

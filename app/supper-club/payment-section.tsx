@@ -32,7 +32,7 @@ export type PaymentText = {
 const CONSENT_ERROR_ID = "consent-error";
 
 /** Pay, disabled while the action runs, so a double-click sends one token. A child of the form, for `useFormStatus`. */
-function PayButton({ children }: { children: string }) {
+export function PayButton({ children }: { children: string }) {
   const { pending } = useFormStatus();
   return (
     <Button kind="primary" type="submit" full disabled={pending}>

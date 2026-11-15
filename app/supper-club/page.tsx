@@ -12,9 +12,10 @@ import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
 import { PricePanel } from "../../components/ui/price-panel";
+import { cardEntrySettings } from "../card-entry-settings";
 import { getLanguage, getTranslator } from "../language";
 import { MealPickers } from "../meal-pickers";
-import { getFarmContactEmail, getRepository, isProduction } from "../services";
+import { getFarmContactEmail, getRepository } from "../services";
 import { getSignedInMember } from "../session";
 import { retrySupperClubPayment } from "./actions";
 import { JoinPage } from "./join-page";
@@ -95,17 +96,7 @@ async function paymentSection({
         error: t("supperClub.payError"),
         capHint: t("supperClub.capHint"),
       }}
-      card={{
-        // CardEntry's test field stands in for Square's script on the e2e server alone, as the dev outbox does.
-        testMode: !isProduction() && process.env.E2E === "1",
-        applicationId: process.env.NEXT_PUBLIC_SQUARE_APPLICATION_ID,
-        locationId: process.env.NEXT_PUBLIC_SQUARE_LOCATION_ID,
-        billing: {
-          email: member.email,
-          ...(member.firstName !== null && { givenName: member.firstName }),
-          ...(member.lastName !== null && { familyName: member.lastName }),
-        },
-      }}
+      card={cardEntrySettings(member)}
     />
   );
 }

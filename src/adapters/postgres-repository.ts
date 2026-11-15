@@ -2,11 +2,13 @@ import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Menu, MenuInput } from "../menus.js";
+import type { Card } from "../ports/payments.js";
 import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
   type AuditEventKind,
+  type DeclinedCharge,
   type EmailChange,
   type EnrolledWeek,
   type MemberSubscription,
@@ -509,7 +511,9 @@ export class PostgresRepository implements Repository {
           where id = $1`,
         [earlier.id, input.pickupDate, input.firstChargeCents, declined],
       );
-      if (declined) await this.db.query("update subscriptions set square_card_id = null where id = $1", [subscriptionId]);
+      if (declined) {
+        await this.db.query("update subscriptions set square_card_id = null, card_brand = null, card_last4 = null where id = $1", [subscriptionId]);
+      }
     }
     const saved = await this.findPendingSignup(input.memberId, input.productId);
     return saved as PendingSignup;
@@ -524,10 +528,10 @@ export class PostgresRepository implements Repository {
    */
   async saveSubscriptionCard(
     subscriptionId: string,
-    cardId: string,
+    card: Card,
   ): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     if (!UUID_SHAPE.test(subscriptionId)) return null;
-    if (!this.scoped) return this.withActor(null, (repo) => repo.saveSubscriptionCard(subscriptionId, cardId));
+    if (!this.scoped) return this.withActor(null, (repo) => repo.saveSubscriptionCard(subscriptionId, card));
     await this.db.query(
       "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
       [subscriptionId],
@@ -546,11 +550,11 @@ export class PostgresRepository implements Repository {
     if (!bindable[0]) return null;
     if (isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
     const { rows } = await this.db.query<{ amount_cents: number; attempt: number }>(
-      `update subscriptions s set square_card_id = $2
+      `update subscriptions s set square_card_id = $2, card_brand = $3, card_last4 = $4
          from ledger l
         where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and s.square_card_id is null and l.status = 'pending'
         returning l.amount_cents, l.attempt`,
-      [subscriptionId, cardId],
+      [subscriptionId, card.id, card.brand, card.last4],
     );
     return rows[0] ? { amountCents: rows[0].amount_cents, attempt: rows[0].attempt } : null;
   }
@@ -1123,6 +1127,73 @@ export class PostgresRepository implements Repository {
       [ledgerId],
     );
     return rowCount === 1;
+  }
+
+  /** Issue 145: on an `active` subscription, sets its card's id, brand and last four; false, writing nothing, when it is not active. */
+  async replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<boolean> {
+    if (!UUID_SHAPE.test(subscriptionId)) return false;
+    const { rowCount } = await this.db.query(
+      "update subscriptions set square_card_id = $2, card_brand = $3, card_last4 = $4 where id = $1 and status = 'active'",
+      [subscriptionId, card.id, card.brand, card.last4],
+    );
+    return rowCount === 1;
+  }
+
+  async findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null> {
+    if (!UUID_SHAPE.test(subscriptionId)) return null;
+    const { rows } = await this.db.query<{ card_brand: string | null; card_last4: string | null }>(
+      "select card_brand, card_last4 from subscriptions where id = $1",
+      [subscriptionId],
+    );
+    const row = rows[0];
+    return row?.card_brand && row.card_last4 ? { brand: row.card_brand, last4: row.card_last4 } : null;
+  }
+
+  /** The subscription's `declined` rows, closed weeks' included, oldest week first. */
+  async listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]> {
+    if (!UUID_SHAPE.test(subscriptionId)) return [];
+    const { rows } = await this.db.query<{ ledger_id: string; pickup_date: string; amount_cents: number; attempt: number; closed: boolean }>(
+      `select l.id as ledger_id, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, l.amount_cents, l.attempt,
+              ${weekClosed("s.product_id", "l.pickup_date")} as closed
+         from ledger l join subscriptions s on s.id = l.subscription_id
+        where l.subscription_id = $1 and l.status = 'declined'
+        order by l.pickup_date, l.id`,
+      [subscriptionId],
+    );
+    return rows.map((row) => ({ ledgerId: row.ledger_id, pickupDate: row.pickup_date, amountCents: row.amount_cents, attempt: row.attempt, closed: row.closed }));
+  }
+
+  async bumpLedgerAttempt(ledgerId: string): Promise<number | null> {
+    if (!UUID_SHAPE.test(ledgerId)) return null;
+    const { rows } = await this.db.query<{ attempt: number }>(
+      "update ledger set attempt = attempt + 1 where id = $1 and status = 'declined' returning attempt",
+      [ledgerId],
+    );
+    return rows[0]?.attempt ?? null;
+  }
+
+  async listPaidCharges(subscriptionId: string, ledgerIds: string[]): Promise<{ ledgerId: string; pickupDate: string; amountCents: number }[]> {
+    const ids = ledgerIds.filter((id) => UUID_SHAPE.test(id));
+    if (!UUID_SHAPE.test(subscriptionId) || ids.length === 0) return [];
+    const { rows } = await this.db.query<{ ledger_id: string; pickup_date: string; amount_cents: number }>(
+      `select id as ledger_id, to_char(pickup_date, 'YYYY-MM-DD') as pickup_date, amount_cents
+         from ledger
+        where subscription_id = $1 and status = 'paid' and id = any($2::uuid[])
+        order by pickup_date, id`,
+      [subscriptionId, ids],
+    );
+    return rows.map((row) => ({ ledgerId: row.ledger_id, pickupDate: row.pickup_date, amountCents: row.amount_cents }));
+  }
+
+  async dropClosedDeclinedRows(subscriptionId: string): Promise<number> {
+    if (!UUID_SHAPE.test(subscriptionId)) return 0;
+    const { rowCount } = await this.db.query(
+      `delete from ledger l using subscriptions s
+        where l.subscription_id = $1 and s.id = l.subscription_id and l.status = 'declined'
+          and ${weekClosed("s.product_id", "l.pickup_date")}`,
+      [subscriptionId],
+    );
+    return rowCount ?? 0;
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {

@@ -9,7 +9,7 @@ import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { customerIdempotencyKey, sha256Key } from "./customer-match.js";
 import type { Member } from "./members.js";
-import { IDEMPOTENCY_KEY_MAX, IdempotencyKeyReusedError, PaymentsError } from "./ports/payments.js";
+import { IDEMPOTENCY_KEY_MAX, IdempotencyKeyReusedError, PaymentsError, type Card } from "./ports/payments.js";
 import { AUDIT_EVENT_KINDS, type PendingSignupInput, type Repository } from "./ports/repository.js";
 import type { ProductWithOptions } from "./products.js";
 import { confirmSignup, retrySignup, signUp } from "./signup.js";
@@ -21,6 +21,8 @@ const SOURCE = "cnon:card-nonce-ok";
 const OTHER_SOURCE = "cnon:another-card";
 const CONSENT = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy.";
 const SQUARE_TEXT = "Authorization error: the reason Square gave, for member 4242";
+/** The card Square saved, as the bind is given it (issue 145). */
+const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 let repo: InMemoryRepository;
 let payments: FakePayments;
@@ -152,7 +154,7 @@ const overtakenBeforeBind = (other: (card: { customerId: string }) => Promise<un
 const otherTabBinds = async (customerId: string) => {
   const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
   const row = await pending();
-  await repo.saveSubscriptionCard(row?.subscriptionId ?? "no row", card.id);
+  await repo.saveSubscriptionCard(row?.subscriptionId ?? "no row", card);
   return { cardId: card.id, ledgerId: row?.ledgerId ?? "no row" };
 };
 
@@ -927,7 +929,7 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
     const customerId = await linked();
     const row = await repo.savePendingSignup(rows());
     const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
-    overtakenBeforeSave(() => repo.saveSubscriptionCard(row.subscriptionId, card.id));
+    overtakenBeforeSave(() => repo.saveSubscriptionCard(row.subscriptionId, card));
     const save = vi.spyOn(payments, "saveCard");
     const lookup = vi.spyOn(payments, "findPaymentByReference");
     expect(await submit({ choices: picks(1, 1) })).toMatchObject({ outcome: "paid", subscriptionId: row.subscriptionId });
@@ -983,8 +985,8 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
 
   it("AC11: a charge that is not the ledger's amount confirms nothing: the row stays pending, and the event holds both amounts", async () => {
     const bind = repo.saveSubscriptionCard;
-    vi.spyOn(repo, "saveSubscriptionCard").mockImplementationOnce(async function (this: Repository, subscriptionId, cardId) {
-      const bound = await bind.call(this, subscriptionId, cardId);
+    vi.spyOn(repo, "saveSubscriptionCard").mockImplementationOnce(async function (this: Repository, subscriptionId, card) {
+      const bound = await bind.call(this, subscriptionId, card);
       return typeof bound === "object" && bound !== null ? { ...bound, amountCents: 7000 } : bound;
     });
     expect((await submit()).outcome).toBe("unknown");
@@ -1050,7 +1052,7 @@ describe("issue 57 — the cap", () => {
   /** Another member with a card on a pending row and the charge unanswered. */
   const holdsASpot = async (): Promise<void> => {
     const row = await repo.savePendingSignup(rowsFor((await another()).id));
-    await repo.saveSubscriptionCard(row.subscriptionId, `ccof:${row.subscriptionId}`);
+    await repo.saveSubscriptionCard(row.subscriptionId, cardOf(`ccof:${row.subscriptionId}`));
   };
 
   /** Another member with an active subscription, confirmed straight on, as a lowered cap would leave them. */

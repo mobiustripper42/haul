@@ -3,6 +3,7 @@ import type { Language } from "../i18n.js";
 import type { Member, Role } from "../members.js";
 import type { Menu, MenuInput } from "../menus.js";
 import type { ChangedWeek } from "../pickup-week.js";
+import type { Card } from "./payments.js";
 import type { ProductWithOptions } from "../products.js";
 import type { RateLimitRefusal } from "../sign-in/rate-limit.js";
 import type { RateLimitStore, SignInStore } from "../sign-in/store.js";
@@ -193,6 +194,12 @@ export type PendingCharge = {
 };
 
 /**
+ * Issue 145: a subscription's `declined` ledger row, as a card update retries it. `closed` is whether the row's week is
+ * closed: such a row is never retried, and a save that puts a new card on file deletes it.
+ */
+export type DeclinedCharge = { ledgerId: string; pickupDate: string; amountCents: number; attempt: number; closed: boolean };
+
+/**
  * Issue 150: what `enrolWeek` wrote: `pending` rows to charge, rows paid at 0 cents for a 0-cent set (`zeroCents`), and
  * the rows a week credit paid (`byWeekCredit`), each with its member, for the run's receipts.
  */
@@ -259,12 +266,12 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   savePendingSignup(input: PendingSignupInput): Promise<PendingSignup>;
   /**
-   * Binds the card to a pending subscription that has none, and gives back the amount and attempt of its ledger
+   * Binds the card (its id, brand and last four) to a pending subscription that has none, and gives back the amount and attempt of its ledger
    * row, which are what to charge. Null when the bind is lost: another card is there, or it is no longer pending,
    * or its ledger row is not pending. Those outrank the cap. Otherwise, under the member row's lock and then the
    * product row's, it counts held spots and returns "sold_out" when the product is full, binding nothing.
    */
-  saveSubscriptionCard(subscriptionId: string, cardId: string): Promise<{ amountCents: number; attempt: number } | "sold_out" | null>;
+  saveSubscriptionCard(subscriptionId: string, card: Card): Promise<{ amountCents: number; attempt: number } | "sold_out" | null>;
   /**
    * The spots of a product that are taken: an active subscription, or a pending one with a card on it and its
    * ledger row pending. A declined row and a cardless one hold none, so a decline releases its spot with no write.
@@ -328,6 +335,18 @@ export interface Repository extends SignInStore, RateLimitStore {
    * when it deleted; false for an id that isn't a UUID. It checks no date.
    */
   dropClosedWeekRow(ledgerId: string): Promise<boolean>;
+  /** Issue 145: on an `active` subscription, sets its card's id, brand and last four; false, writing nothing, when it is not active. */
+  replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<boolean>;
+  /** Issue 145: the subscription's stored card brand and last four; null when they are not stored. */
+  findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null>;
+  /** Issue 145: the subscription's `declined` rows, closed weeks' included, oldest week first. */
+  listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]>;
+  /** Issue 145: `attempt = attempt + 1` on a `declined` row, returning the new attempt; null when the row is not declined. */
+  bumpLedgerAttempt(ledgerId: string): Promise<number | null>;
+  /** Issue 145: the subscription's `paid` rows among `ledgerIds`, oldest week first; an id that is not one of them is dropped. */
+  listPaidCharges(subscriptionId: string, ledgerIds: string[]): Promise<{ ledgerId: string; pickupDate: string; amountCents: number }[]>;
+  /** Issue 145: deletes the subscription's `declined` rows whose week is closed, returning how many. */
+  dropClosedDeclinedRows(subscriptionId: string): Promise<number>;
   /** Per week key from `from` on, the `paid` ledger rows and the week credits granted. */
   listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>>;
   /**

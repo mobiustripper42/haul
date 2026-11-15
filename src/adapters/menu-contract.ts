@@ -9,9 +9,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Menu } from "../menus.js";
 import { cutoffInstant } from "../pickup-week.js";
+import type { Card } from "../ports/payments.js";
 import type { Repository } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { BOX, UNKNOWN_UUID, UUID } from "./contract-helpers.js";
+
+/** The card Square saved, as the bind is given it (issue 145). */
+const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 const typeAt = (at: number) => {
   const type = BOX.optionTypes[at];
@@ -285,7 +289,7 @@ export function runMenuContract(
           consentText: "I agree to a weekly charge of $50.",
           consentAt: CONSENT_AT,
         });
-        expect(await repo.saveSubscriptionCard(signup.subscriptionId, `ccof:made-${n}`)).toEqual({ amountCents: 5000, attempt: 1 });
+        expect(await repo.saveSubscriptionCard(signup.subscriptionId, cardOf(`ccof:made-${n}`))).toEqual({ amountCents: 5000, attempt: 1 });
         expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, PAID_AT)).toBe("confirmed");
         const stored = await repo.findMemberById(member.id);
         if (!stored) throw new Error("the member just saved is gone");

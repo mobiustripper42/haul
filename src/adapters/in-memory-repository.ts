@@ -3,11 +3,13 @@ import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Menu, MenuInput } from "../menus.js";
+import type { Card } from "../ports/payments.js";
 import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
   type AuditEventKind,
+  type DeclinedCharge,
   type EmailChange,
   type EnrolledWeek,
   type MemberSubscription,
@@ -38,6 +40,9 @@ type StoredSubscription = {
   /** The time of the cancel; set exactly when `status` is `cancelled`. */
   cancelledAt: Date | null;
   squareCardId: string | null;
+  /** The card's brand and last four, stored beside its id (issue 145); null with no card, or one bound before they were. */
+  cardBrand: string | null;
+  cardLast4: string | null;
   consentText: string;
   consentAt: Date;
   firstChargeCents: number;
@@ -263,6 +268,8 @@ export class InMemoryRepository implements Repository {
       status: "pending",
       cancelledAt: null,
       squareCardId: existing?.squareCardId ?? null,
+      cardBrand: existing?.cardBrand ?? null,
+      cardLast4: existing?.cardLast4 ?? null,
       consentText: input.consentText,
       consentAt: new Date(input.consentAt),
       firstChargeCents: input.firstChargeCents,
@@ -284,7 +291,7 @@ export class InMemoryRepository implements Repository {
       squarePaymentId: before?.squarePaymentId ?? null,
       paidAt: before?.paidAt ?? null,
     };
-    if (declined) subscription.squareCardId = null;
+    if (declined) Object.assign(subscription, { squareCardId: null, cardBrand: null, cardLast4: null });
     this.subscriptions.set(subscription.id, subscription);
     this.ledger.set(ledger.id, ledger);
     const saved = await this.findPendingSignup(input.memberId, input.productId);
@@ -293,7 +300,7 @@ export class InMemoryRepository implements Repository {
 
   async saveSubscriptionCard(
     subscriptionId: string,
-    cardId: string,
+    card: Card,
   ): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     const subscription = this.subscriptions.get(subscriptionId);
     const ledger = this.ledgerOf(subscriptionId);
@@ -301,7 +308,7 @@ export class InMemoryRepository implements Repository {
     if (ledger.status !== "pending") return null;
     const product = this.products.find((p) => p.id === subscription.productId);
     if (product && isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
-    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: card.id, cardBrand: card.brand, cardLast4: card.last4 });
     return { amountCents: ledger.amountCents, attempt: ledger.attempt };
   }
 
@@ -620,6 +627,64 @@ export class InMemoryRepository implements Repository {
     if (!row || !subscription || row.status !== "pending" || subscription.status === "pending") return false;
     if (this.pickupWeeks.get(weekKey(subscription.productId, row.pickupDate))?.closedAt == null) return false;
     return this.ledger.delete(ledgerId);
+  }
+
+  /** Issue 145: on an `active` subscription, sets its card's id, brand and last four; false, writing nothing, when it is not active. */
+  async replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<boolean> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (subscription?.status !== "active") return false;
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: card.id, cardBrand: card.brand, cardLast4: card.last4 });
+    return true;
+  }
+
+  async findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    return subscription?.cardBrand && subscription.cardLast4 ? { brand: subscription.cardBrand, last4: subscription.cardLast4 } : null;
+  }
+
+  /** The subscription's `declined` rows, closed weeks' included, oldest week first. */
+  async listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (!subscription) return [];
+    return [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "declined")
+      .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))
+      .map((row) => ({
+        ledgerId: row.id,
+        pickupDate: row.pickupDate,
+        amountCents: row.amountCents,
+        attempt: row.attempt,
+        closed: this.weekClosed(subscription.productId, row.pickupDate),
+      }));
+  }
+
+  async bumpLedgerAttempt(ledgerId: string): Promise<number | null> {
+    const row = this.ledger.get(ledgerId);
+    if (row?.status !== "declined") return null;
+    this.ledger.set(ledgerId, { ...row, attempt: row.attempt + 1 });
+    return row.attempt + 1;
+  }
+
+  async listPaidCharges(subscriptionId: string, ledgerIds: string[]): Promise<{ ledgerId: string; pickupDate: string; amountCents: number }[]> {
+    return [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "paid" && ledgerIds.includes(row.id))
+      .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))
+      .map((row) => ({ ledgerId: row.id, pickupDate: row.pickupDate, amountCents: row.amountCents }));
+  }
+
+  async dropClosedDeclinedRows(subscriptionId: string): Promise<number> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (!subscription) return 0;
+    const closed = [...this.ledger.values()].filter(
+      (row) => row.subscriptionId === subscriptionId && row.status === "declined" && this.weekClosed(subscription.productId, row.pickupDate),
+    );
+    for (const row of closed) this.ledger.delete(row.id);
+    return closed.length;
+  }
+
+  /** Whether an admin has closed the product's week. */
+  private weekClosed(productId: string, weekOf: string): boolean {
+    return this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null;
   }
 
   /**

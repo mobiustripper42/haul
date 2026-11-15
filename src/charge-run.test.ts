@@ -36,6 +36,8 @@ const PAID_AT = new Date("2027-01-05T12:00:30.000Z");
 const CLOSED_AT = new Date("2027-01-05T18:00:00.000Z");
 const SITE_URL = "https://members.example.test";
 const ACCOUNT_URL = "https://members.example.test/account";
+/** Issue 145: the decline email's link, Update your card. */
+const CARD_URL = "https://members.example.test/account/card";
 const SQUARE_TEXT = "Authorization error: the reason Square gave, for member 4242";
 const CHARGE_RUN: Actor = { system: "charge-run" };
 
@@ -124,8 +126,9 @@ async function subscriber({
   });
   let cardId: string | null = null;
   if (card) {
-    cardId = (await payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` })).id;
-    expect(await repo.saveSubscriptionCard(signup.subscriptionId, cardId)).toEqual({ amountCents: priceCents, attempt: 1 });
+    const saved = await payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` });
+    cardId = saved.id;
+    expect(await repo.saveSubscriptionCard(signup.subscriptionId, saved)).toEqual({ amountCents: priceCents, attempt: 1 });
   }
   if (paid) expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, priceCents, SIGNED_UP_AT)).toBe("confirmed");
   const member = await repo.findMemberById(saved.id);
@@ -134,7 +137,7 @@ async function subscriber({
 }
 
 const run = (now: Date = RUN_AT, clock: () => Date = () => PAID_AT): Promise<ChargeRunReport> =>
-  runCharges({ repo, payments, email, now, clock, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL });
+  runCharges({ repo, payments, email, now, clock, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl: CARD_URL });
 
 const report = (over: Partial<ChargeRunReport> = {}): ChargeRunReport => ({
   weekOf: WEEK,
@@ -860,7 +863,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ada.member.email,
         subject: `Card declined: Supper Club pickup ${TITLE}`,
-        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal is still being made. Please update your card at ${ACCOUNT_URL}.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal is still being made. Please update your card at ${CARD_URL}.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
       },
     ]);
   });
@@ -874,7 +877,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ana.member.email,
         subject: `Tarjeta rechazada: recogida del Supper Club el ${week}`,
-        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida se prepara igual. Actualice su tarjeta en ${ACCOUNT_URL}.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida se prepara igual. Actualice su tarjeta en ${CARD_URL}.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
       },
     ]);
   });
@@ -882,9 +885,10 @@ describe("issue 135 — AC3: the decline email", () => {
   it("AC3: the link is the account URL the run is given, not one the run builds from the site address", async () => {
     const ada = await subscriber();
     payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
-    const accountUrl = "https://account.example.test/elsewhere";
-    await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl });
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Please update your card at ${accountUrl}.`)]);
+    // Issue 145, AC9: the link is the card URL the run is given, not the account URL beside it.
+    const cardUrl = "https://account.example.test/elsewhere";
+    await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
+    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Please update your card at ${cardUrl}.`)]);
   });
 
   it("AC3: a moved week is named by its moved days", async () => {
@@ -1082,7 +1086,7 @@ describe("issue 174 — one firing at a time", () => {
     watch(payments, "findPaymentByReference");
     watch(email, "send");
 
-    await runCharges({ repo: tracedRepo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL });
+    await runCharges({ repo: tracedRepo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl: CARD_URL });
 
     expect(log.slice(0, 2)).toEqual(["claimRunLease:start@0", "claimRunLease:end"]);
     expect(log.slice(-2)).toEqual(["releaseRunLease:start@0", "releaseRunLease:end"]);

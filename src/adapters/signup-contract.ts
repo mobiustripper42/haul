@@ -7,9 +7,13 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountDetails } from "../create-account.js";
 import type { ChangedWeek } from "../pickup-week.js";
+import type { Card } from "../ports/payments.js";
 import type { PendingSignup, PendingSignupInput, Repository } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
 import { BOX, UUID } from "./contract-helpers.js";
+
+/** The card Square saved, as the bind is given it (issue 145): `id` is what the row holds. */
+const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 export function runSignupContract(
   name: string,
@@ -127,7 +131,7 @@ export function runSignupContract(
 
       it("AC7: saveSubscriptionCard stores the card on the row", async () => {
         const signup = await saved();
-        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
         expect((await pending())?.squareCardId).toBe("ccof:card-1");
       });
 
@@ -152,7 +156,7 @@ export function runSignupContract(
         const failure = new Error("fn failed after saving the card");
         await expect(
           repo.withActor({ member: memberId }, async (r) => {
-            await r.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+            await r.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
             throw failure;
           }),
         ).rejects.toBe(failure);
@@ -230,7 +234,7 @@ export function runSignupContract(
 
       it("AC9: a save after a decline is a new attempt on the same rows: back to pending, attempt 2, the card gone", async () => {
         const first = await saved();
-        await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(first.subscriptionId, cardOf("ccof:card-1"));
         await repo.recordSignupDecline(first.ledgerId);
         const second = await saved();
         expect(second).toMatchObject({
@@ -416,7 +420,7 @@ export function runSignupContract(
 
       it("AC11: a save over a pending row with a card rewrites nothing", async () => {
         const first = await saved();
-        await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(first.subscriptionId, cardOf("ccof:card-1"));
         await refused({ choices: picks(1, 1), firstChargeCents: 8000, weeklyCents: 8000, pickupDate: "2027-01-10" });
         const found = await pending();
         expect(found).toMatchObject({
@@ -433,21 +437,21 @@ export function runSignupContract(
 
       it("AC11: saveSubscriptionCard returns the amount and the attempt of the row it bound", async () => {
         const signup = await saved({ firstChargeCents: 8000, weeklyCents: 8000 });
-        expect(await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 8000, attempt: 1 });
+        expect(await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 8000, attempt: 1 });
       });
 
       it("AC11: after a decline's rewrite it returns the rewritten amount and the new attempt", async () => {
         const first = await saved();
-        await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(first.subscriptionId, cardOf("ccof:card-1"));
         await repo.recordSignupDecline(first.ledgerId);
         await saved({ firstChargeCents: 8000, weeklyCents: 8000 });
-        expect(await repo.saveSubscriptionCard(first.subscriptionId, "ccof:card-2")).toMatchObject({ amountCents: 8000, attempt: 2 });
+        expect(await repo.saveSubscriptionCard(first.subscriptionId, cardOf("ccof:card-2"))).toMatchObject({ amountCents: 8000, attempt: 2 });
       });
 
       it("AC11: a second card does not bind: the first stays, and the loser gets no amount to charge", async () => {
         const signup = await saved();
-        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
-        const lost = await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-2");
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
+        const lost = await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-2"));
         expect((await pending())?.squareCardId).toBe("ccof:card-1");
         expect(lost ?? null).toBeNull();
       });
@@ -475,7 +479,7 @@ export function runSignupContract(
       /** A new member with a card on a pending row and the charge unanswered. */
       const boundOn = async (on: ProductWithOptions): Promise<PendingSignup> => {
         const signup = await rowsOn(on);
-        await repo.saveSubscriptionCard(signup.subscriptionId, `ccof:${signup.subscriptionId}`);
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf(`ccof:${signup.subscriptionId}`));
         return signup;
       };
 
@@ -536,7 +540,7 @@ export function runSignupContract(
           const club = await capped(1);
           await boundOn(club);
           const mine = await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toBe("sold_out");
           expect(await adaOn(club)).toMatchObject({ subscriptionId: mine.subscriptionId, ledgerStatus: "pending", attempt: 1, squareCardId: null });
           expect(await repo.countHeldSpots(club.id)).toBe(1);
         });
@@ -545,7 +549,7 @@ export function runSignupContract(
           const club = await capped(1);
           await activeOn(club);
           const mine = await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toBe("sold_out");
         });
 
         it('AC7 (issue 57): the last spot binds with its amount and attempt, and the next is "sold_out"', async () => {
@@ -553,15 +557,15 @@ export function runSignupContract(
           await boundOn(club);
           const mine = await rowsOn(club, memberId);
           const last = await rowsOn(club);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
-          expect(await repo.saveSubscriptionCard(last.subscriptionId, "ccof:card-2")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.saveSubscriptionCard(last.subscriptionId, cardOf("ccof:card-2"))).toBe("sold_out");
         });
 
         it("AC7 (issue 57): a rival's cardless pending row fills nothing, so the bind goes through, which guards the refusals above", async () => {
           const club = await capped(1);
           await rowsOn(club);
           const mine = await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 5000, attempt: 1 });
         });
       });
 
@@ -570,8 +574,8 @@ export function runSignupContract(
         it('AC7 (issue 57): a row with a card on it returns null at the cap, not "sold_out", and keeps its card', async () => {
           const club = await capped(1);
           const mine = await rowsOn(club, memberId);
-          await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
-          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-2")) ?? null).toBeNull();
+          await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"));
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-2"))) ?? null).toBeNull();
           expect((await adaOn(club))?.squareCardId).toBe("ccof:card-1");
         });
 
@@ -579,13 +583,13 @@ export function runSignupContract(
           const club = await capped(1);
           const mine = await rowsOn(club, memberId);
           await repo.confirmSignupRows(mine.ledgerId, "PAYMENT_1", mine.amountCents, PAID_AT);
-          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:late")) ?? null).toBeNull();
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:late"))) ?? null).toBeNull();
         });
 
         it("AC7 (issue 57): a bind refuses a cardless row whose ledger row is declined: null, and the row stays cardless", async () => {
           const mine = await saved();
           await repo.recordSignupDecline(mine.ledgerId);
-          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")) ?? null).toBeNull();
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))) ?? null).toBeNull();
           expect(await pending()).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
         });
 
@@ -594,7 +598,7 @@ export function runSignupContract(
           await boundOn(club);
           const mine = await rowsOn(club, memberId);
           await repo.recordSignupDecline(mine.ledgerId);
-          expect((await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")) ?? null).toBeNull();
+          expect((await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))) ?? null).toBeNull();
           expect(await adaOn(club)).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
         });
       });
@@ -604,24 +608,24 @@ export function runSignupContract(
           const club = await capped(1);
           const holder = await boundOn(club);
           const mine = await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toBe("sold_out");
           expect(await repo.countHeldSpots(club.id)).toBe(1);
 
           await repo.recordSignupDecline(holder.ledgerId);
 
           expect(await repo.countHeldSpots(club.id)).toBe(0);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 5000, attempt: 1 });
           expect(await repo.countHeldSpots(club.id)).toBe(1);
         });
 
         it('AC12 (issue 57): a declined row rewritten for its next attempt meets the cap at the bind: "sold_out", on attempt 2, cardless', async () => {
           const club = await capped(1);
           const mine = await rowsOn(club, memberId);
-          await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
+          await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"));
           await repo.recordSignupDecline(mine.ledgerId);
           await boundOn(club);
           await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-2")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-2"))).toBe("sold_out");
           expect(await adaOn(club)).toMatchObject({ ledgerStatus: "pending", attempt: 2, squareCardId: null });
         });
       });
@@ -643,12 +647,12 @@ export function runSignupContract(
           const club = await capped(1);
           const holder = await activeOn(club);
           const mine = await rowsOn(club, memberId);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toBe("sold_out");
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toBe("sold_out");
 
           expect(await repo.cancelSubscription(holder.subscriptionId, new Date("2026-11-20T15:00:00.000Z"))).toBe(true);
 
           expect(await repo.countHeldSpots(club.id)).toBe(0);
-          expect(await repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1")).toMatchObject({ amountCents: 5000, attempt: 1 });
+          expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 5000, attempt: 1 });
         });
       });
     });
@@ -703,7 +707,7 @@ export function runSignupContract(
         const held = await activeOn(product, memberId);
         await saved({ memberId: await newMember("cardless@example.com") });
         const carded = await saved({ memberId: await newMember("carded@example.com") });
-        await repo.saveSubscriptionCard(carded.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(carded.subscriptionId, cardOf("ccof:card-1"));
         const declined = await saved({ memberId: await newMember("declined@example.com") });
         await repo.recordSignupDecline(declined.ledgerId);
 

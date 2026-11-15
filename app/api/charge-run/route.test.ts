@@ -78,10 +78,10 @@ async function subscriber(): Promise<{ customerId: string; cardId: string }> {
     consentText: "I agree to a weekly charge until I cancel.",
     consentAt: SIGNED_UP_AT,
   });
-  const cardId = (await services.payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` })).id;
-  await services.repo.saveSubscriptionCard(signup.subscriptionId, cardId);
+  const card = await services.payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` });
+  await services.repo.saveSubscriptionCard(signup.subscriptionId, card);
   expect(await services.repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, 8000, SIGNED_UP_AT)).toBe("confirmed");
-  return { customerId, cardId };
+  return { customerId, cardId: card.id };
 }
 
 /** Charges to `cardId` get no answer, and Square takes none of them; any other charge goes to the fake. */
@@ -189,6 +189,18 @@ describe("AC2 — anything but the secret is 404, and the run never fires", () =
     vi.stubEnv("CRON_SECRET", SECRET);
 
     expect(await outcomeOf(fire(`Bearer ${SAME_LENGTH}`))).toEqual({ returned: true, status: 404 });
+  });
+});
+
+// Issue 145, AC9: the decline email's link is Update your card. What the run does with the link it is given is
+// src/charge-run.test.ts's; here, the link the route gives it.
+describe("issue 145 — AC9: the decline email's link", () => {
+  it("AC9: the run is given cardUrl, /account/card under the site URL, joined with one slash", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+
+    await fire(`Bearer ${SECRET}`);
+
+    expect(vi.mocked(runCharges).mock.calls[0]?.[0].cardUrl).toBe("https://members.example.test/account/card");
   });
 });
 
