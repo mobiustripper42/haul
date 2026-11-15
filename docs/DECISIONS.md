@@ -59,6 +59,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-029 — An account is a member row whose email a sign-in code confirms
 - DEC-030 — The pickup-weeks calendar is an admin screen, not SQL
 - DEC-036 — The weekly menu is published by the daily run
+- DEC-039 — A token signed under the session secret names its purpose
 
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class

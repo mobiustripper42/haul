@@ -1,6 +1,6 @@
 import { siteLink } from "@core/email-templates.js";
 import { runMenuRun } from "@core/menu-run.js";
-import { ACCOUNT_WEEKS_PATH, ADMIN_WEEKS_PATH, MENU_PATH } from "../../paths";
+import { ACCOUNT_WEEKS_PATH, ADMIN_WEEKS_PATH } from "../../paths";
 import { getEmail, getMenuEmailWeekday, getRepository, getSessionSecret, getSiteUrl } from "../../services";
 import { authorizedCron } from "../cron-auth";
 
@@ -25,7 +25,6 @@ export async function GET(request: Request): Promise<Response> {
     siteUrl,
     accountWeeksUrl: siteLink(siteUrl, ACCOUNT_WEEKS_PATH),
     adminWeeksUrl: siteLink(siteUrl, ADMIN_WEEKS_PATH),
-    menuUrl: siteLink(siteUrl, MENU_PATH),
     emailWeekday,
     sessionSecret: getSessionSecret(),
   });

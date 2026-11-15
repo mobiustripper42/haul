@@ -20,10 +20,9 @@ import { assertLocalUrl } from "./seed.js";
 
 // Copied from app/services.ts (getSiteUrl's dev default): `db/` cannot import `app/`.
 const DEV_SITE_URL = "http://localhost:4000";
-// Copied from app/paths.ts (ACCOUNT_WEEKS_PATH, ADMIN_WEEKS_PATH, MENU_PATH).
+// Copied from app/paths.ts (ACCOUNT_WEEKS_PATH, ADMIN_WEEKS_PATH).
 const ACCOUNT_WEEKS_PATH = "/account/weeks";
 const ADMIN_WEEKS_PATH = "/admin/weeks";
-const MENU_PATH = "/menu";
 
 /** Fires the run once on the repository at `url`, and returns its report. */
 export async function menuRun({ now, url }: { now: Date | null; url: string }, env: NodeJS.ProcessEnv = process.env): Promise<MenuRunReport> {
@@ -39,7 +38,6 @@ export async function menuRun({ now, url }: { now: Date | null; url: string }, e
       siteUrl,
       accountWeeksUrl: `${siteUrl}${ACCOUNT_WEEKS_PATH}`,
       adminWeeksUrl: `${siteUrl}${ADMIN_WEEKS_PATH}`,
-      menuUrl: `${siteUrl}${MENU_PATH}`,
       emailWeekday,
       sessionSecret: sessionSecret(env),
     });
