@@ -36,6 +36,9 @@ jobs:
 
     steps:
       - uses: actions/checkout@v5
+        with:
+          # check:migrations needs the merge base with main and production.
+          fetch-depth: 0
 
       - uses: actions/setup-node@v5
         with:
