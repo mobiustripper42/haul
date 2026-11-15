@@ -8,7 +8,7 @@ import type { Repository } from "../ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME, type ProductInput, type ProductWithOptions } from "../products.js";
 import { retrySignup, signUp, type SignupDeps } from "../signup.js";
 import { FakePayments } from "./fake-payments.js";
-import { createPool } from "./pg-connect.js";
+import { asAppRole, createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runProductContract } from "./product-contract.js";
 import { runSignupContract } from "./repository-contract.js";
@@ -25,7 +25,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
   beforeAll(async () => {
     url = await migrateTestDatabase(TEST_DATABASE_URL, "product");
     pool = createPool(url);
-    repo = new PostgresRepository(url);
+    repo = new PostgresRepository(asAppRole(url));
   });
 
   afterAll(async () => {

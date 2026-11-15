@@ -1,5 +1,6 @@
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
+import { asAppRole } from "@core/adapters/pg-connect.js";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
 import { ResendEmail } from "@core/adapters/resend-email.js";
 import { SquarePayments } from "@core/adapters/square-payments.js";
@@ -13,7 +14,8 @@ import { sessionSecret } from "@core/sign-in/session.js";
 export const isProduction = (): boolean => process.env.NODE_ENV === "production";
 
 // The local dev database (docker-compose.yml), the default db/migrate.ts uses.
-const DEV_DATABASE_URL = "postgres://haul:haul@localhost:5434/haul_dev";
+// It connects as the app's role, so dev runs with the rights production has (DEC-037).
+const DEV_DATABASE_URL = asAppRole("postgres://haul:haul@localhost:5434/haul_dev");
 
 let repository: Repository | undefined;
 let email: EmailPort | undefined;

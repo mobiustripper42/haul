@@ -46,6 +46,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-026 — A member holds one or more subscriptions, to any product
 - DEC-027 — Product, option type and option names are data
 - DEC-028 — Every audit row names who acted; events only where the trigger can't tell
+- DEC-037 — The app connects as haul_app, which cannot rewrite the audit log or truncate
 
 ### Product rules
 - DEC-007 — Configuration is edited with SQL and seeds, not admin screens

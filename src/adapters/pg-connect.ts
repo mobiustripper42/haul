@@ -67,3 +67,19 @@ export function createPool(url: string, extra: Omit<pg.PoolConfig, "connectionSt
 export function createClient(url: string, extra: Omit<pg.ClientConfig, "connectionString" | "ssl"> = {}): pg.Client {
   return new pg.Client({ ...extra, ...pgConnectionConfig(url) });
 }
+
+/** The database role the app runs as (DEC-037). The app-role migration is the only other place that spells it. */
+export const APP_ROLE = "haul_app";
+
+/**
+ * `url` with `-c role=<APP_ROLE>` added to its `options`, so the connection runs as the app's role. An
+ * `options` value already on the URL is kept, with the role setting after it. The login is still
+ * whoever the URL names; `set role` is the whole of what changes.
+ */
+export function asAppRole(url: string): string {
+  const parsed = new URL(url);
+  const existing = parsed.searchParams.get("options");
+  const role = `-c role=${APP_ROLE}`;
+  parsed.searchParams.set("options", existing ? `${existing} ${role}` : role);
+  return parsed.toString();
+}

@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import type { Actor } from "../ports/repository.js";
 import { hashCode, issueSignInCode } from "../sign-in/code.js";
 import { runSignInStoreContract } from "../sign-in/store-contract.js";
-import { createPool } from "./pg-connect.js";
+import { asAppRole, createPool } from "./pg-connect.js";
 import { PostgresRepository } from "./postgres-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
@@ -20,7 +20,7 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
   beforeAll(async () => {
     const url = await migrateTestDatabase(TEST_DATABASE_URL, "repository");
     pool = createPool(url);
-    repo = new PostgresRepository(url);
+    repo = new PostgresRepository(asAppRole(url));
   });
 
   afterAll(async () => {

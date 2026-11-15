@@ -181,6 +181,50 @@ describe("AC32 (issue 9) — getRepository", () => {
   });
 });
 
+describe("AC12 (issue 185) — getRepository connects as haul_app by default", () => {
+  const REPOSITORY_MODULE = "@core/adapters/postgres-repository.js";
+
+  /** Loads services with PostgresRepository replaced by a class that records the URL it is built on. */
+  async function loadRecordingUrls(env: Env) {
+    const urls: string[] = [];
+    vi.doMock(REPOSITORY_MODULE, () => ({
+      PostgresRepository: class {
+        constructor(url: string) {
+          urls.push(url);
+        }
+      },
+    }));
+    const { services } = await load(env);
+    return { services, urls };
+  }
+
+  afterEach(() => {
+    vi.doUnmock(REPOSITORY_MODULE);
+  });
+
+  it("AC12: outside production with no DATABASE_URL, it builds the repository on the dev URL with options=-c role=haul_app", async () => {
+    const { services, urls } = await loadRecordingUrls({ NODE_ENV: "development" });
+    services.getRepository();
+    expect(urls).toHaveLength(1);
+    const url = new URL(urls[0] as string);
+    expect({ protocol: url.protocol, username: url.username, password: url.password, host: url.host, pathname: url.pathname }).toEqual({
+      protocol: "postgres:",
+      username: "haul",
+      password: "haul",
+      host: "localhost:5434",
+      pathname: "/haul_dev",
+    });
+    expect([...url.searchParams.entries()]).toEqual([["options", "-c role=haul_app"]]);
+  });
+
+  it.each(["development", "production"])("AC12: with DATABASE_URL set, NODE_ENV %s, it builds the repository on DATABASE_URL unchanged", async (NODE_ENV) => {
+    const DATABASE_URL = "postgres://app_user:s3cret@db.example.com:5432/haul?sslmode=require";
+    const { services, urls } = await loadRecordingUrls({ NODE_ENV, DATABASE_URL });
+    services.getRepository();
+    expect(urls).toEqual([DATABASE_URL]);
+  });
+});
+
 describe("AC8 (issue 56) — getPayments", () => {
   const SQUARE = { SQUARE_ACCESS_TOKEN: "EAAA-test-token", SQUARE_LOCATION_ID: "LOCATION_MAIN" };
   const NAMES = ["NODE_ENV", "SQUARE_ENVIRONMENT", "SQUARE_ACCESS_TOKEN", "SQUARE_LOCATION_ID"] as const;
