@@ -9,7 +9,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createClient } from "../src/adapters/pg-connect.js";
 import type { Client } from "../src/adapters/pg-connect.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "../src/adapters/test-database.js";
-import { AUDIT_EXEMPT, schemaViolations } from "./schema-check.js";
+import { APP_RIGHTS_EXCEPTIONS, AUDIT_EXEMPT, schemaViolations } from "./schema-check.js";
 import type { SchemaViolation } from "./schema-check.js";
 
 describe("AC9 — the exempt list", () => {
@@ -223,6 +223,167 @@ describe.skipIf(!up)(`AC9–AC15 — schemaViolations against <test db>_schema${
         ${auditTrigger("probe_lookalikes")}
       `);
       expect(naming(result, "probe_lookalikes")).toEqual([]);
+    });
+  });
+});
+
+// Issue 185, AC8 — the schema check on haul_app's rights. The list test needs no database; the rest
+// run against the same `<test db>_schema`, each building what it needs inside a transaction it rolls
+// back, as above. Calls pass both lists, so a test can pass a rights list of its own.
+type AppRights = Readonly<Record<string, { rights: readonly string[]; reason: string }>>;
+
+describe("AC8 (issue 185) — the app-rights exception list", () => {
+  it("AC8: APP_RIGHTS_EXCEPTIONS holds exactly audit_log (SELECT) and _migrations (nothing), each with a reason, rights in upper case", () => {
+    expect(Object.keys(APP_RIGHTS_EXCEPTIONS).sort()).toEqual(["_migrations", "audit_log"]);
+    expect(APP_RIGHTS_EXCEPTIONS.audit_log?.rights).toEqual(["SELECT"]);
+    expect(APP_RIGHTS_EXCEPTIONS._migrations?.rights).toEqual([]);
+    for (const [table, { rights, reason }] of Object.entries(APP_RIGHTS_EXCEPTIONS)) {
+      expect(reason.trim(), table).not.toBe("");
+      for (const right of rights) expect(right, table).toBe(right.toUpperCase());
+    }
+  });
+});
+
+describe.skipIf(!up)(`AC8 (issue 185) — schemaViolations on haul_app's rights, against <test db>_schema${skipped}`, () => {
+  let db: Client;
+
+  beforeAll(async () => {
+    const url = await migrateTestDatabase(TEST_DATABASE_URL, "schema");
+    db = createClient(url);
+    await db.connect();
+  });
+
+  afterAll(async () => {
+    await db?.end();
+  });
+
+  /** Runs `setup`, then the check with both lists, inside a transaction that is always rolled back. */
+  const check = async (setup: string, appRights: AppRights = APP_RIGHTS_EXCEPTIONS): Promise<SchemaViolation[]> => {
+    await db.query("begin");
+    try {
+      await db.query(setup);
+      return await schemaViolations(db, AUDIT_EXEMPT, appRights);
+    } finally {
+      await db.query("rollback");
+    }
+  };
+
+  const ofKind = (violations: SchemaViolation[], kind: string, table: string) =>
+    violations.filter((v) => v.kind === kind && v.table === table);
+
+  /** A probe table on which haul_app holds exactly `rights` (SQL privilege names, comma-separated). */
+  const probeWithRights = (table: string, rights: string) => `
+    create table ${table} (id int primary key);
+    revoke all on ${table} from haul_app;
+    grant ${rights} on ${table} to haul_app;`;
+
+  it("AC8: with every migration applied, schemaViolations with the default lists returns []", async () => {
+    expect(await schemaViolations(db)).toEqual([]);
+  });
+
+  describe("AC8 — app-rights: haul_app's rights on a table differ from the expected set", () => {
+    it("AC8: a table on which haul_app lacks DELETE is app-rights", async () => {
+      const result = await check(probeWithRights("probe_app_short", "select, insert, update"));
+      expect(result).toContainEqual({ kind: "app-rights", table: "probe_app_short" });
+    });
+
+    it("AC8: a table on which haul_app also holds TRUNCATE is app-rights", async () => {
+      const result = await check(probeWithRights("probe_app_extra", "select, insert, update, delete, truncate"));
+      expect(result).toContainEqual({ kind: "app-rights", table: "probe_app_extra" });
+    });
+
+    it("AC8: a table on which haul_app holds exactly the four is not app-rights", async () => {
+      const result = await check(probeWithRights("probe_app_exact", "select, insert, update, delete"));
+      expect(ofKind(result, "app-rights", "probe_app_exact")).toEqual([]);
+    });
+
+    it("AC8: haul_app holding INSERT on audit_log, whose entry says SELECT, is app-rights", async () => {
+      const result = await check("grant insert on audit_log to haul_app;");
+      expect(result).toContainEqual({ kind: "app-rights", table: "audit_log" });
+    });
+
+    it("AC8: a table in the rights list passed in is checked against its entry: SELECT alone passes, the four do not", async () => {
+      const appRights: AppRights = {
+        ...APP_RIGHTS_EXCEPTIONS,
+        probe_app_ro: { rights: ["SELECT"], reason: "a test entry" },
+        probe_app_ro_wide: { rights: ["SELECT"], reason: "a test entry" },
+      };
+      const result = await check(
+        `${probeWithRights("probe_app_ro", "select")} ${probeWithRights("probe_app_ro_wide", "select, insert, update, delete")}`,
+        appRights,
+      );
+      expect(ofKind(result, "app-rights", "probe_app_ro")).toEqual([]);
+      expect(result).toContainEqual({ kind: "app-rights", table: "probe_app_ro_wide" });
+    });
+  });
+
+  describe("AC8 — stale-rights-exception: an entry naming no table", () => {
+    it("AC8: a rights list naming a table that does not exist is stale-rights-exception", async () => {
+      const result = await check("select 1;", { ...APP_RIGHTS_EXCEPTIONS, probe_app_gone: { rights: [], reason: "a dropped table" } });
+      expect(result).toContainEqual({ kind: "stale-rights-exception", table: "probe_app_gone" });
+    });
+  });
+
+  describe("AC8 — public-rights: PUBLIC holds a table right in public", () => {
+    it("AC8: PUBLIC holding SELECT on a table is public-rights", async () => {
+      const result = await check("create table probe_app_public (id int primary key); grant select on probe_app_public to public;");
+      expect(result).toContainEqual({ kind: "public-rights", table: "probe_app_public" });
+    });
+
+    it("AC8: PUBLIC holding INSERT on audit_log is public-rights", async () => {
+      const result = await check("grant insert on audit_log to public;");
+      expect(result).toContainEqual({ kind: "public-rights", table: "audit_log" });
+    });
+  });
+
+  describe("AC8 — public-execute: PUBLIC can execute an audit function", () => {
+    it.each([
+      ["audit_row", "audit_row()"],
+      ["audit_event", "audit_event(text, text, jsonb, jsonb)"],
+    ])("AC8: PUBLIC holding EXECUTE on %s is public-execute naming the function", async (name, signature) => {
+      const result = await check(`grant execute on function public.${signature} to public;`);
+      expect(result).toContainEqual({ kind: "public-execute", table: name });
+    });
+  });
+
+  describe("AC8 — app-role-powers: haul_app holds a power it must not", () => {
+    it.each(["superuser", "createrole", "bypassrls"])("AC8: haul_app with %s is app-role-powers, detail naming the power", async (power) => {
+      const result = await check(`alter role haul_app ${power};`);
+      expect(result).toContainEqual({ kind: "app-role-powers", table: "haul_app", detail: power });
+    });
+
+    it("AC8: haul_app as a member of another role is app-role-powers, detail `member of <role>`", async () => {
+      const result = await check("create role probe_app_group nologin; grant probe_app_group to haul_app;");
+      expect(result).toContainEqual({ kind: "app-role-powers", table: "haul_app", detail: "member of probe_app_group" });
+    });
+
+    it("AC8: haul_app owning a table, and owning a function, is app-role-powers for each, detail `owns <object>`", async () => {
+      const result = await check(`
+        create table probe_app_owned_table (id int primary key);
+        alter table probe_app_owned_table owner to haul_app;
+        create function probe_app_owned_fn() returns int language sql as 'select 1';
+        alter function probe_app_owned_fn() owner to haul_app;
+      `);
+      expect(result).toContainEqual({
+        kind: "app-role-powers",
+        table: "haul_app",
+        detail: expect.stringMatching(/^owns .*\bprobe_app_owned_table\b/),
+      });
+      expect(result).toContainEqual({
+        kind: "app-role-powers",
+        table: "haul_app",
+        detail: expect.stringMatching(/^owns .*\bprobe_app_owned_fn\b/),
+      });
+    });
+  });
+
+  describe("AC8 — missing-default-privileges: future tables would not get the four", () => {
+    it.each([
+      ["all four revoked", "select, insert, update, delete"],
+      ["DELETE alone revoked", "delete"],
+    ])("AC8: with the default privileges for haul_app's tables %s, it is missing-default-privileges naming public", async (_what, revoked) => {
+      const result = await check(`alter default privileges in schema public revoke ${revoked} on tables from haul_app;`);
+      expect(result).toContainEqual({ kind: "missing-default-privileges", table: "public" });
     });
   });
 });
