@@ -17,6 +17,7 @@ export const AUDIT_EXEMPT: Readonly<Record<string, string>> = {
     "holds unsalted SHA-256 hashes of 6-digit codes, which reverse in milliseconds: auditing them would keep them after expiry",
   email_changes:
     "holds an unsalted SHA-256 hash of a 6-digit code, which reverses in milliseconds, and is rewritten on every guess: auditing it would keep the hash after expiry",
+  run_leases: "a lease row written and deleted on every firing of a run, holding no business data: auditing it would log a row per firing",
 };
 
 /** The rights the app's role holds on every table not in APP_RIGHTS_EXCEPTIONS (issue 185). */

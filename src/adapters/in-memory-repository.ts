@@ -80,6 +80,8 @@ export class InMemoryRepository implements Repository {
   private readonly weekCredits = new Map<string, StoredWeekCredit>();
   /** Member id → their pending email change. Replaced, never mutated, like the maps above. */
   private readonly emailChanges = new Map<string, EmailChange>();
+  /** Issue 174: run name → the lease on it. Set and deleted outside `withActor`, so never rolled back. */
+  private readonly runLeases = new Map<string, { token: string; until: Date }>();
   private readonly products: ProductWithOptions[] = [];
   /** `<product id>|<week_of>` → the changed week. Replaced, never mutated, like the maps above. */
   private readonly pickupWeeks = new Map<string, ChangedWeek>();
@@ -813,6 +815,18 @@ export class InMemoryRepository implements Repository {
 
   incrementRateLimit(bucket: string, key: string, windowStart: Date, expiresAt: Date, now: Date): Promise<number> {
     return this.signIn.incrementRateLimit(bucket, key, windowStart, expiresAt, now);
+  }
+
+  async claimRunLease(name: string, at: Date, until: Date): Promise<string | null> {
+    const held = this.runLeases.get(name);
+    if (held && held.until.getTime() > at.getTime()) return null;
+    const token = randomUUID();
+    this.runLeases.set(name, { token, until: new Date(until) });
+    return token;
+  }
+
+  async releaseRunLease(name: string, token: string): Promise<void> {
+    if (this.runLeases.get(name)?.token === token) this.runLeases.delete(name);
   }
 
   async recordEvent(event: AuditEvent): Promise<void> {

@@ -35,18 +35,53 @@ export type ChargeRunDeps = {
 /**
  * `weekOf` is the week enrolled, null when no week's cutoff has passed; `enrolled` the rows written; `paid` the rows this
  * run's confirm answered `confirmed`, by charge or by lookup; `declined` the rows it declined; `unknown` the
- * `charge_outcome_unknown` events it recorded; `dropped` the closed weeks' rows it deleted.
+ * `charge_outcome_unknown` events it recorded; `dropped` the closed weeks' rows it deleted; `skipped` that the firing found
+ * another's lease held and did nothing.
  */
-export type ChargeRunReport = { weekOf: string | null; enrolled: number; paid: number; declined: number; unknown: number; dropped: number };
+export type ChargeRunReport = {
+  weekOf: string | null;
+  enrolled: number;
+  paid: number;
+  declined: number;
+  unknown: number;
+  dropped: number;
+  skipped: boolean;
+};
 
 export const CHARGE_RUN_ACTOR: Actor = { system: "charge-run" };
 
-/** Turns the ledger into charges for the latest week whose cutoff has passed, and settles every `pending` row. */
+/** How long a firing's lease lasts from its claim (issue 174; DEC-038): past it, a firing that never released is presumed dead. */
+export const CHARGE_RUN_LEASE_MS = 30 * 60_000;
+/** The name the charge run's lease is held under. */
+export const CHARGE_RUN_LEASE = "charge-run";
+
+/** The report with every count 0: the run's starting point, and what a skipped firing returns. */
+function zeroReport(weekOf: string | null, skipped: boolean): ChargeRunReport {
+  return { weekOf, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped };
+}
+
+/**
+ * Turns the ledger into charges for the latest week whose cutoff has passed, and settles every `pending` row. One firing
+ * at a time (issue 174; DEC-038): it claims the run's lease before anything else, and a firing that finds it held does
+ * nothing and reports `skipped`. The lease is released once the body ends, however it ends.
+ */
 export async function runCharges(deps: ChargeRunDeps): Promise<ChargeRunReport> {
+  const { repo, clock } = deps;
+  const at = clock();
+  const token = await repo.claimRunLease(CHARGE_RUN_LEASE, at, new Date(at.getTime() + CHARGE_RUN_LEASE_MS));
+  if (token === null) return zeroReport(null, true);
+  try {
+    return await chargeRunBody(deps);
+  } finally {
+    await repo.releaseRunLease(CHARGE_RUN_LEASE, token);
+  }
+}
+
+async function chargeRunBody(deps: ChargeRunDeps): Promise<ChargeRunReport> {
   const { repo, now } = deps;
   const product = await requireSupperClub(repo);
   const weekOf = latestCutoffWeek(product, now);
-  const report: ChargeRunReport = { weekOf, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0 };
+  const report = zeroReport(weekOf, false);
   if (weekOf !== null) {
     const enrolled = await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.enrolWeek(product.id, weekOf, cutoffInstant(product, weekOf)));
     report.enrolled = enrolled.pending + enrolled.zeroCents + enrolled.byWeekCredit.length;

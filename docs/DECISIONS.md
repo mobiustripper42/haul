@@ -30,6 +30,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-021 — e2e is Playwright on one next dev server, in CI only, with a dev outbox
 - DEC-022 — Five wrong codes lock sign-in by code; an emailed link signs the member in
 - DEC-023 — e2e is Playwright on one next dev server; its dev outbox answers only there
+- DEC-038 — One charge-run firing at a time, by a lease in the database
 
 ### Payments
 - DEC-004 — Square only, charged by Haul's own loop: first week at signup, then at cutoff

@@ -4,6 +4,7 @@ import { runChargeRunContract } from "./charge-run-contract.js";
 import { runEmailChangeContract } from "./email-change-contract.js";
 import { InMemoryRepository } from "./in-memory-repository.js";
 import { runRepositoryContract } from "./repository-contract.js";
+import { runRunLeaseContract } from "./run-lease-contract.js";
 import { runWeekCreditContract } from "./week-credit-contract.js";
 import { runWeekListsContract } from "./week-lists-contract.js";
 
@@ -45,6 +46,12 @@ runWeekListsContract(
 
 // Issue 156: a member's own details and their pending email change.
 runEmailChangeContract("in-memory", async () => new InMemoryRepository());
+
+// Issue 174: the run lease. In memory the second connection is the same instance.
+runRunLeaseContract("in-memory", async () => {
+  const repo = new InMemoryRepository();
+  return { repo, other: repo };
+});
 
 // Issue 9, AC16–AC19: the repository is a sign-in store too, and a subject is a member.
 runSignInStoreContract("in-memory repository", async () => {
