@@ -3,7 +3,7 @@
 // and no parameter in the URL can weaken that.
 import tls from "node:tls";
 import { describe, expect, it } from "vitest";
-import { pgConnectionConfig } from "./pg-connect.js";
+import { asAppRole, pgConnectionConfig } from "./pg-connect.js";
 
 const TRUST = { ca: [...tls.rootCertificates], rejectUnauthorized: true };
 const REMOTE = "postgres://app:pw@db.example.com:5432/haul";
@@ -66,5 +66,12 @@ describe("AC3 — the explicit escape hatch, and failing closed", () => {
 
   it("AC3: a URL that won't parse gets TLS required", () => {
     expect(pgConnectionConfig("not a url").ssl).toEqual(TRUST);
+  });
+});
+
+describe("Interfaces (issue 185) — asAppRole appends options=-c role=haul_app", () => {
+  it("Interfaces asAppRole: a URL already carrying options keeps its setting and gains -c role=haul_app after it", () => {
+    const url = `${REMOTE}?options=${encodeURIComponent("-c search_path=x")}`;
+    expect(new URL(asAppRole(url)).searchParams.getAll("options")).toEqual(["-c search_path=x -c role=haul_app"]);
   });
 });

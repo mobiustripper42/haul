@@ -128,6 +128,34 @@ describe.skipIf(!up)(`issue 185 — haul_app against <test db>_app_role${skipped
       expect(before).toEqual([{ rolcanlogin: true, rolpassword: expect.any(String) }]);
       expect(after).toEqual(before);
     });
+
+    // Production's migrating user owns the objects but need not hold CREATEROLE. The probe role here is
+    // a member of the role that owns public's tables, so it holds every right the grants need, and lacks
+    // CREATEROLE, which is never inherited: the role step is the only one its missing power can fail.
+    it("AC2: given haul_app created by hand, a migrating user without CREATEROLE runs the migration's SQL without error", async () => {
+      const sql = await appRoleMigrationSql();
+      const { canCreateRole, refusal, members } = await rolledBack(async () => {
+        await db.query(RENAME_ASIDE);
+        await db.query("create role haul_app login password 'issue-185-made-by-hand'");
+        const owner = (await db.query<{ owner: string }>("select relowner::regrole::text as owner from pg_class where oid = 'public.members'::regclass")).rows[0]?.owner;
+        await db.query("create role haul_migrator_issue_185 nologin nocreaterole");
+        await db.query(`grant ${owner} to haul_migrator_issue_185`);
+        await db.query("set local role haul_migrator_issue_185");
+        const canCreateRole = (await db.query<{ rolcreaterole: boolean }>("select rolcreaterole from pg_roles where rolname = current_user")).rows[0]?.rolcreaterole;
+        let refusal: string | undefined;
+        await db.query("savepoint migration");
+        try {
+          await db.query(sql);
+        } catch (e) {
+          refusal = `${(e as { code?: string }).code}: ${(e as Error).message}`;
+          await db.query("rollback to savepoint migration");
+        }
+        return { canCreateRole, refusal, members: (await rightsOf(db, ["r"])).members };
+      });
+      expect(canCreateRole, "the migrating user lacks CREATEROLE").toBe(false);
+      expect(refusal).toBeUndefined();
+      expect(members, "the migration ran to its grants").toEqual(THE_FOUR);
+    });
   });
 
   describe("AC3 — exactly the four on every table but the exceptions", () => {
