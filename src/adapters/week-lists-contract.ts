@@ -196,6 +196,29 @@ export function runWeekListsContract(
       });
     });
 
+    // Issue 196: the lock's edges are the charge run contract's (src/adapters/charge-run-contract.ts); here one locked
+    // and one unlocked case through the due rule, and the locked row the list drops.
+    describe("issue 196 — AC2: a locked subscription is neither a meal nor a skip", () => {
+      it("AC2: a subscription holding a declined row for an earlier week, with no row for the week, is neither a meal nor a skip; one whose declined row is the week's own is a meal, cardDeclined", async () => {
+        const ada = await subscriber({ firstWeek: JAN_10 });
+        const grace = await subscriber({ firstWeek: JAN_10 });
+        await addLedgerRow(ada.signup.subscriptionId, EARLIER, "declined", 5000);
+        await addLedgerRow(grace.signup.subscriptionId, WEEK, "declined", 5000);
+        expect(await lists()).toEqual({ boxes: [asBox(grace, meal(0, 0), { cardDeclined: true })], skips: [] });
+      });
+
+      it("AC2: a locked row is neither a meal nor a skip, and stays off the lists once the lock has ended", async () => {
+        const ada = await subscriber({ firstWeek: JAN_10 });
+        const due = await subscriber({ firstWeek: JAN_10 });
+        const declinedId = await addLedgerRow(ada.signup.subscriptionId, EARLIER, "declined", 5000);
+        expect((await repo.enrolWeek(product.id, WEEK, cutoffInstant(product, WEEK))).locked).toHaveLength(1);
+        const expected = { boxes: [asBox(due, meal(0, 0))], skips: [] };
+        expect(await lists()).toEqual(expected);
+        expect(await repo.confirmSignupRows(declinedId, `PAYMENT_${declinedId}`, 5000, CLOSED_AT)).toBe("confirmed");
+        expect(await lists()).toEqual(expected);
+      });
+    });
+
     describe("AC1 — what a meal says", () => {
       it("AC1: a row a week credit paid is a meal saying so, of the spent week credit's picks, not the set in effect for the week", async () => {
         const ada = await subscriber();

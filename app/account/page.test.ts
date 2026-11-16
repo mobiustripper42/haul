@@ -245,6 +245,55 @@ describe("AC3b (issue 136) — the next pickup", () => {
   });
 });
 
+// Issue 196: the next-pickup line while locked. Which week is next while locked is nextPickup's
+// (src/pickup-week.test.ts) and which week is declined findMemberSubscription's (src/adapters/charge-run-contract.ts);
+// here one locked and one unlocked case through the page. The no-pickup line is new copy, typed once here.
+describe("AC8 (issue 196) — the next pickup while locked", () => {
+  const NO_PICKUP = "No pickup until your card is updated.";
+
+  /** Ada, signed in, with an active subscription paid for January 3 and a declined row for `declinedOn`; its id. */
+  const declinedAda = async (declinedOn: string): Promise<string> => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    await services.repo.addLedgerRow(rows.subscriptionId, declinedOn, "declined", 4500);
+    signIn(member);
+    return rows.subscriptionId;
+  };
+
+  it("AC8: once the declined week's pickup has passed, Next pickup and its where line are replaced by one line, not a Notice; the charge line stays", async () => {
+    await declinedAda("2027-01-31");
+    const { html, text } = await render();
+    const charge = t("supperClub.next.charge", { price: formatUsdWhole(4500) });
+    expect(inOrder(html, ["2 people · Standard", NO_PICKUP, charge])).toEqual(["2 people · Standard", NO_PICKUP, charge]);
+    expect(text).not.toContain("Next pickup:");
+    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
+    expect(alertTexts(html)).toEqual([]);
+  });
+
+  it("AC8: in Spanish the line is No hay recogida hasta que actualice su tarjeta.", async () => {
+    await declinedAda("2027-01-31");
+    request.current.cookies.lang = "es";
+    expect((await render()).runs).toContain("No hay recogida hasta que actualice su tarjeta.");
+  });
+
+  it("AC8: while the declined week's pickup is still to come, Next pickup names it, with its where line, and the no-pickup line is not shown", async () => {
+    await declinedAda(FEB_7);
+    const { html, text } = await render();
+    const where = en["supperClub.box.pickupWhere"];
+    expect(inOrder(html, ["Next pickup: February 7 and 8", where])).toEqual(["Next pickup: February 7 and 8", where]);
+    expect(text).not.toContain(NO_PICKUP);
+  });
+
+  it("AC8 [code]: a cancelled subscription holding a declined row shows the cancelled card as today, with no no-pickup line", async () => {
+    const subscriptionId = await declinedAda("2027-01-31");
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { html, text } = await render();
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(text).not.toContain(NO_PICKUP);
+  });
+});
+
 describe("AC4 (issue 136) — the details card", () => {
   it("AC4: it shows the name, then the email, then phone · language", async () => {
     const member = await ada();

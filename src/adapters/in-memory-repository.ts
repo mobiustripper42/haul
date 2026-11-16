@@ -59,7 +59,7 @@ type StoredLedger = {
   subscriptionId: string;
   pickupDate: string;
   amountCents: number;
-  status: "pending" | "paid" | "declined" | "skipped";
+  status: "pending" | "paid" | "declined" | "skipped" | "locked";
   attempt: number;
   squarePaymentId: string | null;
   paidAt: Date | null;
@@ -353,7 +353,7 @@ export class InMemoryRepository implements Repository {
 
   async findMemberSubscription(memberId: string, productId: string): Promise<MemberSubscription | null> {
     const found = this.findSubscriptionOf(memberId, productId, ["active", "cancelled"]);
-    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt };
+    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt, declinedWeek: found.declinedWeek };
   }
 
   /** The member's newest subscription to the product with one of `statuses` and a paid row: its signup details, status and cancel time. */
@@ -361,7 +361,7 @@ export class InMemoryRepository implements Repository {
     memberId: string,
     productId: string,
     statuses: ("active" | "cancelled")[],
-  ): { confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null } | null {
+  ): { confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null; declinedWeek: string | null } | null {
     const subscription = [...this.subscriptions.values()]
       .filter((s) => s.memberId === memberId && s.productId === productId && (statuses as string[]).includes(s.status))
       .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime())[0];
@@ -384,6 +384,7 @@ export class InMemoryRepository implements Repository {
       },
       status: subscription.status as "active" | "cancelled",
       cancelledAt: subscription.cancelledAt && new Date(subscription.cancelledAt),
+      declinedWeek: this.declinedRows(subscription.id).map((row) => row.pickupDate).sort()[0] ?? null,
     };
   }
 
@@ -560,20 +561,29 @@ export class InMemoryRepository implements Repository {
    * a closed week (issue 150). A subscription holding an unspent week credit granted for an earlier week gets its row
    * `paid` at 0 cents, paid at the cutoff, with its oldest such week credit (by the granted-for week, then the credit's id)
    * spent on it, whatever its picks sum to; else one whose picks in effect for the week (DEC-033) sum to 0 cents gets the
-   * same row, spending nothing; any other gets a `pending` row at the sum. Returns what it wrote, by kind.
+   * same row, spending nothing; any other gets a `pending` row at the sum. Issue 196: an `active` subscription holding a
+   * `declined` row for an earlier week is locked, and gets a `locked` row at 0 cents first of all: before a week credit,
+   * which stays unspent, and before the 0-cent rule. A cancelled one holding such a row gets no row. Returns what it wrote, by kind.
    */
   async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek> {
-    const written: EnrolledWeek = { pending: 0, zeroCents: 0, byWeekCredit: [] };
+    const written: EnrolledWeek = { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
     const product = this.products.find((p) => p.id === productId);
     if (!product || this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null) return written;
     const due = [...this.subscriptions.values()]
-      .filter((subscription) => subscription.productId === productId && this.isDueAsOf(subscription, weekOf, cutoff))
+      .filter((subscription) => subscription.productId === productId && this.isDueIgnoringDecline(subscription, weekOf, cutoff))
+      .filter((subscription) => subscription.status === "active" || !this.holdsDeclinedRowBefore(subscription.id, weekOf))
       .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id));
     for (const subscription of due) {
       const picks = this.setInEffect(subscription.id, weekOf);
       const holds = [...this.ledger.values()].some((row) => row.subscriptionId === subscription.id && row.pickupDate === weekOf);
+      if (holds) continue;
+      if (this.holdsDeclinedRowBefore(subscription.id, weekOf)) {
+        const ledgerId = await this.addLedgerRow(subscription.id, weekOf, "locked", 0);
+        written.locked.push({ ledgerId, memberId: subscription.memberId });
+        continue;
+      }
       const credit = this.unspentCreditsBefore(subscription.id, weekOf)[0];
-      if ((!picks && !credit) || holds) continue;
+      if (!picks && !credit) continue;
       const cents = picks ? priceOfChoices(product, picks.optionIds) : 0;
       const paid = credit !== undefined || cents === 0;
       const ledgerId = await this.addLedgerRow(subscription.id, weekOf, paid ? "paid" : "pending", credit ? 0 : cents, paid ? cutoff : undefined);
@@ -688,11 +698,19 @@ export class InMemoryRepository implements Repository {
   }
 
   /**
-   * Issue 134: whether the subscription is due `weekOf` as of `cutoff`: `active`, or `cancelled` at or after the cutoff;
-   * the week on or after the first it paid for; no `skipped` row for it. Whether it already holds a row for the week is
-   * `enrolWeek`'s alone. The one home of the rule, shared by `listWeekDue` and `enrolWeek`.
+   * Issue 196: whether the subscription is due `weekOf` as of `cutoff` and not locked: `isDueIgnoringDecline`, and it holds
+   * no `declined` row for an earlier week. The one home of "due", shared by `listWeekDue`, `listWeekBoxes` and `enrolWeek`.
    */
   private isDueAsOf(subscription: StoredSubscription, weekOf: string, cutoff: Date): boolean {
+    return this.isDueIgnoringDecline(subscription, weekOf, cutoff) && !this.holdsDeclinedRowBefore(subscription.id, weekOf);
+  }
+
+  /**
+   * Issue 134: whether the subscription is due `weekOf` as of `cutoff`, locked or not: `active`, or `cancelled` at or after
+   * the cutoff; the week on or after the first it paid for; no `skipped` row for it. Whether it already holds a row for the
+   * week is `enrolWeek`'s alone. `enrolWeek` selects by it, to write a locked week's row.
+   */
+  private isDueIgnoringDecline(subscription: StoredSubscription, weekOf: string, cutoff: Date): boolean {
     const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id);
     const firstPaid = rows.filter((row) => row.status === "paid").map((row) => row.pickupDate).sort()[0];
     const skipped = rows.some((row) => row.status === "skipped" && row.pickupDate === weekOf);
@@ -701,9 +719,19 @@ export class InMemoryRepository implements Repository {
     return live && firstPaid !== undefined && firstPaid <= weekOf && !skipped;
   }
 
+  /** Issue 196: the subscription's `declined` ledger rows: the one home of "this subscription's declined rows". */
+  private declinedRows(subscriptionId: string): StoredLedger[] {
+    return [...this.ledger.values()].filter((row) => row.subscriptionId === subscriptionId && row.status === "declined");
+  }
+
   /** Whether the subscription holds a `declined` ledger row, in any week: the one home of the test, shared by `listSubscribers` and `listWeekBoxes`. */
   private holdsDeclinedRow(subscriptionId: string): boolean {
-    return [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && row.status === "declined");
+    return this.declinedRows(subscriptionId).length > 0;
+  }
+
+  /** Issue 196: whether the subscription holds a `declined` row for a week before `weekOf`, so it is locked for that week. */
+  private holdsDeclinedRowBefore(subscriptionId: string, weekOf: string): boolean {
+    return this.declinedRows(subscriptionId).some((row) => row.pickupDate < weekOf);
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {
@@ -790,7 +818,8 @@ export class InMemoryRepository implements Repository {
   /**
    * Issue 142: the week's meals and skips of the product's `active` and `cancelled` subscriptions (a `pending` one's row
    * is a signup in progress). A subscription holding a `paid`, `pending` or `declined` row for the week is a meal, one
-   * holding a `skipped` row a skip, and one with no row a meal when it is due the week as of `cutoff` (`isDueAsOf`). Each
+   * holding a `skipped` row a skip, one holding a `locked` row (issue 196) neither, and one with no row a meal when it is due
+   * the week as of `cutoff` (`isDueAsOf`). Each
    * carries its member and its picks, named in option-type position order: the row's (`rowPicks`), else those in effect for the week.
    */
   async listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes> {
@@ -808,6 +837,7 @@ export class InMemoryRepository implements Repository {
         phone: member.phone,
         options: this.optionsNamed(subscription, picks),
       };
+      if (row?.status === "locked") continue;
       if (row?.status === "skipped") lists.skips.push(who);
       else if (row !== undefined || this.isDueAsOf(subscription, weekOf, cutoff)) {
         lists.boxes.push({
@@ -1042,10 +1072,10 @@ export class InMemoryRepository implements Repository {
     });
   }
 
-  /** A subscription's earliest ledger row of the signup's kinds: a skipped row is never the signup's. */
+  /** A subscription's earliest ledger row of the signup's kinds: a skipped or a locked row is never the signup's. */
   private ledgerOf(subscriptionId: string): (StoredLedger & { status: PendingSignup["ledgerStatus"] }) | undefined {
     return [...this.ledger.values()]
-      .filter((row): row is StoredLedger & { status: PendingSignup["ledgerStatus"] } => row.subscriptionId === subscriptionId && row.status !== "skipped")
+      .filter((row): row is StoredLedger & { status: PendingSignup["ledgerStatus"] } => row.subscriptionId === subscriptionId && row.status !== "skipped" && row.status !== "locked")
       .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))[0];
   }
 

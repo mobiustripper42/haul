@@ -838,14 +838,14 @@ export function runSignupContract(
           await confirmed();
           const confirmation = await repo.findSignupConfirmation(memberId, product.id);
           expect(confirmation).not.toBeNull();
-          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "active", cancelledAt: null });
+          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "active", cancelledAt: null, declinedWeek: null });
         });
 
         it("AC1: cancelSubscription on an active subscription is true; it then reads as cancelled, at the time given, its signup details unchanged", async () => {
           const signup = await confirmed();
           const confirmation = await repo.findSignupConfirmation(memberId, product.id);
           expect(await repo.cancelSubscription(signup.subscriptionId, CANCELLED_AT)).toBe(true);
-          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "cancelled", cancelledAt: CANCELLED_AT });
+          expect(await repo.findMemberSubscription(memberId, product.id)).toEqual({ ...confirmation, status: "cancelled", cancelledAt: CANCELLED_AT, declinedWeek: null });
         });
 
         it("AC1: a cancel leaves the ledger as it was: the subscription's paid rows and week credits read the same after it", async () => {

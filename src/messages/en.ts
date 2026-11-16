@@ -49,6 +49,7 @@ export const en = {
   "account.card.refusedLead": "That card was declined.",
   "account.card.refused": "Nothing was charged and your old card stays on file. Check the details or try another card.",
   "account.nextPickup": "Next pickup: {week}",
+  "account.noPickupLocked": "No pickup until your card is updated.",
   "account.details": "Your details",
   "account.weeks.title": "Upcoming weeks",
   "account.weeks.intro": "Each week is charged at the end of the Monday before pickup. Skip a week or switch your meal by then.",
@@ -393,7 +394,9 @@ export const en = {
   "email.receipt.body": "Charged {date}: {amount}, for your Supper Club pickup {week}.",
   "email.weekCreditReceipt.body": "Your week credit was used for your Supper Club pickup {week}: not charged.",
   "email.cardDeclined.subject": "Card declined: Supper Club pickup {week}",
-  "email.cardDeclined.body": "Your card was declined for {amount}, for your Supper Club pickup {week}. Your meal is still being made. Please update your card at {link}.",
+  "email.cardDeclined.body": "Your card was declined for {amount}, for your Supper Club pickup {week}. Your meal for {week} is still being made: come pick it up. Update your card at {link} to keep your meals coming.",
+  "email.cardLocked.subject": "No Supper Club meal {week}: card still declined",
+  "email.cardLocked.body": "Your card is still declined, so no meal is being made for you for {week}. Update your card at {link} to get your meals again.",
   // Issue 141: the weekly menu, its email, the page and the menu emails card.
   "menu.heading": "Menu for {week}",
   "menu.pickup": "Pick up {pickup}",

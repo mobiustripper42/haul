@@ -3,6 +3,7 @@
 // and one refused case through it.
 import { describe, expect, it } from "vitest";
 import { menuEmailOffLink, menuEmailToken, menuEmailTokenMatches } from "./menu-email-link.js";
+import { sign } from "./sign-in/session.js";
 
 const SECRET = "s".repeat(32) + "-test-secret";
 const OTHER_SECRET = "o".repeat(32) + "-other-secret";
@@ -61,5 +62,18 @@ describe("AC8 — menuEmailOffLink", () => {
     const token = link.searchParams.get("t") ?? "no token";
     expect(menuEmailTokenMatches(ADA, token, SECRET)).toBe(true);
     expect(menuEmailTokenMatches(ADA, token, OTHER_SECRET)).toBe(false);
+  });
+});
+
+// Issue 186: the token names its purpose, so no other token signed under the session secret can pass for one. The
+// prefix is spelled out here, not read from the module: a test comparing against the module's constant would pass
+// whatever it said.
+describe("Issue 186, AC3 and AC4 — the token is signed with its purpose", () => {
+  it("AC3 (issue 186): a member's token is sign(\"menu-emails-off:\" + the member id) under the secret", () => {
+    expect(menuEmailToken(ADA, SECRET)).toBe(sign(`menu-emails-off:${ADA}`, SECRET));
+  });
+
+  it("AC4 (issue 186): a signature of the bare member id, today's token, does not match that member", () => {
+    expect(menuEmailTokenMatches(ADA, sign(ADA, SECRET), SECRET)).toBe(false);
   });
 });

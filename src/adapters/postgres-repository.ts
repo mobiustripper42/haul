@@ -165,21 +165,40 @@ const weekClosed = (productExpr: string, weekExpr: string): string =>
   `exists (select 1 from pickup_weeks w where w.product_id = ${productExpr} and w.week_of = ${weekExpr} and w.closed_at is not null)`;
 
 /**
- * A condition on `subscriptions s`: the subscription is due the week `weekParam` (`$n`) as of the cutoff instant
- * `cutoffParam` (`$n`), issue 134 AC1. It is `active`, or `cancelled` at or after the cutoff; the week is on or after the
- * first it paid for; and it has no `skipped` row for it. Whether it already holds a row for the week is `enrolWeek`'s
- * alone (its `on conflict`). The one home of the rule, shared by `listWeekDue` and `enrolWeek`.
+ * Issue 196: the `from` clause of the `declined` ledger rows of the subscription `s`: the one home of "this
+ * subscription's declined rows", used by `HOLDS_DECLINED_ROW`, `holdsDeclinedRowBefore` and the account's declined week.
  */
-const dueAsOf = (weekParam: string, cutoffParam: string): string =>
-  `((s.status = 'active' or (s.status = 'cancelled' and s.cancelled_at >= ${cutoffParam}::timestamptz))
-    and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= ${weekParam}::date
-    and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = ${weekParam}::date and l.status = 'skipped'))`;
+const DECLINED_ROWS = `from ledger declined where declined.subscription_id = s.id and declined.status = 'declined'`;
 
 /**
  * A condition on `subscriptions s`: the subscription holds a `declined` ledger row, in any week (issue 142). The one home
  * of the test, shared by `listSubscribers` and `listWeekBoxes`.
  */
-const HOLDS_DECLINED_ROW = `exists (select 1 from ledger declined where declined.subscription_id = s.id and declined.status = 'declined')`;
+const HOLDS_DECLINED_ROW = `exists (select 1 ${DECLINED_ROWS})`;
+
+/**
+ * Issue 196: a condition on `subscriptions s`: the subscription holds a `declined` row for a week before `weekExpr`, so
+ * it is locked for that week. A declined row for the week itself, or a later one, does not lock it.
+ */
+const holdsDeclinedRowBefore = (weekExpr: string): string => `exists (select 1 ${DECLINED_ROWS} and declined.pickup_date < ${weekExpr})`;
+
+/**
+ * A condition on `subscriptions s`: the subscription is due the week `weekParam` (`$n`) as of the cutoff instant
+ * `cutoffParam` (`$n`), issue 134 AC1, locked or not. It is `active`, or `cancelled` at or after the cutoff; the week is on
+ * or after the first it paid for; and it has no `skipped` row for it. Whether it already holds a row for the week is
+ * `enrolWeek`'s alone (its `on conflict`). `enrolWeek` selects by it, to write a locked week's row.
+ */
+const dueIgnoringDecline = (weekParam: string, cutoffParam: string): string =>
+  `((s.status = 'active' or (s.status = 'cancelled' and s.cancelled_at >= ${cutoffParam}::timestamptz))
+    and (select min(l.pickup_date) from ledger l where l.subscription_id = s.id and l.status = 'paid') <= ${weekParam}::date
+    and not exists (select 1 from ledger l where l.subscription_id = s.id and l.pickup_date = ${weekParam}::date and l.status = 'skipped'))`;
+
+/**
+ * A condition on `subscriptions s`: `dueIgnoringDecline`, and (issue 196) the subscription is not locked: it holds no
+ * `declined` row for an earlier week. The one home of "due", shared by `listWeekDue`, `listWeekBoxes` and `enrolWeek`.
+ */
+const dueAsOf = (weekParam: string, cutoffParam: string): string =>
+  `(${dueIgnoringDecline(weekParam, cutoffParam)} and not ${holdsDeclinedRowBefore(`${weekParam}::date`)})`;
 
 /** A `where` condition on `subscription_options so`: the row belongs to the subscription's newest set, whatever week it starts from. */
 const NEWEST_SET = `so.from_week = (select max(newest.from_week) from subscription_options newest where newest.subscription_id = so.subscription_id)`;
@@ -640,7 +659,7 @@ export class PostgresRepository implements Repository {
 
   async findMemberSubscription(memberId: string, productId: string): Promise<MemberSubscription | null> {
     const found = await this.findSubscriptionOf(memberId, productId, ["active", "cancelled"]);
-    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt };
+    return found && { ...found.confirmation, status: found.status, cancelledAt: found.cancelledAt, declinedWeek: found.declinedWeek };
   }
 
   /** The member's newest subscription to the product with one of `statuses` and a paid row: its signup details, status and cancel time. */
@@ -648,7 +667,7 @@ export class PostgresRepository implements Repository {
     memberId: string,
     productId: string,
     statuses: ("active" | "cancelled")[],
-  ): Promise<{ confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null } | null> {
+  ): Promise<{ confirmation: SignupConfirmation; status: "active" | "cancelled"; cancelledAt: Date | null; declinedWeek: string | null } | null> {
     if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
     const found = await this.db.query<{
       id: string;
@@ -660,9 +679,11 @@ export class PostgresRepository implements Repository {
       weekly_cents: number;
       first_day: string | null;
       last_day: string | null;
+      declined_week: string | null;
     }>(
       `select s.id, s.status, s.cancelled_at, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, ${clevelandDay("l.paid_at")} as charged_date,
               s.first_charge_cents, s.weekly_cents,
+              (select to_char(min(declined.pickup_date), 'YYYY-MM-DD') ${DECLINED_ROWS}) as declined_week,
               to_char(w.first_day, 'YYYY-MM-DD') as first_day, to_char(w.last_day, 'YYYY-MM-DD') as last_day
          from subscriptions s
          join ledger l on l.subscription_id = s.id
@@ -691,6 +712,7 @@ export class PostgresRepository implements Repository {
       },
       status: row.status,
       cancelledAt: row.cancelled_at,
+      declinedWeek: row.declined_week,
     };
   }
 
@@ -1022,13 +1044,16 @@ export class PostgresRepository implements Repository {
    * week credit granted for an earlier week gets its row `paid` at 0 cents, `paid_at` the cutoff, with its oldest such week
    * credit spent on it (by the granted-for week, then the credit's id) whatever its picks sum to; else one whose picks
    * in effect for the week (DEC-033) sum to 0 cents gets the same row, spending nothing; any other gets a `pending` row at
-   * the sum. The spend rides on the insert, so a row that conflicts spends nothing. Returns what it wrote, by kind.
+   * the sum. The spend rides on the insert, so a row that conflicts spends nothing. Issue 196: an `active` subscription holding
+   * a `declined` row for an earlier week is locked, and gets a `locked` row at 0 cents first of all: before a week credit,
+   * which stays unspent, and before the 0-cent rule. A cancelled one holding such a row gets no row. Returns what it wrote, by kind.
    */
   async enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek> {
-    if (!UUID_SHAPE.test(productId)) return { pending: 0, zeroCents: 0, byWeekCredit: [] };
+    if (!UUID_SHAPE.test(productId)) return { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
     const { rows } = await this.db.query<{ ledger_id: string; member_id: string; status: string; by_credit: boolean }>(
       `with due as (
          select s.id as subscription_id, s.member_id, s.created_at, picked.cents,
+                ${holdsDeclinedRowBefore("$2::date")} as locked,
                 (select c.id from week_credits c join ledger granted on granted.id = c.granted_for
                   where c.subscription_id = s.id and c.spent_on is null and granted.pickup_date < $2::date
                   order by granted.pickup_date, c.id limit 1) as credit_id
@@ -1036,24 +1061,25 @@ export class PostgresRepository implements Repository {
            cross join lateral (select sum(o.price_cents)::int as cents
                                  from subscription_options so join options o on o.id = so.option_id
                                 where so.subscription_id = s.id and ${inEffectFor("$2::date")}) picked
-          where s.product_id = $1 and ${dueAsOf("$2", "$3")}
+          where s.product_id = $1 and ${dueIgnoringDecline("$2", "$3")}
+            and (s.status = 'active' or not ${holdsDeclinedRowBefore("$2::date")})
             and not ${weekClosed("s.product_id", "$2::date")}
        ), inserted as (
          insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, paid_at)
          select subscription_id, $2::date,
-                case when credit_id is not null then 0 else cents end,
-                case when credit_id is not null or cents = 0 then 'paid' else 'pending' end,
+                case when locked or credit_id is not null then 0 else cents end,
+                case when locked then 'locked' when credit_id is not null or cents = 0 then 'paid' else 'pending' end,
                 1,
-                case when credit_id is not null or cents = 0 then $3::timestamptz end
+                case when not locked and (credit_id is not null or cents = 0) then $3::timestamptz end
            from due
-          where credit_id is not null or cents is not null
+          where locked or credit_id is not null or cents is not null
           order by created_at, subscription_id
          on conflict (subscription_id, pickup_date) do nothing
          returning id, subscription_id, status
        ), spent as (
          update week_credits c set spent_on = inserted.id
            from due join inserted on inserted.subscription_id = due.subscription_id
-          where c.id = due.credit_id and c.spent_on is null
+          where c.id = due.credit_id and c.spent_on is null and not due.locked
          returning inserted.id as ledger_id
        )
        select inserted.id as ledger_id, due.member_id, inserted.status, (inserted.id in (select ledger_id from spent)) as by_credit
@@ -1065,6 +1091,7 @@ export class PostgresRepository implements Repository {
       pending: rows.filter((row) => row.status === "pending").length,
       zeroCents: rows.filter((row) => row.status === "paid" && !row.by_credit).length,
       byWeekCredit: rows.filter((row) => row.by_credit).map((row) => ({ ledgerId: row.ledger_id, memberId: row.member_id })),
+      locked: rows.filter((row) => row.status === "locked").map((row) => ({ ledgerId: row.ledger_id, memberId: row.member_id })),
     };
   }
 
@@ -1326,7 +1353,8 @@ export class PostgresRepository implements Repository {
   /**
    * Issue 142: the week's meals and skips of the product's `active` and `cancelled` subscriptions (a `pending` one's row
    * is a signup in progress). A subscription holding a `paid`, `pending` or `declined` row for the week is a meal, one
-   * holding a `skipped` row a skip, and one with no row a meal when it is due the week as of `cutoff` (`dueAsOf`). Each
+   * holding a `skipped` row a skip, one holding a `locked` row (issue 196) neither, and one with no row a meal when it is
+   * due the week as of `cutoff` (`dueAsOf`). Each
    * carries its member and its picks, named in option-type position order: the row's (`rowPicks`), else those in effect
    * for the week. Stable by subscription id.
    */
@@ -1350,7 +1378,7 @@ export class PostgresRepository implements Repository {
          join members m on m.id = s.member_id
          left join ledger wk on wk.subscription_id = s.id and wk.pickup_date = $2::date
         where s.product_id = $1 and s.status in ('active', 'cancelled')
-          and (wk.id is not null or ${dueAsOf("$2", "$3")})
+          and wk.status is distinct from 'locked' and (wk.id is not null or ${dueAsOf("$2", "$3")})
         order by s.id`,
       [productId, weekOf, cutoff],
     );

@@ -1,14 +1,18 @@
-// Issue 141 (AC8): the menu email's off link. The member id plus an HMAC of it under the session secret, the signing the
-// session cookie uses; no column and no expiry, so a link in an old email still turns the email off.
+// Issue 141 (AC8), issue 186 (DEC-039): the menu email's off link. The member id plus an HMAC under the session secret of
+// the id behind a purpose prefix, the signing the session cookie uses; no column and no expiry, so a link in an old email
+// still turns the email off. The prefix holds a `:`, which base64url never does, so the cookie's signed payload part can
+// never equal what an off token signs.
 import { MENU_EMAILS_OFF_PATH, MENU_EMAILS_PATH } from "./menu-email-paths.js";
 import { sign, signatureMatches } from "./sign-in/session.js";
+
+const MENU_EMAIL_TOKEN_PREFIX = "menu-emails-off:";
 
 // Core cannot import `app/`, so the paths live in core and `app/paths.ts` imports them (from their own file, which a client component can reach).
 export { MENU_EMAILS_OFF_PATH, MENU_EMAILS_PATH };
 
 /** The member's token: base64url, the same every time. */
 export function menuEmailToken(memberId: string, secret: string): string {
-  return sign(memberId, secret);
+  return sign(MENU_EMAIL_TOKEN_PREFIX + memberId, secret);
 }
 
 /** Whether the token is the member's under the secret, in constant time; a token of any other length is a plain no. */

@@ -148,6 +148,8 @@ const report = (over: Partial<ChargeRunReport> = {}): ChargeRunReport => ({
   dropped: 0,
   // Issue 174: every report carries skipped; false on a run that held the lease.
   skipped: false,
+  // Issue 196: the rows enrolWeek wrote locked; a subset of enrolled.
+  locked: 0,
   ...over,
 });
 
@@ -863,7 +865,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ada.member.email,
         subject: `Card declined: Supper Club pickup ${TITLE}`,
-        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal is still being made. Please update your card at ${CARD_URL}.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal for ${TITLE} is still being made: come pick it up. Update your card at ${CARD_URL} to keep your meals coming.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
       },
     ]);
   });
@@ -877,7 +879,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ana.member.email,
         subject: `Tarjeta rechazada: recogida del Supper Club el ${week}`,
-        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida se prepara igual. Actualice su tarjeta en ${CARD_URL}.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida para el ${week} se prepara igual: venga a recogerla. Actualice su tarjeta en ${CARD_URL} para seguir recibiendo sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
       },
     ]);
   });
@@ -888,7 +890,7 @@ describe("issue 135 — AC3: the decline email", () => {
     // Issue 145, AC9: the link is the card URL the run is given, not the account URL beside it.
     const cardUrl = "https://account.example.test/elsewhere";
     await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Please update your card at ${cardUrl}.`)]);
+    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Update your card at ${cardUrl} to keep your meals coming.`)]);
   });
 
   it("AC3: a moved week is named by its moved days", async () => {
@@ -941,6 +943,94 @@ describe("issue 135 — AC3: the decline email", () => {
   });
 });
 
+// Issue 196: a subscription holding a declined row for an earlier week is locked. Who is locked, and the row it gets,
+// are the repository's (src/adapters/charge-run-contract.ts owns the lock's edges, a closed week's included); here the
+// run's part: the report, that a locked week is never charged, and the email the firing that wrote the row sends,
+// after the commit, as the week credit receipt is. Its words are new copy, typed here once; the questions line, the
+// sign-off and the footer are existing copy, read from the catalog. The template's keys are src/email-templates.test.ts's.
+describe("issue 196 — a locked week", () => {
+  const en = createTranslator("en");
+  const es = createTranslator("es");
+  /** Tuesday January 12, 07:00 in Cleveland: January 17's cutoff has passed. */
+  const LOCK_AT = new Date("2027-01-12T12:00:00.000Z");
+  const LOCK_ANSWERED_AT = new Date("2027-01-12T12:00:30.000Z");
+  const TITLE = weekTitle(en, pickupWeek(NEXT, null), "en");
+
+  /** A subscriber whose January 10 was declined: the firing at LOCK_AT enrols January 17, which it locks. */
+  const declined = async (over: Parameters<typeof subscriber>[0] = {}): Promise<Subscriber> => {
+    const who = await subscriber(over);
+    await repo.addLedgerRow(who.signup.subscriptionId, WEEK, "declined", 5000);
+    return who;
+  };
+
+  const runLocked = (accountUrl: string = ACCOUNT_URL): Promise<ChargeRunReport> =>
+    runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl, cardUrl: CARD_URL });
+
+  /** The locked email `who` gets in English for TITLE, its link `link`. */
+  const lockedEmail = (who: Subscriber, link: string = ACCOUNT_URL) => ({
+    to: who.member.email,
+    subject: `No Supper Club meal ${TITLE}: card still declined`,
+    text: `Your card is still declined, so no meal is being made for you for ${TITLE}. Update your card at ${link} to get your meals again.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+  });
+
+  it("AC1: a locked week is counted in locked and in enrolled, and never charged; another member due the week is charged as before", async () => {
+    await declined();
+    const grace = await subscriber();
+    expect(await runLocked()).toEqual(report({ weekOf: NEXT, enrolled: 2, paid: 1, locked: 1 }));
+    expect(payments.charges.map((charge) => charge.customerId)).toEqual([grace.customerId]);
+    expect(repo.events()).toEqual([]);
+  });
+
+  it("AC3: the firing that writes the locked row emails its member in English: the subject and body naming the week and the account link, then the questions line, the sign-off and the footer", async () => {
+    const ada = await declined();
+    await runLocked();
+    expect(email.sent).toEqual([lockedEmail(ada)]);
+  });
+
+  it("AC3: a member whose language is Spanish gets it in Spanish", async () => {
+    const ana = await declined({ language: "es" });
+    await runLocked();
+    const week = weekTitle(es, pickupWeek(NEXT, null), "es");
+    expect(email.sent).toEqual([
+      {
+        to: ana.member.email,
+        subject: `Sin comida del Supper Club el ${week}: su tarjeta sigue rechazada`,
+        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${ACCOUNT_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+      },
+    ]);
+  });
+
+  it("AC3: the link is the account URL the run is given, as the declined email's is", async () => {
+    const ada = await declined();
+    const accountUrl = "https://account.example.test/elsewhere";
+    await runLocked(accountUrl);
+    expect(email.sent).toEqual([lockedEmail(ada, accountUrl)]);
+  });
+
+  it("AC3: a second firing over the same state writes no second row and sends nothing", async () => {
+    const ada = await declined();
+    expect(await runLocked()).toEqual(report({ weekOf: NEXT, enrolled: 1, locked: 1 }));
+    expect(await runLocked()).toEqual(report({ weekOf: NEXT }));
+    expect(email.sent).toEqual([lockedEmail(ada)]);
+  });
+
+  it("AC3: a failed send is logged as an email step with its errorFields, never its message, and undoes nothing: the locked row and the report stand, and the other locked member gets theirs", async () => {
+    const ada = await declined();
+    const grace = await declined();
+    const failure = new EmailSendError("Resend", 503, "the provider's whole reply, with an address in it");
+    const send = email.send.bind(email);
+    vi.spyOn(email, "send").mockImplementation(async (message) => (message.to === ada.member.email ? Promise.reject(failure) : send(message)));
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await runLocked()).toEqual(report({ weekOf: NEXT, enrolled: 2, locked: 2 }));
+    expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining({ step: "email", ...errorFields(failure) }));
+    expect(inspect(logged.mock.calls, { depth: 5 })).not.toContain("the provider's whole reply");
+    expect(await pendingIds()).toEqual([]);
+    // The locked row is still there: it stands in the way of a skip.
+    expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(false);
+    expect(email.sent).toEqual([lockedEmail(grace)]);
+  });
+});
+
 // Issue 174: one firing at a time. The lease's own rules — when a held lease has expired, that a release needs the
 // token, one winner of a simultaneous claim — are src/adapters/run-lease-contract.ts's. Here the run's part: one held
 // case, one expired case, the token it releases with, its release on a throw, when it claims and releases, and the
@@ -983,7 +1073,7 @@ describe("issue 174 — one firing at a time", () => {
       findPaymentByReference: vi.spyOn(payments, "findPaymentByReference"),
       send: vi.spyOn(email, "send"),
     };
-    expect(await run(at, () => answeredAt)).toEqual({ weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true });
+    expect(await run(at, () => answeredAt)).toEqual({ weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true, locked: 0 });
     expect(Object.entries(spies).filter(([, spy]) => spy.mock.calls.length > 0).map(([method]) => method)).toEqual([]);
 
     vi.restoreAllMocks();

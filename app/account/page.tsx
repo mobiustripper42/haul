@@ -27,14 +27,18 @@ export const generateMetadata = titled("account.title");
  * with no paid subscription is sent to the Supper Club page. The price is the one stored on the subscription, not
  * the price of its picks today. An active one ends with a link to cancel it (issue 139); a cancelled one shows the
  * Notice, with the last pickup, and a Cancelled badge, and no next pickup, no where line, no charge line and no link:
- * no pickup or charge is coming from it, unless a paid week is still to come, which the Notice names.
+ * no pickup or charge is coming from it, unless a paid week is still to come, which the Notice names. An active one
+ * holding a declined row is locked (issue 196): its next pickup stands while the declined week's is still to come, then
+ * one line says none is coming until the card is updated.
  */
 export default async function Account() {
   const { member, product, confirmation } = await requireSubscriber();
   const cancelled = confirmation.status === "cancelled";
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const now = new Date();
-  const next = cancelled ? null : nextPickup((await loadCalendar(getRepository(), now)).weeks, confirmation.pickupDate);
+  const next = cancelled ? null : nextPickup((await loadCalendar(getRepository(), now)).weeks, confirmation.pickupDate, confirmation.declinedWeek);
+  // Issue 196: a subscription holding a declined row is locked: once the declined week's pickup is past, no pickup is coming.
+  const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
   // Issue 145: an active subscription holding a declined row. The week named is the newest of those not closed.
   const declinedRows = cancelled ? [] : await getRepository().listDeclinedCharges(confirmation.subscriptionId);
@@ -78,6 +82,7 @@ export default async function Account() {
                 <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
               </>
             )}
+            {locked && <p>{t("account.noPickupLocked")}</p>}
             {!cancelled && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
           </Card>
           <Card width="fill">

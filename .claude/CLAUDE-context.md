@@ -78,6 +78,7 @@ npm run check:decisions
 | `design/` | The design handoff as uploaded (`HANDOFF.md`, `design-system/`, `screens/`); `design-system/tokens.json` is the source of the theme in `app/globals.css` |
 | `docs/USER_STORIES.md` | What each role does — still the jig template, not yet written |
 | `docs/DEV_REFERENCE.md` | Deploy + review reference |
+| `docs/RUNBOOK.md` | Production: how it was stood up, the two database users, the January cutover |
 | `docs/FUTURE_IDEAS.md` | Ideas caught but not planned |
 | `docs/sources/` | The requirements, Lenny's answers and the market scan, verbatim |
 
