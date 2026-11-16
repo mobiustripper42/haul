@@ -116,7 +116,7 @@ export type SignupConfirmation = {
  * Issue 139: the member's subscription as the account pages read it, active or cancelled. `status` is the one home
  * for "is it cancelled"; `cancelledAt` is null while it is active.
  */
-export type MemberSubscription = SignupConfirmation & { status: "active" | "cancelled"; cancelledAt: Date | null };
+export type MemberSubscription = SignupConfirmation & { status: "active" | "cancelled"; cancelledAt: Date | null; declinedWeek: string | null };
 
 /**
  * One active or cancelled subscription and who holds it, for the admin's list and spreadsheet. `options` is in
@@ -196,7 +196,12 @@ export type PendingCharge = {
  * Issue 150: what `enrolWeek` wrote: `pending` rows to charge, rows paid at 0 cents for a 0-cent set (`zeroCents`), and
  * the rows a week credit paid (`byWeekCredit`), each with its member, for the run's receipts.
  */
-export type EnrolledWeek = { pending: number; zeroCents: number; byWeekCredit: { ledgerId: string; memberId: string }[] };
+export type EnrolledWeek = {
+  pending: number;
+  zeroCents: number;
+  byWeekCredit: { ledgerId: string; memberId: string }[];
+  locked: { ledgerId: string; memberId: string }[];
+};
 
 /**
  * Issue 142: a subscription on a week's lists and who holds it. `options` is its picks for the week, in option-type

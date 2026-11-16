@@ -12,6 +12,7 @@ export type EmailTemplates = {
   receipt: { amount: string; date: string; week: string };
   weekCreditReceipt: { week: string };
   cardDeclined: { week: string; amount: string; link: string };
+  cardLocked: { week: string; link: string };
   // Issue 141: the menu email's `heading` and `pickupLine` are the catalog's `menu.heading` and `menu.pickup`, already rendered.
   menuEmail: { heading: string; menus: string; meals: string; pickupLine: string; date: string; link: string; offLink: string };
   missingMenu: { weeks: string; weekday: string; link: string };
@@ -27,6 +28,7 @@ const KEYS = {
   receipt: { subject: "email.receipt.subject", body: "email.receipt.body", closing: "email.signupConfirmation.questions" },
   weekCreditReceipt: { subject: "email.receipt.subject", body: "email.weekCreditReceipt.body", closing: "email.signupConfirmation.questions" },
   cardDeclined: { subject: "email.cardDeclined.subject", body: "email.cardDeclined.body", closing: "email.signupConfirmation.questions" },
+  cardLocked: { subject: "email.cardLocked.subject", body: "email.cardLocked.body", closing: "email.signupConfirmation.questions" },
   menuEmail: { subject: "email.menu.subject", body: "email.menu.body", unsubscribe: "email.menu.unsubscribe" },
   missingMenu: { subject: "email.missingMenu.subject", body: "email.missingMenu.body" },
 } as const satisfies Record<keyof EmailTemplates, { subject: MessageKey; body: MessageKey; closing?: MessageKey; unsubscribe?: MessageKey }>;

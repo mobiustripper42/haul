@@ -112,7 +112,7 @@ describe("AC1 — the secret fires the run", () => {
 
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type") ?? "no content-type").toMatch(/^application\/json\b/);
-    const expected: ChargeRunReport = { weekOf: WEEK, enrolled: 3, paid: 1, declined: 1, unknown: 1, dropped: 0, skipped: false };
+    const expected: ChargeRunReport = { weekOf: WEEK, enrolled: 3, paid: 1, declined: 1, unknown: 1, dropped: 0, skipped: false, locked: 0 };
     expect(await response.json()).toEqual(expected);
     expect(Object.fromEntries(services.payments.charges.map((charge) => [charge.customerId, charge.result.outcome]))).toEqual({
       [paid.customerId]: "paid",
@@ -203,7 +203,7 @@ describe("issue 174 — AC9: a skipped firing", () => {
     const response = await fire(`Bearer ${SECRET}`);
 
     expect(response.status).toBe(200);
-    const expected: ChargeRunReport = { weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true };
+    const expected: ChargeRunReport = { weekOf: null, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped: true, locked: 0 };
     expect(await response.json()).toEqual(expected);
   });
 });

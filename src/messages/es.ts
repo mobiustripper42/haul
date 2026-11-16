@@ -38,6 +38,7 @@ export const es = {
   "account.cancel.confirm": "Sí, cancelar mi Supper Club",
   "account.cancel.skipWeeks": "Omitir semanas",
   "account.nextPickup": "Próxima recogida: {week}",
+  "account.noPickupLocked": "No hay recogida hasta que actualice su tarjeta.",
   "account.details": "Sus datos",
   "account.weeks.title": "Próximas semanas",
   "account.weeks.intro": "Cada semana se cobra al final del lunes anterior a la recogida. Omita una semana o cambie su comida antes.",
@@ -382,7 +383,9 @@ export const es = {
   "email.receipt.body": "Cobrado el {date}: {amount}, por su recogida del Supper Club el {week}.",
   "email.weekCreditReceipt.body": "Su crédito de semana se usó para su recogida del Supper Club el {week}: no se cobró.",
   "email.cardDeclined.subject": "Tarjeta rechazada: recogida del Supper Club el {week}",
-  "email.cardDeclined.body": "Su tarjeta fue rechazada por {amount}, por su recogida del Supper Club el {week}. Su comida se prepara igual. Actualice su tarjeta en {link}.",
+  "email.cardDeclined.body": "Su tarjeta fue rechazada por {amount}, por su recogida del Supper Club el {week}. Su comida para el {week} se prepara igual: venga a recogerla. Actualice su tarjeta en {link} para seguir recibiendo sus comidas.",
+  "email.cardLocked.subject": "Sin comida del Supper Club el {week}: su tarjeta sigue rechazada",
+  "email.cardLocked.body": "Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el {week}. Actualice su tarjeta en {link} para volver a recibir sus comidas.",
   // Issue 141: the weekly menu, its email, the page and the menu emails card.
   "menu.heading": "Menú para {week}",
   "menu.pickup": "Recogida: {pickup}",

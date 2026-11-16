@@ -314,6 +314,26 @@ describe("AC3b (issue 136) — nextPickup", () => {
   it("AC3b: when every listed week is closed there is none: null", () => {
     expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14, { closed: true })], "2027-01-03")).toBeNull();
   });
+
+  // Issue 196: `lockedOn` is the subscription's declined week. A week up to it was charged and is coming; a week
+  // after it is one the member is not getting.
+  describe("AC8 (issue 196) — while locked", () => {
+    it("AC8: the week found is given when it is before lockedOn", () => {
+      expect(nextPickup([listed(FEB_7), listed(FEB_14)], "2027-01-03", FEB_14)).toMatchObject({ weekOf: FEB_7 });
+    });
+
+    it("AC8: the week found is given when it is lockedOn itself", () => {
+      expect(nextPickup([listed(FEB_7), listed(FEB_14)], "2027-01-03", FEB_7)).toMatchObject({ weekOf: FEB_7 });
+    });
+
+    it("AC8: the week found is after lockedOn: null", () => {
+      expect(nextPickup([listed(FEB_7), listed(FEB_14)], "2027-01-03", "2027-01-31")).toBeNull();
+    });
+
+    it("AC8: lockedOn closed passes over to a week after it: null, not that week", () => {
+      expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14)], "2027-01-03", FEB_7)).toBeNull();
+    });
+  });
 });
 
 // Issue 155: the weeks a member's account pages list. The cut between them is the week's last pickup day, in

@@ -183,6 +183,17 @@ describe("AC3 (issue 135) — renderEmail cardDeclined", () => {
   });
 });
 
+// Issue 196: the email a locked week sends. Its words, filled with the week and the link, are new copy typed once in
+// src/charge-run.test.ts, which renders it as the run sends it; here, which keys the template reads.
+describe("AC3 (issue 196) — renderEmail cardLocked", () => {
+  it("AC3: cardLocked in the stand-in Spanish catalog is only catalog values: its own subject and body, the signup confirmation's questions line, the sign-off and the footer", () => {
+    expect(renderEmail("cardLocked", "es", { week: "February 14 and 15", link: "https://members.example.test/account" }, SITE_URL)).toEqual({
+      subject: "«email.cardLocked.subject»",
+      text: `«email.cardLocked.body»\n\n«email.signupConfirmation.questions»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
+    });
+  });
+});
+
 // Issue 141: the menu email and the missing-menu email. Their words, filled as the run fills them, are new copy typed
 // once in src/menu-run.test.ts, which renders them as the run sends them; here, that each is only catalog values, and
 // the line the menu email alone puts between the sign-off and the footer.
