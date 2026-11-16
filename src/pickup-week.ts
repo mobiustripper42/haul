@@ -165,9 +165,14 @@ export type AdminWeek = PickupWeek & {
   canReopen: boolean;
 };
 
-/** A member's next pickup: the first of `weeks` not closed and with `weekOf >= firstWeek`; null when there is none. */
-export function nextPickup(weeks: AdminWeek[], firstWeek: string): AdminWeek | null {
-  return weeks.find((week) => week.closedAt === null && week.weekOf >= firstWeek) ?? null;
+/**
+ * A member's next pickup: the first of `weeks` not closed and with `weekOf >= firstWeek`; null when there is none. Issue
+ * 196: with `lockedOn`, the week their subscription's declined row is for, the week found when it is on or before it,
+ * else null: a week up to the declined one was charged and is coming, a later one is locked and is not.
+ */
+export function nextPickup(weeks: AdminWeek[], firstWeek: string, lockedOn: string | null = null): AdminWeek | null {
+  const found = weeks.find((week) => week.closedAt === null && week.weekOf >= firstWeek) ?? null;
+  return found && lockedOn !== null && found.weekOf > lockedOn ? null : found;
 }
 
 /** Whether a week's days are not its ordinary ones, the Sunday and the Monday after. */

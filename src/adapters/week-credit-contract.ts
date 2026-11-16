@@ -681,6 +681,15 @@ export function runWeekCreditContract(
           expect(await due()).toEqual([row(grace, "noCharge")]);
         });
 
+        // Issue 196: the lock's edges are the charge run contract's; here one locked and one unlocked case.
+        it("AC2 (issue 196): one holding a declined row for an earlier week is locked: not listed, so not told it won't be charged; one whose declined row is for a later week still is", async () => {
+          const grace = await paid("2027-01-10");
+          const ada = await paid("2027-01-10");
+          await addLedgerRow(grace.signup.subscriptionId, EARLIER, "declined", 5000);
+          await addLedgerRow(ada.signup.subscriptionId, NEXT, "declined", 5000);
+          expect(await due()).toEqual([row(ada, "noCharge")]);
+        });
+
         it("AC1, AC2: one list carries both kinds, each subscription with its own notice", async () => {
           const ada = await paid(WEEK);
           const grace = await paid(EARLIER);

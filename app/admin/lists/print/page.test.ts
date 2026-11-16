@@ -102,7 +102,8 @@ describe("signed in as an admin", () => {
 
     it('AC7: a row per meal in pickupRows\' order, "Last, First", the meal\'s options joined by " · ", Notes "Card declined" or empty', async () => {
       const { marco } = await fourMembers(services.repo, product);
-      await services.repo.addLedgerRow(marco.subscriptionId, "2027-01-31", "declined", 5000);
+      // Issue 196: a declined row in an earlier week would lock February 14; the declined week itself is still a meal.
+      await services.repo.addLedgerRow(marco.subscriptionId, FEB_14, "declined", 5000);
       expect(memberRows(await render({ week: FEB_14 }))).toEqual([
         ["Abara, Chidi", "3–4 people · Standard", ""],
         ["Bennett, Rosa", "3–4 people · Standard", ""],

@@ -36,7 +36,7 @@ export type ChargeRunDeps = {
  * `weekOf` is the week enrolled, null when no week's cutoff has passed; `enrolled` the rows written; `paid` the rows this
  * run's confirm answered `confirmed`, by charge or by lookup; `declined` the rows it declined; `unknown` the
  * `charge_outcome_unknown` events it recorded; `dropped` the closed weeks' rows it deleted; `skipped` that the firing found
- * another's lease held and did nothing.
+ * another's lease held and did nothing; `locked` (issue 196) the rows it wrote `locked`, a subset of `enrolled`.
  */
 export type ChargeRunReport = {
   weekOf: string | null;
@@ -46,6 +46,7 @@ export type ChargeRunReport = {
   unknown: number;
   dropped: number;
   skipped: boolean;
+  locked: number;
 };
 
 export const CHARGE_RUN_ACTOR: Actor = { system: "charge-run" };
@@ -57,7 +58,7 @@ export const CHARGE_RUN_LEASE = "charge-run";
 
 /** The report with every count 0: the run's starting point, and what a skipped firing returns. */
 function zeroReport(weekOf: string | null, skipped: boolean): ChargeRunReport {
-  return { weekOf, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped };
+  return { weekOf, enrolled: 0, paid: 0, declined: 0, unknown: 0, dropped: 0, skipped, locked: 0 };
 }
 
 /**
@@ -84,9 +85,12 @@ async function chargeRunBody(deps: ChargeRunDeps): Promise<ChargeRunReport> {
   const report = zeroReport(weekOf, false);
   if (weekOf !== null) {
     const enrolled = await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.enrolWeek(product.id, weekOf, cutoffInstant(product, weekOf)));
-    report.enrolled = enrolled.pending + enrolled.zeroCents + enrolled.byWeekCredit.length;
+    report.enrolled = enrolled.pending + enrolled.zeroCents + enrolled.byWeekCredit.length + enrolled.locked.length;
+    report.locked = enrolled.locked.length;
     // After the commit, as the receipt is: a row paid by a week credit is paid, and its member is told so.
     for (const row of enrolled.byWeekCredit) await sendWeekCreditReceipt(deps, product.id, weekOf, row.memberId);
+    // Issue 196: a locked week is told the same way: its member's card is still declined and no meal is coming.
+    for (const row of enrolled.locked) await sendLockedNotice(deps, product.id, weekOf, row.memberId);
   }
   for (const row of await repo.listPendingCharges(product.id)) {
     try {
@@ -226,5 +230,13 @@ function sendWeekCreditReceipt(deps: ChargeRunDeps, productId: string, pickupDat
   return sendMemberEmail(deps, memberId, async (member) => {
     const week = await weekNamed(deps, productId, pickupDate, member.language);
     return renderEmail("weekCreditReceipt", member.language, { week }, deps.siteUrl);
+  });
+}
+
+/** Issue 196: the notice for a week locked by a declined card, to its member: no meal is coming. A failed send is logged and undoes nothing. */
+function sendLockedNotice(deps: ChargeRunDeps, productId: string, pickupDate: string, memberId: string): Promise<void> {
+  return sendMemberEmail(deps, memberId, async (member) => {
+    const week = await weekNamed(deps, productId, pickupDate, member.language);
+    return renderEmail("cardLocked", member.language, { week, link: deps.accountUrl }, deps.siteUrl);
   });
 }

@@ -207,7 +207,7 @@ export function runChargeRunContract(
         await subscriber();
         expect((await enrol()).pending).toBe(1);
         const [first] = await pendingRows();
-        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [] });
+        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] });
         expect(await pendingRows()).toEqual([first]);
       });
 
@@ -242,7 +242,7 @@ export function runChargeRunContract(
         name: "Sampler",
         optionTypes: BOX.optionTypes.map((type, i) => (i === 0 ? { ...type, options: type.options.map((option, j) => ({ ...option, priceCents: j === 0 ? 0 : 5000 })) } : type)),
       };
-      const nothing = { pending: 0, zeroCents: 0, byWeekCredit: [] };
+      const nothing = { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
 
       /** Issue 138: the set at `size` and `menu` of `on` as a read gives it: each type's name and its option's. */
       const meal = (size: number, menu: number, on: ProductWithOptions = product): { typeName: string; optionName: string }[] => {
@@ -267,7 +267,7 @@ export function runChargeRunContract(
 
       it("AC1: a subscription due the week holding an unspent week credit gets its row paid at 0 cents, read as paid by a week credit; enrolWeek hands it back with its member", async () => {
         const ada = await holder();
-        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }] });
+        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }], locked: [] });
         expect(await paidOf(ada)).toEqual([
           { weekOf: EARLIER, amountCents: 5000, weekCredit: false, options: meal(0, 0) },
           { weekOf: WEEK, amountCents: 0, weekCredit: true, options: meal(0, 0) },
@@ -316,7 +316,7 @@ export function runChargeRunContract(
       it("AC5: a subscription whose picks for the week sum to 0 cents, holding no week credit, gets its row paid at 0, counted in zeroCents, not pending, and read as no week credit's", async () => {
         const sampler = await addProduct(SAMPLER);
         const ada = await subscriber({ on: sampler });
-        expect(await enrol(WEEK, sampler)).toEqual({ pending: 0, zeroCents: 1, byWeekCredit: [] });
+        expect(await enrol(WEEK, sampler)).toEqual({ pending: 0, zeroCents: 1, byWeekCredit: [], locked: [] });
         expect(await pendingRows(sampler)).toEqual([]);
         expect(await paidOf(ada)).toEqual([
           { weekOf: EARLIER, amountCents: 5000, weekCredit: false, options: meal(0, 0, sampler) },
@@ -327,7 +327,7 @@ export function runChargeRunContract(
       it("AC5: a week credit comes first: a subscription holding one spends it though its picks sum to 0 cents, counted in byWeekCredit, not zeroCents", async () => {
         const sampler = await addProduct(SAMPLER);
         const ada = await holder({ on: sampler });
-        expect(await enrol(WEEK, sampler)).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }] });
+        expect(await enrol(WEEK, sampler)).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }], locked: [] });
         expect(await unspentOf(ada)).toEqual([]);
       });
 
@@ -337,7 +337,7 @@ export function runChargeRunContract(
         const charged = await subscriber({ firstWeek: JAN_10, on: sampler });
         expect(await repo.switchPicks(charged.signup.subscriptionId, choices(1, 0, sampler), WEEK, 5000)).toBe("switched");
         const credited = await holder({ on: sampler });
-        expect(await enrol(WEEK, sampler)).toEqual({ pending: 1, zeroCents: 1, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: credited.memberId }] });
+        expect(await enrol(WEEK, sampler)).toEqual({ pending: 1, zeroCents: 1, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: credited.memberId }], locked: [] });
         expect((await pendingRows(sampler)).map((row) => [row.subscriptionId, row.amountCents])).toEqual([[charged.signup.subscriptionId, 5000]]);
       });
 
@@ -385,7 +385,7 @@ export function runChargeRunContract(
       ] as const)("AC9: a subscription cancelled %s the week's cutoff spends its week credit like an active one, and then owes no refund", async (_when, late) => {
         const ada = await holder();
         expect(await repo.cancelSubscription(ada.signup.subscriptionId, new Date(cutoffInstant(product, WEEK).getTime() + late))).toBe(true);
-        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }] });
+        expect(await enrol()).toEqual({ pending: 0, zeroCents: 0, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }], locked: [] });
         expect(await refundOwedOf(ada)).toBe(false);
       });
 
@@ -399,6 +399,123 @@ export function runChargeRunContract(
           { grantedFor: byWeekCredit[0]?.ledgerId, spentOn: null, optionIds: sortedIds(Object.values(choices(0, 0))) },
         ]);
         expect(await unspentOf(ada)).toEqual([WEEK]);
+      });
+    });
+
+    // Issue 196: a subscription holding a declined row for an earlier week is locked: enrolWeek writes its week a
+    // `locked` row at 0 cents, never charged. The lock's edges are owned here, as the due rule's are; listWeekDue and
+    // listWeekBoxes take one locked and one unlocked case each (src/adapters/week-credit-contract.ts,
+    // src/adapters/week-lists-contract.ts), and the run its report and email (src/charge-run.test.ts). The row's
+    // columns are read by raw SQL, on Postgres alone (src/adapters/postgres-repository.test.ts).
+    describe("issue 196 — enrolWeek locks a subscription holding a declined row", () => {
+      const JAN_10 = "2027-01-10";
+      const none = { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
+      /** BOX with every option free: any picks sum to 0 cents. */
+      const FREE: ProductInput = {
+        ...BOX,
+        name: "Free box",
+        optionTypes: BOX.optionTypes.map((type) => ({ ...type, options: type.options.map((option) => ({ ...option, priceCents: 0 })) })),
+      };
+
+      /** A subscriber whose first paid week is January 10, holding a declined row for `declinedOn` (EARLIER unless given); with its id. */
+      const declinedFor = async (declinedOn: string = EARLIER, over: Parameters<typeof subscriber>[0] = {}) => {
+        const who = await subscriber({ firstWeek: JAN_10, ...over });
+        return { ...who, declinedId: await addLedgerRow(who.signup.subscriptionId, declinedOn, "declined", 5000) };
+      };
+
+      const lockedOf = (who: Subscriber) => [{ ledgerId: expect.stringMatching(UUID), memberId: who.memberId }];
+      const unspentOf = async (who: Subscriber) => (await repo.listMemberWeeks(who.signup.subscriptionId)).weekCredits.map((credit) => credit.grantedForWeek).sort();
+
+      it("AC1: an active subscription due the week, holding a declined row for an earlier week, gets a row that is not pending: enrolWeek hands it back in locked with its member, in no other count; another due subscription is charged as before", async () => {
+        const ada = await declinedFor();
+        const grace = await subscriber({ firstWeek: JAN_10 });
+        expect(await enrol()).toEqual({ pending: 1, zeroCents: 0, byWeekCredit: [], locked: lockedOf(ada) });
+        expect(await rowsOf(ada)).toEqual([]);
+        expect((await rowsOf(grace)).map((row) => row.pickupDate)).toEqual([WEEK]);
+        // The locked row is there: it stands in the way of a skip.
+        expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(false);
+      });
+
+      it("AC2: a declined row for the week itself locks nothing: the subscription already holds the week's row, so nothing is written", async () => {
+        await declinedFor(WEEK);
+        expect(await enrol()).toEqual(none);
+      });
+
+      it("AC2: a declined row for a later week locks nothing: the week is due and charged", async () => {
+        const ada = await declinedFor(NEXT);
+        expect(await enrol()).toEqual({ ...none, pending: 1 });
+        expect((await rowsOf(ada)).map((row) => row.pickupDate)).toEqual([WEEK]);
+      });
+
+      it.each(["skipped", "paid"] as const)("AC1 [code]: a locked subscription already holding a %s row for the week is left as it is: no locked row", async (status) => {
+        const ada = await declinedFor();
+        if (status === "skipped") expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(true);
+        else await addLedgerRow(ada.signup.subscriptionId, WEEK, "paid", 0);
+        expect(await enrol()).toEqual(none);
+        expect((await repo.listMemberWeeks(ada.signup.subscriptionId)).skipped).toEqual(status === "skipped" ? [WEEK] : []);
+      });
+
+      it("AC1 [Lead] (DEC-032): a locked subscription holding an unspent week credit gets a locked row, and the week credit stays unspent", async () => {
+        const ada = await declinedFor();
+        await close(JAN_10);
+        expect(await unspentOf(ada)).toEqual([JAN_10]);
+        expect(await enrol()).toEqual({ ...none, locked: lockedOf(ada) });
+        expect(await unspentOf(ada)).toEqual([JAN_10]);
+      });
+
+      it("AC1 [Lead]: the lock comes before the 0-cent rule: a locked subscription whose picks sum to 0 cents is counted in locked, not zeroCents", async () => {
+        const free = await addProduct(FREE);
+        const ada = await declinedFor(EARLIER, { on: free });
+        expect(await enrol(WEEK, free)).toEqual({ ...none, locked: lockedOf(ada) });
+        expect((await repo.listMemberWeeks(ada.signup.subscriptionId)).paid.map((row) => row.weekOf)).toEqual([JAN_10]);
+      });
+
+      it.each([
+        ["at", 0],
+        ["an hour after", 60 * 60 * 1000],
+      ] as const)("AC1 [Lead], AC5: only an active subscription is locked: one cancelled %s the week's cutoff, holding an earlier declined row, gets neither a pending nor a locked row", async (_when, late) => {
+        const ada = await declinedFor();
+        expect(await repo.cancelSubscription(ada.signup.subscriptionId, new Date(cutoffInstant(product, WEEK).getTime() + late))).toBe(true);
+        expect(await enrol()).toEqual(none);
+        // No row stands in the way of a skip.
+        expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(true);
+      });
+
+      it("AC6: a closed week gets no locked row; the next week, open, does", async () => {
+        const ada = await declinedFor();
+        await close(WEEK);
+        expect(await enrol()).toEqual(none);
+        expect(await enrol(NEXT)).toEqual({ ...none, locked: lockedOf(ada) });
+      });
+
+      it("AC1: a second enrolment over the same state writes no second locked row", async () => {
+        const ada = await declinedFor();
+        expect(await enrol()).toEqual({ ...none, locked: lockedOf(ada) });
+        expect(await enrol()).toEqual(none);
+      });
+
+      it("AC5: the lock holds week after week until the declined row is paid; then the next week is due and charged, and the locked rows are never charged", async () => {
+        const ada = await declinedFor();
+        expect(await enrol()).toEqual({ ...none, locked: lockedOf(ada) });
+        expect(await enrol(NEXT)).toEqual({ ...none, locked: lockedOf(ada) });
+        expect(await repo.confirmSignupRows(ada.declinedId, `PAYMENT_${ada.declinedId}`, 5000, CLOSED_AT)).toBe("confirmed");
+        expect(await enrol(FEB_7)).toEqual({ ...none, pending: 1 });
+        expect((await rowsOf(ada)).map((row) => row.pickupDate)).toEqual([FEB_7]);
+      });
+
+      // AC8: the account home reads the declined week from the subscription; which row it is, is owned here.
+      it("AC8: findMemberSubscription's declinedWeek is the earliest declined row's pickup date, whatever order the rows were written in", async () => {
+        const ada = await declinedFor(NEXT);
+        await addLedgerRow(ada.signup.subscriptionId, EARLIER, "declined", 5000);
+        expect(await repo.findMemberSubscription(ada.memberId, product.id)).toMatchObject({ declinedWeek: EARLIER });
+      });
+
+      it("AC8: with no declined row, its rows paid, pending and skipped, declinedWeek is null", async () => {
+        const ada = await subscriber({ firstWeek: JAN_10 });
+        await addLedgerRow(ada.signup.subscriptionId, EARLIER, "paid", 5000);
+        await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+        expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
+        expect(await repo.findMemberSubscription(ada.memberId, product.id)).toMatchObject({ declinedWeek: null });
       });
     });
 

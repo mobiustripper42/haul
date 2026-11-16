@@ -183,6 +183,38 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
     });
   });
 
+  // Issue 196: Postgres only. The contract reads a locked row through enrolWeek's locked and listPendingCharges; its
+  // columns are read here, from the table.
+  describe("issue 196 — a locked row, in its table", () => {
+    const JAN_10 = "2027-01-10";
+    const EARLIER = "2027-01-17";
+    const WEEK = "2027-01-24";
+
+    it("AC1: a locked row is locked, 0 cents, attempt 1, no Square payment and no paid_at", async () => {
+      await truncateAll();
+      const product = await addProduct(SWITCH_BOX);
+      const member = await repo.createMember({ email: "ada@example.com" });
+      const signup = await repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: JAN_10,
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: new Date("2027-01-05T15:00:00.000Z"),
+      });
+      expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, new Date("2027-01-05T15:00:05.000Z"))).toBe("confirmed");
+      await addLedgerRow(signup.subscriptionId, EARLIER, "declined", 5000);
+      await repo.enrolWeek(product.id, WEEK, cutoffInstant(product, WEEK));
+      const { rows } = await pool.query<{ status: string; amount_cents: number; attempt: number; square_payment_id: string | null; paid_at: Date | null }>(
+        "select status, amount_cents, attempt, square_payment_id, paid_at from ledger where subscription_id = $1 and pickup_date = $2::date",
+        [signup.subscriptionId, WEEK],
+      );
+      expect(rows).toEqual([{ status: "locked", amount_cents: 0, attempt: 1, square_payment_id: null, paid_at: null }]);
+    });
+  });
+
   // Issue 156: a member's own details and their pending email change, in email_changes.
   runEmailChangeContract("postgres", async () => repo, truncateAll);
 
