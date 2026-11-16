@@ -576,7 +576,7 @@ export class InMemoryRepository implements Repository {
         continue;
       }
       const credit = this.unspentCreditsBefore(subscription.id, weekOf)[0];
-      if ((!picks && !credit) || holds) continue;
+      if (!picks && !credit) continue;
       const cents = picks ? priceOfChoices(product, picks.optionIds) : 0;
       const paid = credit !== undefined || cents === 0;
       const ledgerId = await this.addLedgerRow(subscription.id, weekOf, paid ? "paid" : "pending", credit ? 0 : cents, paid ? cutoff : undefined);

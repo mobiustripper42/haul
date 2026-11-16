@@ -41,7 +41,7 @@ export async function declinedCard({ email, url }: { email: string | null; url: 
     const found = rows[0];
     if (!found || rows.length > 1) {
       const which = email === null ? "active subscriptions" : `active subscriptions for ${email}`;
-      throw new Error(`Expected exactly one of ${which}, found ${rows.length}. ${email === null ? "Pass the member's email." : ""}`.trim());
+      throw new Error(`Expected exactly one of ${which}, found ${rows.length}. ${email === null && rows.length > 1 ? "Pass the member's email." : ""}`.trim());
     }
     await db.query("update subscriptions set square_card_id = $2 where id = $1", [found.id, SQUARE_SANDBOX_VALUES.cardOnFileDeclined]);
     return found.email;
