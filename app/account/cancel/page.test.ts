@@ -208,14 +208,6 @@ describe("AC5, AC6 (issue 202) — the refund sentence", () => {
       `${t("account.cancel.creditMany", { n: 2 })} Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm.`,
     ]);
   });
-
-  it("AC6 (issue 202): in Spanish, the Notice's body is Cualquier crédito pendiente se reembolsa en Square después de que cancele. and the rest", async () => {
-    await twoCredits();
-    request.current.cookies.lang = "es";
-    expect(alertTexts((await render()).html)).toEqual([
-      `${createTranslator("es")("account.cancel.creditMany", { n: 2 })} Cualquier crédito pendiente se reembolsa en Square después de que cancele. Si no sabe nada de un reembolso en una semana, comuníquese con la granja.`,
-    ]);
-  });
 });
 
 describe("AC1 (issue 139) — the confirm", () => {

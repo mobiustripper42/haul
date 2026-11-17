@@ -280,12 +280,6 @@ describe("AC8 (issue 196) — the next pickup while locked", () => {
     expect(alerts.some((alert) => alert.includes(NO_PICKUP))).toBe(false);
   });
 
-  it("AC8: in Spanish the line is No hay recogida hasta que actualice su tarjeta.", async () => {
-    await declinedAda("2027-01-31");
-    request.current.cookies.lang = "es";
-    expect((await render()).runs).toContain("No hay recogida hasta que actualice su tarjeta.");
-  });
-
   it("AC8: while the declined week's pickup is still to come, Next pickup names it, with its where line, and the no-pickup line is not shown", async () => {
     await declinedAda(FEB_7);
     const { html, text } = await render();

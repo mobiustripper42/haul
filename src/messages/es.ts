@@ -5,9 +5,8 @@ import { legalTermsEs } from "./legal-terms.es.js";
 // This Spanish is machine-written and has not been reviewed by a fluent reader. Formal usted, Latin American
 // Spanish (the es-US locale). Names stay as they are: Ohio City Farm, Re:Source Cleveland, OCF Member Portal,
 // Supper Club. A key missing here is a type error (DEC-015), and src/messages/catalogs.test.ts checks the
-// {placeholders} and [FILL-INS] against the English.
+// {placeholders} against the English.
 export const es = {
-  "language.label": "Idioma",
   "brand.name": "Ohio City Farm",
   "brand.byline": "de Re:Source Cleveland",
   "brand.address": "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH",
@@ -285,7 +284,7 @@ export const es = {
     "Arroz con lentejas y cebolla (mujadara) · Calabaza asada · Ensalada de zanahoria rallada y nueces con sumac · Sopa de calabaza butternut",
   "supperClub.sampleVegan": "Vegano: moussaka libanesa de garbanzos en lugar del pollo.",
   "supperClub.pickupWhen": "Recoja el domingo o el lunes",
-  "supperClub.pickupWhere": "en la tienda de la granja, 2304 Bridge Ave. Horario: [PICKUP HOURS].",
+  "supperClub.pickupWhere": "en la tienda de la granja, 2304 Bridge Ave. Horario: domingos de 10 a. m. a 4 p. m., lunes de mediodía a 6 p. m.",
   "supperClub.joinTitle": "Únase al Supper Club",
   "supperClub.pickerLegend": "{n}. {name}?",
   "supperClub.price": "{price} por semana",
@@ -434,7 +433,7 @@ export const es = {
   "email.legalPrivacy": "Privacidad: {url}",
   "legal.terms.title": "Términos de servicio",
   "legal.privacy.title": "Política de privacidad",
-  "legal.lastUpdated": "Última actualización [DATE]",
+  "legal.lastUpdated": "Última actualización: 1 de noviembre de 2026",
   "legal.terms.text": legalTermsEs,
   "legal.privacy.text": legalPrivacyEs,
 } satisfies Record<MessageKey, string>;

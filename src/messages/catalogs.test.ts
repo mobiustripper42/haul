@@ -66,6 +66,25 @@ describe("AC3 — the same bracketed fill-ins", () => {
   });
 });
 
+// Issue 187, AC8: production goes public with no "[CONTACT EMAIL]" or the like left in any catalog, UI or legal.
+// Read over the values `en` and `es` hold (the legal texts among them), not the files' source.
+describe("AC8 (issue 187) — no bracketed placeholder is left", () => {
+  /** `[`, a capital letter, then anything but `]` or a newline, then `]`. */
+  const BRACKETED = /\[[A-Z][^\]\n]*\]/g;
+
+  it.each([
+    ["en", en as Readonly<Partial<Record<MessageKey, string>>>],
+    ["es", spanish],
+  ] as const)("AC8: no value in the %s catalog holds a bracketed placeholder", (_language, catalog) => {
+    const left: Record<string, string[]> = {};
+    for (const [key, value] of Object.entries(catalog)) {
+      const found = Array.from((value ?? "").matchAll(BRACKETED), (match) => match[0]);
+      if (found.length > 0) left[key] = found;
+    }
+    expect(left).toEqual({});
+  });
+});
+
 describe("AC4 — the legal texts keep their shape", () => {
   /** The blocks' kinds in order, a list with its length: what the Terms and Privacy pages draw, without the words. */
   const shape = (text: string): string[] =>

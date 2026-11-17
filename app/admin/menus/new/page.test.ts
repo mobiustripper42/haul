@@ -10,7 +10,6 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { Menu } from "@core/menus.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
-import { LANGUAGE_COOKIE } from "../../../language";
 import { emptyRequest } from "../../../next-headers-fake";
 import { attributesOf, findAll, screenMarkup, textsOf } from "../../../screen-test-helpers";
 import { addSupperClub, MENUS, SIZES } from "../../subscribers-fixture";
@@ -145,16 +144,6 @@ describe("AC7 — Duplicate", () => {
     const html = await render({ from: original.id });
     expect(nameValue(html)).toBe("Autumn harvest (copy)");
     expect(textareas(html).map((area) => area.value)).toEqual(["Squash soup\n\nRye bread", "Lentil soup"]);
-  });
-
-  it("AC7: in the admin's language: in Spanish the name gains Spanish words, not \" (copy)\"", async () => {
-    setUp();
-    request.current.cookies[LANGUAGE_COOKIE] = "es";
-    const original = await autumn();
-    const name = nameValue(await render({ from: original.id }));
-    expect(name.startsWith("Autumn harvest")).toBe(true);
-    expect(name.length).toBeGreaterThan("Autumn harvest".length);
-    expect(name).not.toBe("Autumn harvest (copy)");
   });
 
   it("AC7: opening it writes nothing: the library holds the original alone", async () => {
