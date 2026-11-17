@@ -37,6 +37,8 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/account/weeks/actions.ts#unskipWeek": { none: "writes ledger; audited by trigger" },
   "app/account/weeks/actions.ts#switchMeal": { none: "writes subscription_options and subscriptions; audited by trigger" },
   "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
+  "app/account/card/actions.ts#saveCard": { records: ["card_declined", "charge_outcome_unknown"] },
+  "app/account/card/actions.ts#retryCard": { records: ["card_declined", "charge_outcome_unknown"] },
   "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
   "app/account/details/actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
   "app/account/details/actions.ts#confirmEmailChange": { records: ["email_changed"] },

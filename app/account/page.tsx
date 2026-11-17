@@ -1,4 +1,5 @@
 import { LANGUAGES } from "@core/i18n.js";
+import { weekNamed } from "@core/ledger-charge.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { memberDisplayName } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
@@ -12,7 +13,7 @@ import { Shell } from "../../components/ui/shell";
 import { loadCalendar } from "../admin/weeks/calendar";
 import { getLanguage, getTranslator } from "../language";
 import { titled } from "../page-title";
-import { ACCOUNT_CANCEL_PATH } from "../paths";
+import { ACCOUNT_CANCEL_PATH, ACCOUNT_CARD_PATH } from "../paths";
 import { getRepository } from "../services";
 import { SiteHeader } from "../site-header";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
@@ -39,7 +40,12 @@ export default async function Account() {
   // Issue 196: a subscription holding a declined row is locked: once the declined week's pickup is past, no pickup is coming.
   const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
-  const badge = SUBSCRIPTION_BADGES[confirmation.status];
+  // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
+  const declinedRows = cancelled ? [] : await getRepository().listDeclinedCharges(confirmation.subscriptionId);
+  const declined = declinedRows.length > 0;
+  const declinedWeek = next && declinedRows.find((row) => !row.closed);
+  const declinedLine = declinedWeek && t("account.card.declinedWeek", { week: await weekNamed(getRepository(), product.id, declinedWeek.pickupDate, language) });
+  const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
   const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
   const name = memberDisplayName(member);
   const phoneAndLanguage = [member.phone, LANGUAGES[member.language].name].filter(Boolean).join(SEPARATOR);
@@ -51,11 +57,17 @@ export default async function Account() {
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.title")}</Heading>
           {cancelled && (
-            <Notice icon="info">
-              {/* One span beside the icon: the bold lead on its own line, its sentences under it, not as two flex columns. */}
-              <span>
-                <strong className="block font-semibold text-teal">{t("account.cancelledNotice")}</strong>{" "}
-                {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+            <Notice icon="info" lead={t("account.cancelledNotice")}>
+              {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+            </Notice>
+          )}
+          {declined && (
+            <Notice icon="alert" lead={t("account.card.declinedLead")}>
+              {[t("account.card.declinedBody"), declinedLine].filter(Boolean).join(" ")}
+              <span className="mt-3 block">
+                <Button kind="primary" href={ACCOUNT_CARD_PATH}>
+                  {t("account.updateCard")}
+                </Button>
               </span>
             </Notice>
           )}

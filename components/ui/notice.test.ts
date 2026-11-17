@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
-import { normalMarkup } from "../../app/screen-test-helpers";
+import { alertTexts, attributesOf, normalMarkup, screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { Notice, type NoticeIcon } from "./notice";
 
 describe("AC6 — Notice", () => {
@@ -18,6 +18,22 @@ describe("AC6 — Notice", () => {
       expect(normalMarkup(html)).toBe(normalMarkup(`<p role="alert" class="notice notice-${icon}">Try again in 5 min.</p>`));
     },
   );
+});
+
+// Issue 145: `lead`, the bold first line the account home's and the card page's Notices open with: the one home for the
+// markup account home and the cancel page wrote by hand. Its words are each screen's; here, how it is drawn.
+describe("AC1 (issue 145) — Notice's lead", () => {
+  const html = () => renderToStaticMarkup(createElement(Notice, { icon: "alert", lead: "Your card was declined.", children: "Update it to keep your meal." }));
+
+  it("AC1: with a lead, the one alert reads the lead and then its children", () => {
+    expect(alertTexts(html())).toEqual(["Your card was declined. Update it to keep your meal."]);
+  });
+
+  it("AC1: the lead is bold, on its own line", () => {
+    const lead = /<strong\b([^>]*)>([\s\S]*?)<\/strong>/.exec(screenMarkup(html()));
+    expect(lead?.[2]).toBe("Your card was declined.");
+    expect(utilitiesOf(attributesOf(`<strong${lead?.[1] ?? ""}>`, "strong")[0]?.class)).toContain("block");
+  });
 });
 
 // Issue 101, AC3: the success notice is a kind of Notice, `check`, keeping role="alert" as every kind does.

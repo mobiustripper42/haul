@@ -4,6 +4,7 @@
 // Postgres can show: the stored columns, concurrent callers, and who the audit trigger names.
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { runSeed } from "../../db/seed.js";
+import type { Card } from "../ports/payments.js";
 import type { Repository } from "../ports/repository.js";
 import { SUPPER_CLUB_PRODUCT_NAME, type ProductInput, type ProductWithOptions } from "../products.js";
 import { retrySignup, signUp, type SignupDeps } from "../signup.js";
@@ -14,6 +15,9 @@ import { runMenuContract } from "./menu-contract.js";
 import { runProductContract } from "./product-contract.js";
 import { runSignupContract } from "./signup-contract.js";
 import { migrateTestDatabase, requireTestDatabase, TEST_DATABASE_URL } from "./test-database.js";
+
+/** The card Square saved, as the bind is given it (issue 145): `id` is what `square_card_id` holds. */
+const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 const up = await requireTestDatabase(TEST_DATABASE_URL, { ci: Boolean(process.env.CI) });
 const skipped = up ? "" : " — skipped: no Postgres at TEST_DATABASE_URL, run `npm run db:up`";
@@ -395,7 +399,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       it("AC11: a rewrite refused over a bound card leaves the consent wording, its time and the amounts as they were", async () => {
         const { input } = await fixture();
         const signup = await repo.savePendingSignup(input);
-        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
         await repo.savePendingSignup({ ...input, consentText: "New wording.", consentAt: PAID_AT, firstChargeCents: 100, weeklyCents: 100 }).catch(() => null);
         expect((await pool.query("select consent_text, consent_at, first_charge_cents, weekly_cents from subscriptions")).rows).toEqual([
           { consent_text: CONSENT, consent_at: NOW, first_charge_cents: 8000, weekly_cents: 8000 },
@@ -406,7 +410,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         const { input } = await fixture();
         const signup = await repo.savePendingSignup(input);
         await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT);
-        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:late");
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:late"));
         expect((await pool.query("select square_card_id from subscriptions")).rows).toEqual([{ square_card_id: null }]);
       });
 
@@ -566,17 +570,17 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
       it("AC2 (issue 57): a held spot ten years old is still held, and still fills the cap", async () => {
         const { input, product } = await cappedAt(1);
         const signup = await repo.savePendingSignup(input);
-        await repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+        await repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
         await pool.query("update subscriptions set created_at = now() - interval '10 years', consent_at = now() - interval '10 years'");
         expect(await repo.countHeldSpots(product.id)).toBe(1);
         const later = await repo.savePendingSignup({ ...input, memberId: await rival() });
-        expect(await repo.saveSubscriptionCard(later.subscriptionId, "ccof:card-2")).toBe("sold_out");
+        expect(await repo.saveSubscriptionCard(later.subscriptionId, cardOf("ccof:card-2"))).toBe("sold_out");
       });
 
       it("AC6, AC10 (issue 57): a refusal at the check writes no signup rows, and one sold_out event under the member, keyed on them", async () => {
         const { input, member, choices } = await cappedAt(1);
         const held = await repo.savePendingSignup({ ...input, memberId: await rival() });
-        await repo.saveSubscriptionCard(held.subscriptionId, "ccof:held");
+        await repo.saveSubscriptionCard(held.subscriptionId, cardOf("ccof:held"));
         const payments = new FakePayments();
         const m = await mark();
 
@@ -596,7 +600,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         const saveCard = payments.saveCard.bind(payments);
         payments.saveCard = async (card) => {
           const held = await repo.savePendingSignup({ ...input, memberId: grace });
-          await repo.saveSubscriptionCard(held.subscriptionId, "ccof:held");
+          await repo.saveSubscriptionCard(held.subscriptionId, cardOf("ccof:held"));
           return saveCard(card);
         };
         const m = await mark();
@@ -635,7 +639,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         try {
           await holder.query("begin");
           await holder.query("select id from products where id = $1 for update", [product.id]);
-          const bind = repo.saveSubscriptionCard(mine.subscriptionId, "ccof:card-1");
+          const bind = repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"));
           expect(await Promise.race([bind.then(() => "landed"), blockedOnALock()])).toBe("waiting");
 
           // The rival's bind commits as the lock frees, so only a count made under the lock can see it.
@@ -706,7 +710,7 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
           // waits on the product, the confirm waits on the member. Member then product in both, so no deadlock.
           await holder.query("begin");
           await holder.query("select id from products where id = $1 for update", [product.id]);
-          const bind = repo.saveSubscriptionCard(other.subscriptionId, "ccof:card-2");
+          const bind = repo.saveSubscriptionCard(other.subscriptionId, cardOf("ccof:card-2"));
           expect(await untilWaiting(1)).toBe(1);
           const second = repo.confirmSignupRows(other.ledgerId, "PAYMENT_2", other.amountCents, PAID_AT);
           expect(await untilWaiting(2)).toBe(2);

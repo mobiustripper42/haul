@@ -12,11 +12,13 @@
  */
 import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import { ACCOUNT_CARD_PATH } from "../src/account-paths.js";
 import { FakeEmail } from "../src/adapters/fake-email.js";
 import { FakePayments } from "../src/adapters/fake-payments.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { SquarePayments } from "../src/adapters/square-payments.js";
 import { runCharges, type ChargeRunReport } from "../src/charge-run.js";
+import { siteLink } from "../src/email-templates.js";
 import type { PaymentsPort } from "../src/ports/payments.js";
 import { DEFAULT_DATABASE_URL } from "./migrate.js";
 import { assertLocalUrl } from "./seed.js";
@@ -74,6 +76,7 @@ export async function chargeRun({ now, url }: { now: Date | null; url: string },
       clock,
       siteUrl,
       accountUrl: `${siteUrl.replace(/\/$/, "")}${ACCOUNT_PATH}`,
+      cardUrl: siteLink(siteUrl, ACCOUNT_CARD_PATH),
     });
   } finally {
     await repo.close();

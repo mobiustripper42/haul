@@ -3,11 +3,14 @@ import type { AccountDetails } from "../create-account.js";
 import { DEFAULT_LANGUAGE, type Language } from "../i18n.js";
 import { DEFAULT_ROLE, DuplicateEmailError, normalizeEmail, type Member, type Role } from "../members.js";
 import type { Menu, MenuInput } from "../menus.js";
+import type { Card } from "../ports/payments.js";
 import {
   SignupRefusedError,
   type Actor,
   type AuditEvent,
   type AuditEventKind,
+  type CardUpdateClaim,
+  type DeclinedCharge,
   type EmailChange,
   type EnrolledWeek,
   type MemberSubscription,
@@ -38,6 +41,9 @@ type StoredSubscription = {
   /** The time of the cancel; set exactly when `status` is `cancelled`. */
   cancelledAt: Date | null;
   squareCardId: string | null;
+  /** The card's brand and last four, stored beside its id (issue 145); null with no card, or one bound before they were. */
+  cardBrand: string | null;
+  cardLast4: string | null;
   consentText: string;
   consentAt: Date;
   firstChargeCents: number;
@@ -263,6 +269,8 @@ export class InMemoryRepository implements Repository {
       status: "pending",
       cancelledAt: null,
       squareCardId: existing?.squareCardId ?? null,
+      cardBrand: existing?.cardBrand ?? null,
+      cardLast4: existing?.cardLast4 ?? null,
       consentText: input.consentText,
       consentAt: new Date(input.consentAt),
       firstChargeCents: input.firstChargeCents,
@@ -284,7 +292,7 @@ export class InMemoryRepository implements Repository {
       squarePaymentId: before?.squarePaymentId ?? null,
       paidAt: before?.paidAt ?? null,
     };
-    if (declined) subscription.squareCardId = null;
+    if (declined) Object.assign(subscription, { squareCardId: null, cardBrand: null, cardLast4: null });
     this.subscriptions.set(subscription.id, subscription);
     this.ledger.set(ledger.id, ledger);
     const saved = await this.findPendingSignup(input.memberId, input.productId);
@@ -293,7 +301,7 @@ export class InMemoryRepository implements Repository {
 
   async saveSubscriptionCard(
     subscriptionId: string,
-    cardId: string,
+    card: Card,
   ): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     const subscription = this.subscriptions.get(subscriptionId);
     const ledger = this.ledgerOf(subscriptionId);
@@ -301,7 +309,7 @@ export class InMemoryRepository implements Repository {
     if (ledger.status !== "pending") return null;
     const product = this.products.find((p) => p.id === subscription.productId);
     if (product && isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
-    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: cardId });
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: card.id, cardBrand: card.brand, cardLast4: card.last4 });
     return { amountCents: ledger.amountCents, attempt: ledger.attempt };
   }
 
@@ -630,6 +638,68 @@ export class InMemoryRepository implements Repository {
     if (!row || !subscription || row.status !== "pending" || subscription.status === "pending") return false;
     if (this.pickupWeeks.get(weekKey(subscription.productId, row.pickupDate))?.closedAt == null) return false;
     return this.ledger.delete(ledgerId);
+  }
+
+  /**
+   * Issue 145: a card update's one decision: `inactive` when the subscription is not `active`; `busy` when it holds a
+   * `pending` row, whatever its week; else the closed weeks' `declined` rows are deleted, the card's id, brand and last four
+   * are set, and the oldest open week's `declined` row, when one is left, turns `pending` with its attempt bumped, as
+   * `claimed`; else `replaced`.
+   */
+  async claimCardUpdate(subscriptionId: string, card: Card): Promise<CardUpdateClaim> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (subscription?.status !== "active") return { kind: "inactive" };
+    const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscriptionId);
+    if (rows.some((row) => row.status === "pending")) return { kind: "busy" };
+    const declined = rows.filter((row) => row.status === "declined");
+    for (const row of declined) if (this.weekClosed(subscription.productId, row.pickupDate)) this.ledger.delete(row.id);
+    this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: card.id, cardBrand: card.brand, cardLast4: card.last4 });
+    const open = declined.filter((row) => !this.weekClosed(subscription.productId, row.pickupDate)).sort((a, b) => a.pickupDate.localeCompare(b.pickupDate) || a.id.localeCompare(b.id))[0];
+    if (!open) return { kind: "replaced" };
+    this.ledger.set(open.id, { ...open, status: "pending", attempt: open.attempt + 1 });
+    // The only pending row, since none was held above: the claimed one, as the run lists it.
+    const charge = await this.findPendingCharge(subscriptionId);
+    if (!charge) throw new Error("The claimed row has no card or Square customer");
+    return { kind: "claimed", charge };
+  }
+
+  /** Issue 145: the subscription's oldest `pending` row with a card and a Square customer, as `listPendingCharges` lists it. */
+  async findPendingCharge(subscriptionId: string): Promise<PendingCharge | null> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (!subscription) return null;
+    return (await this.listPendingCharges(subscription.productId)).find((charge) => charge.subscriptionId === subscriptionId) ?? null;
+  }
+
+  async findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    return subscription?.cardBrand && subscription.cardLast4 ? { brand: subscription.cardBrand, last4: subscription.cardLast4 } : null;
+  }
+
+  /** The subscription's `declined` rows, closed weeks' included, oldest week first. */
+  async listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]> {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (!subscription) return [];
+    return [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "declined")
+      .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate))
+      .map((row) => ({
+        ledgerId: row.id,
+        pickupDate: row.pickupDate,
+        amountCents: row.amountCents,
+        attempt: row.attempt,
+        closed: this.weekClosed(subscription.productId, row.pickupDate),
+      }));
+  }
+
+  /** Issue 145: the row, when it is one of the subscription's `paid` rows; null otherwise. */
+  async findPaidCharge(subscriptionId: string, ledgerId: string): Promise<{ ledgerId: string; pickupDate: string; amountCents: number } | null> {
+    const row = this.ledger.get(ledgerId);
+    return row?.subscriptionId === subscriptionId && row.status === "paid" ? { ledgerId: row.id, pickupDate: row.pickupDate, amountCents: row.amountCents } : null;
+  }
+
+  /** Whether an admin has closed the product's week. */
+  private weekClosed(productId: string, weekOf: string): boolean {
+    return this.pickupWeeks.get(weekKey(productId, weekOf))?.closedAt != null;
   }
 
   /**

@@ -13,6 +13,8 @@ const LOOKS = {
   note: "bg-sage-soft text-teal",
   /** A cancelled subscription: the closed look, with no icon. */
   cancelled: OUTLINE,
+  /** A card the charge run could not charge (issue 145). */
+  declined: "bg-danger-soft text-danger",
 } as const;
 
 export type BadgeKind = keyof typeof LOOKS;
@@ -27,9 +29,15 @@ const ICONS: Partial<Record<BadgeKind, ReactNode>> = {
   ),
   moved: <path d="M4 8h14M14 4l4 4-4 4M20 16H6M10 12l-4 4 4 4" />,
   note: <path d="M5 4h14v12H9l-4 4z" />,
+  declined: (
+    <>
+      <circle cx="12" cy="12" r="9" />
+      <path d="M12 7.5v5M12 16v.5" />
+    </>
+  ),
 };
 
-/** A status word on a tint, with an icon for the kinds that have one. Task 2.3 adds the kind for a declined card. */
+/** A status word on a tint, with an icon for the kinds that have one. */
 export function Badge({ kind, children }: { kind: BadgeKind; children: ReactNode }) {
   const icon = ICONS[kind];
   return (

@@ -56,12 +56,8 @@ export default async function CancelSupperClub() {
               {t("account.cancel.joinAgain")} {t("account.cancel.skipInstead")}
             </p>
             {credits > 0 && (
-              <Notice icon="info">
-                {/* One span beside the icon: the bold lead on its own line, its sentence under it, not as two flex columns. */}
-                <span>
-                  <strong className="block font-semibold text-teal">{credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}</strong>{" "}
-                  {t("account.cancel.refund")}
-                </span>
+              <Notice icon="info" lead={credits === 1 ? t("account.cancel.creditOne") : t("account.cancel.creditMany", { n: credits })}>
+                {t("account.cancel.refund")}
               </Notice>
             )}
             <form action={cancelSubscription}>

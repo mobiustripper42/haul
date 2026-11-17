@@ -13,6 +13,7 @@ import { createTranslator } from "@core/i18n.js";
 import { subscriberName } from "@core/member-list.js";
 import { en } from "@core/messages/en.js";
 import type { Role } from "@core/members.js";
+import type { Card } from "@core/ports/payments.js";
 import type { Subscriber } from "@core/ports/repository.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
@@ -24,6 +25,9 @@ import { SiteHeader } from "../site-header";
 import Admin from "./page";
 import { MembersList } from "./members-list";
 import { activeSubscriber, addSupperClub, pendingSignup } from "./subscribers-fixture";
+
+/** The card Square saved, as the bind is given it (issue 145). */
+const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -143,7 +147,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       const product = addSupperClub(services.repo, { cap: 7 });
       await activeSubscriber(services.repo, product, ROSA, PICKS);
       const midPayment = await pendingSignup(services.repo, product, CHIDI, PICKS);
-      await services.repo.saveSubscriptionCard(midPayment.subscriptionId, "ccof:card-1");
+      await services.repo.saveSubscriptionCard(midPayment.subscriptionId, cardOf("ccof:card-1"));
       await pendingSignup(services.repo, product, MARCO, PICKS);
 
       const { element, rows } = await page();
@@ -182,7 +186,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     it("AC7: a signup mid-payment is not an active subscription: the card is still empty", async () => {
       const product = addSupperClub(services.repo);
       const midPayment = await pendingSignup(services.repo, product, ROSA, PICKS);
-      await services.repo.saveSubscriptionCard(midPayment.subscriptionId, "ccof:card-1");
+      await services.repo.saveSubscriptionCard(midPayment.subscriptionId, cardOf("ccof:card-1"));
       expectEmpty(await Admin());
     });
 

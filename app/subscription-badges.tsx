@@ -4,9 +4,11 @@ import type { MessageKey } from "@core/messages/en.js";
 import { Badge, type BadgeKind } from "../components/ui/badge";
 
 /** Which Badge kind and catalog key each subscription status takes. */
-export const SUBSCRIPTION_BADGES: Readonly<Record<"active" | "cancelled", { kind: BadgeKind; key: MessageKey }>> = {
+export const SUBSCRIPTION_BADGES: Readonly<Record<"active" | "cancelled" | "declined", { kind: BadgeKind; key: MessageKey }>> = {
   active: { kind: "success", key: "account.active" },
   cancelled: { kind: "cancelled", key: "account.cancelled" },
+  /** An active subscription holding a declined row, on account home (issue 145). */
+  declined: { kind: "declined", key: "admin.members.cardDeclined" },
 };
 
 /**

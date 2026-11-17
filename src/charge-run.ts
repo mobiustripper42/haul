@@ -1,14 +1,12 @@
-import { createTranslator, type Language } from "./i18n.js";
 import { renderEmail } from "./email-templates.js";
-import { recordDecline, sendCharge } from "./ledger-charge.js";
+import { logStepFailure, recordDecline, recordOutcomeUnknown, renderReceipt, sendCharge, sendMemberEmail as sendEmailTo, weekNamed } from "./ledger-charge.js";
 import { formatUsdWhole } from "./money.js";
+import { clevelandDate, cutoffInstant, latestCutoffWeek, pickupOver } from "./pickup-week.js";
 import type { Member } from "./members.js";
-import { clevelandDate, cutoffInstant, formatPickupDate, latestCutoffWeek, pickupOver, pickupWeek, weekTitle } from "./pickup-week.js";
 import type { EmailPort } from "./ports/email.js";
 import { PaymentsError, type PaymentsPort } from "./ports/payments.js";
 import type { Actor, AuditEventDetail, PendingCharge, Repository } from "./ports/repository.js";
 import { requireSupperClub } from "./products.js";
-import { errorFields, recordEventAs } from "./record-event.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
 /**
@@ -30,6 +28,8 @@ export type ChargeRunDeps = {
   clock: () => Date;
   siteUrl: string;
   accountUrl: string;
+  /** Where the decline email sends the member to update their card. */
+  cardUrl: string;
 };
 
 /**
@@ -104,7 +104,7 @@ async function chargeRunBody(deps: ChargeRunDeps): Promise<ChargeRunReport> {
 
 /** The log line for a failure: its name and code, never its message, which can carry the provider's text. */
 function logFailure(step: string, error: unknown): void {
-  console.error("charge run step failed", { step, ...errorFields(error) });
+  logStepFailure("charge run", step, error);
 }
 
 /**
@@ -135,11 +135,11 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
         // Only the firing that turned the row declined emails: a loser of the race has nothing to tell the member.
         if (flipped) {
           await sendMemberEmail(deps, row.memberId, async (member) => {
-            const week = await weekNamed(deps, productId, row.pickupDate, member.language);
+            const week = await weekNamed(repo, productId, row.pickupDate, member.language);
             return renderEmail(
               "cardDeclined",
               member.language,
-              { week, amount: formatUsdWhole(row.amountCents), link: deps.accountUrl },
+              { week, amount: formatUsdWhole(row.amountCents), link: deps.cardUrl },
               deps.siteUrl,
             );
           });
@@ -172,30 +172,18 @@ function dropRow(repo: Repository, ledgerId: string): Promise<boolean> {
   return repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.dropClosedWeekRow(ledgerId));
 }
 
-/** The one place `charge_outcome_unknown` is written: the ledger id and whatever the case adds. */
+/** Counts the unknown outcome and records it, with the ledger id and whatever the case adds. */
 async function recordUnknown(repo: Repository, row: PendingCharge, report: ChargeRunReport, more: AuditEventDetail): Promise<void> {
   report.unknown++;
-  await recordEventAs(repo, CHARGE_RUN_ACTOR, { kind: "charge_outcome_unknown", memberId: row.memberId, detail: { ledgerId: row.ledgerId, ...more } });
+  await recordOutcomeUnknown(repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, more);
 }
 
-/**
- * Finds the member, renders the email for them and sends it. A member who is gone gets none; a failed step or send is
- * logged and undoes nothing. The one home for the run's try-and-log sends.
- */
-async function sendMemberEmail(
+/** The run's try-and-log send, under its own log source. */
+const sendMemberEmail = (
   deps: ChargeRunDeps,
   memberId: string,
   render: (member: Member) => Promise<{ subject: string; text: string } | null>,
-): Promise<void> {
-  try {
-    const member = await deps.repo.findMemberById(memberId);
-    if (!member) return;
-    const message = await render(member);
-    if (message) await deps.email.send({ to: member.email, subject: message.subject, text: message.text });
-  } catch (error) {
-    logFailure("email", error);
-  }
-}
+): Promise<void> => sendEmailTo(deps, "charge run", memberId, render);
 
 /**
  * The email for a row this run flipped to paid: the signup confirmation for a stranded signup, the member never having
@@ -209,34 +197,22 @@ function sendEmail(deps: ChargeRunDeps, productId: string, row: PendingCharge, s
       if (confirmation) await deliverSignupConfirmation(email, member, confirmation, accountUrl, siteUrl);
       return null;
     }
-    const week = await weekNamed(deps, productId, row.pickupDate, member.language);
-    return renderEmail(
-      "receipt",
-      member.language,
-      { amount: formatUsdWhole(row.amountCents), date: formatPickupDate(clevelandDate(paidAt), member.language), week },
-      siteUrl,
-    );
+    return renderReceipt(repo, productId, row, paidAt, member, siteUrl);
   });
-}
-
-/** The week's title in `language`, the week's days as the week has them now, so a moved week is named by its moved days. */
-async function weekNamed(deps: ChargeRunDeps, productId: string, pickupDate: string, language: Language): Promise<string> {
-  const changed = (await deps.repo.listChangedWeeks(productId, pickupDate)).find((week) => week.weekOf === pickupDate) ?? null;
-  return weekTitle(createTranslator(language), pickupWeek(pickupDate, changed), language);
 }
 
 /** The receipt for a week a week credit paid, to its member: a failed send is logged and undoes nothing, as the receipt's. */
 function sendWeekCreditReceipt(deps: ChargeRunDeps, productId: string, pickupDate: string, memberId: string): Promise<void> {
   return sendMemberEmail(deps, memberId, async (member) => {
-    const week = await weekNamed(deps, productId, pickupDate, member.language);
+    const week = await weekNamed(deps.repo, productId, pickupDate, member.language);
     return renderEmail("weekCreditReceipt", member.language, { week }, deps.siteUrl);
   });
 }
 
-/** Issue 196: the notice for a week locked by a declined card, to its member: no meal is coming. A failed send is logged and undoes nothing. */
+/** Issue 196: the notice for a week locked by a declined card, to its member, linking to Update your card: no meal is coming. A failed send is logged and undoes nothing. */
 function sendLockedNotice(deps: ChargeRunDeps, productId: string, pickupDate: string, memberId: string): Promise<void> {
   return sendMemberEmail(deps, memberId, async (member) => {
-    const week = await weekNamed(deps, productId, pickupDate, member.language);
-    return renderEmail("cardLocked", member.language, { week, link: deps.accountUrl }, deps.siteUrl);
+    const week = await weekNamed(deps.repo, productId, pickupDate, member.language);
+    return renderEmail("cardLocked", member.language, { week, link: deps.cardUrl }, deps.siteUrl);
   });
 }

@@ -1,4 +1,5 @@
 import { runCharges } from "@core/charge-run.js";
+import { ACCOUNT_CARD_PATH } from "@core/account-paths.js";
 import { siteLink } from "@core/email-templates.js";
 import { ACCOUNT_PATH } from "../../paths";
 import { getEmail, getPayments, getRepository, getSiteUrl } from "../../services";
@@ -16,6 +17,7 @@ export async function GET(request: Request): Promise<Response> {
     clock: () => new Date(),
     siteUrl,
     accountUrl: siteLink(siteUrl, ACCOUNT_PATH),
+    cardUrl: siteLink(siteUrl, ACCOUNT_CARD_PATH),
   });
   return Response.json(report, { headers: { "Cache-Control": "no-store" } });
 }

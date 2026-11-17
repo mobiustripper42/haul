@@ -1,5 +1,6 @@
 // The full pages' paths: the one home for them, imported by each flow's actions and pages. A plain file,
 // so a page linking to the other flow doesn't pull in that flow's services.
+import { ACCOUNT_CARD_PATH } from "@core/account-paths.js";
 import { MENU_EMAILS_OFF_PATH, MENU_EMAILS_PATH } from "@core/menu-email-paths.js";
 import { MENU_FROM_PARAM } from "./admin/menus/shared";
 import type { FlowPages } from "./sign-in/shared";
@@ -59,6 +60,19 @@ export const duplicateMenuPath = (id: string): string => `${ADMIN_MENU_NEW_PATH}
 
 /** A member's cancel confirm (issue 139). */
 export const ACCOUNT_CANCEL_PATH = "/account/cancel";
+
+/** Issue 145: a member's Update your card, with one home in core, which the decline email's link is built in. */
+export { ACCOUNT_CARD_PATH };
+/** Issue 145: the query parameter naming a card save's outcome. */
+export const ACCOUNT_CARD_STATE_PARAM = "state";
+/** Issue 145: the query parameter naming the one ledger row a paid save or Try again charged. */
+export const ACCOUNT_CARD_ROW_PARAM = "row";
+/** Issue 145: Update your card after a save or a Try again, with its outcome and, for a paid one, the row it paid. */
+export const accountCardPath = (state: "saved" | "paid" | "declined" | "unknown" | "error", ledgerId?: string): string => {
+  const query = new URLSearchParams({ [ACCOUNT_CARD_STATE_PARAM]: state });
+  if (ledgerId !== undefined) query.set(ACCOUNT_CARD_ROW_PARAM, ledgerId);
+  return `${ACCOUNT_CARD_PATH}?${query}`;
+};
 
 /** The public menu page (issue 141). */
 export const MENU_PATH = "/menu";

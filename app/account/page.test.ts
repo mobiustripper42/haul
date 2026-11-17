@@ -268,7 +268,10 @@ describe("AC8 (issue 196) — the next pickup while locked", () => {
     expect(inOrder(html, ["2 people · Standard", NO_PICKUP, charge])).toEqual(["2 people · Standard", NO_PICKUP, charge]);
     expect(text).not.toContain("Next pickup:");
     expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
-    expect(alertTexts(html)).toEqual([]);
+    // Issue 145: the declined Notice is the page's only alert, and the no-pickup line is in none.
+    const alerts = alertTexts(html);
+    expect(alerts).toEqual([expect.stringMatching(/^Your card was declined\. /)]);
+    expect(alerts.some((alert) => alert.includes(NO_PICKUP))).toBe(false);
   });
 
   it("AC8: in Spanish the line is No hay recogida hasta que actualice su tarjeta.", async () => {
@@ -416,5 +419,92 @@ describe("issue 139 — account home, cancelled and not", () => {
     expect(runs).toContain("2 people · Vegan");
     expect(runs).toContain(en["account.active"]);
     expect(alertTexts(html)).toEqual([]);
+  });
+});
+
+// Issue 145: account home with a declined card. Which rows are declined, and whether a row's week is closed, is the
+// repository's (src/adapters/charge-run-contract.ts), and which week is next while locked is nextPickup's; here the
+// page's own rule: the "is still made" sentence while the declined week's pickup is to come and its week is open. A
+// declined row is the fake's addLedgerRow seam, as a charge run's decline leaves it; with the lock (issue 196) there is
+// one. The Notice's words and "Update your card" are new copy, typed once here; "Card declined" is the admin's existing
+// word, read from the catalog.
+describe("issue 145 — AC1, AC13: account home with a declined card", () => {
+  const JAN_31 = "2027-01-31";
+  const LEAD = "Your card was declined.";
+  const KEEP = "Update it to keep your meal.";
+  const UPDATE = "Update your card";
+
+  /** Ada, signed in, with an active subscription paid for January 3; its id. */
+  const subscribedAda = async (): Promise<string> => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    return rows.subscriptionId;
+  };
+
+  const declined = (subscriptionId: string, weekOf: string) => services.repo.addLedgerRow(subscriptionId, weekOf, "declined", 4500);
+
+  /** The Notices' words, the Update your card button's set aside, wherever the button sits under them. */
+  const noticeWords = (html: string): string[] => alertTexts(html).map((text) => text.replace(new RegExp(` ?${UPDATE}$`), ""));
+
+  /** Each link on the page: where it goes, and its text. */
+  const linksOf = (html: string): { href: string; text: string }[] =>
+    [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
+      href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
+      text: textsOf(inner).join(" "),
+    }));
+
+  it("AC1: an active subscription holding a declined row whose pickup is to come: the Notice says its meal is still made, Update your card goes to /account/card, and the badge reads Card declined, not Active", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, FEB_7);
+    const { html, runs } = await render();
+    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP} Your meal for ${titleOf(FEB_7)} is still made.`]);
+    expect(linksOf(html)).toContainEqual({ href: "/account/card", text: UPDATE });
+    expect(runs).toContain(en["admin.members.cardDeclined"]);
+    expect(runs).not.toContain(en["account.active"]);
+  });
+
+  it("AC1: once the declined week's pickup has passed, the Notice keeps its lead and Update it to keep your meal., with no is-still-made sentence; the button and badge stay", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_31);
+    const { html, runs } = await render();
+    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP}`]);
+    expect(linksOf(html)).toContainEqual({ href: "/account/card", text: UPDATE });
+    expect(runs).toContain(en["admin.members.cardDeclined"]);
+  });
+
+  it("AC1: Update your card is its own catalog key, account.updateCard, not the card page's title: rewording the title leaves the button as it is", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, FEB_7);
+    const catalog = en as unknown as Record<string, string>;
+    const title = catalog["account.card.title"];
+    catalog["account.card.title"] = "The card page's title, reworded";
+    try {
+      const { html } = await render();
+      expect(linksOf(html).filter((link) => link.href === "/account/card")).toEqual([{ href: "/account/card", text: UPDATE }]);
+    } finally {
+      if (title !== undefined) catalog["account.card.title"] = title;
+    }
+  });
+
+  it("AC13: when the declined row's week was closed, the Notice shows without the is-still-made sentence, though its pickup is to come; the badge still reads Card declined", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, FEB_7);
+    await close(FEB_7);
+    const { html, runs } = await render();
+    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP}`]);
+    expect(runs).toContain(en["admin.members.cardDeclined"]);
+  });
+
+  it("AC1: a cancelled subscription holding a declined row keeps the cancelled Notice and the Cancelled badge, and no declined Notice", async () => {
+    const subscriptionId = await subscribedAda();
+    await declined(subscriptionId, JAN_31);
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toEqual([expect.stringMatching(/^Your Supper Club is cancelled\. /)]);
+    expect(runs).toContain(en["account.cancelled"]);
+    expect(runs).not.toContain(en["admin.members.cardDeclined"]);
+    expect(linksOf(html).map((link) => link.href)).not.toContain("/account/card");
   });
 });

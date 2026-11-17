@@ -36,6 +36,8 @@ const PAID_AT = new Date("2027-01-05T12:00:30.000Z");
 const CLOSED_AT = new Date("2027-01-05T18:00:00.000Z");
 const SITE_URL = "https://members.example.test";
 const ACCOUNT_URL = "https://members.example.test/account";
+/** Issue 145: the decline email's link, Update your card. */
+const CARD_URL = "https://members.example.test/account/card";
 const SQUARE_TEXT = "Authorization error: the reason Square gave, for member 4242";
 const CHARGE_RUN: Actor = { system: "charge-run" };
 
@@ -124,8 +126,9 @@ async function subscriber({
   });
   let cardId: string | null = null;
   if (card) {
-    cardId = (await payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` })).id;
-    expect(await repo.saveSubscriptionCard(signup.subscriptionId, cardId)).toEqual({ amountCents: priceCents, attempt: 1 });
+    const saved = await payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` });
+    cardId = saved.id;
+    expect(await repo.saveSubscriptionCard(signup.subscriptionId, saved)).toEqual({ amountCents: priceCents, attempt: 1 });
   }
   if (paid) expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, priceCents, SIGNED_UP_AT)).toBe("confirmed");
   const member = await repo.findMemberById(saved.id);
@@ -134,7 +137,7 @@ async function subscriber({
 }
 
 const run = (now: Date = RUN_AT, clock: () => Date = () => PAID_AT): Promise<ChargeRunReport> =>
-  runCharges({ repo, payments, email, now, clock, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL });
+  runCharges({ repo, payments, email, now, clock, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl: CARD_URL });
 
 const report = (over: Partial<ChargeRunReport> = {}): ChargeRunReport => ({
   weekOf: WEEK,
@@ -862,7 +865,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ada.member.email,
         subject: `Card declined: Supper Club pickup ${TITLE}`,
-        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal for ${TITLE} is still being made: come pick it up. Update your card at ${ACCOUNT_URL} to keep your meals coming.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal for ${TITLE} is still being made: come pick it up. Update your card at ${CARD_URL} to keep your meals coming.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
       },
     ]);
   });
@@ -876,7 +879,7 @@ describe("issue 135 — AC3: the decline email", () => {
       {
         to: ana.member.email,
         subject: `Tarjeta rechazada: recogida del Supper Club el ${week}`,
-        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida para el ${week} se prepara igual: venga a recogerla. Actualice su tarjeta en ${ACCOUNT_URL} para seguir recibiendo sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida para el ${week} se prepara igual: venga a recogerla. Actualice su tarjeta en ${CARD_URL} para seguir recibiendo sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
       },
     ]);
   });
@@ -884,9 +887,10 @@ describe("issue 135 — AC3: the decline email", () => {
   it("AC3: the link is the account URL the run is given, not one the run builds from the site address", async () => {
     const ada = await subscriber();
     payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
-    const accountUrl = "https://account.example.test/elsewhere";
-    await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl });
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Update your card at ${accountUrl} to keep your meals coming.`)]);
+    // Issue 145, AC9: the link is the card URL the run is given, not the account URL beside it.
+    const cardUrl = "https://account.example.test/elsewhere";
+    await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
+    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Update your card at ${cardUrl} to keep your meals coming.`)]);
   });
 
   it("AC3: a moved week is named by its moved days", async () => {
@@ -959,11 +963,11 @@ describe("issue 196 — a locked week", () => {
     return who;
   };
 
-  const runLocked = (accountUrl: string = ACCOUNT_URL): Promise<ChargeRunReport> =>
-    runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl });
+  const runLocked = (cardUrl: string = CARD_URL): Promise<ChargeRunReport> =>
+    runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
 
   /** The locked email `who` gets in English for TITLE, its link `link`. */
-  const lockedEmail = (who: Subscriber, link: string = ACCOUNT_URL) => ({
+  const lockedEmail = (who: Subscriber, link: string = CARD_URL) => ({
     to: who.member.email,
     subject: `No Supper Club meal ${TITLE}: card still declined`,
     text: `Your card is still declined, so no meal is being made for you for ${TITLE}. Update your card at ${link} to get your meals again.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
@@ -991,16 +995,16 @@ describe("issue 196 — a locked week", () => {
       {
         to: ana.member.email,
         subject: `Sin comida del Supper Club el ${week}: su tarjeta sigue rechazada`,
-        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${ACCOUNT_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${CARD_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
       },
     ]);
   });
 
-  it("AC3: the link is the account URL the run is given, as the declined email's is", async () => {
+  it("AC3: the link is the card URL the run is given, as the declined email's is", async () => {
     const ada = await declined();
-    const accountUrl = "https://account.example.test/elsewhere";
-    await runLocked(accountUrl);
-    expect(email.sent).toEqual([lockedEmail(ada, accountUrl)]);
+    const cardUrl = "https://account.example.test/elsewhere";
+    await runLocked(cardUrl);
+    expect(email.sent).toEqual([lockedEmail(ada, cardUrl)]);
   });
 
   it("AC3: a second firing over the same state writes no second row and sends nothing", async () => {
@@ -1172,7 +1176,7 @@ describe("issue 174 — one firing at a time", () => {
     watch(payments, "findPaymentByReference");
     watch(email, "send");
 
-    await runCharges({ repo: tracedRepo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL });
+    await runCharges({ repo: tracedRepo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl: CARD_URL });
 
     expect(log.slice(0, 2)).toEqual(["claimRunLease:start@0", "claimRunLease:end"]);
     expect(log.slice(-2)).toEqual(["releaseRunLease:start@0", "releaseRunLease:end"]);

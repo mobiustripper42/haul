@@ -12,6 +12,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
+import type { Card as SavedCard } from "@core/ports/payments.js";
 import type { PendingSignupInput } from "@core/ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -52,6 +53,9 @@ vi.mock("../services", () => ({
 }));
 
 const t = createTranslator("en");
+
+/** The card Square saved, as the bind is given it (issue 145). */
+const cardOf = (id: string): SavedCard => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 const SIZE = {
   name: "Size",
@@ -153,7 +157,7 @@ const rowsFor = (memberId: string): PendingSignupInput => ({
 const stranded = async (over: { card?: boolean; declined?: boolean } = {}) => {
   const member = await signIn();
   const signup = await services.repo.savePendingSignup(rowsFor(member.id));
-  if (over.card !== false) await services.repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+  if (over.card !== false) await services.repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
   if (over.declined) await services.repo.recordSignupDecline(signup.ledgerId);
   return signup;
 };
@@ -162,7 +166,7 @@ const stranded = async (over: { card?: boolean; declined?: boolean } = {}) => {
 const holdASpot = async (email = "grace@example.com") => {
   const other = await services.repo.createMember({ email });
   const row = await services.repo.savePendingSignup(rowsFor(other.id));
-  await services.repo.saveSubscriptionCard(row.subscriptionId, `ccof:${other.id}`);
+  await services.repo.saveSubscriptionCard(row.subscriptionId, cardOf(`ccof:${other.id}`));
 };
 
 describe("AC1 — one picker per option type, in stored order", () => {
@@ -599,7 +603,7 @@ describe("AC9 (issue 101) — step 3 names the member", () => {
   it("AC9: in the retry state it reads the same line, before the notice", async () => {
     const member = await signInPaula();
     const signup = await services.repo.savePendingSignup(rowsFor(member.id));
-    await services.repo.saveSubscriptionCard(signup.subscriptionId, "ccof:card-1");
+    await services.repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
     const order = [accountLegend(3), SIGNED_IN_AS_PAULA, t("supperClub.retryNotice")];
     expect(inOrder((await render()).html, order)).toEqual(order);
   });
