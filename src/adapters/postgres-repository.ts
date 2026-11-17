@@ -1199,7 +1199,8 @@ export class PostgresRepository implements Repository {
     ]);
     const { rowCount } = await this.db.query(
       `update ledger set status = 'pending', attempt = attempt + 1
-        where id = (select id from ledger where subscription_id = $1 and status = 'declined' order by pickup_date, id limit 1)`,
+        where id = (select id from ledger where subscription_id = $1 and status = 'declined' order by pickup_date, id limit 1)
+          and status = 'declined'`,
       [subscriptionId],
     );
     if (rowCount !== 1) return { kind: "replaced" };
