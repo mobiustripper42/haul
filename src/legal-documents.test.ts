@@ -50,7 +50,7 @@ describe("AC1 — parseLegalDocument", () => {
   });
 });
 
-describe("AC3 — the catalog's two texts are the stand-in documents, with every edit and nothing else", () => {
+describe("AC3 — each legal text is its own file, imported into the catalog", () => {
   it.each(["legal-terms", "legal-privacy"])("AC3: %s.en.ts is its own file, imported into the English catalog", (name) => {
     const catalog = readFileSync(new URL("./messages/en.ts", import.meta.url), "utf8");
     expect(catalog).toMatch(new RegExp(`from "\\./${name}\\.en\\.js"`));

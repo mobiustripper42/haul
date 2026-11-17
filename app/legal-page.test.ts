@@ -112,7 +112,7 @@ describe.each([
     expect(words).not.toMatch(/[#*\\]/);
   });
 
-  it(`AC3: ${path} shows the brackets the edits leave, as they stand, and none the edits remove`, async () => {
+  it(`AC3: ${path} shows none of the phrases the edits removed`, async () => {
     const words = textsOf(mainOf(await render(page))).join("\n");
     for (const gone of ["[14]", "[EFFECTIVE DATE]", "Effective", "Nov 6, 2026", "@Eric"]) expect(words).not.toContain(gone);
   });
