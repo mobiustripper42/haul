@@ -21,7 +21,7 @@ Every look a screen uses is one component in `components/ui/` (DEC-024): `ls com
 
 ## Languages
 
-The languages screens render in: English only, by DEC-043. When a language returns to screens, review each screen in it too.
+The languages screens render in: English only, by DEC-044. When a language returns to screens, review each screen in it too.
 
 ## Screen files and routes
 

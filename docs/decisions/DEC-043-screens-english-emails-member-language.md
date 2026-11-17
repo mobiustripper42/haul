@@ -3,7 +3,7 @@ schema: 1
 id: DEC-043
 title: "Screens are English; emails follow the member's language"
 topic: "Interface"
-status: "active"
+status: "superseded"
 date: "2026-11-16"
 ruling: "Every screen renders in English, whatever the cookie or Accept-Language says. Emails render in the member's saved language, chosen on the create-account form, whose select starts on the browser's language if the app has it, else English."
 claims:
@@ -13,6 +13,7 @@ claims:
     target: "app/language.ts"
   - kind: "test"
     target: "app/language.test.ts"
+superseded_by: DEC-044
 revisit_if: "A fluent reviewer and the 375px layout check are both in place for a language"
 amends_spec:
   - section: "7.13"
