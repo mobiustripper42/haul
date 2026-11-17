@@ -181,15 +181,15 @@ describe("AC13 (issue 139) — the words and their order", () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-24");
     const { html, sentences } = await render();
-    expect(alertTexts(html)).toEqual(["You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard from them in a week, contact the farm."]);
-    expect(sentences.indexOf("You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard from them in a week, contact the farm.")).toBeLessThan(sentences.indexOf(CONFIRM));
+    expect(alertTexts(html)).toEqual(["You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm."]);
+    expect(sentences.indexOf("You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm.")).toBeLessThan(sentences.indexOf(CONFIRM));
   });
 
   it("AC4, AC13: with two, the Notice counts them", async () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-17");
     await weekCredit(subscriptionId, "2027-01-24");
-    expect(alertTexts((await render()).html)).toEqual(["You have 2 week credits. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard from them in a week, contact the farm."]);
+    expect(alertTexts((await render()).html)).toEqual(["You have 2 week credits. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm."]);
   });
 });
 
@@ -205,7 +205,7 @@ describe("AC5, AC6 (issue 202) — the refund sentence", () => {
   it("AC5 (issue 202): in English, with two week credits, the Notice's body is Any outstanding credits will be refunded in Square after you cancel. and the rest", async () => {
     await twoCredits();
     expect(alertTexts((await render()).html)).toEqual([
-      `${t("account.cancel.creditMany", { n: 2 })} Any outstanding credits will be refunded in Square after you cancel. If you haven't heard from them in a week, contact the farm.`,
+      `${t("account.cancel.creditMany", { n: 2 })} Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm.`,
     ]);
   });
 
@@ -213,7 +213,7 @@ describe("AC5, AC6 (issue 202) — the refund sentence", () => {
     await twoCredits();
     request.current.cookies.lang = "es";
     expect(alertTexts((await render()).html)).toEqual([
-      `${createTranslator("es")("account.cancel.creditMany", { n: 2 })} Cualquier crédito pendiente se reembolsa en Square después de que cancele. Si no sabe nada de ellos en una semana, comuníquese con la granja.`,
+      `${createTranslator("es")("account.cancel.creditMany", { n: 2 })} Cualquier crédito pendiente se reembolsa en Square después de que cancele. Si no sabe nada de un reembolso en una semana, comuníquese con la granja.`,
     ]);
   });
 });
