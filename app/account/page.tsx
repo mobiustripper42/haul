@@ -36,7 +36,7 @@ export default async function Account() {
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const now = new Date();
   const next = cancelled ? null : await loadNextPickup({ member, product, confirmation }, now);
-  // Issue 196: a subscription holding a declined row is locked: once the declined week's pickup is past, no pickup is coming.
+  // Issue 196: a subscription holding a declined row is locked once no week on or before the declined week is still coming.
   const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
   // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
