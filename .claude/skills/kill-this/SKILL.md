@@ -183,6 +183,8 @@ Each hand step is three things, and a step missing any of them is not a step:
 2. **The exact action** — the control by its visible label, and the viewport if it matters. "Check the drawer works" is not an action; "at 375px, tap the ☰ button in the header" is.
 3. **What you should see** — stated so that *not* seeing it is unambiguous. Where the change fixes a reported symptom, say what it did **before**, so the reviewer can tell a fix from a coincidence.
 
+**Words are checked here, never by a test.** One hand step reads each user-facing text the task adds or changes where it appears — the screen, the email — against the approved words: each line of the spec's `## Wording` section, or, for a task with no such section, the wording its approved plan names. A Wording section that says "None" needs no step.
+
 Close with **`Reset:`** — what to undo afterwards, or `none`. A reviewer who won't touch prod data because they can't tell what's reversible has been given no test plan at all.
 
 **Open the hand section with `#### Setup`, and make it literal.** Everything below is drawn from a test plan that worked — one the operator had to ask for, which is why it is written down here instead of depending on someone thinking of it.

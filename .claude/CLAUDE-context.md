@@ -86,7 +86,7 @@ npm run check:decisions
 
 | Slot | What it answers | This project |
 |---|---|---|
-| **Proof** | What counts as a check written before the change | A Vitest test, colocated as `*.test.ts` beside the code (`scripts/*.test.mjs` for repo tooling), naming the acceptance criterion it covers; or, for a criterion only a browser can show (a flow across pages, cookies through redirects), a Playwright spec in `e2e/`, named the same way |
+| **Proof** | What counts as a check written before the change | A Vitest test, colocated as `*.test.ts` beside the code (`scripts/*.test.mjs` for repo tooling), naming the acceptance criterion it covers; or, for a criterion only a browser can reach (a flow across pages, cookies through redirects), a Playwright spec in `e2e/`, named the same way. A check never asserts fixed user-facing text, typed or read from `src/messages/`; words are checked at the hand-back |
 | **Proof command** | How to run the checks covering what you touched | `npm run test -- <path>`; an e2e spec with `npm run test:e2e -- <path>`, after `npm run db:up` |
 
 ## Median gaps
@@ -137,7 +137,6 @@ merged migration is fixed by the next file.
 - **UI classes** — token utilities only, from `app/globals.css`; lint fails a raw value, a `style` prop, a low-contrast text colour and a gold fill outside `btn-primary` (DEC-020)
 - **UI strings** — in `src/messages/`, rendered with `t()` from `getTranslator()` in `app/language.ts`; a bare string in a `.tsx` component fails lint (DEC-015)
 - **User-facing text** — src/messages/en.ts
-- **Words in tests** — test a word on screen only when it depends on data or state (a branch, a plural, an interpolated value), or a criterion quotes it. A fixed catalog string a screen always renders is not tested: that test restates the line that renders it
 
 - **Core and app** — the core under `src/` never imports Next, React or `app/`; lint fails if it does. Core imports carry `.js`; the app reaches the core as `@core/<file>.js`
 - **Database access** — only `src/adapters/pg-connect.ts` imports `pg`; lint fails anywhere else. It applies TLS to every connection, so a caller gets a pool or client from `createPool` / `createClient` and can't forget it (DEC-001)
