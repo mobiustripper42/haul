@@ -4,8 +4,8 @@ import { legalTermsEs } from "./legal-terms.es.js";
 
 // This Spanish is machine-written and has not been reviewed by a fluent reader. Formal usted, Latin American
 // Spanish (the es-US locale). Names stay as they are: Ohio City Farm, Re:Source Cleveland, OCF Member Portal,
-// Supper Club. A key missing here is a type error (DEC-015), and src/messages/catalogs.test.ts checks the
-// {placeholders} against the English.
+// Supper Club. A key missing here renders in English (DEC-044); src/messages/catalogs.test.ts checks the
+// {placeholders} of the keys here against the English.
 export const es = {
   "brand.name": "Ohio City Farm",
   "brand.byline": "de Re:Source Cleveland",
@@ -436,4 +436,4 @@ export const es = {
   "legal.lastUpdated": "Última actualización: 1 de noviembre de 2026",
   "legal.terms.text": legalTermsEs,
   "legal.privacy.text": legalPrivacyEs,
-} satisfies Record<MessageKey, string>;
+} satisfies Partial<Record<MessageKey, string>>;

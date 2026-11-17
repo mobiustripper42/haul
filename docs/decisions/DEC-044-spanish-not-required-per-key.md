@@ -5,12 +5,18 @@ title: "Spanish is not required per key; a missing key renders in English"
 topic: "Interface"
 status: "active"
 date: "2026-11-17"
-ruling: "Every screen renders in English. Emails render in the member's saved language. The Spanish catalog may lack a key, which then renders in English; no check requires Spanish for a new string."
+ruling: "Screens render in English. Emails render in the member's saved language, whose select starts on the browser's language if the app has it, else English. es.ts may lack a key, which renders in English."
 claims:
   - kind: "spec"
     target: "§7.13"
   - kind: "file"
     target: "src/i18n.ts"
+  - kind: "file"
+    target: "src/messages/es.ts"
+  - kind: "file"
+    target: "app/language.ts"
+  - kind: "test"
+    target: "app/language.test.ts"
   - kind: "test"
     target: "src/messages/catalogs.test.ts"
 supersedes:
@@ -27,8 +33,8 @@ DEC-043 kept screens in English and emails in the member's language, and kept Sp
 the catalogs behind a missing-key check. With no screen showing Spanish, that check made every task
 write Spanish nobody reads. It is gone; the rest of DEC-043 holds.
 
-`translate` already falls back to English for a key the language lacks (`src/i18n.ts`), and the
-Spanish catalog's type is `Partial`. `src/messages/catalogs.test.ts` still fails on a Spanish key
+`translate` already falls back to English for a key the language lacks (`src/i18n.ts`), and
+`src/messages/es.ts` satisfies a `Partial` record, so a missing key is not a type error. `src/messages/catalogs.test.ts` still fails on a Spanish key
 English lacks, and still compares placeholders, fill-ins and the legal texts' shape for the keys
 Spanish has.
 
