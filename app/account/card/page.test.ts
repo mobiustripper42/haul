@@ -1,11 +1,11 @@
 // Issue 145: Update your card, `await UpdateCard(props)` with `next/headers` faked and the composition root mocked, as
 // app/account/cancel/page.test.ts renders the cancel confirm. Who is let in is requireSubscriber's
-// (app/account/subscriber.test.ts). What a save does is src/update-card.test.ts's, and which rows the page may name is
-// listPaidCharges' (src/adapters/charge-run-contract.ts): the page maps the outcome in the URL to its message, so each
-// state goes through it once, with the page's own wording (the total, the weeks, one week or several). The form is a
-// client component; the page is read for what it hands it, as app/supper-club/page.test.ts reads PaymentSection. The
-// page's words are new copy, typed once here; "Your meal" and the card entry's own words are existing copy, read from
-// the catalog.
+// (app/account/subscriber.test.ts). What a save does is src/update-card.test.ts's; which paid row the page may name is
+// findPaidCharge's, and whether a charge is out is findPendingCharge's (src/adapters/charge-run-contract.ts): the page
+// maps the outcome in the URL to its message, and the data to Try again, so each state goes through it once, with the
+// page's own wording. The form is a client component; the page is read for what it hands it, as
+// app/supper-club/page.test.ts reads PaymentSection. The page's words are new copy, typed once here; "Your meal", the
+// card entry's own words and the signup's Try again, payError and retry Notice are existing copy, read from the catalog.
 import type { ComponentProps, ReactNode } from "react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -54,12 +54,14 @@ vi.mock("../../services", () => ({
 vi.mock("../../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
 vi.mock("./actions", () => ({
   saveCard: Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: "$ACTION_ID_saveCard", action: "saveCard" }) }),
+  retryCard: Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: "$ACTION_ID_retryCard", action: "retryCard" }) }),
 }));
 
 // Wednesday, February 3, 2027, noon in Cleveland. February 7's cutoff, the end of Monday, February 1, has passed and its
 // pickup is to come; the first week whose cutoff is still ahead is February 14's, at the end of Monday, February 8.
 const NOW = new Date("2027-02-03T17:00:00.000Z");
 const DAY = 24 * 60 * 60_000;
+const FEB_7 = "2027-02-07";
 const JAN_17 = "2027-01-17";
 const JAN_24 = "2027-01-24";
 const JAN_31 = "2027-01-31";
@@ -130,9 +132,29 @@ const linksOf = (html: string): { href: string; text: string }[] =>
 
 const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null), "en");
 
+/**
+ * A charge out on Ada's subscription: her member linked to a Square customer, as every active one is, and a pending row
+ * for February 7, as a claimed row or a charge-run row whose answer was lost leaves it. Its id.
+ */
+const chargeOut = async (member: Member, subscriptionId: string): Promise<string> => {
+  await services.repo.setMemberSquareCustomer(member.id, "CUSTOMER_ADA");
+  return services.repo.addLedgerRow(subscriptionId, FEB_7, "pending", 4500);
+};
+
+/** The submits of the form posting to `action`, by their text; none when no form posts to it. */
+const submitsTo = (html: string, action: string): string[] =>
+  [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].flatMap(([, attrs = "", inner = ""]) => {
+    const buttons = attributesOf(inner, "button");
+    const posts = buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action;
+    if (posts !== action) return [];
+    return [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
+      .filter(([, a = ""]) => attributesOf(`<button${a}>`, "button")[0]?.type === "submit")
+      .map(([, , text = ""]) => textsOf(text).join(" "));
+  });
+
 const HEADING = "Update your card";
 const ON_FILE_OLD = "On file now: card ending 4444. The new card replaces it for every charge from now on.";
-const DECLINED = "That card was declined. Nothing was charged and your old card stays on file. Check the details or try another card.";
+const DECLINED = "That card was declined. Nothing was charged. Check the details or try another card.";
 
 describe("AC2 — who reaches /account/card, and what it shows", () => {
   it("AC2: a member whose subscription is cancelled is sent to /account", async () => {
@@ -150,6 +172,11 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
     expect(alertTexts(html)).toEqual([]);
   });
 
+  it("AC2: a member with no subscription is sent to /supper-club", async () => {
+    signIn(await services.repo.saveAccount({ email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "(216) 555-0134", language: "en" }));
+    await expect(redirectOf(UpdateCard({ searchParams: Promise.resolve({}) }))).resolves.toBe("/supper-club");
+  });
+
   it("AC2: with no card's brand stored, the On file now line is left out; the rest of the page stays", async () => {
     await subscribedAda(null);
     const { element, sentences } = await render();
@@ -162,7 +189,7 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
     await subscribedAda();
     expect(cardFormOf((await render()).element)?.text).toEqual({
       cardLabel: "New card",
-      cardHint: "Secure card entry by Square. Any unpaid weeks are charged to the new card when you save it.",
+      cardHint: "Secure card entry by Square. Any unpaid week is charged to the new card when you save it.",
       save: "Save card",
       testCard: en["supperClub.testCard"],
       cardFailed: en["supperClub.cardFailed"],
@@ -170,12 +197,12 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
     });
   });
 
-  it("AC2: with no declined rows, the card entry's amount is the subscription's weekly price", async () => {
+  it("with no declined rows, the card entry's amount is the subscription's weekly price", async () => {
     await subscribedAda();
     expect(cardFormOf((await render()).element)?.amountCents).toBe(4500);
   });
 
-  it("AC2: with declined rows, it is the total of those a save would charge: a closed week's is left out", async () => {
+  it("with declined rows, it is the total of those a save would charge: a closed week's is left out", async () => {
     const { subscriptionId } = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, JAN_17, "declined", 4500);
     await services.repo.addLedgerRow(subscriptionId, JAN_24, "declined", 4500);
@@ -187,7 +214,7 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
   it.each([
     ["on the e2e server", "1", true],
     ["anywhere else", "", false],
-  ])("AC2: the card entry's test field is gated as the signup's: %s it is %s, and billing is the member's", async (_where, e2e, testMode) => {
+  ])("the card entry's test field is gated as the signup's: %s it is %s, and billing is the member's", async (_where, e2e, testMode) => {
     vi.stubEnv("E2E", e2e);
     vi.stubEnv("NODE_ENV", "test");
     await subscribedAda();
@@ -206,41 +233,84 @@ describe("AC3 — state saved", () => {
     expect(cardFormOf(element)).toBeUndefined();
     expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
   });
-});
 
-describe("AC4 — state retried", () => {
-  it("AC4: with two rows paid, the Notice totals them on the card now on file and names both weeks, joined with a comma; the form is gone", async () => {
-    const { subscriptionId } = await subscribedAda(NEW_CARD);
-    const first = await services.repo.addLedgerRow(subscriptionId, JAN_24, "paid", 4500);
-    const second = await services.repo.addLedgerRow(subscriptionId, JAN_31, "paid", 4500);
-    const { element, html } = await render({ state: "retried", rows: `${first},${second}` });
-    expect(alertTexts(html)).toEqual([`Card saved. We charged $90 to card ending 1111 for the 2 unpaid weeks: ${titleOf(JAN_24)}, ${titleOf(JAN_31)}.`]);
+  it("AC3: when no upcoming week has its cutoff ahead, the Notice is Card saved. alone, and the form is still gone", async () => {
+    await subscribedAda(NEW_CARD);
+    for (let i = 0; i < 12; i++) {
+      const weekOf = new Date(Date.parse(`${FEB_7}T00:00:00Z`) + i * 7 * DAY).toISOString().slice(0, 10);
+      await services.repo.closePickupWeek(product.id, weekOf, null, NOW);
+    }
+    const { element, html } = await render({ state: "saved" });
+    expect(alertTexts(html)).toEqual(["Card saved."]);
     expect(cardFormOf(element)).toBeUndefined();
   });
-
-  it("AC4: with one row paid, the Notice says the unpaid week", async () => {
-    const { subscriptionId } = await subscribedAda(NEW_CARD);
-    const paid = await services.repo.addLedgerRow(subscriptionId, JAN_24, "paid", 4500);
-    expect(alertTexts((await render({ state: "retried", rows: paid })).html)).toEqual([
-      `Card saved. We charged $45 to card ending 1111 for the unpaid week: ${titleOf(JAN_24)}.`,
-    ]);
-  });
-
-  it("AC4: rows that are not the subscription's paid rows are dropped: with none left, the form shows and no Notice", async () => {
-    const { subscriptionId } = await subscribedAda(NEW_CARD);
-    const declined = await services.repo.addLedgerRow(subscriptionId, JAN_24, "declined", 4500);
-    const { element, html } = await render({ state: "retried", rows: `${declined},00000000-0000-4000-8000-000000000000` });
-    expect(alertTexts(html)).toEqual([]);
-    expect(cardFormOf(element)).toBeDefined();
-  });
 });
 
-describe("AC5 — state declined", () => {
-  it("AC5: the Notice reads That card was declined. and the rest; the old card is still on file and the form is still shown", async () => {
+describe("AC4 — state declined", () => {
+  it("AC4: the Notice reads That card was declined. and the rest; the card on file is still named and the form is still shown", async () => {
     await subscribedAda();
     const { element, html, sentences } = await render({ state: "declined" });
     expect(alertTexts(html)).toEqual([DECLINED]);
     expect(sentences).toContain(ON_FILE_OLD);
     expect(cardFormOf(element)).toBeDefined();
+  });
+});
+
+describe("AC6 — state paid", () => {
+  it("AC6: with the row the week paid, the Notice names its amount, the card now on file and the week; the form is gone", async () => {
+    const { subscriptionId } = await subscribedAda(NEW_CARD);
+    const paid = await services.repo.addLedgerRow(subscriptionId, JAN_31, "paid", 4500);
+    const { element, html } = await render({ state: "paid", row: paid });
+    expect(alertTexts(html)).toEqual([`Card saved. We charged $45 to card ending 1111 for the unpaid week: ${titleOf(JAN_31)}.`]);
+    expect(cardFormOf(element)).toBeUndefined();
+    expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
+  });
+
+  it.each([
+    ["a row that is not the subscription's paid row", true],
+    ["no row", false],
+  ])("a paid state with %s is ignored: no Notice, and the form shows", async (_what, withRow) => {
+    const { subscriptionId } = await subscribedAda(NEW_CARD);
+    const declined = await services.repo.addLedgerRow(subscriptionId, JAN_24, "declined", 4500);
+    const { element, html } = await render(withRow ? { state: "paid", row: declined } : { state: "paid" });
+    expect(alertTexts(html)).toEqual([]);
+    expect(cardFormOf(element)).toBeDefined();
+  });
+});
+
+describe("AC8, AC10, AC11 — a charge out, and an error", () => {
+  it("AC8: while the subscription holds a pending row, whatever the URL says, the page shows the retry Notice and Try again posting to retryCard, in place of the card form", async () => {
+    const { member, subscriptionId } = await subscribedAda();
+    await chargeOut(member, subscriptionId);
+    for (const query of [{}, { state: "unknown" }]) {
+      const { element, html } = await render(query);
+      expect(alertTexts(html)).toEqual([en["supperClub.retryNotice"]]);
+      expect(submitsTo(html, "retryCard")).toEqual([en["supperClub.tryAgain"]]);
+      expect(cardFormOf(element)).toBeUndefined();
+    }
+  });
+
+  it("AC8: state unknown with no pending row is the card form, with no retry Notice and no Try again", async () => {
+    await subscribedAda();
+    const { element, html } = await render({ state: "unknown" });
+    expect(alertTexts(html)).toEqual([]);
+    expect(submitsTo(html, "retryCard")).toEqual([]);
+    expect(cardFormOf(element)).toBeDefined();
+  });
+
+  it("AC11: state error with no pending row shows the signup's payError Notice above the card form", async () => {
+    await subscribedAda();
+    const { element, html } = await render({ state: "error" });
+    expect(alertTexts(html)).toEqual([en["supperClub.payError"]]);
+    expect(cardFormOf(element)).toBeDefined();
+  });
+
+  it("AC11: state error while a charge is out shows the payError Notice, then the retry Notice and Try again, and no card form", async () => {
+    const { member, subscriptionId } = await subscribedAda();
+    await chargeOut(member, subscriptionId);
+    const { element, html } = await render({ state: "error" });
+    expect(alertTexts(html)).toEqual([en["supperClub.payError"], en["supperClub.retryNotice"]]);
+    expect(submitsTo(html, "retryCard")).toEqual([en["supperClub.tryAgain"]]);
+    expect(cardFormOf(element)).toBeUndefined();
   });
 });

@@ -1,44 +1,54 @@
 import { sha256Key } from "./customer-match.js";
-import { logStepFailure, recordOutcomeUnknown, renderReceipt, sendCharge, sendMemberEmail } from "./ledger-charge.js";
+import { logStepFailure, recordDecline, recordOutcomeUnknown, renderReceipt, sendCharge, sendMemberEmail } from "./ledger-charge.js";
 import type { EmailPort } from "./ports/email.js";
-import { isCardRefusal, PaymentsError, type Card, type PaymentsPort } from "./ports/payments.js";
-import type { Actor, DeclinedCharge, Repository } from "./ports/repository.js";
+import { isCardRefusal, PaymentsError, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import type { Actor, PendingCharge, Repository } from "./ports/repository.js";
 import { requireSupperClub } from "./products.js";
 import { recordEventAs } from "./record-event.js";
 
 /**
- * A member's card update (issue 145; DEC-003, DEC-004): the new card saved at Square, then every declined week of their
- * subscription charged to it, one charge per week, each under a fresh idempotency key: the row's attempt is bumped
- * before the charge, and stays bumped after a failure. The new card takes the subscription only once it has paid a week,
- * or at once when nothing is owed, so a failed save changes nothing. The provider calls run between `withActor` commits,
- * never inside one. Everything written or recorded runs under the member.
+ * A member's card update (issue 145; DEC-003, DEC-040): the new card saved at Square, then one write puts it on file and
+ * claims the open declined week, which is charged under the key its bumped attempt makes. The key and the card stay fixed
+ * until that charge settles, by the member's Try again or the charge run's next firing, so a save while any row is
+ * `pending` charges nothing and puts no card on file. The provider calls run between `withActor` commits, never inside
+ * one. Everything written or recorded runs under the member.
  */
 
 export type UpdateCardDeps = { repo: Repository; payments: PaymentsPort; email: EmailPort; siteUrl: string; clock: () => Date };
 
-type PaidRow = { ledgerId: string; pickupDate: string; amountCents: number };
-
 export type UpdateCardResult =
-  | { outcome: "saved"; card: Card }
-  | { outcome: "retried"; card: Card; paid: PaidRow[] }
+  | { outcome: "saved" }
+  | { outcome: "paid"; ledgerId: string }
   | { outcome: "declined" }
+  | { outcome: "unknown" }
   | { outcome: "error" };
 
 /**
- * Saves `sourceId` as the member's card and retries their declined weeks on it. `saved`: nothing was owed and the card is
- * on file. `retried`: the card is on file and `paid` are the weeks it paid. `declined`: Square refused the card, or the
- * first week it was charged was declined or got no answer; nothing changed. `error`: something failed before any charge.
+ * Saves `sourceId` as the member's card. `saved`: nothing was owed and the card is on file. `paid`: the card is on file and
+ * the declined week's charge paid. `declined`: Square refused the card, or the week's charge was declined (the card stays on
+ * file, the row is declined again). `unknown`: the week's charge got no answer, or a charge was already out, and Try again
+ * finishes it. `error`: something failed before any charge was sent.
  */
 export async function updateCard(deps: UpdateCardDeps, input: { memberId: string; sourceId: string }): Promise<UpdateCardResult> {
   try {
-    return await run(deps, input);
+    return await save(deps, input);
   } catch (error) {
     logStepFailure("card update", "update", error);
     return { outcome: "error" };
   }
 }
 
-async function run(deps: UpdateCardDeps, { memberId, sourceId }: { memberId: string; sourceId: string }): Promise<UpdateCardResult> {
+/** "Try again": asks Square whether the pending row's charge happened, then confirms what it finds or charges the row's card. */
+export async function retryCardCharge(deps: UpdateCardDeps, input: { memberId: string }): Promise<UpdateCardResult> {
+  try {
+    return await resume(deps, input);
+  } catch (error) {
+    logStepFailure("card update", "retry", error);
+    return { outcome: "error" };
+  }
+}
+
+async function save(deps: UpdateCardDeps, { memberId, sourceId }: { memberId: string; sourceId: string }): Promise<UpdateCardResult> {
   const { repo, payments } = deps;
   const actor: Actor = { member: memberId };
   const product = await requireSupperClub(repo);
@@ -56,66 +66,62 @@ async function run(deps: UpdateCardDeps, { memberId, sourceId }: { memberId: str
     return { outcome: "declined" };
   }
 
-  const owed = (await repo.listDeclinedCharges(subscription.id)).filter((row) => !row.closed);
-  if (owed.length === 0) {
-    const replaced = await repo.withActor(actor, (scoped) => putOnFile(scoped, subscription.id, card));
-    return replaced ? { outcome: "saved", card } : { outcome: "error" };
+  const claim = await repo.withActor(actor, (scoped) => scoped.claimCardUpdate(subscription.id, card));
+  switch (claim.kind) {
+    case "claimed":
+      return settle(deps, memberId, product.id, claim.charge, false);
+    case "replaced":
+      return { outcome: "saved" };
+    case "busy":
+      return { outcome: "unknown" };
+    case "inactive":
+      return { outcome: "error" };
   }
-
-  const paid: PaidRow[] = [];
-  for (const row of owed) {
-    if (!(await retry(deps, { actor, memberId, productId: product.id, subscriptionId: subscription.id, customerId, card, row, first: paid.length === 0 }, paid))) break;
-  }
-  return paid.length > 0 ? { outcome: "retried", card, paid } : { outcome: "declined" };
 }
 
-/** The new card on the subscription, and the closed weeks' declined rows, which will never be retried, gone. */
-async function putOnFile(repo: Repository, subscriptionId: string, card: Card): Promise<boolean> {
-  const replaced = await repo.replaceSubscriptionCard(subscriptionId, card);
-  if (replaced) await repo.dropClosedDeclinedRows(subscriptionId);
-  return replaced;
+async function resume(deps: UpdateCardDeps, { memberId }: { memberId: string }): Promise<UpdateCardResult> {
+  const { repo } = deps;
+  const product = await requireSupperClub(repo);
+  const subscription = await repo.findActiveSubscription(memberId, product.id);
+  const charge = subscription && (await repo.findPendingCharge(subscription.id));
+  return charge ? settle(deps, memberId, product.id, charge, true) : { outcome: "error" };
 }
 
 /**
- * Charges one declined week to the new card and, when it pays, adds it to `paid`: the first one to pay also puts the card
- * on file in the same commit that confirms it. True when the week paid and the next may be tried; false when the
- * retry stops here, on a decline or an outcome that is unknown, each of which is recorded.
+ * Charges the claimed row, or, with `lookupFirst`, confirms what Square already took, and writes the result: paid, declined
+ * through the signup's decline write, or unknown with the row left pending. A failure before a charge is out (the lookup
+ * failing) is logged and recorded as nothing: the row is as it was.
  */
-async function retry(
-  deps: UpdateCardDeps,
-  step: { actor: Actor; memberId: string; productId: string; subscriptionId: string; customerId: string; card: Card; row: DeclinedCharge; first: boolean },
-  paid: PaidRow[],
-): Promise<boolean> {
+async function settle(deps: UpdateCardDeps, memberId: string, productId: string, charge: PendingCharge, lookupFirst: boolean): Promise<UpdateCardResult> {
   const { repo, payments, clock } = deps;
-  const { actor, memberId, productId, subscriptionId, customerId, card, row, first } = step;
+  const actor: Actor = { member: memberId };
+  let out = false;
   try {
-    const attempt = await repo.withActor(actor, (scoped) => scoped.bumpLedgerAttempt(row.ledgerId));
-    if (attempt === null) throw new Error("The declined row is no longer declined");
-    const result = await sendCharge(payments, { row: { ledgerId: row.ledgerId, attempt, amountCents: row.amountCents }, cardId: card.id, customerId });
+    const found = lookupFirst ? await payments.findPaymentByReference({ referenceId: charge.ledgerId, since: charge.createdAt }) : null;
+    out = true;
+    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, { row: charge, cardId: charge.cardId, customerId: charge.customerId });
     if (result.outcome === "declined") {
-      await recordEventAs(repo, actor, { kind: "card_declined", memberId, detail: { ledgerId: row.ledgerId, code: result.code } });
-      return false;
+      await recordDecline(repo, actor, memberId, charge.ledgerId, result.code);
+      return { outcome: "declined" };
     }
+    // What Square took, not what was asked: it must be the ledger's amount before the row turns paid.
+    const chargedCents = found ? found.amountCents : charge.amountCents;
     // The answer is back: this is the moment `paid_at` records.
     const paidAt = clock();
-    const confirmed = await repo.withActor(actor, async (scoped) => {
-      const answer = await scoped.confirmSignupRows(row.ledgerId, result.paymentId, row.amountCents, paidAt);
-      if (first && answer !== "mismatch") await putOnFile(scoped, subscriptionId, card);
-      return answer;
-    });
+    const confirmed = await repo.withActor(actor, (scoped) => scoped.confirmSignupRows(charge.ledgerId, result.paymentId, chargedCents, paidAt));
     if (confirmed === "mismatch") {
-      await recordOutcomeUnknown(repo, actor, memberId, row.ledgerId, { chargedCents: row.amountCents });
-      return false;
+      await recordOutcomeUnknown(repo, actor, memberId, charge.ledgerId, { chargedCents });
+      return { outcome: "unknown" };
     }
-    paid.push({ ledgerId: row.ledgerId, pickupDate: row.pickupDate, amountCents: row.amountCents });
     // Only the call that turned the row paid emails: a row already paid has had its receipt.
     if (confirmed === "confirmed") {
-      await sendMemberEmail(deps, "card update", memberId, (member) => renderReceipt(repo, productId, row, paidAt, member, deps.siteUrl));
+      await sendMemberEmail(deps, "card update", memberId, (member) => renderReceipt(repo, productId, charge, paidAt, member, deps.siteUrl));
     }
-    return true;
+    return { outcome: "paid", ledgerId: charge.ledgerId };
   } catch (error) {
     logStepFailure("card update", "charge", error);
-    await recordOutcomeUnknown(repo, actor, memberId, row.ledgerId, error instanceof PaymentsError ? { code: error.code } : {});
-    return false;
+    if (!out) return { outcome: "error" };
+    await recordOutcomeUnknown(repo, actor, memberId, charge.ledgerId, error instanceof PaymentsError ? { code: error.code } : {});
+    return { outcome: "unknown" };
   }
 }

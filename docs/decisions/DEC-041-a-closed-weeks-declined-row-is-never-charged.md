@@ -9,7 +9,7 @@ ruling: "A declined row whose week an admin closed is never retried; it still sh
 claims:
   - kind: "file"
     target: "src/update-card.ts"
-    note: "updateCard: closed rows skipped, dropClosedDeclinedRows on a save that replaces the card"
+    note: "updateCard: a closed week's row is never charged; claimCardUpdate deletes it"
   - kind: "test"
     target: "src/update-card.test.ts"
 revisit_if: "A closed week can be reopened after its cutoff, or the farm wants a closed week's decline charged after all"

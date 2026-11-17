@@ -8,6 +8,7 @@ import {
   type Actor,
   type AuditEvent,
   type AuditEventKind,
+  type CardUpdateClaim,
   type DeclinedCharge,
   type EmailChange,
   type EnrolledWeek,
@@ -1101,6 +1102,17 @@ export class PostgresRepository implements Repository {
    */
   async listPendingCharges(productId: string): Promise<PendingCharge[]> {
     if (!UUID_SHAPE.test(productId)) return [];
+    return this.selectPendingCharges("s.product_id = $1", productId);
+  }
+
+  /** Issue 145: the subscription's oldest `pending` row with a card and a Square customer, from `listPendingCharges`' select. */
+  async findPendingCharge(subscriptionId: string): Promise<PendingCharge | null> {
+    if (!UUID_SHAPE.test(subscriptionId)) return null;
+    return (await this.selectPendingCharges("s.id = $1", subscriptionId))[0] ?? null;
+  }
+
+  /** The one select for `pending` rows with a card and a Square customer, oldest week first, then the subscription's `created_at`: `where` narrows it by its one parameter. */
+  private async selectPendingCharges(where: string, parameter: string): Promise<PendingCharge[]> {
     const { rows } = await this.db.query<{
       ledger_id: string;
       subscription_id: string;
@@ -1124,9 +1136,9 @@ export class PostgresRepository implements Repository {
          join subscriptions s on s.id = l.subscription_id
          join members m on m.id = s.member_id
          left join pickup_weeks w on w.product_id = s.product_id and w.week_of = l.pickup_date
-        where s.product_id = $1 and l.status = 'pending' and s.square_card_id is not null and m.square_customer_id is not null
+        where ${where} and l.status = 'pending' and s.square_card_id is not null and m.square_customer_id is not null
         order by l.pickup_date, s.created_at, l.id`,
-      [productId],
+      [parameter],
     );
     return rows.map((row) => ({
       ledgerId: row.ledger_id,
@@ -1156,14 +1168,45 @@ export class PostgresRepository implements Repository {
     return rowCount === 1;
   }
 
-  /** Issue 145: on an `active` subscription, sets its card's id, brand and last four; false, writing nothing, when it is not active. */
-  async replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<boolean> {
-    if (!UUID_SHAPE.test(subscriptionId)) return false;
-    const { rowCount } = await this.db.query(
-      "update subscriptions set square_card_id = $2, card_brand = $3, card_last4 = $4 where id = $1 and status = 'active'",
-      [subscriptionId, card.id, card.brand, card.last4],
+  /**
+   * Issue 145: a card update's one decision, under the member row's lock, as `saveSubscriptionCard` binds under it: `inactive`
+   * when the subscription is not `active`; `busy` when it holds a `pending` row, whatever its week; else the closed weeks'
+   * `declined` rows are deleted, the card's id, brand and last four are set, and the oldest open week's `declined` row, when
+   * one is left, turns `pending` with its attempt bumped, as `claimed`; else `replaced`.
+   */
+  async claimCardUpdate(subscriptionId: string, card: Card): Promise<CardUpdateClaim> {
+    if (!UUID_SHAPE.test(subscriptionId)) return { kind: "inactive" };
+    if (!this.scoped) return this.withActor(null, (repo) => repo.claimCardUpdate(subscriptionId, card));
+    await this.db.query(
+      "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
+      [subscriptionId],
     );
-    return rowCount === 1;
+    const { rows: active } = await this.db.query<{ id: string }>("select id from subscriptions where id = $1 and status = 'active'", [subscriptionId]);
+    if (!active[0]) return { kind: "inactive" };
+    const { rows: pending } = await this.db.query<{ id: string }>("select id from ledger where subscription_id = $1 and status = 'pending' limit 1", [subscriptionId]);
+    if (pending[0]) return { kind: "busy" };
+    await this.db.query(
+      `delete from ledger l using subscriptions s
+        where l.subscription_id = $1 and s.id = l.subscription_id and l.status = 'declined'
+          and ${weekClosed("s.product_id", "l.pickup_date")}`,
+      [subscriptionId],
+    );
+    await this.db.query("update subscriptions set square_card_id = $2, card_brand = $3, card_last4 = $4 where id = $1", [
+      subscriptionId,
+      card.id,
+      card.brand,
+      card.last4,
+    ]);
+    const { rowCount } = await this.db.query(
+      `update ledger set status = 'pending', attempt = attempt + 1
+        where id = (select id from ledger where subscription_id = $1 and status = 'declined' order by pickup_date, id limit 1)`,
+      [subscriptionId],
+    );
+    if (rowCount !== 1) return { kind: "replaced" };
+    // The only pending row, since none was held above: the claimed one, as the run lists it.
+    const charge = await this.findPendingCharge(subscriptionId);
+    if (!charge) throw new Error("The claimed row has no card or Square customer");
+    return { kind: "claimed", charge };
   }
 
   async findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null> {
@@ -1190,37 +1233,17 @@ export class PostgresRepository implements Repository {
     return rows.map((row) => ({ ledgerId: row.ledger_id, pickupDate: row.pickup_date, amountCents: row.amount_cents, attempt: row.attempt, closed: row.closed }));
   }
 
-  async bumpLedgerAttempt(ledgerId: string): Promise<number | null> {
-    if (!UUID_SHAPE.test(ledgerId)) return null;
-    const { rows } = await this.db.query<{ attempt: number }>(
-      "update ledger set attempt = attempt + 1 where id = $1 and status = 'declined' returning attempt",
-      [ledgerId],
-    );
-    return rows[0]?.attempt ?? null;
-  }
-
-  async listPaidCharges(subscriptionId: string, ledgerIds: string[]): Promise<{ ledgerId: string; pickupDate: string; amountCents: number }[]> {
-    const ids = ledgerIds.filter((id) => UUID_SHAPE.test(id));
-    if (!UUID_SHAPE.test(subscriptionId) || ids.length === 0) return [];
+  /** Issue 145: the row, when it is one of the subscription's `paid` rows; null otherwise. */
+  async findPaidCharge(subscriptionId: string, ledgerId: string): Promise<{ ledgerId: string; pickupDate: string; amountCents: number } | null> {
+    if (!UUID_SHAPE.test(subscriptionId) || !UUID_SHAPE.test(ledgerId)) return null;
     const { rows } = await this.db.query<{ ledger_id: string; pickup_date: string; amount_cents: number }>(
       `select id as ledger_id, to_char(pickup_date, 'YYYY-MM-DD') as pickup_date, amount_cents
          from ledger
-        where subscription_id = $1 and status = 'paid' and id = any($2::uuid[])
-        order by pickup_date, id`,
-      [subscriptionId, ids],
+        where subscription_id = $1 and status = 'paid' and id = $2`,
+      [subscriptionId, ledgerId],
     );
-    return rows.map((row) => ({ ledgerId: row.ledger_id, pickupDate: row.pickup_date, amountCents: row.amount_cents }));
-  }
-
-  async dropClosedDeclinedRows(subscriptionId: string): Promise<number> {
-    if (!UUID_SHAPE.test(subscriptionId)) return 0;
-    const { rowCount } = await this.db.query(
-      `delete from ledger l using subscriptions s
-        where l.subscription_id = $1 and s.id = l.subscription_id and l.status = 'declined'
-          and ${weekClosed("s.product_id", "l.pickup_date")}`,
-      [subscriptionId],
-    );
-    return rowCount ?? 0;
+    const row = rows[0];
+    return row ? { ledgerId: row.ledger_id, pickupDate: row.pickup_date, amountCents: row.amount_cents } : null;
   }
 
   async listWeekCounts(productId: string, from: string): Promise<Map<string, { paid: number; weekCredits: number }>> {

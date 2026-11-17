@@ -82,6 +82,7 @@ describe("AC13 — the list is exactly these thirty-two entries, and issue 56's 
         "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
         // Issue 145: a member's card save records a refused card or a declined retry, and a charge with no answer.
         "app/account/card/actions.ts#saveCard": { records: ["card_declined", "charge_outcome_unknown"] },
+        "app/account/card/actions.ts#retryCard": { records: ["card_declined", "charge_outcome_unknown"] },
         // Issue 156: Your details. A save and a resend count in sign-in's request limit; a confirm records the change;
         // Keep the old email records nothing (its reason is the entry's own).
         "app/account/details/actions.ts#saveDetails": { records: ["rate_limit_refusal"] },

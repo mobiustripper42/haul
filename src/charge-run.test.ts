@@ -963,11 +963,11 @@ describe("issue 196 — a locked week", () => {
     return who;
   };
 
-  const runLocked = (accountUrl: string = ACCOUNT_URL): Promise<ChargeRunReport> =>
-    runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl, cardUrl: CARD_URL });
+  const runLocked = (cardUrl: string = CARD_URL): Promise<ChargeRunReport> =>
+    runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
 
   /** The locked email `who` gets in English for TITLE, its link `link`. */
-  const lockedEmail = (who: Subscriber, link: string = ACCOUNT_URL) => ({
+  const lockedEmail = (who: Subscriber, link: string = CARD_URL) => ({
     to: who.member.email,
     subject: `No Supper Club meal ${TITLE}: card still declined`,
     text: `Your card is still declined, so no meal is being made for you for ${TITLE}. Update your card at ${link} to get your meals again.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
@@ -995,16 +995,16 @@ describe("issue 196 — a locked week", () => {
       {
         to: ana.member.email,
         subject: `Sin comida del Supper Club el ${week}: su tarjeta sigue rechazada`,
-        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${ACCOUNT_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
+        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${CARD_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
       },
     ]);
   });
 
-  it("AC3: the link is the account URL the run is given, as the declined email's is", async () => {
+  it("AC3: the link is the card URL the run is given, as the declined email's is", async () => {
     const ada = await declined();
-    const accountUrl = "https://account.example.test/elsewhere";
-    await runLocked(accountUrl);
-    expect(email.sent).toEqual([lockedEmail(ada, accountUrl)]);
+    const cardUrl = "https://account.example.test/elsewhere";
+    await runLocked(cardUrl);
+    expect(email.sent).toEqual([lockedEmail(ada, cardUrl)]);
   });
 
   it("AC3: a second firing over the same state writes no second row and sends nothing", async () => {

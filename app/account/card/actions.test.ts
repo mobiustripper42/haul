@@ -1,8 +1,9 @@
-// Issue 145: the member's card save, `saveCard`, through an InMemoryRepository and FakePayments with `next/headers`
-// faked and `redirect` throwing as the real one does, as app/account/cancel/actions.test.ts drives the cancel. What a
-// save charges, keeps and records is src/update-card.test.ts's; who is let in is requireSubscriber's. These hold what the
-// action does with it: the subscription and the card it acts on, the outcome it carries to the page, and the events the
-// entry is declared to record (app/audit-entry-points.ts): "card_declined" and "charge_outcome_unknown".
+// Issue 145: the member's card save, `saveCard`, and its Try again, `retryCard`, through an InMemoryRepository and
+// FakePayments with `next/headers` faked and `redirect` throwing as the real one does, as
+// app/account/cancel/actions.test.ts drives the cancel. What a save or a Try again charges, keeps and records is
+// src/update-card.test.ts's; who is let in is requireSubscriber's. These hold what each action does with it: the
+// subscription and the card it acts on, the outcome it carries to the page, and the events each entry is declared to
+// record (app/audit-entry-points.ts): "card_declined" and "charge_outcome_unknown".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
@@ -13,7 +14,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { redirectOf } from "../../screen-test-helpers";
-import { saveCard } from "./actions";
+import { retryCard, saveCard } from "./actions";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -105,57 +106,125 @@ const ada = async (): Promise<Subscriber> => {
 
 const declined = (who: Subscriber, weekOf: string) => services.repo.addLedgerRow(who.subscriptionId, weekOf, "declined", 4500);
 
-/** Where a save landed: its path, its state and the ledger ids it carries, however the query writes them. */
+/** Where a save landed: its path, its state and the ledger id it carries, however the query writes them. */
 const landing = (url: string) => {
   const parsed = new URL(url, "https://members.example.test");
-  return {
-    path: parsed.pathname,
-    state: parsed.searchParams.get("state"),
-    rows: (parsed.searchParams.get("rows") ?? "").split(",").filter(Boolean).sort(),
-  };
+  return { path: parsed.pathname, state: parsed.searchParams.get("state"), row: parsed.searchParams.get("row") };
+};
+
+const noAnswer = () => new DOMException("The operation timed out.", "TimeoutError");
+
+/** The save of a new card whose charge got no answer: the declined row is claimed and left pending. Its id, and where the save landed. */
+const leftPending = async (who: Subscriber): Promise<{ row: string; url: string }> => {
+  const row = await declined(who, JAN_24);
+  vi.spyOn(services.payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(noAnswer());
+  const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
+  return { row, url };
 };
 
 const refusal = (): PaymentsError => new PaymentsError({ status: 402, category: "PAYMENT_METHOD_ERROR", code: "CARD_DECLINED", detail: "Card declined." });
 
-describe("AC4 — a save that pays the declined weeks", () => {
-  it("AC4: the member lands on /account/card with state retried and the ledger ids that paid", async () => {
+describe("AC3, AC6 — a save that is done", () => {
+  it("AC6: a save that pays the declined week lands on /account/card with state paid and that row's ledger id", async () => {
     const who = await ada();
-    const first = await declined(who, JAN_24);
-    const second = await declined(who, JAN_31);
+    const row = await declined(who, JAN_24);
     const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
-    expect(landing(url)).toEqual({ path: "/account/card", state: "retried", rows: [first, second].sort() });
+    expect(landing(url)).toEqual({ path: "/account/card", state: "paid", row });
   });
 
-  it("AC4: it saves the card the form posts, on the signed-in member's subscription, whatever else the form posts", async () => {
+  it("AC3: a save with nothing owed lands on state saved, with no row", async () => {
+    await ada();
+    const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
+    expect(landing(url)).toEqual({ path: "/account/card", state: "saved", row: null });
+  });
+
+  it("it saves the card the form posts, on the signed-in member's subscription, whatever else the form posts", async () => {
     const grace = await subscriber("grace@example.com");
-    const gracesRow = await declined(grace, JAN_24);
+    const gracesRow = await declined(grace, JAN_31);
     const who = await ada();
     const mine = await declined(who, JAN_24);
     const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card", subscription: grace.subscriptionId, subscriptionId: grace.subscriptionId })));
-    expect(landing(url)).toEqual({ path: "/account/card", state: "retried", rows: [mine] });
+    expect(landing(url)).toEqual({ path: "/account/card", state: "paid", row: mine });
     expect(services.payments.charges.map((charge) => charge.referenceId)).toEqual([mine]);
     expect((await services.repo.listDeclinedCharges(grace.subscriptionId)).map((row) => row.ledgerId)).toEqual([gracesRow]);
   });
 });
 
-describe("AC5, AC8 — a save that fails", () => {
-  it("AC5: a card Square refuses lands on /account/card with state declined, and records card_declined", async () => {
+describe("AC4, AC7, AC8, AC10, AC11 — a save that is not done", () => {
+  it("AC4: a card Square refuses lands on /account/card with state declined, and records card_declined", async () => {
     const who = await ada();
     await declined(who, JAN_24);
     services.payments.failNext(refusal());
     const url = await redirectOf(saveCard(form({ sourceId: "cnon:refused" })));
-    expect(landing(url)).toEqual({ path: "/account/card", state: "declined", rows: [] });
+    expect(landing(url)).toEqual({ path: "/account/card", state: "declined", row: null });
     expect(services.repo.events().map((event) => event.kind)).toEqual(["card_declined"]);
   });
 
-  it("AC8: a charge with no answer lands on state declined too, and records charge_outcome_unknown", async () => {
+  it("AC7: the declined week's charge declined lands on state declined too, and records card_declined", async () => {
     const who = await ada();
     await declined(who, JAN_24);
-    vi.spyOn(services.payments, "charge")
-      .mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"))
-      .mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"));
+    vi.spyOn(services.payments, "charge").mockResolvedValueOnce({ outcome: "declined", code: "INSUFFICIENT_FUNDS" });
     const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
-    expect(landing(url)).toEqual({ path: "/account/card", state: "declined", rows: [] });
+    expect(landing(url)).toEqual({ path: "/account/card", state: "declined", row: null });
+    expect(services.repo.events().map((event) => event.kind)).toEqual(["card_declined"]);
+  });
+
+  it("AC8: a charge with no answer lands on state unknown, and records charge_outcome_unknown", async () => {
+    const who = await ada();
+    const { url } = await leftPending(who);
+    expect(landing(url)).toEqual({ path: "/account/card", state: "unknown", row: null });
+    expect(services.repo.events().map((event) => event.kind)).toEqual(["charge_outcome_unknown"]);
+  });
+
+  it("AC10: a save while the subscription holds a pending row lands on state unknown: nothing charged, the card on file kept, nothing recorded", async () => {
+    const who = await ada();
+    await services.repo.addLedgerRow(who.subscriptionId, JAN_31, "pending", 4500);
+    const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
+    expect(landing(url)).toEqual({ path: "/account/card", state: "unknown", row: null });
+    expect(services.payments.charges).toEqual([]);
+    expect(await services.repo.findSubscriptionCard(who.subscriptionId)).toEqual({ brand: OLD_CARD.brand, last4: OLD_CARD.last4 });
+    expect(services.repo.events()).toEqual([]);
+  });
+
+  it("AC11: a failure before any charge lands on state error, and records nothing", async () => {
+    const who = await ada();
+    await declined(who, JAN_24);
+    services.payments.failNext(new PaymentsError({ status: 500, category: "API_ERROR", code: "INTERNAL_SERVER_ERROR", detail: "Square fell over." }));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
+    expect(landing(url)).toEqual({ path: "/account/card", state: "error", row: null });
+    expect(services.repo.events()).toEqual([]);
+  });
+});
+
+describe("AC9, AC11 — Try again", () => {
+  it("AC9: Try again on the row left pending lands on state paid with its ledger id, without a second card", async () => {
+    const who = await ada();
+    const { row } = await leftPending(who);
+    const save = vi.spyOn(services.payments, "saveCard");
+    const url = await redirectOf(retryCard());
+    expect(landing(url)).toEqual({ path: "/account/card", state: "paid", row });
+    expect(save).not.toHaveBeenCalled();
+    expect(services.payments.charges.map((charge) => [charge.referenceId, charge.result.outcome])).toEqual([[row, "paid"]]);
+  });
+
+  it("AC9: it settles the signed-in member's pending row, not another member's", async () => {
+    const grace = await subscriber("grace@example.com");
+    const gracesRow = await services.repo.addLedgerRow(grace.subscriptionId, JAN_31, "pending", 4500);
+    const who = await ada();
+    const { row } = await leftPending(who);
+    await redirectOf(retryCard());
+    expect(services.payments.charges.map((charge) => charge.referenceId)).toEqual([row]);
+    expect((await services.repo.findPendingCharge(grace.subscriptionId))?.ledgerId).toBe(gracesRow);
+  });
+
+  it("AC11: a Try again whose lookup fails lands on state error, and records nothing more", async () => {
+    const who = await ada();
+    await leftPending(who);
+    vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(new Error("Square's lookup failed"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const url = await redirectOf(retryCard());
+    expect(landing(url)).toEqual({ path: "/account/card", state: "error", row: null });
     expect(services.repo.events().map((event) => event.kind)).toEqual(["charge_outcome_unknown"]);
   });
 });
@@ -169,5 +238,16 @@ describe("AC2 — who can save", () => {
     await expect(redirectOf(saveCard(form({ sourceId: "cnon:new-card" })))).resolves.toBe("/account");
     expect(save).not.toHaveBeenCalled();
     expect(services.payments.charges).toEqual([]);
+  });
+
+  it("AC2: Try again on a cancelled subscription is sent to /account before anything reaches Square", async () => {
+    const who = await ada();
+    await services.repo.addLedgerRow(who.subscriptionId, JAN_31, "pending", 4500);
+    await services.repo.cancelSubscription(who.subscriptionId, NOW);
+    const lookup = vi.spyOn(services.payments, "findPaymentByReference");
+    const charge = vi.spyOn(services.payments, "charge");
+    await expect(redirectOf(retryCard())).resolves.toBe("/account");
+    expect(lookup).not.toHaveBeenCalled();
+    expect(charge).not.toHaveBeenCalled();
   });
 });

@@ -1,31 +1,31 @@
 ---
 schema: 1
 id: DEC-040
-title: "A declined week is retried on its own row; a new card takes over once it pays"
+title: "A declined week's charge after a card update is claimed on its own row"
 topic: "Payments"
 status: "active"
 date: "2026-11-15"
-ruling: "Saving a new card retries each open declined week as a new attempt on its own ledger row, oldest first, stopping at the first decline; the card replaces the old one only once it has paid a retried week, or at once when nothing is owed."
+ruling: "A card update claims the declined week on its own row in one write: card on file, row pending, attempt bumped, only while still declined. The key stays fixed until the charge settles; a save while any row is pending charges nothing."
 claims:
   - kind: "file"
     target: "src/update-card.ts"
-    note: "updateCard: the bump, the order, the stop, and when the card is replaced"
+    note: "updateCard and retryCardCharge: the claim's answer, then the one settle step"
   - kind: "test"
     target: "src/update-card.test.ts"
-revisit_if: "A member asks to keep a card that failed its first retry, or Square adds a stored-card verification Haul can use before charging"
+revisit_if: "Square adds a stored-card verification Haul can use before charging, or a member asks to keep a card that failed"
 ---
 
-## DEC-040: A declined week is retried on its own row; a new card takes over once it pays
+## DEC-040: A declined week's charge after a card update is claimed on its own row
 
-A member whose card was declined replaces it on `/account/card` (issue 145), and the weeks they owe are charged then, by
-Haul, not by Square's subscriptions (DEC-004).
+A member whose card was declined replaces it on `/account/card` (issue 145), and the declined week is charged then, by
+Haul, not by Square's subscriptions (DEC-004). The lock (issue 196) leaves at most one declined week.
 
-Each retry bumps the row's `attempt` before the charge, so the key `ledgerId:attempt` is fresh every time (DEC-003). The
-row stays `declined` while the charge is out, which keeps it out of the charge run's queue of `pending` rows, and a paid
-answer flips it through the charge run's own confirm. The bump is kept after a decline, so the next save's key is fresh too.
+One write, `claimCardUpdate`, decides the save under the member row's lock: it puts the new card on file and turns the
+open declined row `pending` with its `attempt` bumped, only while it is still `declined`. The key `ledgerId:attempt` is
+fresh (DEC-003) and stays fixed until the charge settles, by the member's Try again (which asks Square first) or the
+charge run's next firing (which charges the card now on file).
 
-A card that declines one week is not tried on the next: rows already paid stay paid, the rest stay `declined`, and the
-account home keeps its Notice. A charge with no answer stops the retry the same way and records `charge_outcome_unknown`.
-
-The old card stays on file until the new one has paid something, so a member is never left holding a card that has never
-worked. See also DEC-028, DEC-041.
+A save while any row is `pending` (two tabs, a reload, a charge-run row whose answer was lost) is refused: nothing is
+charged and the second card is not put on file. A decline goes back through the signup's decline write and keeps the new
+card; a charge with no answer leaves the row `pending` and records `charge_outcome_unknown`. The old card is not disabled
+at Square. See also DEC-028, DEC-041.

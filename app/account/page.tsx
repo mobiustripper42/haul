@@ -40,10 +40,10 @@ export default async function Account() {
   // Issue 196: a subscription holding a declined row is locked: once the declined week's pickup is past, no pickup is coming.
   const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
-  // Issue 145: an active subscription holding a declined row. The week named is the newest of those not closed.
+  // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
   const declinedRows = cancelled ? [] : await getRepository().listDeclinedCharges(confirmation.subscriptionId);
   const declined = declinedRows.length > 0;
-  const declinedWeek = declinedRows.filter((row) => !row.closed).at(-1);
+  const declinedWeek = next && declinedRows.find((row) => !row.closed);
   const declinedLine = declinedWeek && t("account.card.declinedWeek", { week: await weekNamed(getRepository(), product.id, declinedWeek.pickupDate, language) });
   const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
   const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
@@ -66,7 +66,7 @@ export default async function Account() {
               {[t("account.card.declinedBody"), declinedLine].filter(Boolean).join(" ")}
               <span className="mt-3 block">
                 <Button kind="primary" href={ACCOUNT_CARD_PATH}>
-                  {t("account.card.title")}
+                  {t("account.updateCard")}
                 </Button>
               </span>
             </Notice>

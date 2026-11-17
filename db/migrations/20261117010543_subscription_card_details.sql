@@ -1,4 +1,4 @@
--- 20261115140032_subscription_card_details.sql — subscription_card_details
+-- 20261117010543_subscription_card_details.sql — subscription_card_details
 -- Applied in filename order by db/migrate.ts (DEC-013).
 
 

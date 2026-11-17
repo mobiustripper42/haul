@@ -209,10 +209,10 @@ function sendWeekCreditReceipt(deps: ChargeRunDeps, productId: string, pickupDat
   });
 }
 
-/** Issue 196: the notice for a week locked by a declined card, to its member: no meal is coming. A failed send is logged and undoes nothing. */
+/** Issue 196: the notice for a week locked by a declined card, to its member, linking to Update your card: no meal is coming. A failed send is logged and undoes nothing. */
 function sendLockedNotice(deps: ChargeRunDeps, productId: string, pickupDate: string, memberId: string): Promise<void> {
   return sendMemberEmail(deps, memberId, async (member) => {
     const week = await weekNamed(deps.repo, productId, pickupDate, member.language);
-    return renderEmail("cardLocked", member.language, { week, link: deps.accountUrl }, deps.siteUrl);
+    return renderEmail("cardLocked", member.language, { week, link: deps.cardUrl }, deps.siteUrl);
   });
 }
