@@ -31,24 +31,12 @@ const htmlTag = async (): Promise<string> => {
   return tag;
 };
 
-describe("AC13 — <html lang> follows the resolved language", () => {
-  it('AC13: renders <html lang="es"> when the lang cookie is es', async () => {
+// Issue 187, AC2: the page's lang follows getLanguage, which is always English; its cases are
+// app/language.test.ts's, so one goes through here.
+describe("AC2 (issue 187) — <html lang> is en for any request", () => {
+  it('AC2: renders <html lang="en"> with a lang cookie of es and an Accept-Language of es', async () => {
     request.current.cookies = { lang: "es" };
-    expect(await htmlTag()).toMatch(/\slang="es"/);
-  });
-
-  it('AC13: renders <html lang="es"> when Accept-Language resolves to Spanish', async () => {
-    request.current.headers = { "accept-language": "es-MX" };
-    expect(await htmlTag()).toMatch(/\slang="es"/);
-  });
-
-  it('AC13: renders <html lang="en"> with no cookie and no Accept-Language', async () => {
-    expect(await htmlTag()).toMatch(/\slang="en"/);
-  });
-
-  it('AC13: renders <html lang="en"> when the lang cookie is en, over an Accept-Language of es', async () => {
-    request.current.cookies = { lang: "en" };
-    request.current.headers = { "accept-language": "es" };
+    request.current.headers = { "accept-language": "es-MX,es;q=0.9" };
     expect(await htmlTag()).toMatch(/\slang="en"/);
   });
 });

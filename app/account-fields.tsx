@@ -8,7 +8,7 @@ import { Field } from "../components/ui/field";
 import { FieldError } from "../components/ui/field-error";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
-import { getLanguage, getTranslator } from "./language";
+import { getEmailLanguageDefault, getTranslator } from "./language";
 
 const ERROR_KEYS = {
   firstName: "createAccount.error.firstName",
@@ -49,7 +49,7 @@ export async function AccountFields({
   failing: ReadonlySet<string>;
   emailHelp: MessageKey;
 }): Promise<ReactNode> {
-  const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
+  const [t, emailDefault] = await Promise.all([getTranslator(), getEmailLanguageDefault()]);
   const fieldError = (field: AccountField) =>
     failing.has(field) ? <FieldError id={`${field}-error`}>{t(ERROR_KEYS[field])}</FieldError> : null;
   /** What an input is described by: its error line, then its help line. */
@@ -120,7 +120,7 @@ export async function AccountFields({
           id="language"
           name="language"
           options={Object.entries(LANGUAGES).map(([code, { name }]) => ({ value: code, label: name }))}
-          defaultValue={isLanguage(values.language) ? values.language : language}
+          defaultValue={isLanguage(values.language) ? values.language : emailDefault}
         />
       </Field>
     </>

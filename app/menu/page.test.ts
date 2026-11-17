@@ -148,14 +148,6 @@ describe("AC7 — the menu, once its email has gone out", () => {
     expect(texts).toEqual(expect.arrayContaining([`Menu for ${titleOf(moved)}`, `Pick up ${pickupOf(moved)}`]));
   });
 
-  it("AC7: in Spanish, Pick up is Recogida over the Spanish pickup line, and the week is the Spanish title", async () => {
-    request.current.cookies.lang = "es";
-    await sent();
-    const texts = textsOf(await render());
-    expect(texts).toEqual(expect.arrayContaining([`Recogida: ${pickupOf(pickupWeek(WEEK, null), "es")}`]));
-    expect(texts.some((text) => text.includes(titleOf(pickupWeek(WEEK, null), "es")))).toBe(true);
-  });
-
   it("AC7: a closed week is never the current one: with January 17 closed, January 24's menu shows", async () => {
     await services.repo.assignWeekMenu(product.id, WEEK, autumn.id);
     await services.repo.closePickupWeek(product.id, WEEK, null, new Date("2027-01-12T15:00:00.000Z"));

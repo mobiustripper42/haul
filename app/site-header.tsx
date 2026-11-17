@@ -3,7 +3,6 @@ import { Button } from "../components/ui/button";
 import { MenuButton } from "../components/ui/menu-button";
 import { SiteBar } from "../components/ui/site-bar";
 import { getTranslator } from "./language";
-import { LanguageSwitcher } from "./language-switcher";
 import { ACCOUNT_DETAILS_PATH, ACCOUNT_HISTORY_PATH, ACCOUNT_PATH, ACCOUNT_WEEKS_PATH, ADMIN_PATH } from "./paths";
 import { getSignedInMember } from "./session";
 import { signOut } from "./sign-in/actions";
@@ -32,14 +31,14 @@ function SignOutButton({ label, flush }: { label: string; flush?: "end" }) {
 }
 
 /**
- * The header every public page opens with: the farm's name, then the language switch. Signed in, the
- * header reads the session itself: the account links (Your meal, Upcoming weeks, History, then Admin for
- * admins only; `current` marks the one showing as the page), the language switch, then Sign out. At 720px
- * and wider they are a row; below it they fold into a Menu button whose panel holds the same links, Sign out,
- * and the switch below a divider (issue 155). Signed out,
- * `account` adds a link after the switch: "sign-in" a secondary Sign in to the Supper Club's sign-in
- * pane, "sign-in-current" the same link marked as the page showing, "none" nothing. `wideOnly` hides a Sign in at widths below `lg`, for a pane page whose card already is
- * the sign-in. Called inline, `{await SiteHeader({ account })}`, as `LanguageSwitcher` is.
+ * The header every public page opens with: the farm's name. Signed in, the header reads the session
+ * itself: the account links (Your meal, Upcoming weeks, History, then Admin for admins only; `current`
+ * marks the one showing as the page), then Sign out. At 720px and wider they are a row; below it they fold
+ * into a Menu button whose panel holds the same links and Sign out (issue 155). Signed out, `account` adds
+ * a link after the name: "sign-in" a secondary Sign in to the Supper Club's sign-in pane,
+ * "sign-in-current" the same link marked as the page showing, "none" nothing. `wideOnly` hides a Sign in
+ * at widths below `lg`, for a pane page whose card already is the sign-in. Called inline,
+ * `{await SiteHeader({ account })}`, as `JoinPage` is.
  */
 export async function SiteHeader({
   account,
@@ -51,10 +50,6 @@ export async function SiteHeader({
   current?: Current;
 }) {
   const [t, member] = await Promise.all([getTranslator(), getSignedInMember()]);
-  // The quiet button that ends the row is pulled flush with the gutter (issue 84): the switch when nothing
-  // follows it, or when Sign in is hidden below `lg`; signed in, Sign out.
-  const switchFlush = member ? undefined : account === "none" ? "end" : wideOnly ? "end-narrow" : undefined;
-  const switcher = await LanguageSwitcher(switchFlush ? { flush: switchFlush } : {});
   const signIn = (
     <Button kind="secondary" href={PANE_SIGN_IN_PAGES.start} current={account === "sign-in-current"}>
       {t("home.signIn")}
@@ -78,7 +73,6 @@ export async function SiteHeader({
             <nav aria-label={t("header.account")} className="flex flex-wrap items-center gap-x-4 gap-y-2 lg:flex-nowrap">
               {links(false)}
             </nav>
-            {switcher}
             <SignOutButton label={t("home.signOut")} flush="end" />
           </div>
           <div className="account-menu ml-auto">
@@ -87,17 +81,13 @@ export async function SiteHeader({
                 {links(true)}
               </nav>
               <SignOutButton label={t("home.signOut")} />
-              <div className="border-t border-divider pt-2">{switcher}</div>
             </MenuButton>
           </div>
         </>
-      ) : account === "none" ? (
-        switcher
+      ) : account === "none" ? null : wideOnly ? (
+        <div className="wide-only">{signIn}</div>
       ) : (
-        <div className="flex items-center gap-4">
-          {switcher}
-          {wideOnly ? <div className="wide-only">{signIn}</div> : signIn}
-        </div>
+        signIn
       )}
     </SiteBar>
   );

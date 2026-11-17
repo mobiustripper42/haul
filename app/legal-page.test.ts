@@ -1,16 +1,15 @@
 // Issue 63, AC1–AC3: /terms and /privacy, `await Terms()` rendered through react-dom/server with
 // `next/headers` faked. As src/email-templates.test.ts, the Spanish catalog is replaced for this whole file by
 // a stand-in whose every value is its own key in guillemets, so a Spanish render shows which keys the page
-// reads and any English it wrote itself. The stand-in documents and their edits are
-// src/legal-text-test-helpers.ts. AC9, the pages against their mockups, is by hand. SiteHeader is faked: its
-// own markup is the header's tests'; here it is read as the call the page makes. AC2's opening paragraph
-// standing before the first heading is `parseLegalDocument`'s (src/legal-documents.test.ts); here the
-// document is checked line for line. The date line is a `Hint` because issue 63's design names it.
+// reads and any English it wrote itself. No test reads docs/sources/ (issue 187): which keys the page reads is
+// the stand-in test, and the legal text is the catalog's. AC9, the pages against their mockups, is by hand.
+// SiteHeader is faked: its own markup is the header's tests'; here it is read as the call the page makes.
+// AC2's opening paragraph standing before the first heading is `parseLegalDocument`'s
+// (src/legal-documents.test.ts). The date line is a `Hint` because issue 63's design names it.
 import { createElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { PRIVACY_LINES, TERMS_LINES, wordsOf } from "@core/legal-text-test-helpers.js";
 import { en } from "@core/messages/en.js";
 import { signSession } from "@core/sign-in/session.js";
 import { BulletList } from "../components/ui/bullet-list";
@@ -40,6 +39,16 @@ vi.mock("next/headers", async () => {
 vi.mock("next/navigation", async () => ({ redirect: (await import("./screen-test-helpers")).throwingRedirect }));
 vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("./services", () => ({ getRepository: () => services.repo, getSessionSecret: () => services.secret }));
+// Issue 187: screens are English, so the Spanish stand-in is reached by faking the screen language, the
+// translator following it as the real getTranslator does.
+const screen = vi.hoisted(() => ({ language: "en" as import("@core/i18n.js").Language }));
+vi.mock("./language", async () => {
+  const { createTranslator } = await import("@core/i18n.js");
+  return {
+    getLanguage: async () => screen.language,
+    getTranslator: async () => createTranslator(screen.language),
+  };
+});
 vi.mock("./site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
 vi.mock("@core/messages/es.js", async () => {
   const { en } = await import("@core/messages/en.js");
@@ -50,6 +59,7 @@ const LAST_UPDATED = en["legal.lastUpdated"];
 
 beforeEach(() => {
   request.current = emptyRequest();
+  screen.language = "en";
   services.repo = new InMemoryRepository();
   vi.mocked(SiteHeader).mockClear();
 });
@@ -62,27 +72,12 @@ const signIn = async () => {
 
 const mainOf = (html: string) => /<main\b[\s\S]*<\/main>/.exec(html)?.[0] ?? "";
 
-/** Each `h2`, `p` and `li` in the card, in order, as [tag, words]. */
-const blocksOf = (html: string) =>
-  [...screenMarkup(mainOf(html)).matchAll(/<(h2|p|li)\b[^>]*>([\s\S]*?)<\/\1>/g)].map(([, tag, words]) => [tag, words]);
-
-/** What a document's line should render as. */
-const blockFor = (line: string) => [line.startsWith("## ") ? "h2" : line.startsWith("- ") ? "li" : "p", wordsOf(line)];
-
 const render = async (page: () => Promise<ReactNode>) => renderToStaticMarkup(await page());
 
 describe.each([
-  ["AC1", "/terms", Terms, "Terms of service", TERMS_LINES],
-  ["AC2", "/privacy", Privacy, "Privacy policy", PRIVACY_LINES],
-] as const)("%s — %s", (ac, path, page, title, lines) => {
-  it(`${ac}: ${path} reads "${title}", then the last-updated line, then the document, line for line`, async () => {
-    expect(textsOf(mainOf(await render(page)))).toEqual([title, LAST_UPDATED, ...lines.map(wordsOf)]);
-  });
-
-  it(`${ac}: each heading is an h2, each paragraph a p and each bullet an li, in the document's order`, async () => {
-    expect(blocksOf(await render(page))).toEqual(lines.map(blockFor));
-  });
-
+  ["AC1", "/terms", Terms, "Terms of service"],
+  ["AC2", "/privacy", Privacy, "Privacy policy"],
+] as const)("%s — %s", (ac, path, page, title) => {
   it(`${ac}: it works signed in as it does signed out`, async () => {
     const signedOut = await render(page);
     expect(textsOf(signedOut)).toContain(title);
@@ -117,15 +112,13 @@ describe.each([
     expect(words).not.toMatch(/[#*\\]/);
   });
 
-  it(`AC3: ${path} shows the brackets the edits leave, as they stand, and none the edits remove`, async () => {
+  it(`AC3: ${path} shows none of the phrases the edits removed`, async () => {
     const words = textsOf(mainOf(await render(page))).join("\n");
-    expect(words).toContain("[CONTACT EMAIL]");
-    expect(words).toContain("[LEGAL NAME OF RE:SOURCE CLEVELAND]");
     for (const gone of ["[14]", "[EFFECTIVE DATE]", "Effective", "Nov 6, 2026", "@Eric"]) expect(words).not.toContain(gone);
   });
 
   it(`AC3: in the stand-in catalog ${path} shows only catalog values, nothing the page wrote itself`, async () => {
-    request.current.cookies = { lang: "es" };
+    screen.language = "es";
     expect(textsOf(mainOf(await render(page)))).toEqual([`«${keys}.title»`, "«legal.lastUpdated»", `«${keys}.text»`]);
   });
 });

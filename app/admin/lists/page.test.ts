@@ -11,7 +11,6 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import { listableWeeks, listedWeekTitle } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
-import { LANGUAGE_COOKIE } from "../../language";
 import { emptyRequest } from "../../next-headers-fake";
 import { attributesOf, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
 import { addSupperClub, MENUS, SIZES } from "../subscribers-fixture";
@@ -154,8 +153,6 @@ describe("signed in as an admin", () => {
   // that list. The members part is this issue's copy, typed once; the skipped and week-credit parts are read from the
   // catalog in the form each case needs.
   describe("issue 183 — the line counts the week's members", () => {
-    const es = createTranslator("es");
-
     it("AC1: the line's member count is the week's meals plus its skips, members first", async () => {
       await fourMembers(services.repo, product);
       const markup = await render({ week: FEB_14 });
@@ -189,31 +186,15 @@ describe("signed in as an admin", () => {
       expect(lineText(await render({ week: FEB_14 }))).toContain(`1 member this week · ${t("admin.lists.skipped.other", { n: 0 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
     });
 
-    it('AC5: in Spanish, a one-member week reads "1 miembro esta semana"', async () => {
-      await oneOfEach(services.repo, product);
-      request.current.cookies[LANGUAGE_COOKIE] = "es";
-      expect(lineText(await render({ week: FEB_14 }))).toContain(`1 miembro esta semana · ${es("admin.lists.skipped.other", { n: 0 })} · ${es("admin.lists.credits.other", { n: 0 })}.`);
-    });
-
-    it('AC5: in Spanish, a two-member week reads "2 miembros esta semana"', async () => {
-      await oneOfEach(services.repo, product);
-      request.current.cookies[LANGUAGE_COOKIE] = "es";
-      expect(lineText(await render({ week: FEB_7 }))).toContain(`2 miembros esta semana · ${es("admin.lists.skipped.one", { n: 1 })} · ${es("admin.lists.credits.one", { n: 1 })}.`);
-    });
-
     // Eric's review of pull request #184: the week-credit part ends the line with no "counted above", and the page
     // carries no pointer to the member spreadsheet. Typed literally, since the tests above read these words from the catalog.
-    it("the week-credit part ends the line, with no \"counted above\", in either language", async () => {
+    it("the week-credit part ends the line, with no \"counted above\"", async () => {
       await oneOfEach(services.repo, product);
       expect(lineText(await render({ week: FEB_7 }))).toContain("2 members this week · 1 skipped · 1 week credit.");
-      request.current.cookies[LANGUAGE_COOKIE] = "es";
-      expect(lineText(await render({ week: FEB_7 }))).toContain("2 miembros esta semana · 1 omitida · 1 crédito de semana.");
     });
 
-    it("the page has no pointer to the member spreadsheet, in either language", async () => {
+    it("the page has no pointer to the member spreadsheet", async () => {
       expect(await render({ week: FEB_7 })).not.toContain("member spreadsheet");
-      request.current.cookies[LANGUAGE_COOKIE] = "es";
-      expect(await render({ week: FEB_7 })).not.toContain("hoja de cálculo de miembros");
     });
   });
 

@@ -341,22 +341,6 @@
     @apply size-5 flex-none bg-teal;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M15 18l-6-6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
-
-  /* The language switcher: its options side by side, a divider rule between them. */
-  .lang-switch {
-    @apply flex min-w-0 items-center gap-1;
-  }
-  /* The current language is set apart by weight; both stay teal, since teal-muted is for 14px and up (issue 84). */
-  .lang-switch > button[aria-current="true"] {
-    @apply font-semibold;
-  }
-  .lang-switch > button + button {
-    @apply relative;
-  }
-  .lang-switch > button + button::before {
-    content: "";
-    @apply absolute inset-y-3 -left-0.5 w-px bg-divider;
-  }
 }
 
 /*

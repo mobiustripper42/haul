@@ -256,16 +256,6 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       expect(Object.fromEntries(rows.map((row) => [row.email, row.cardDeclined]))).toEqual({ "rosa@example.com": true, "chidi@example.com": false });
       expect(list?.props.text).toMatchObject({ cardDeclined: "Card declined" });
     });
-
-    it("AC4: in Spanish the word is Tarjeta rechazada", async () => {
-      const product = addSupperClub(services.repo);
-      await activeSubscriber(services.repo, product, ROSA, PICKS);
-      request.current.cookies.lang = "es";
-
-      const { list } = await page();
-
-      expect(list?.props.text).toMatchObject({ cardDeclined: "Tarjeta rechazada" });
-    });
   });
 
   describe("AC11 — Joined on the screen", () => {

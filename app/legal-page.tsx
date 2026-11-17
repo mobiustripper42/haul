@@ -1,6 +1,6 @@
 // The one layout the Terms and Privacy pages share (issue 63). Called inline,
 // `return await LegalPage({ ... })`, as `JoinPage` is, because `react-dom/server` cannot render an async
-// component written as JSX (`app/language-switcher.tsx`).
+// component written as JSX (`app/site-header.tsx`).
 import { type LegalBlock, parseLegalDocument } from "@core/legal-documents.js";
 import { BulletList } from "../components/ui/bullet-list";
 import { Card } from "../components/ui/card";

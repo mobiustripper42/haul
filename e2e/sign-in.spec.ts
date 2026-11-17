@@ -185,7 +185,7 @@ test("AC16, AC4 (issue 97): signed in, the header's Sign out ends the session an
 
   // /terms shows Sign out to anyone signed in (AC6), so its absence there is the session gone.
   await page.goto("/terms");
-  await expect(page.getByRole("banner").getByRole("button", { name: "English", exact: true })).toBeVisible();
+  await expect(page.getByRole("banner").getByText(en["brand.name"], { exact: true })).toBeVisible();
   await expect(headerSignOut(page)).toHaveCount(0);
 });
 

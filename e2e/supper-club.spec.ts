@@ -12,7 +12,7 @@ import { runSeed } from "../db/seed.js";
 import { createClient } from "../src/adapters/pg-connect.js";
 import { PostgresRepository } from "../src/adapters/postgres-repository.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
-import { createTranslator, LANGUAGES } from "../src/i18n.js";
+import { createTranslator } from "../src/i18n.js";
 import { en } from "../src/messages/en.js";
 import { requireSupperClub } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
@@ -327,7 +327,6 @@ test("AC11: below lg a pane page is the card alone, centred at card width, with 
       await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
       await expect(page.getByText(BACK_TO_CHOICES)).toBeHidden();
       await expect(headerSignIn(page)).toBeHidden();
-      await expect(page.getByRole("banner").getByRole("button", { name: LANGUAGES.en.name })).toBeVisible();
 
       const box = (await paneCard(page, heading).boundingBox())!;
       expect(box.x + box.width / 2).toBeCloseTo(width / 2, 0);
