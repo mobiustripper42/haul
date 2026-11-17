@@ -3,14 +3,13 @@ import { weekNamed } from "@core/ledger-charge.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { memberDisplayName } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
-import { listedWeekTitle, nextPickup, pickupWhereLine, weekTitle } from "@core/pickup-week.js";
+import { listedWeekTitle, pickupWhereLine, weekTitle } from "@core/pickup-week.js";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Heading } from "../../components/ui/heading";
 import { Notice } from "../../components/ui/notice";
 import { Shell } from "../../components/ui/shell";
-import { loadCalendar } from "../admin/weeks/calendar";
 import { getLanguage, getTranslator } from "../language";
 import { titled } from "../page-title";
 import { ACCOUNT_CANCEL_PATH, ACCOUNT_CARD_PATH } from "../paths";
@@ -18,7 +17,7 @@ import { getRepository } from "../services";
 import { SiteHeader } from "../site-header";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
 import { requireSubscriber } from "./subscriber";
-import { loadLastPickup } from "./weeks/rows";
+import { loadLastPickup, loadNextPickup } from "./weeks/rows";
 
 export const generateMetadata = titled("account.title");
 
@@ -36,7 +35,7 @@ export default async function Account() {
   const cancelled = confirmation.status === "cancelled";
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const now = new Date();
-  const next = cancelled ? null : nextPickup((await loadCalendar(getRepository(), now)).weeks, confirmation.pickupDate, confirmation.declinedWeek);
+  const next = cancelled ? null : await loadNextPickup({ member, product, confirmation }, now);
   // Issue 196: a subscription holding a declined row is locked: once the declined week's pickup is past, no pickup is coming.
   const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;

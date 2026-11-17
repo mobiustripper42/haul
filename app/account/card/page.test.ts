@@ -14,7 +14,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { en } from "@core/messages/en.js";
-import { pickupWeek, weekTitle } from "@core/pickup-week.js";
+import { formatPickupDate, pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { Card } from "@core/ports/payments.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -234,14 +234,26 @@ describe("AC3 — state saved", () => {
     expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
   });
 
-  it("AC3: when no upcoming week has its cutoff ahead, the Notice is Card saved. alone, and the form is still gone", async () => {
-    await subscribedAda(NEW_CARD);
-    for (let i = 0; i < 12; i++) {
-      const weekOf = new Date(Date.parse(`${FEB_7}T00:00:00Z`) + i * 7 * DAY).toISOString().slice(0, 10);
-      await services.repo.closePickupWeek(product.id, weekOf, null, NOW);
-    }
+});
+
+// Issue 202: the next charge's week is loadNextPickup's, with cutoffAhead; which week that is, skips and the stop after
+// lockedOn included, is nextPickup's and weeksFrom's (src/pickup-week.test.ts). Here one skipped week, and the locked
+// case, go through the page.
+describe("AC3, AC4 (issue 202) — state saved, the member's next week", () => {
+  it("AC3 (issue 202): with February 14 skipped, the Notice names the cutoff of February 21, at the end of Monday, February 15", async () => {
+    const { subscriptionId } = await subscribedAda(NEW_CARD);
+    await services.repo.skipWeek(subscriptionId, "2027-02-14");
+    const { html } = await render({ state: "saved" });
+    const next = t("account.card.savedNext", { day: formatPickupDate("2027-02-15", "en"), card: t("account.card.ending", { last4: "1111" }) });
+    expect(alertTexts(html)).toEqual([`${en["account.card.saved"]} ${next}`]);
+  });
+
+  // A real save clears or pends the declined row (src/ports/repository.ts), so this state is reached only by its URL.
+  it("AC4 (issue 202): locked, a declined row for February 7, whose cutoff has passed: the Notice is Card saved. alone, and the form is gone", async () => {
+    const { subscriptionId } = await subscribedAda(NEW_CARD);
+    await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
     const { element, html } = await render({ state: "saved" });
-    expect(alertTexts(html)).toEqual(["Card saved."]);
+    expect(alertTexts(html)).toEqual([en["account.card.saved"]]);
     expect(cardFormOf(element)).toBeUndefined();
   });
 });

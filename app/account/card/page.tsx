@@ -7,7 +7,6 @@ import { Card } from "../../../components/ui/card";
 import { Heading } from "../../../components/ui/heading";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
-import { loadCalendar } from "../../admin/weeks/calendar";
 import { cardEntrySettings } from "../../card-entry-settings";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
@@ -15,6 +14,7 @@ import { ACCOUNT_CARD_ROW_PARAM, ACCOUNT_CARD_STATE_PARAM, ACCOUNT_PATH } from "
 import { getRepository } from "../../services";
 import { SiteHeader } from "../../site-header";
 import { requireSubscriber } from "../subscriber";
+import { loadNextPickup } from "../weeks/rows";
 import { retryCard } from "./actions";
 import { CardForm } from "./card-form";
 
@@ -52,10 +52,8 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
 
   let notice: { lead: string; text: string } | null = null;
   if (state === "saved" && cardWords) {
-    // The next charge is the first open week whose cutoff has not passed, not `nextPickup`, which can name a week past its cutoff.
-    const week = (await loadCalendar(repo, now)).weeks.find(
-      (found) => found.closedAt === null && found.weekOf >= confirmation.pickupDate && !found.cutoffPassed,
-    );
+    // The next charge is the member's first week whose cutoff has not passed, which can be a later one than their next pickup.
+    const week = await loadNextPickup({ member, product, confirmation }, now, { cutoffAhead: true });
     notice = week
       ? { lead: t("account.card.saved"), text: t("account.card.savedNext", { day: formatPickupDate(cutoffDate(product, week.weekOf), language), card: cardWords }) }
       : { lead: t("account.card.saved"), text: "" };
