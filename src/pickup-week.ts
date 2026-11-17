@@ -168,11 +168,23 @@ export type AdminWeek = PickupWeek & {
 /**
  * A member's next pickup: the first of `weeks` not closed and with `weekOf >= firstWeek`; null when there is none. Issue
  * 196: with `lockedOn`, the week their subscription's declined row is for, the week found when it is on or before it,
- * else null: a week up to the declined one was charged and is coming, a later one is locked and is not.
+ * else null: a week up to the declined one was charged and is coming, a later one is locked and is not. Issue 202: `weeks`
+ * may be endless (`weeksFrom`), so the read stops at the first week after `lockedOn`; `skipped` weeks are passed over, and
+ * with `cutoffAhead` so is a week whose cutoff has passed.
  */
-export function nextPickup(weeks: AdminWeek[], firstWeek: string, lockedOn: string | null = null): AdminWeek | null {
-  const found = weeks.find((week) => week.closedAt === null && week.weekOf >= firstWeek) ?? null;
-  return found && lockedOn !== null && found.weekOf > lockedOn ? null : found;
+export function nextPickup(
+  weeks: Iterable<AdminWeek>,
+  firstWeek: string,
+  lockedOn: string | null = null,
+  options: { skipped?: readonly string[]; cutoffAhead?: boolean } = {},
+): AdminWeek | null {
+  for (const week of weeks) {
+    if (lockedOn !== null && week.weekOf > lockedOn) return null;
+    if (week.closedAt !== null || week.weekOf < firstWeek || options.skipped?.includes(week.weekOf)) continue;
+    if (options.cutoffAhead && week.cutoffPassed) continue;
+    return week;
+  }
+  return null;
 }
 
 /** Whether a week's days are not its ordinary ones, the Sunday and the Monday after. */
@@ -238,6 +250,15 @@ export function upcomingWeeks(product: ProductWithOptions, now: Date, changed: C
   const current = currentSunday(product, clevelandDate(now), byWeek);
   const sunday = from !== undefined && from > current ? from : current;
   return Array.from({ length: CALENDAR_WEEKS }, (_, i) => adminWeek(product, now, byWeek, addDays(sunday, i * 7)));
+}
+
+/**
+ * Issue 202: every week from the current week (where `upcomingWeeks` starts), one after another without end, each built
+ * as `upcomingWeeks` builds it.
+ */
+export function* weeksFrom(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): Generator<AdminWeek> {
+  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
+  for (let sunday = currentSunday(product, clevelandDate(now), byWeek); ; sunday = addDays(sunday, 7)) yield adminWeek(product, now, byWeek, sunday);
 }
 
 /**

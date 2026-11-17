@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createTranslator } from "./i18n.js";
 import { en } from "./messages/en.js";
 import {
+  addDays,
   clevelandDate,
   firstPickup,
   firstPickupLine,
@@ -18,6 +19,7 @@ import {
   pickupWeek,
   pickupWhereLine,
   upcomingWeeks,
+  weeksFrom,
   weekTitle,
   type AdminWeek,
   type ChangedWeek,
@@ -259,8 +261,8 @@ describe("AC3 (issue 59) — formatShortDate", () => {
   });
 });
 
-// Issue 136, AC3b: a member's next pickup, read from the weeks the calendar lists (`loadCalendar(repo, now).weeks`).
-// Which weeks are listed is upcomingWeeks' (src/pickup-week-calendar.test.ts); here the list is given, so only
+// Issue 136, AC3b: a member's next pickup, read from any sequence of weeks: `weeksFrom` for a member (`loadNextPickup`),
+// the 12 listed for the menu run. Which weeks are listed is upcomingWeeks' (src/pickup-week-calendar.test.ts); here the list is given, so only
 // the choice among them is read. Only `weekOf` and `closedAt` decide it; the rest of each week is carried along.
 describe("AC3b (issue 136) — nextPickup", () => {
   /** A listed week: an ordinary Sunday and Monday unless moved, open unless closed. */
@@ -333,6 +335,92 @@ describe("AC3b (issue 136) — nextPickup", () => {
     it("AC8: lockedOn closed passes over to a week after it: null, not that week", () => {
       expect(nextPickup([listed(FEB_7, { closed: true }), listed(FEB_14)], "2027-01-03", FEB_7)).toBeNull();
     });
+  });
+});
+
+// Issue 202: a member's next week is walked from `weeksFrom`, the product's weeks one after another without end, so no
+// list's length decides it. AC1's edge cases are read here, once; the pages read one skipped week through
+// `loadNextPickup`. Wednesday, February 3, 2027, noon in Cleveland: the walk starts at February 7, whose cutoff (the end
+// of Monday, February 1) has passed and whose pickup is to come; February 14's cutoff, the end of Monday, February 8, is ahead.
+describe("AC1 (issue 202) — the member's next week, walked without end", () => {
+  const FEB_3 = new Date("2027-02-03T17:00:00.000Z");
+  const FIRST_WEEK = "2027-01-03";
+  const FEB_7 = "2027-02-07";
+  const FEB_14 = "2027-02-14";
+  const FEB_21 = "2027-02-21";
+  const sundaysFrom = (first: string, count: number): string[] => Array.from({ length: count }, (_, i) => addDays(first, i * 7));
+
+  /** The first `count` weeks of `weeks`, reading no more of it. */
+  const take = (weeks: Iterable<AdminWeek>, count: number): AdminWeek[] => {
+    const taken: AdminWeek[] = [];
+    for (const week of weeks) {
+      taken.push(week);
+      if (taken.length === count) break;
+    }
+    return taken;
+  };
+
+  it("AC1: weeksFrom starts where upcomingWeeks does, and its first 12 weeks are upcomingWeeks' 12, a closed and a moved week built alike", () => {
+    const changed = [closed(FEB_14), moved(FEB_21, "2027-02-20", FEB_21)];
+    expect(take(weeksFrom(product(), FEB_3, changed), 12)).toEqual(upcomingWeeks(product(), FEB_3, changed));
+  });
+
+  it("AC1: weeksFrom goes on past the 12th, each week built as upcomingWeeks builds it: the 13th to the 24th, and the 60th, closed", () => {
+    const sundays = sundaysFrom(FEB_7, 60);
+    const sixtieth = sundays[59] ?? "";
+    const changed = [closed(sundays[12] ?? ""), closed(sixtieth)];
+    const walked = take(weeksFrom(product(), FEB_3, changed), 60);
+    expect(walked.map((week) => week.weekOf)).toEqual(sundays);
+    expect(walked.slice(12, 24)).toEqual(upcomingWeeks(product(), FEB_3, changed, sundays[12]));
+    expect(walked[59]).toEqual(upcomingWeeks(product(), FEB_3, changed, sixtieth)[0]);
+    expect(walked[59]?.closedAt).not.toBeNull();
+  });
+
+  it("AC1: with all 12 weeks a list would show closed, the next week is the 13th, May 2", () => {
+    const changed = sundaysFrom(FEB_7, 12).map(closed);
+    expect(nextPickup(weeksFrom(product(), FEB_3, changed), FIRST_WEEK)).toMatchObject({ weekOf: "2027-05-02" });
+  });
+
+  it("AC1: the current week is next though its cutoff has passed: its pickup is still to come", () => {
+    expect(nextPickup(weeksFrom(product(), FEB_3, []), FIRST_WEEK)).toMatchObject({ weekOf: FEB_7 });
+  });
+
+  it("AC1: a skipped week is passed over to the week after", () => {
+    expect(nextPickup(weeksFrom(product(), FEB_3, []), FIRST_WEEK, null, { skipped: [FEB_7] })).toMatchObject({ weekOf: FEB_14 });
+  });
+
+  it("AC1: skipped and closed weeks together are passed over: February 7 skipped and February 14 closed give February 21", () => {
+    expect(nextPickup(weeksFrom(product(), FEB_3, [closed(FEB_14)]), FIRST_WEEK, null, { skipped: [FEB_7] })).toMatchObject({ weekOf: FEB_21 });
+  });
+
+  it("AC1: a declined week is not locked: the first week not closed or skipped, it is next", () => {
+    expect(nextPickup(weeksFrom(product(), FEB_3, []), FIRST_WEEK, FEB_14, { skipped: [FEB_7] })).toMatchObject({ weekOf: FEB_14 });
+  });
+
+  it("AC3 (issue 202): with cutoffAhead, a week whose cutoff has passed is passed over: February 14, the first whose cutoff is ahead", () => {
+    expect(nextPickup(weeksFrom(product(), FEB_3, []), FIRST_WEEK, null, { cutoffAhead: true })).toMatchObject({ weekOf: FEB_14 });
+  });
+
+  it("AC1: over an endless walk it stops at the first week after lockedOn: null, and no week past that one is read", () => {
+    let read = 0;
+    // Every week closed, so only the stop after lockedOn ends the walk; a walk that does not stop is cut off ten years on.
+    function* endless(): Generator<AdminWeek> {
+      for (const weekOf of sundaysFrom(FEB_7, 520)) {
+        read++;
+        yield {
+          ...pickupWeek(weekOf, null),
+          cutoff: new Date(`${weekOf}T05:00:00.000Z`),
+          closedAt: new Date("2027-01-25T15:00:00.000Z"),
+          note: null,
+          moved: false,
+          cutoffPassed: false,
+          canReopen: true,
+        };
+      }
+    }
+    expect(nextPickup(endless(), FIRST_WEEK, FEB_21)).toBeNull();
+    // February 7, 14 and 21, then February 28, the first week after lockedOn.
+    expect(read).toBe(4);
   });
 });
 

@@ -53,7 +53,6 @@ vi.mock("../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("
 const NOW = new Date("2027-02-03T17:00:00.000Z");
 const FEB_7 = "2027-02-07";
 const FEB_14 = "2027-02-14";
-const LISTED = Array.from({ length: 12 }, (_, i) => new Date(Date.parse(`${FEB_7}T00:00:00Z`) + i * 7 * 86_400_000).toISOString().slice(0, 10));
 const DAY = 24 * 60 * 60_000;
 
 const t = createTranslator("en");
@@ -233,15 +232,22 @@ describe("AC3b (issue 136) — the next pickup", () => {
     expect(text).not.toContain(titleOf(FEB_7));
   });
 
-  it("AC3b: when every listed week is closed, neither the next-pickup line nor the where line is shown; the rest of the card is", async () => {
-    for (const weekOf of LISTED) await close(weekOf);
+});
+
+// Issue 202: which week is next, skips and the walk past any list included, is nextPickup's and weeksFrom's
+// (src/pickup-week.test.ts); here one skipped week goes through loadNextPickup and the page.
+describe("AC2 (issue 202) — the next pickup passes over a skipped week", () => {
+  it("AC2: with February 7 skipped, Next pickup and the where line name February 14", async () => {
     const member = await ada();
-    await subscribed(member);
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    await services.repo.skipWeek(rows.subscriptionId, FEB_7);
     signIn(member);
-    const { text } = await render();
-    expect(text).toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
-    for (const weekOf of LISTED) expect(text).not.toContain(titleOf(weekOf));
-    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
+    const { html, text } = await render();
+    const next = t("account.nextPickup", { week: titleOf(FEB_14) });
+    const where = en["supperClub.box.pickupWhere"];
+    expect(inOrder(html, [next, where])).toEqual([next, where]);
+    expect(text).not.toContain(titleOf(FEB_7));
   });
 });
 
