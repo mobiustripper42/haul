@@ -1,16 +1,16 @@
 // The Terms of Service, the stand-in text as issue 63 edits it (docs/sources/2026-11-06-*-stand-in.md). One string, one
 // document, so task 1.11 translates it whole. A line starting "## " is a heading, "- " a bullet; parseLegalDocument
-// in src/legal-documents.ts reads it. Its brackets stay until the final copy is approved (issue 62).
+// in src/legal-documents.ts reads it. Its brackets were filled in issue 187.
 export const legalTermsEn = `## About these terms
 
-These terms cover your use of the OCF Member Portal at members.ohiocityfarm.com and your Supper Club, CSA and delivery purchases through it. The portal is run by Ohio City Farm, a program of [LEGAL NAME OF RE:SOURCE CLEVELAND], a nonprofit organization ("OCF," "we," "us"). By subscribing or making a purchase, you agree to these terms and to our Privacy Policy.
+These terms cover your use of the OCF Member Portal at members.ohiocityfarm.com and your Supper Club, CSA and delivery purchases through it. The portal is run by Ohio City Farm, a program of Re:Source Cleveland, a nonprofit organization ("OCF," "we," "us"). By subscribing or making a purchase, you agree to these terms and to our Privacy Policy.
 
 ## Your account
 
 - You need an account to buy a subscription or share. Give us accurate contact details and keep them current.
 - You sign in with a one-time code sent to your email. Keep your email account secure, because anyone who can read your email can sign in as you.
 - You must be 18 or older to create an account and make purchases.
-- Tell us right away at [CONTACT EMAIL] if you think someone else has used your account.
+- Tell us right away at info@resourcecleveland.org if you think someone else has used your account.
 
 ## Supper Club subscription
 
@@ -53,7 +53,7 @@ The farm is closed some weeks, such as around holidays. We don't charge for a cl
 
 - Payments are processed by Square. By paying, you authorize us to charge your card for the amounts described in these terms. No sales tax is charged on Supper Club meals or CSA shares.
 - If a weekly charge is declined, we will still prepare your meal and email you to update your card. When you add a working card, we charge it for the weeks that were missed. If a charge stays unpaid, we may cancel your subscription.
-- Supper Club charges are not refunded once the cutoff has passed. If we close a week after its cutoff and you cancel before using the free week, we refund that week. If you think you were charged in error, contact us at [CONTACT EMAIL] and we will review it and refund any charge made in error.
+- Supper Club charges are not refunded once the cutoff has passed. If we close a week after its cutoff and you cancel before using the free week, we refund that week. If you think you were charged in error, contact us at info@resourcecleveland.org and we will review it and refund any charge made in error.
 
 ## Using the portal
 
@@ -75,4 +75,4 @@ These terms are governed by the laws of the State of Ohio. Any dispute will be h
 
 ## Contact us
 
-Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Email: [CONTACT EMAIL]`;
+Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Email: info@resourcecleveland.org`;

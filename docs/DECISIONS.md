@@ -57,6 +57,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-015 — UI strings are translated in the core, without an i18n library
 - DEC-020 — Styling is Tailwind v4, its theme rebuilt from the design's tokens
 - DEC-024 — Every look a screen uses is one component, and lint refuses a hand-built copy
+- DEC-043 — Screens are English; emails follow the member's language
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a

@@ -1,5 +1,5 @@
 // Issue 101, AC1: every page route's `document.title` is its screen's heading, then " · Ohio City Farm",
-// translated. `titled` owns the shape and the language; every `page.tsx` under app/ is found and read here
+// translated. `titled` owns the shape; every `page.tsx` under app/ is found and read here
 // for a title in that shape (issue 121). Which heading a page names is its own one line, not tested.
 import { readdirSync } from "node:fs";
 import { join, relative, sep } from "node:path";
@@ -38,25 +38,20 @@ beforeEach(() => {
   request.current = emptyRequest();
 });
 
-// A key whose Spanish differs from its English, so the title is seen following the language.
-const SPANISH_KEY = "language.label";
+// A key whose Spanish differs from its English, so a Spanish title would be seen.
+const SPANISH_KEY = "createAccount.title";
 
 describe("AC1 — titled", () => {
   it('AC1: titled(key) resolves to { title: "<heading> · Ohio City Farm" }', async () => {
     expect(await titled("signIn.codeTitle")()).toEqual({ title: `${en["signIn.codeTitle"]} · Ohio City Farm` });
   });
 
-  it("AC1: the title is in the request's language: with the lang cookie es, the Spanish heading", async () => {
+  // Issue 187: screens are English, so the title is too; getLanguage's cases are app/language.test.ts's.
+  it("AC1: the title is English whatever the cookie or header: with the lang cookie es and an Accept-Language of es, the English heading", async () => {
+    expect(es[SPANISH_KEY]).not.toBe(en[SPANISH_KEY]);
     request.current.cookies = { lang: "es" };
-    expect(await titled(SPANISH_KEY)()).toEqual({ title: `${es[SPANISH_KEY]} · Ohio City Farm` });
-  });
-
-  it("AC1: the language is read per request, not when titled is called", async () => {
-    const title = titled(SPANISH_KEY);
-    request.current.cookies = { lang: "es" };
-    expect(await title()).toEqual({ title: `${es[SPANISH_KEY]} · Ohio City Farm` });
-    request.current.cookies = { lang: "en" };
-    expect(await title()).toEqual({ title: `${en[SPANISH_KEY]} · Ohio City Farm` });
+    request.current.headers = { "accept-language": "es-MX,es;q=0.9" };
+    expect(await titled(SPANISH_KEY)()).toEqual({ title: `${en[SPANISH_KEY]} · Ohio City Farm` });
   });
 });
 

@@ -1,15 +1,15 @@
 // The Terms of Service in Spanish: a machine translation, unreviewed, of the English stand-in (legal-terms.en.ts),
-// in its format. Its brackets stay in English, as in the original, until the final copy is approved (issue 62).
+// in its format. Its brackets were filled in issue 187.
 export const legalTermsEs = `## Acerca de estos términos
 
-Estos términos cubren el uso que usted hace del OCF Member Portal en members.ohiocityfarm.com y sus compras del Supper Club, de la CSA y de entrega a domicilio a través del portal. El portal está a cargo de Ohio City Farm, un programa de [LEGAL NAME OF RE:SOURCE CLEVELAND], una organización sin fines de lucro (“OCF”, “nosotros”, “nos”). Al suscribirse o hacer una compra, usted acepta estos términos y nuestra Política de privacidad.
+Estos términos cubren el uso que usted hace del OCF Member Portal en members.ohiocityfarm.com y sus compras del Supper Club, de la CSA y de entrega a domicilio a través del portal. El portal está a cargo de Ohio City Farm, un programa de Re:Source Cleveland, una organización sin fines de lucro (“OCF”, “nosotros”, “nos”). Al suscribirse o hacer una compra, usted acepta estos términos y nuestra Política de privacidad.
 
 ## Su cuenta
 
 - Necesita una cuenta para comprar una suscripción o una porción. Denos datos de contacto exactos y manténgalos al día.
 - Usted inicia sesión con un código de un solo uso que se envía a su correo electrónico. Mantenga segura su cuenta de correo, porque cualquier persona que pueda leer su correo puede iniciar sesión como usted.
 - Debe tener 18 años o más para crear una cuenta y hacer compras.
-- Avísenos de inmediato a [CONTACT EMAIL] si cree que otra persona ha usado su cuenta.
+- Avísenos de inmediato a info@resourcecleveland.org si cree que otra persona ha usado su cuenta.
 
 ## Suscripción al Supper Club
 
@@ -52,7 +52,7 @@ La granja cierra algunas semanas, por ejemplo en torno a los días festivos. No 
 
 - Los pagos los procesa Square. Al pagar, usted nos autoriza a cobrar a su tarjeta los montos descritos en estos términos. No se cobra impuesto sobre las ventas en las comidas del Supper Club ni en las porciones de la CSA.
 - Si un cobro semanal es rechazado, de todos modos prepararemos su comida y le enviaremos un correo electrónico para que actualice su tarjeta. Cuando agregue una tarjeta que funcione, le cobraremos las semanas que se omitieron. Si un cobro sigue sin pagarse, podemos cancelar su suscripción.
-- Los cobros del Supper Club no se reembolsan una vez que ha pasado la fecha límite. Si cerramos una semana después de su fecha límite y usted cancela antes de usar la semana gratis, le reembolsamos esa semana. Si cree que se le cobró por error, contáctenos a [CONTACT EMAIL]; lo revisaremos y reembolsaremos cualquier cobro hecho por error.
+- Los cobros del Supper Club no se reembolsan una vez que ha pasado la fecha límite. Si cerramos una semana después de su fecha límite y usted cancela antes de usar la semana gratis, le reembolsamos esa semana. Si cree que se le cobró por error, contáctenos a info@resourcecleveland.org; lo revisaremos y reembolsaremos cualquier cobro hecho por error.
 
 ## Uso del portal
 
@@ -74,4 +74,4 @@ Estos términos se rigen por las leyes del Estado de Ohio. Cualquier disputa se 
 
 ## Contáctenos
 
-Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Correo electrónico: [CONTACT EMAIL]`;
+Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Correo electrónico: info@resourcecleveland.org`;

@@ -1,6 +1,6 @@
 // The Privacy Policy in Spanish: a machine translation, unreviewed, of the English stand-in (legal-privacy.en.ts),
-// in its format. Its brackets stay in English, as in the original, until the final copy is approved (issue 62).
-export const legalPrivacyEs = `Esta política explica qué información recopila el OCF Member Portal en members.ohiocityfarm.com y cómo la usamos. El portal está a cargo de Ohio City Farm, un programa de [LEGAL NAME OF RE:SOURCE CLEVELAND], una organización sin fines de lucro (“OCF”, “nosotros”, “nos”). Recopilamos solo lo que necesitamos para administrar su suscripción o su porción, y nunca vendemos su información.
+// in its format. Its brackets were filled in issue 187.
+export const legalPrivacyEs = `Esta política explica qué información recopila el OCF Member Portal en members.ohiocityfarm.com y cómo la usamos. El portal está a cargo de Ohio City Farm, un programa de Re:Source Cleveland, una organización sin fines de lucro (“OCF”, “nosotros”, “nos”). Recopilamos solo lo que necesitamos para administrar su suscripción o su porción, y nunca vendemos su información.
 
 ## Qué recopilamos
 
@@ -50,7 +50,7 @@ El portal es para adultos. No recopilamos a sabiendas información de menores de
 ## Sus opciones
 
 - Puede ver y actualizar sus datos de contacto, su tarjeta y su idioma en su cuenta en cualquier momento.
-- Puede pedirnos una copia de su información, o pedirnos que la corrijamos o la eliminemos, escribiendo a [CONTACT EMAIL]. Eliminaremos lo que podamos y le diremos qué conservamos, como los registros de pagos.
+- Puede pedirnos una copia de su información, o pedirnos que la corrijamos o la eliminemos, escribiendo a info@resourcecleveland.org. Eliminaremos lo que podamos y le diremos qué conservamos, como los registros de pagos.
 - Si cancela, su cuenta permanece para que pueda volver a inscribirse. Pídanos que la cerremos si así lo desea.
 
 ## Cambios a esta política
@@ -59,4 +59,4 @@ Podemos actualizar esta política de vez en cuando. Si hacemos un cambio importa
 
 ## Contáctenos
 
-Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Correo electrónico: [CONTACT EMAIL]`;
+Ohio City Farm, 2304 Bridge Ave, Cleveland, OH 44113 Correo electrónico: info@resourcecleveland.org`;

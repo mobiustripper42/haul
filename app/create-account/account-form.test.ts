@@ -222,6 +222,29 @@ describe("AC4 — the fields refill from the draft cookie only when error is pre
   });
 });
 
+// Issue 187: "Language for emails" starts from the browser's language, not the screen's, which is always
+// English. Its cases are getEmailLanguageDefault's (app/language.test.ts); here one accepted and one
+// refused case go through the form, and the refill after an error is seen to win over it.
+describe("AC4 (issue 187) — the language select's starting option", () => {
+  it("AC4: with an Accept-Language of es and no lang cookie, the select starts on Spanish", async () => {
+    request.current.headers = { "accept-language": "es-MX,es;q=0.9" };
+    expect(selectedLanguages((await render()).html)).toEqual(["es"]);
+  });
+
+  it("AC4: with a lang cookie of es and no Accept-Language, the select starts on English: the cookie has no effect", async () => {
+    request.current.cookies = { lang: "es" };
+    expect(selectedLanguages((await render()).html)).toEqual(["en"]);
+  });
+});
+
+describe("AC5 (issue 187) — after a validation error the select keeps the chosen language", () => {
+  it("AC5: with English chosen and an Accept-Language of es, the redisplayed select is on English", async () => {
+    request.current.cookies = { [ACCOUNT_DRAFT_COOKIE]: JSON.stringify({ ...ENTERED, language: "en" }) };
+    request.current.headers = { "accept-language": "es-MX,es;q=0.9" };
+    expect(selectedLanguages((await render({ error: "email" })).html)).toEqual(["en"]);
+  });
+});
+
 describe("AC10, AC12 — the notices", () => {
   const icons = (element: unknown) => findAll(element as never, Notice).map((notice) => notice.props.icon);
 
