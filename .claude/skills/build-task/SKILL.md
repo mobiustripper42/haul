@@ -105,8 +105,10 @@ recommendation.
 thing, it is deleted: a `[code]` line citing the criterion or Removes entry that takes the
 behaviour away. When the behaviour survives under what replaces it, it is retargeted: a `[code]`
 line naming the replacement. When the spec does not say whether the behaviour survives, sort it as
-a `[you]` item above, with your recommendation. A removal changes what that test checks, not what
-a criterion does, so it earns no second round on its own.
+a `[you]` item above, with your recommendation. A test that asserts a copy key's text is deleted
+even when the screen survives; one that only reads the key to locate a control is retargeted to the
+new key. A removal changes what that test checks, not what a criterion does, so it earns no second
+round on its own.
 
 Keep every `[code]` and `[Lead]` line, word for word, for the pull request body (Step 6).
 

@@ -46,7 +46,7 @@ Every line in the sections below carries its source:
      check — on a device, by eye — with `(by hand)`: it gets no test and is checked at the
      hand-back.
      A criterion names behaviour — which branch, which value, which count, which email to whom —
-     and never quotes wording; the words live in Wording. Its "then" is something a test can check
+     and never quotes wording, `(by hand)` ones included; the words live in Wording. Its "then" is something a test can check
      without reading a sentence: a URL, a row, a returned value, a field or control that appears, a
      value (a date, an amount, a count) that reaches the page. Never "shows <a heading>". A branch
      that changes only how the screen reads or looks names the function that picks the state. An

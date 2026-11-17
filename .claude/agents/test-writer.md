@@ -60,8 +60,9 @@ section is not filtered by what could fail one.
 The reuse check has a second kind of finding: a style, a piece of markup, a rule or a value that the
 spec describes in more than one place — two criteria, a criterion and the Screen section, two
 elements on one screen, two screens — that a builder would write as separate code each time, with
-no one shared home named for it in Interfaces (a CSS class, component, function or constant). A search of the code cannot
-find this copy, because it does not exist yet: the builder writes it twice, and every test passes.
+no one shared home named for it in Interfaces (a CSS class, component, function or constant). A
+search of the code cannot find this copy, because it does not exist yet: the builder writes it
+twice, and every test passes.
 Report each one with the places that describe it. Skip one whose places already point at a single
 named home. The test-side form of this finding is a rule the criteria ask to be checked at more
 than one layer — the same boundary at the function, the action and the page. Report it with the
@@ -78,11 +79,13 @@ locked before that happens — which is why this section is not filtered by what
 
 **A criterion that quotes or names wording** — quotes a heading, a notice, a sentence, an email's
 subject or text, or names one ("shows the confirmation message", "sees the sold-out notice") — is a
-question, whatever else it says, `(by hand)` excluded: its words belong in Wording, and the
+question, whatever else it says, `(by hand)` included: its words belong in Wording, and the
 criterion names the behaviour behind them (which branch, which value, which count, which email to
 whom). A criterion whose only content is wording is a question too: it becomes a Wording line and a
 hand-back check, or the behaviour it stands for. Report each under Questions with the criterion's
-id.
+id. Two more are questions at readback rather than stops in write mode: a branch that changes only
+how the screen reads or looks with no function named that picks the state, and two emails only
+their subject tells apart (both rules are under What a test asserts).
 
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
@@ -129,7 +132,8 @@ What to report:
    today. Never work around either.
 8. Edit the existing tests Interfaces lists under Removes, and no other existing test. Each line
    says what happens to its test: deleted, or retargeted to what replaces the removed thing. A
-   test that asserts a copy key's text is deleted, never retargeted to the new key's text. List
+   test that asserts a copy key's text is deleted, never retargeted to the new key's text; one that
+   only reads the key to locate a control is retargeted to the new key. List
    every such file under Files. A retargeted test keeps its name and needs no criterion id, and
    item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
    the stubs. Report it under Against the stubs as `retargeted: <replacement>`. An existing test
@@ -156,7 +160,8 @@ asserting it is a question — stop and return it.
   count, never by its name being visible), a value (a date, an amount, a count) that reaches the
   page. Not fixed text, whether typed or read from the catalog: a sentence the code always renders
   for a state is the line that renders it, said again. An accessible name may locate a control to
-  click or fill. Not CSS classes, element nesting, call order on an internal, or a file's source text —
+  click or fill. Not CSS classes, element nesting, call order on an internal, or a file's source
+  text —
   unless a criterion names the class, nesting or attribute (an accessibility attribute, say). A
   shared class named under Interfaces is not asserted: `@code-review` and `@ui-reviewer` check
   that it is used.
