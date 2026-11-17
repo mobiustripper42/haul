@@ -52,4 +52,4 @@ Lint already enforces tokens, contrast pairs, translated strings and the compone
 - **Voice:** short sentences, plain words, the farm's names for its things, no idioms, exclamation marks, emoji or urgency; an error says what to do next (BRAND.md:13-20).
 - **A hand-built copy of a component**, as above.
 
-Wording that differs from the mockup is not a finding: the spec owns the words, and the design's wording is never used.
+Wording that differs from the mockup is not a finding: the task's spec — the `## Wording` section of its issue body, from `.claude/skills/build-task/task-spec.md`, not `docs/SPEC.md` — owns the words, and the design's wording is never used.

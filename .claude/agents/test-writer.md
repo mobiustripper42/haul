@@ -19,6 +19,9 @@ Read before anything else:
 - `.claude/CLAUDE-context.md` — the `Proof` and `Proof command` slots, and `## Conventions`
 - Existing tests near the files named in Interfaces — match their location, naming and helpers
 
+The spec's Wording section is the builder's copy, approved by the operator and checked by a person
+at the hand-back. It is not a requirement for tests: nothing in it is asserted.
+
 ## Mode: readback
 
 Write nothing. Check the spec against the code and return:
@@ -57,8 +60,7 @@ section is not filtered by what could fail one.
 The reuse check has a second kind of finding: a style, a piece of markup, a rule or a value that the
 spec describes in more than one place — two criteria, a criterion and the Screen section, two
 elements on one screen, two screens — that a builder would write as separate code each time, with
-no one shared home named for it in Interfaces (a CSS class, component, function or constant). A
-criterion that only restates the Screen section's wording is not one. A search of the code cannot
+no one shared home named for it in Interfaces (a CSS class, component, function or constant). A search of the code cannot
 find this copy, because it does not exist yet: the builder writes it twice, and every test passes.
 Report each one with the places that describe it. Skip one whose places already point at a single
 named home. The test-side form of this finding is a rule the criteria ask to be checked at more
@@ -74,10 +76,19 @@ so the operator can see it was searched. A use the Removes line already lists is
 again. A test that uses a removed thing passes today and fails once the code is gone, and a test is
 locked before that happens — which is why this section is not filtered by what could fail one.
 
+**A criterion that quotes or names wording** — quotes a heading, a notice, a sentence, an email's
+subject or text, or names one ("shows the confirmation message", "sees the sold-out notice") — is a
+question, whatever else it says, `(by hand)` excluded: its words belong in Wording, and the
+criterion names the behaviour behind them (which branch, which value, which count, which email to
+whom). A criterion whose only content is wording is a question too: it becomes a Wording line and a
+hand-back check, or the behaviour it stands for. Report each under Questions with the criterion's
+id.
+
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
   other way and fail your test. One the spec already permits, where either choice would pass, is
-  not worth the operator's time. The interface, reuse and removal checks are not filtered.
+  not worth the operator's time. The interface, reuse and removal checks, and a criterion that
+  quotes or names wording, are not filtered.
 - **Not hand checks.** Skip any acceptance criterion marked `(by hand)`. The `Proof` slot cannot
   test it, so there is nothing here to read back. The reuse check is the exception: a `(by hand)`
   criterion still counts as a place that describes something.
@@ -117,7 +128,8 @@ What to report:
    its implementation and gets no stub: the test calls the new shape and fails on what the code does
    today. Never work around either.
 8. Edit the existing tests Interfaces lists under Removes, and no other existing test. Each line
-   says what happens to its test: deleted, or retargeted to what replaces the removed thing. List
+   says what happens to its test: deleted, or retargeted to what replaces the removed thing. A
+   test that asserts a copy key's text is deleted, never retargeted to the new key's text. List
    every such file under Files. A retargeted test keeps its name and needs no criterion id, and
    item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
    the stubs. Report it under Against the stubs as `retargeted: <replacement>`. An existing test
@@ -136,20 +148,25 @@ What to report:
 **What a test asserts.** A test that breaks when nothing a user or caller can see has changed is
 a cost with no catch. These rules govern what you add on your own judgement. A criterion that
 asks for a test still gets it, because the spec is the requirement; readback is where a
-duplicate gets raised.
+duplicate gets raised. The exception is fixed text: a criterion that could only be tested by
+asserting it is a question — stop and return it.
 
-- **Behaviour, not structure.** Assert what a caller gets back, what a page shows, what a row
-  holds. Not CSS classes, element nesting, call order on an internal, or a file's source text —
+- **Behaviour, not structure.** Assert what a caller gets back, what a row holds, what state the
+  user ends up in — a URL, a field or control that appears (shown by using it, or by its role and
+  count, never by its name being visible), a value (a date, an amount, a count) that reaches the
+  page. Not fixed text, whether typed or read from the catalog: a sentence the code always renders
+  for a state is the line that renders it, said again. An accessible name may locate a control to
+  click or fill. Not CSS classes, element nesting, call order on an internal, or a file's source text —
   unless a criterion names the class, nesting or attribute (an accessibility attribute, say). A
   shared class named under Interfaces is not asserted: `@code-review` and `@ui-reviewer` check
   that it is used.
-- **Copy from the catalog.** When `## Conventions` names where the project's user-facing text
-  lives, a test of existing copy reads the expected text from there instead of typing the
-  English, so a wording change breaks only a test about that wording. Copy this task adds is the
-  exception: its entry does not exist yet and a stubbed key is empty, so a test reading it would
-  pass against anything. Assert that wording literally, once, in the test of the criterion that
-  introduces it. With no such line in `## Conventions`, type the wording and say so under
-  Coverage.
+- **A branch is tested where it is decided.** When a state changes only how the screen reads or
+  looks — its words, its colour — the function that picks the state gets the unit test, and the
+  page is not asserted on the words or the styling. When no such function is named in
+  Interfaces, stop and report it rather than testing the page's text.
+- **An email is told apart by its recipient, its count and the values it carries** — a link, a
+  code, an amount, a date — never by its subject or its sentences. When only the subject tells two
+  emails apart, stop and report it: the spec names a kind on the message, or the criterion changes.
 - **One rule, one layer.** Test a rule's edge cases once, at the layer that owns it. A layer that
   uses the rule gets one accepted and one rejected case through it, not the edge cases again; its
   own logic — what it does with the answer, its errors — is tested as usual. When the owning
