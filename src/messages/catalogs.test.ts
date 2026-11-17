@@ -12,10 +12,10 @@ const KEYS = Object.keys(en) as MessageKey[];
 const spanish: Catalogs<MessageKey>["es"] = es;
 const spanishOf = (key: MessageKey): string => spanish[key] ?? "";
 
-/** The keys whose English and Spanish differ by `of`, each with both sides, so a failure names them. */
+/** The keys es.ts has whose English and Spanish differ by `of`, each with both sides, so a failure names them. */
 function differences(of: (text: string) => string[]): Record<string, { en: string[]; es: string[] }> {
   const found: Record<string, { en: string[]; es: string[] }> = {};
-  for (const key of KEYS) {
+  for (const key of KEYS.filter((key) => Object.hasOwn(es, key))) {
     const english = of(en[key]);
     const translated = of(spanishOf(key));
     if (JSON.stringify(english) !== JSON.stringify(translated)) found[key] = { en: english, es: translated };
@@ -30,11 +30,11 @@ const placeholders = (text: string): string[] =>
 /** The bracketed fill-ins in `text`, `[CONTACT EMAIL]` and the like, as many times as each appears, sorted. */
 const fillIns = (text: string): string[] => Array.from(text.matchAll(/\[[^\]\n]*\]/g), (match) => match[0]).sort();
 
-describe("AC1 — the same keys", () => {
-  it("AC1: es.ts has every key en.ts has, and none it lacks", () => {
-    const missing = KEYS.filter((key) => !Object.hasOwn(es, key));
+// DEC-044: es.ts may lack a key, which then renders in English; it never holds one en.ts lacks.
+describe("AC1 — no stray keys", () => {
+  it("AC1: es.ts has no key en.ts lacks", () => {
     const extra = Object.keys(es).filter((key) => !Object.hasOwn(en, key));
-    expect({ missing, extra }).toEqual({ missing: [], extra: [] });
+    expect(extra).toEqual([]);
   });
 });
 
