@@ -1,23 +1,14 @@
-// Issue 63: parseLegalDocument and the two paths, and the two catalog texts against the stand-in documents.
-// src/legal-text-test-helpers.ts works those out from docs/sources/ and the issue's edits, so the parsed
-// blocks here are held to the source and not to a copy of it. How the blocks look is app/legal-page.test.ts.
+// Issue 63: parseLegalDocument and the two paths, and where the two catalog texts live. No test reads
+// docs/sources/ (issue 187): the legal text is the catalog's, and a change to it is a catalog edit alone.
+// How the blocks look is app/legal-page.test.ts.
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { type LegalBlock, PRIVACY_PATH, TERMS_PATH, parseLegalDocument } from "./legal-documents.js";
-import { PRIVACY_LINES, TERMS_LINES } from "./legal-text-test-helpers.js";
 import { en } from "./messages/en.js";
 
 const heading = (text: string): LegalBlock => ({ kind: "heading", text });
 const paragraph = (text: string): LegalBlock => ({ kind: "paragraph", text });
 const list = (...items: string[]): LegalBlock => ({ kind: "list", items });
-
-/** The blocks back as document lines, markers and all, so the blank lines between them do not count. */
-const asLines = (blocks: LegalBlock[]): string[] =>
-  blocks.flatMap((block) => {
-    if (block.kind === "heading") return [`## ${block.text}`];
-    if (block.kind === "list") return block.items.map((item) => `- ${item}`);
-    return [block.text];
-  });
 
 describe("AC1 — parseLegalDocument", () => {
   it('AC1: a line starting "## " is a heading, without its marker', () => {
@@ -59,15 +50,7 @@ describe("AC1 — parseLegalDocument", () => {
   });
 });
 
-describe("AC3 — the catalog's two texts are the stand-in documents, with every edit and nothing else", () => {
-  it("AC3: legal.terms.text is the Terms of Service as edited, line for line", () => {
-    expect(asLines(parseLegalDocument(en["legal.terms.text"]))).toEqual(TERMS_LINES);
-  });
-
-  it("AC3: legal.privacy.text is the Privacy Policy as edited, line for line", () => {
-    expect(asLines(parseLegalDocument(en["legal.privacy.text"]))).toEqual(PRIVACY_LINES);
-  });
-
+describe("AC3 — each legal text is its own file, imported into the catalog", () => {
   it.each(["legal-terms", "legal-privacy"])("AC3: %s.en.ts is its own file, imported into the English catalog", (name) => {
     const catalog = readFileSync(new URL("./messages/en.ts", import.meta.url), "utf8");
     expect(catalog).toMatch(new RegExp(`from "\\./${name}\\.en\\.js"`));

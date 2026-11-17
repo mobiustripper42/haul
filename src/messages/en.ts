@@ -3,7 +3,6 @@ import { legalTermsEn } from "./legal-terms.en.js";
 
 // English is the source catalog: every key exists here, and other languages may lack some.
 export const en = {
-  "language.label": "Language",
   "brand.name": "Ohio City Farm",
   "brand.byline": "by Re:Source Cleveland",
   "brand.address": "Ohio City Farm · 2304 Bridge Ave, Cleveland, OH",
@@ -70,7 +69,7 @@ export const en = {
     "Mujadara rice and lentils with onions · Roasted squash · Shredded carrot and walnut salad with sumac · Butternut squash soup",
   "supperClub.sampleVegan": "Vegan: Lebanese chickpea moussaka in place of the chicken.",
   "supperClub.pickupWhen": "Pick up Sunday or Monday",
-  "supperClub.pickupWhere": "at the farm store, 2304 Bridge Ave. Hours: [PICKUP HOURS].",
+  "supperClub.pickupWhere": "at the farm store, 2304 Bridge Ave. Hours: Sundays 10am–4pm, Mondays noon–6pm.",
   "supperClub.joinTitle": "Join the Supper Club",
   "supperClub.pickerLegend": "{n}. {name}?",
   "supperClub.price": "{price} a week",
@@ -162,7 +161,7 @@ export const en = {
   "email.legalPrivacy": "Privacy: {url}",
   "legal.terms.title": "Terms of service",
   "legal.privacy.title": "Privacy policy",
-  "legal.lastUpdated": "Last updated [DATE]",
+  "legal.lastUpdated": "Last updated November 1, 2026",
   "legal.terms.text": legalTermsEn,
   "legal.privacy.text": legalPrivacyEn,
 } as const satisfies Record<string, string>;

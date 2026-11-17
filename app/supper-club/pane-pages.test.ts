@@ -14,7 +14,6 @@ import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Notice } from "../../components/ui/notice";
-import { setLanguage } from "../language-actions";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, findAll, redirectOf, textsOf } from "../screen-test-helpers";
 import { limitedText } from "../sign-in/shared";
@@ -99,10 +98,7 @@ const buttonsInCard = (element: ReactNode) => findAll(findAll(element, Card).at(
 
 const buttonLabelled = (element: ReactNode, label: string) => buttonsInCard(element).find((button) => button.props.children === label);
 
-const formActions = (element: ReactNode) =>
-  findAll(element, "form")
-    .map((form) => form.props.action)
-    .filter((action) => action !== setLanguage);
+const formActions = (element: ReactNode) => findAll(element, "form").map((form) => form.props.action);
 
 describe.each(PANES)("$path", ({ path, Pane, actions }) => {
   it(`AC3: ${path} puts its card in the Join card's place, at the pane's width`, async () => {

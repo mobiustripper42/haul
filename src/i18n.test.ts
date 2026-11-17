@@ -1,30 +1,15 @@
 import { describe, expect, it } from "vitest";
-import { LANGUAGES, MissingValueError, pluralKey, resolveLanguage, translate, type Catalogs } from "./i18n.js";
+import { LANGUAGES, MissingValueError, pluralKey, preferredLanguage, translate, type Catalogs } from "./i18n.js";
 
-describe("AC1 — resolveLanguage: cookie, then Accept-Language, then English", () => {
+// Issue 187: the cookie is gone, so what was resolveLanguage is preferredLanguage, the Accept-Language parsing
+// alone. It owns the header's edge cases; app/language.test.ts's getEmailLanguageDefault checks one case through it.
+describe("AC1 — preferredLanguage: Accept-Language, then English", () => {
   it.each([
-    [{ cookie: "es", acceptLanguage: "en-US" }, "es"],
-    [{ cookie: "en", acceptLanguage: "es-MX" }, "en"],
-    [{ acceptLanguage: "es-MX" }, "es"],
-    [{ cookie: null, acceptLanguage: "es-MX" }, "es"],
-    [{}, "en"],
-    [{ cookie: null, acceptLanguage: null }, "en"],
-  ] as const)("AC1: resolveLanguage(%j) → %j", (input, expected) => {
-    expect(resolveLanguage(input)).toBe(expected);
-  });
-});
-
-describe("AC2 — a cookie that is not a supported code exactly is ignored", () => {
-  it("AC2: an unsupported cookie falls through to Accept-Language", () => {
-    expect(resolveLanguage({ cookie: "fr", acceptLanguage: "es" })).toBe("es");
-  });
-
-  it.each(["fr", "", "ES", "es-MX"])("AC2: cookie %j alone → \"en\"", (cookie) => {
-    expect(resolveLanguage({ cookie })).toBe("en");
-  });
-
-  it.each(["fr", "", "ES", "es-MX", "EN"])("AC2: cookie %j with Accept-Language \"es\" falls through → \"es\"", (cookie) => {
-    expect(resolveLanguage({ cookie, acceptLanguage: "es" })).toBe("es");
+    ["es-MX", "es"],
+    [undefined, "en"],
+    [null, "en"],
+  ] as const)("AC1: preferredLanguage(%j) → %j", (input, expected) => {
+    expect(preferredLanguage(input)).toBe(expected);
   });
 });
 
@@ -49,7 +34,7 @@ describe("AC3 — Accept-Language: highest q among supported languages wins", ()
     [";;q=,", "en"],
     [";;q=,, es;q=0.3", "es"],
   ])("AC3: Accept-Language %j → %j", (acceptLanguage, expected) => {
-    expect(resolveLanguage({ acceptLanguage })).toBe(expected);
+    expect(preferredLanguage(acceptLanguage)).toBe(expected);
   });
 });
 

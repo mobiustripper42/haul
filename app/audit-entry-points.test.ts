@@ -1,6 +1,7 @@
 // Issue 71, AC12 and AC13: every server action and route handler in this repo is declared in
 // AUDIT_ENTRY_POINTS with the events it records, or a reason it records none. The checker's own
 // rules are proved on fixtures in src/audit-entry-points-check.test.ts; this runs it on the repo.
+import { existsSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { checkAuditEntryPoints, sourcesUnder, type AuditEntryPoints, type Finding } from "@core/audit-entry-points-check.js";
@@ -30,7 +31,7 @@ describe("AC12 — the check on the real repo", () => {
     const sources = { ...sourcesUnder(ROOT, "app"), ...sourcesUnder(ROOT, "src") };
     // The scan reached the entry files and their tests, so an empty result is not an empty scan.
     expect(Object.keys(sources)).toEqual(
-      expect.arrayContaining(["app/sign-in/actions.ts", "app/sign-in/actions.test.ts", "app/language-actions.ts", "app/dev/outbox/route.ts"]),
+      expect.arrayContaining(["app/sign-in/actions.ts", "app/sign-in/actions.test.ts", "app/dev/outbox/route.ts"]),
     );
 
     const findings = checkAuditEntryPoints({ entries: AUDIT_ENTRY_POINTS, kinds: AUDIT_EVENT_KINDS, sources });
@@ -40,14 +41,14 @@ describe("AC12 — the check on the real repo", () => {
 
 const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
 
-describe("AC13 — the list is exactly these sixteen entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these fifteen entries, and issue 56's two", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
       Object.entries(entries).map(([key, entry]) => [key, "records" in entry ? { records: [...entry.records].sort() } : entry]),
     );
 
-  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, setLanguage, the dev outbox's GET, the Supper Club continue route's GET and the members spreadsheet's GET (issue 59) with their reasons", () => {
+  it("AC13: AUDIT_ENTRY_POINTS holds exactly the three sign-in actions, the three Create Account actions and the five pane actions (issue 77) with their kinds, and signOut, the dev outbox's GET, the Supper Club continue route's GET and the members spreadsheet's GET (issue 59) with their reasons", () => {
     const entries = Object.fromEntries(Object.entries(AUDIT_ENTRY_POINTS).filter(([key]) => !ISSUE_56_ENTRIES.includes(key)));
     expect(normalized(entries)).toEqual(
       normalized({
@@ -55,7 +56,6 @@ describe("AC13 — the list is exactly these sixteen entries, and issue 56's two
         "app/sign-in/actions.ts#verifyCode": { records: ["sign_in_by_code", "lock"] },
         "app/sign-in/actions.ts#signInWithLink": { records: ["sign_in_by_link"] },
         "app/sign-in/actions.ts#signOut": { none: "ends the session; writes no data" },
-        "app/language-actions.ts#setLanguage": { none: "sets a cookie only" },
         "app/dev/outbox/route.ts#GET": { none: "dev only; reads" },
         "app/create-account/actions.ts#requestAccountCode": { records: ["rate_limit_refusal"] },
         "app/create-account/actions.ts#verifyAccountCode": { records: ["sign_in_by_code", "lock"] },
@@ -119,5 +119,16 @@ describe("issue 55 — the Create Account actions and the Supper Club route are 
 
   it('AC2: the continue route\'s GET is declared as { none: "sets a cookie only" }', () => {
     expect(AUDIT_ENTRY_POINTS["app/supper-club/continue/route.ts#GET"]).toEqual({ none: "sets a cookie only" });
+  });
+});
+
+// Issue 187, AC3: the language switch's action is gone with the switch, and so is its entry.
+describe("AC3 (issue 187) — the action that set the lang cookie no longer exists", () => {
+  it("AC3: app/language-actions.ts is not on disk", () => {
+    expect(existsSync(fileURLToPath(new URL("./language-actions.ts", import.meta.url)))).toBe(false);
+  });
+
+  it("AC3: no AUDIT_ENTRY_POINTS key names setLanguage", () => {
+    expect(Object.keys(AUDIT_ENTRY_POINTS).filter((key) => key.includes("setLanguage"))).toEqual([]);
   });
 });

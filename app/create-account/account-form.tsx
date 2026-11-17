@@ -14,7 +14,7 @@ import { Hint } from "../../components/ui/hint";
 import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
 import { Select } from "../../components/ui/select";
-import { getLanguage, getTranslator } from "../language";
+import { getEmailLanguageDefault, getLanguage, getTranslator } from "../language";
 import { ACCOUNT_DRAFT_COOKIE } from "../session";
 import { limitedMinutes, limitedText } from "../sign-in/shared";
 
@@ -57,7 +57,12 @@ export async function AccountForm({
   signInHref: string;
   back?: ReactNode;
 }) {
-  const [t, language, cookieStore] = await Promise.all([getTranslator(), getLanguage(), cookies()]);
+  const [t, language, emailDefault, cookieStore] = await Promise.all([
+    getTranslator(),
+    getLanguage(),
+    getEmailLanguageDefault(),
+    cookies(),
+  ]);
   const minutes = limitedMinutes(limited);
   // The form refills only after a failed request: `error` is present, whatever it names.
   const draft = error === undefined ? {} : readDraft(cookieStore.get(ACCOUNT_DRAFT_COOKIE)?.value);
@@ -137,7 +142,7 @@ export async function AccountForm({
             id="language"
             name="language"
             options={Object.entries(LANGUAGES).map(([code, { name }]) => ({ value: code, label: name }))}
-            defaultValue={isLanguage(draft.language) ? draft.language : language}
+            defaultValue={isLanguage(draft.language) ? draft.language : emailDefault}
           />
         </Field>
         <Button kind="primary" full type="submit">

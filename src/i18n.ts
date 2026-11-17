@@ -41,14 +41,9 @@ function fromAcceptLanguage(header: string): Language | null {
   return best?.language ?? null;
 }
 
-/** The cookie (the language last chosen with the switch), else `Accept-Language`, else English. */
-export function resolveLanguage(input: { cookie?: string | null; acceptLanguage?: string | null }): Language {
-  if (isLanguage(input.cookie)) return input.cookie;
-  if (input.acceptLanguage) {
-    const match = fromAcceptLanguage(input.acceptLanguage);
-    if (match) return match;
-  }
-  return DEFAULT_LANGUAGE;
+/** The best supported match in an `Accept-Language` header, else English. */
+export function preferredLanguage(acceptLanguage: string | null | undefined): Language {
+  return (acceptLanguage ? fromAcceptLanguage(acceptLanguage) : null) ?? DEFAULT_LANGUAGE;
 }
 
 export type Catalogs<K extends string> = { en: Readonly<Record<K, string>> } & {
