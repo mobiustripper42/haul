@@ -4,12 +4,11 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { en } from "@core/messages/en.js";
 import { Card } from "../../../components/ui/card";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
+import { attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
 import { resendAccountCode, verifyAccountCode } from "../actions";
 import CreateAccountCode from "./page";
 
@@ -61,7 +60,9 @@ describe("AC5, AC8, AC10, AC16 — /create-account/code", () => {
   });
 
   it("AC10: the page's error reaches the step's notice", async () => {
-    expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([en["signIn.invalidCode"]]);
+    const { element, html } = await render({ error: "invalid" });
+    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["alert"]);
+    expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
   });
 
   it("screen (issue 55): the page is one Card inside the Shell", async () => {

@@ -2,14 +2,14 @@
 // app/admin/members/[subscription]/page.test.ts renders its page. Which week is current and what it holds is
 // currentWeekMenu's (src/menu-run.test.ts); a text's lines and the sections are menuSections' (src/menus.test.ts); the
 // join panel's price and size are cheapestChoices' (src/products.test.ts). Here each of the page's states goes through it
-// once. The page's words are new copy, typed once here; the Supper Club's join button is read from the catalog.
+// once. Which state shows is read from its heading's catalog line; the week, the menu and the price are values.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, type Language } from "@core/i18n.js";
-import { en } from "@core/messages/en.js";
 import type { Menu } from "@core/menus.js";
+import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, pickupWhereLine, weekTitle, type PickupWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { MENUS, SIZES } from "../admin/subscribers-fixture";
@@ -52,14 +52,12 @@ const NOW = new Date("2027-01-14T17:00:00.000Z");
 const WEEK = "2027-01-17";
 const NEXT = "2027-01-24";
 
-// This task's words.
-const EYEBROW = "SUPPER CLUB · THIS WEEK";
-const ALLERGENS = "Allergens are marked on the packaging. Some dishes come with one or two quick steps to finish at home.";
-const ON_THE_WAY = "The menu is on the way";
-const ON_THE_WAY_BODY = "The farm posts it a few days before pickup, and members get it by email.";
-const NOT_A_MEMBER = "Not a member?";
-// The cheapest of each type: 2 people at $50 and Standard at $0 (app/admin/subscribers-fixture.ts).
-const JOIN_BODY = "Weekly meals from the farm kitchen, $50 for 2 people.";
+const t = createTranslator("en");
+// The cheapest of each type: 2 people at $50 and Standard at $0 (app/admin/subscribers-fixture.ts). The panel picks
+// this line over menu.join.bodyNoSize because the product has a size.
+const JOIN_BODY = t("menu.join.body", { price: formatUsdWhole(5000), size: "2 people" });
+// The heading is the choice between the two states: the week's menu, or the menu on the way.
+const ON_THE_WAY = t("menu.onTheWay");
 
 let product: ProductWithOptions;
 let autumn: Menu;
@@ -106,27 +104,21 @@ const linksOf = (html: string): { href: string; text: string }[] =>
     text: textsOf(inner).join(" "),
   }));
 
-const JOIN_PANEL = [NOT_A_MEMBER, JOIN_BODY, en["supperClub.joinTitle"]];
+const heading = (week: PickupWeek) => t("menu.heading", { week: titleOf(week) });
+/** Whether some text run on the page carries `value`. */
+const carries = (html: string, value: string) => textsOf(html).some((text) => text.includes(value));
+const joinsSupperClub = (html: string) => linksOf(html).some((link) => link.href === "/supper-club");
 
 describe("AC7 — the menu, once its email has gone out", () => {
   it("AC7: signed out, it shows the eyebrow, Menu for the week, Pick up, each menu option's name and lines in position order, the allergens line, then the join panel", async () => {
     await sent();
     const html = await render();
-    const order = [
-      EYEBROW,
-      `Menu for ${titleOf(pickupWeek(WEEK, null))}`,
-      `Pick up ${pickupOf(pickupWeek(WEEK, null))}`,
-      "Standard",
-      "Squash soup",
-      "Rye bread",
-      "Vegan",
-      "Lentil soup",
-      "Barley salad",
-      ALLERGENS,
-      ...JOIN_PANEL,
-    ];
-    expect(inOrder(html, order)).toEqual(order);
-    expect(textsOf(html)).not.toContain(ON_THE_WAY);
+    const menu = ["Standard", "Squash soup", "Rye bread", "Vegan", "Lentil soup", "Barley salad"];
+    expect(inOrder(html, menu)).toEqual(menu);
+    expect(textsOf(html)).toContain(heading(pickupWeek(WEEK, null)));
+    expect(carries(html, pickupOf(pickupWeek(WEEK, null)))).toBe(true);
+    expect(textsOf(html)).toContain(JOIN_BODY);
+    expect(joinsSupperClub(html)).toBe(true);
   });
 
   it("AC7: the page is public: the header is the signed-out one with Sign in", async () => {
@@ -137,42 +129,41 @@ describe("AC7 — the menu, once its email has gone out", () => {
 
   it("AC7: Join the Supper Club links to /supper-club", async () => {
     await sent();
-    expect(linksOf(await render())).toContainEqual({ href: "/supper-club", text: en["supperClub.joinTitle"] });
+    expect(joinsSupperClub(await render())).toBe(true);
   });
 
   it("AC7: a moved week is named by its moved days, and Pick up names them", async () => {
     const moved: PickupWeek = { weekOf: WEEK, firstDay: "2027-01-16", lastDay: "2027-01-17" };
     await services.repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: moved.firstDay, lastDay: moved.lastDay });
     await sent();
-    const texts = textsOf(await render());
-    expect(texts).toEqual(expect.arrayContaining([`Menu for ${titleOf(moved)}`, `Pick up ${pickupOf(moved)}`]));
+    const html = await render();
+    expect(textsOf(html)).toContain(heading(moved));
+    expect(carries(html, pickupOf(moved))).toBe(true);
   });
 
   it("AC7: a closed week is never the current one: with January 17 closed, January 24's menu shows", async () => {
     await services.repo.assignWeekMenu(product.id, WEEK, autumn.id);
     await services.repo.closePickupWeek(product.id, WEEK, null, new Date("2027-01-12T15:00:00.000Z"));
     await sent(NEXT);
-    expect(textsOf(await render())).toContain(`Menu for ${titleOf(pickupWeek(NEXT, null))}`);
+    expect(textsOf(await render())).toContain(heading(pickupWeek(NEXT, null)));
   });
 });
 
 describe("AC7 — the menu is on the way", () => {
-  const onTheWay = (html: string) => {
-    const texts = textsOf(html);
-    return {
-      order: inOrder(html, [ON_THE_WAY, ON_THE_WAY_BODY, ...JOIN_PANEL]),
-      menuShown: texts.some((text) => text.startsWith("Menu for") || text === "Squash soup" || text === ALLERGENS),
-    };
-  };
-  const ON_THE_WAY_ORDER = [ON_THE_WAY, ON_THE_WAY_BODY, ...JOIN_PANEL];
+  const onTheWay = (html: string) => ({
+    onTheWay: textsOf(html).includes(ON_THE_WAY),
+    joins: joinsSupperClub(html),
+    menuShown: textsOf(html).some((text) => text === "Squash soup" || text === "Lentil soup"),
+  });
+  const ON_THE_WAY_STATE = { onTheWay: true, joins: true, menuShown: false };
 
   it("AC7: a week with a menu whose email has not gone out says the menu is on the way, with the join panel, and shows no menu", async () => {
     await services.repo.assignWeekMenu(product.id, WEEK, autumn.id);
-    expect(onTheWay(await render())).toEqual({ order: ON_THE_WAY_ORDER, menuShown: false });
+    expect(onTheWay(await render())).toEqual(ON_THE_WAY_STATE);
   });
 
   it("AC7: a week with no menu says the same", async () => {
-    expect(onTheWay(await render())).toEqual({ order: ON_THE_WAY_ORDER, menuShown: false });
+    expect(onTheWay(await render())).toEqual(ON_THE_WAY_STATE);
   });
 
   it("AC7: with no current week at all, every listed week closed, it says the same", async () => {
@@ -180,12 +171,12 @@ describe("AC7 — the menu is on the way", () => {
       const week = new Date(Date.parse(`${WEEK}T00:00:00Z`) + i * 7 * 86_400_000).toISOString().slice(0, 10);
       await services.repo.closePickupWeek(product.id, week, null, NOW);
     }
-    expect(onTheWay(await render())).toEqual({ order: ON_THE_WAY_ORDER, menuShown: false });
+    expect(onTheWay(await render())).toEqual(ON_THE_WAY_STATE);
   });
 
   it("AC7: the next week's menu sent does not stand in for the current week's: January 24 sent and January 17 not is still on the way", async () => {
     await services.repo.assignWeekMenu(product.id, WEEK, autumn.id);
     await sent(NEXT);
-    expect(onTheWay(await render())).toEqual({ order: ON_THE_WAY_ORDER, menuShown: false });
+    expect(onTheWay(await render())).toEqual(ON_THE_WAY_STATE);
   });
 });

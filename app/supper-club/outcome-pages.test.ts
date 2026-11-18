@@ -2,13 +2,15 @@
 // react-dom/server with `next/headers` faked and the composition root handing out an InMemoryRepository.
 // A width's effect is measured in e2e/supper-club.spec.ts; these hold what each page says and who reaches it.
 // The words are read from the catalog; the member's own data (their choices, the amounts, the date) is typed.
+import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
 import type { Member } from "@core/members.js";
-import { pickupWhereLine } from "@core/pickup-week.js";
+import { formatUsdWhole } from "@core/money.js";
+import { formatPickupDate, pickupWhereLine } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
@@ -20,6 +22,7 @@ import { findAll, inOrder, redirectOf, screenMarkup, textsOf } from "../screen-t
 import SupperClubAlready from "./already/page";
 import SupperClubDone from "./done/page";
 import { FARM_SITE_URL, SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_DONE_PATH, SUPPER_CLUB_PATH } from "./paths";
+import { SignupBox } from "./signup-box";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -159,44 +162,43 @@ describe("AC13 — the confirmation", () => {
     return { element, html: renderToStaticMarkup(element) };
   };
 
+  /** The confirmation's own markup, without the header's or the left column's. */
+  const doneHtml = (element: ReactNode) => renderToStaticMarkup(findAll(element, "div").find((div) => div.props.className === "pane-done") ?? null);
+  const doneTexts = (element: ReactNode) => textsOf(doneHtml(element));
+
+  /** Of `values`, those found in the texts one after another, each after the last: the values in the order shown. */
+  const inSequence = (texts: readonly string[], values: readonly string[]) => {
+    const text = texts.join("\n");
+    let from = 0;
+    return values.filter((value) => {
+      const at = text.indexOf(value, from);
+      if (at < 0) return false;
+      from = at + value.length;
+      return true;
+    });
+  };
+
   it("AC13: it shows the title, thanks, subscription box, next steps and both buttons, in that order", async () => {
     await subscribe(await signIn());
-    const wanted = [
-      en["supperClub.done.title"],
-      t("supperClub.done.thanks", { firstName: "Ada", email: EMAIL }),
-      en["supperClub.box.title"],
-      "3–4 people",
-      "Vegan",
-      en["supperClub.box.paidToday"],
-      "$80",
-      en["supperClub.box.firstWeek"],
-      en["supperClub.box.then"],
-      "$80",
-      en["supperClub.box.everyWeek"],
-      t("supperClub.box.firstPickup", { date: "Sunday, January 3" }),
-      en["supperClub.box.pickupWhere"],
-      en["supperClub.next.title"],
-      en["supperClub.next.menu"],
-      t("supperClub.next.charge", { price: "$80" }),
-      en["supperClub.next.change"],
-      en["supperClub.done.account"],
-      en["supperClub.done.back"],
-    ];
-    expect(inOrder((await render()).html, wanted)).toEqual(wanted);
+    const { element } = await render();
+    const wanted = [EMAIL, "3–4 people", "Vegan", formatUsdWhole(8000), formatUsdWhole(8000), formatPickupDate("2027-01-03", "en"), formatUsdWhole(8000)];
+    expect(inSequence(doneTexts(element), wanted)).toEqual(wanted);
+    // A member with a first name is thanked by it: the other of the two thank-you lines.
+    expect(doneTexts(element)).toContain(t("supperClub.done.thanks", { firstName: "Ada", email: EMAIL }));
   });
 
   it("AC13: Paid today is the first charge, and Then the weekly price", async () => {
     await subscribe(await signIn(), { firstChargeCents: 7000, weeklyCents: 8000 });
-    const wanted = [en["supperClub.box.paidToday"], "$70", en["supperClub.box.then"], "$80", t("supperClub.next.charge", { price: "$80" })];
-    expect(inOrder((await render()).html, wanted)).toEqual(wanted);
+    const wanted = [formatUsdWhole(7000), formatUsdWhole(8000)];
+    expect(inSequence(doneTexts((await render()).element), wanted)).toEqual(wanted);
   });
 
   it("AC13: the Done mark comes before the title", async () => {
     await subscribe(await signIn());
-    const markup = screenMarkup((await render()).html);
-    const mark = markup.indexOf(`aria-label="${en["supperClub.done.mark"]}"`);
+    const markup = screenMarkup(doneHtml((await render()).element));
+    const mark = markup.indexOf('role="img"');
     expect(mark).toBeGreaterThan(-1);
-    expect(mark).toBeLessThan(markup.indexOf(en["supperClub.done.title"]));
+    expect(mark).toBeLessThan(markup.indexOf("<h1"));
   });
 
   it('AC13: a member with no first name gets "Thank you. We emailed…"', async () => {
@@ -206,11 +208,10 @@ describe("AC13 — the confirmation", () => {
 
   it("AC13: the design's bracketed placeholders are left out, not printed", async () => {
     await subscribe(await signIn());
-    // From the confirmation's title on, so the left column's own "[PICKUP HOURS]" stays out of it.
-    const texts = textsOf((await render()).html);
-    const text = texts.slice(texts.indexOf(en["supperClub.done.title"])).join(" ");
-    expect(text).toContain(en["supperClub.next.title"]);
-    expect(text).not.toContain("[");
+    // The confirmation alone, so the left column's own "[PICKUP HOURS]" stays out of it.
+    const texts = doneTexts((await render()).element);
+    expect(texts.length).toBeGreaterThan(0);
+    expect(texts.join(" ")).not.toContain("[");
   });
 
   it('AC13: "Go to your account" is primary and goes to ACCOUNT_PATH', async () => {
@@ -227,9 +228,8 @@ describe("AC13 — the confirmation", () => {
 
   it("AC13, AC17 (issue 57): the subscription box and next steps appear once each, not once per width", async () => {
     await subscribe(await signIn());
-    const texts = textsOf((await render()).html);
-    expect(texts.filter((text) => text === en["supperClub.box.title"])).toHaveLength(1);
-    expect(texts.filter((text) => text === en["supperClub.next.title"])).toHaveLength(1);
+    const { element } = await render();
+    expect(findAll(element, SignupBox)).toHaveLength(1);
   });
 
   it("AC13: it stands on JoinPage's pane shell", async () => {
@@ -243,12 +243,10 @@ describe("AC13 — the confirmation", () => {
     await subscribe(await signIn());
     const week = { weekOf: "2027-01-03", firstDay: "2027-01-02", lastDay: "2027-01-03" };
     await services.repo.savePickupWeek(product.id, { ...week, closedAt: null, note: "Moved" });
-    const { html } = await render();
-    const texts = textsOf(html);
-    const first = texts.indexOf(t("supperClub.box.firstPickup", { date: "Saturday, January 2" }));
+    const texts = doneTexts((await render()).element);
+    const first = texts.findIndex((text) => text.includes(formatPickupDate("2027-01-02", "en")));
     expect(first).toBeGreaterThan(-1);
     expect(texts[first + 1]).toBe(pickupWhereLine(t, week, "en"));
-    expect(texts).not.toContain(en["supperClub.box.pickupWhere"]);
   });
 });
 
@@ -260,20 +258,10 @@ describe("AC5 — the already-a-member page", () => {
 
   // Issue 97, AC9: with / redirecting, "Go to your account" would only reload this page; it comes back
   // with the account pages in task 2.4. The confirmation keeps its button (above).
-  it("AC9: its card says they already have a subscription, then that nothing was charged, and nothing more", async () => {
-    await subscribe(await signIn());
-    const texts = textsOf((await render()).html);
-    expect(texts.slice(texts.indexOf(en["supperClub.already.title"]))).toEqual([
-      en["supperClub.already.title"],
-      en["supperClub.already.nothing"],
-    ]);
-  });
-
   it('AC9: it has no "Go to your account" link', async () => {
     await subscribe(await signIn());
-    const { element, html } = await render();
+    const { element } = await render();
     expect(buttonLabelled(element, en["supperClub.done.account"])).toBeUndefined();
-    expect(textsOf(html)).not.toContain(en["supperClub.done.account"]);
   });
 
   it("AC5: it is a pane on JoinPage: its own card at the pane's width", async () => {

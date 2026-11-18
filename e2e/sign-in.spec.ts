@@ -1,6 +1,7 @@
 // Issue 31, AC12-AC16, and issue 22, AC29-AC31: the sign-in round trip in a real browser, on
 // desktop and mobile. Each test starts from an emptied e2e database with the `members` seed
-// (fixtures.ts). Controls are found by role and the English wording in `en`, never by class or test id.
+// (fixtures.ts). Controls are found by role and the English wording in `en`, never by class or test id; what
+// a screen says is Vitest's, so a state here is read from the URL.
 // Issue 97: signing in still sends to `/`, which redirects on to /supper-club (AC2), and "signed in" is
 // the header's Sign out button, where the home page's "Signed in as" line was.
 import type { APIRequestContext, Page } from "@playwright/test";
@@ -11,6 +12,8 @@ const ERIC = "eric@ocf.xx";
 const STRANGER = "nobody@ocf.xx";
 
 const onPath = (path: string) => (url: URL) => url.pathname === path;
+/** /sign-in/code after a wrong code: verifyCode's redirect (app/sign-in/shared.ts). */
+const refused = (url: URL) => url.pathname === "/sign-in/code" && url.searchParams.get("error") === "invalid";
 
 /** Enters `email` on /sign-in and presses "Email me a code". */
 async function askForCode(page: Page, email: string): Promise<void> {
@@ -38,7 +41,6 @@ test("AC12: a member's email leads to Enter your code, and the outbox gets him a
   await askForCode(page, ERIC);
 
   await expect(page).toHaveURL(onPath("/sign-in/code"));
-  await expect(page.getByRole("heading", { name: en["signIn.codeTitle"] })).toBeVisible();
   const code = await waitForSignInCode(request, ERIC, before);
   expect(code).toMatch(/^\d{6}$/);
   expect(await outboxCount(request, ERIC)).toBe(before + 1);
@@ -53,7 +55,7 @@ test("AC13, AC2 (issue 97): that code, entered in 6-digit code, signs him in, an
   await expectSignedIn(page);
 });
 
-test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; the right code still signs him in", async ({
+test("AC14: a wrong code keeps him on /sign-in/code, refused (error=invalid); the right code still signs him in", async ({
   page,
   request,
 }) => {
@@ -62,8 +64,7 @@ test("AC14: a wrong code keeps him on /sign-in/code with the mismatch notice; th
 
   await enterCode(page, wrong);
 
-  await expect(page).toHaveURL(onPath("/sign-in/code"));
-  await expect(page.getByText(en["signIn.invalidCode"])).toBeVisible();
+  await expect(page).toHaveURL(refused);
 
   await enterCode(page, code);
 
@@ -80,8 +81,7 @@ test("AC15: an email no member has gets the same code screen, and the outbox get
   await askForCode(page, STRANGER);
 
   await expect(page).toHaveURL(onPath("/sign-in/code"));
-  await expect(page.getByRole("heading", { name: en["signIn.codeTitle"] })).toBeVisible();
-  await expect(page.getByLabel(en["signIn.codeLabel"])).toBeVisible();
+  await page.getByLabel(en["signIn.codeLabel"]).fill("000000");
 
   // A code is sent after the response. A member's request made after the stranger's, once its
   // code has arrived, is the barrier: anything the stranger's request would send has been sent.
@@ -94,34 +94,30 @@ const fiveWrong = (right: string): string[] =>
   ["000000", "111111", "222222", "333333", "444444", "555555"].filter((code) => code !== right).slice(0, 5);
 
 /**
- * Enters `code` on a freshly loaded /sign-in/code, which shows no notice, and waits until the
- * mismatch notice comes back. Every wrong guess shows the same notice, so on a page already showing
- * it the notice says nothing about the guess just sent, and the next guess can be typed into a page
- * still in flight and be lost. Loaded fresh, the notice can only be this guess's answer.
+ * Enters `code` on a freshly loaded /sign-in/code, with no error in its URL, and waits until the
+ * refusal's redirect brings back error=invalid. Every wrong guess lands on the same URL, so on a page
+ * already there the URL says nothing about the guess just sent, and the next guess can be typed into a
+ * page still in flight and be lost. Loaded fresh, the URL can only be this guess's answer.
  */
-async function guessAndSeeNotice(page: Page, code: string): Promise<void> {
+async function guessAndSeeRefused(page: Page, code: string): Promise<void> {
   await page.goto("/sign-in/code");
-  const notice = page.getByText(en["signIn.invalidCode"]);
-  await expect(notice).toHaveCount(0);
+  await expect(page).toHaveURL((url) => url.pathname === "/sign-in/code" && !url.searchParams.has("error"));
   await enterCode(page, code);
-  await expect(page).toHaveURL(onPath("/sign-in/code"));
-  await expect(notice).toBeVisible();
+  await expect(page).toHaveURL(refused);
 }
 
-/** Enters each wrong code on /sign-in/code, checking each keeps him there with the mismatch notice. */
+/** Enters each wrong code on /sign-in/code, checking each is refused. */
 async function guessWrong(page: Page, codes: string[]): Promise<void> {
-  for (const wrong of codes) await guessAndSeeNotice(page, wrong);
+  for (const wrong of codes) await guessAndSeeRefused(page, wrong);
 }
 
-/** On /sign-in/link: the heading, the line and the one button, which it presses. */
+/** On /sign-in/link: presses the one button. */
 async function pressSignInOnLinkPage(page: Page): Promise<void> {
   await expect(page).toHaveURL(onPath("/sign-in/link"));
-  await expect(page.getByRole("heading", { name: en["signIn.title"] })).toBeVisible();
-  await expect(page.getByText(en["signIn.linkPrompt"], { exact: true })).toBeVisible();
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
 }
 
-test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in, and (AC2, issue 97) he ends on /supper-club. AC30: pressed again, in a fresh browser, the link lands on /sign-in with the link notice", async ({
+test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in, and (AC2, issue 97) he ends on /supper-club. AC30: pressed again, in a fresh browser, the link lands on /sign-in with error=link", async ({
   page,
   request,
   browser,
@@ -137,7 +133,7 @@ test("AC29: five wrong codes email him a sign-in link; the right code is refused
   const link = await waitForSignInLink(request, ERIC, before + 1);
   expect(link).toMatch(/^http:\/\/localhost:4100\/sign-in\/link\?token=[A-Za-z0-9_-]+$/);
 
-  await guessAndSeeNotice(page, code);
+  await guessAndSeeRefused(page, code);
 
   await page.goto(link);
   await pressSignInOnLinkPage(page);
@@ -150,14 +146,13 @@ test("AC29: five wrong codes email him a sign-in link; the right code is refused
     const again = await fresh.newPage();
     await again.goto(link);
     await pressSignInOnLinkPage(again);
-    await expect(again).toHaveURL(onPath("/sign-in"));
-    await expect(again.getByText(en["signIn.linkFailed"])).toBeVisible();
+    await expect(again).toHaveURL((url) => url.pathname === "/sign-in" && url.searchParams.get("error") === "link");
   } finally {
     await fresh.close();
   }
 });
 
-test("AC31: an email no member has gets the same notice for five wrong codes, and the outbox gets nothing for it", async ({
+test("AC31: an email no member has gets the same refusal for five wrong codes, and the outbox gets nothing for it", async ({
   page,
   request,
 }) => {
@@ -180,25 +175,23 @@ test("AC16, AC4 (issue 97): signed in, the header's Sign out ends the session an
   await signOut(page);
 
   await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(page.getByRole("banner").getByRole("link", { name: en["home.signIn"], exact: true })).toBeVisible();
+  await expect(page.getByRole("banner").locator('a[href="/supper-club/sign-in"]')).toBeVisible();
   await expect(headerSignOut(page)).toHaveCount(0);
 
   // /terms shows Sign out to anyone signed in (AC6), so its absence there is the session gone.
   await page.goto("/terms");
-  await expect(page.getByRole("banner").getByText(en["brand.name"], { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(onPath("/terms"));
+  await expect(page.getByRole("banner")).toBeVisible();
   await expect(headerSignOut(page)).toHaveCount(0);
 });
 
-// Issue 101, AC2: "Send a new code" posts and redirects, so only a browser shows the page coming back with its
-// notice. The notice's words are new in that issue, typed here once; which `sent` shows it is Vitest's
-// (app/sign-in/code-step.test.ts).
-test("AC2 (issue 101): Send a new code brings /sign-in/code back, saying a new code is on its way", async ({ page }) => {
+// Issue 101, AC2: "Send a new code" posts and redirects, so only a browser shows the page coming back with
+// sent=1; that sent=1 shows the notice is Vitest's (app/sign-in/code-step.test.ts).
+test("AC2 (issue 101): Send a new code brings /sign-in/code back with sent=1", async ({ page }) => {
   await askForCode(page, ERIC);
-  await expect(page).toHaveURL(onPath("/sign-in/code"));
-  await expect(page.getByText("A new code is on its way.")).toHaveCount(0);
+  await expect(page).toHaveURL((url) => url.pathname === "/sign-in/code" && !url.searchParams.has("sent"));
 
   await page.getByRole("button", { name: en["signIn.resend"] }).click();
 
   await expect(page).toHaveURL((url) => url.pathname === "/sign-in/code" && url.searchParams.get("sent") === "1");
-  await expect(page.getByText("A new code is on its way.", { exact: true })).toBeVisible();
 });

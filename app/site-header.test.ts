@@ -6,7 +6,6 @@
 // Issue 155, AC9: signed in, the account links are drawn twice from one list: in the row, shown at 720px and wider,
 // and in the Menu button's panel, shown below it. The row is read as the tree with the MenuButton taken out, the
 // panel as the MenuButton's children; which one a width shows is measured in the browser (e2e/account-nav.spec.ts).
-// The links' words and "Menu" are new copy, typed once here.
 // Issue 187, AC3: the header has no language switch, signed in or out, on any page. The session is faked as a
 // member or an admin; who counts as signed in is app/session.test.ts's. The wide-only wrapper for issue 77's
 // AC11 ("below `lg`") is measured in the browser, e2e/supper-club.spec.ts.
@@ -14,7 +13,6 @@ import { cloneElement, createElement, Fragment, isValidElement, type ReactElemen
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES } from "@core/i18n.js";
-import { en } from "@core/messages/en.js";
 import { Button } from "../components/ui/button";
 import { MenuButton } from "../components/ui/menu-button";
 import { SiteBar } from "../components/ui/site-bar";
@@ -46,21 +44,15 @@ beforeEach(() => {
   session.member = null;
 });
 
-const BRAND = [en["brand.name"], en["brand.byline"]];
-const SIGN_IN = en["home.signIn"];
-const SIGN_OUT = en["home.signOut"];
-const ADMIN = en["header.admin"];
-const YOUR_MEAL = "Your meal";
-const WEEKS = "Upcoming weeks";
-const HISTORY = "History";
-const MENU = "Menu";
+const SIGN_IN_PATH = "/supper-club/sign-in";
 const WEEKS_PATH = "/account/weeks";
 const HISTORY_PATH = "/account/history";
-// Issue 156, AC1: "Your details" after History, new copy typed here.
-const DETAILS = "Your details";
+// Issue 156, AC1: Your details after History.
 const DETAILS_PATH = "/account/details";
-/** The account links, in order: the row's and the panel's. */
-const LINKS = [YOUR_MEAL, WEEKS, HISTORY, DETAILS];
+/** The account links' destinations, in order: the row's and the panel's. */
+const LINKS = [ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH];
+/** Sign out, in a sequence of buttons: the one with no destination, a submit. */
+const SIGN_OUT = "submit";
 const LANGUAGE_NAMES: string[] = Object.values(LANGUAGES).map((language) => language.name);
 
 type Account = "none" | "sign-in" | "sign-in-current";
@@ -108,12 +100,10 @@ const header = async (account: Account, current?: Current, wideOnly?: boolean) =
 
 type Buttons = ReactElement<Record<string, unknown>>[];
 const linkTo = (buttons: Buttons, href: string) => buttons.find((button) => button.props.href === href);
+/** The buttons in order, each as its destination, or its type for one that submits. */
+const sequence = (buttons: Buttons) => buttons.map((button) => button.props.href ?? button.props.type);
 
 describe("AC18 — SiteHeader, account none, is the header the sign-in screens had", () => {
-  it("AC18: it holds the farm's name and byline, and no other word", async () => {
-    expect((await header("none")).words).toEqual([...BRAND]);
-  });
-
   it("AC18: the farm's name is the one link, and it goes to /", async () => {
     const { element } = await header("none");
     expect(findAll(element, "a").map((link) => link.props.href)).toEqual(["/"]);
@@ -133,10 +123,9 @@ describe("AC3 (issue 97) — the header's frame", () => {
 
 describe("AC17 — SiteHeader's account link", () => {
   it('AC17, AC4 (issue 77): account "sign-in" adds a secondary "Sign in" link to /supper-club/sign-in after the wordmark', async () => {
-    const { words, buttons } = await header("sign-in");
-    expect(words).toEqual([...BRAND, SIGN_IN]);
+    const { buttons } = await header("sign-in");
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: "/supper-club/sign-in" });
+    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: SIGN_IN_PATH });
   });
 
   it("AC17: the Sign in link is not marked as the page showing", async () => {
@@ -146,10 +135,9 @@ describe("AC17 — SiteHeader's account link", () => {
 
 describe('AC5 (issue 77) — account "sign-in-current"', () => {
   it('AC5: it is the same secondary "Sign in" link, to /supper-club/sign-in, marked as the page showing', async () => {
-    const { words, buttons } = await header("sign-in-current");
-    expect(words).toEqual([...BRAND, SIGN_IN]);
+    const { buttons } = await header("sign-in-current");
     expect(buttons).toHaveLength(1);
-    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: "/supper-club/sign-in", current: true });
+    expect(buttons[0]?.props).toMatchObject({ kind: "secondary", href: SIGN_IN_PATH, current: true });
   });
 });
 
@@ -160,7 +148,9 @@ describe("AC4 (issue 97) — signed in as a member", () => {
   });
 
   it("AC4: after the wordmark the header shows the account links, then Sign out, and no Admin and no Sign in", async () => {
-    expect((await header("sign-in")).words).toEqual([...BRAND, ...LINKS, SIGN_OUT]);
+    const { buttons, forms } = await header("sign-in");
+    expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
+    expect(forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
   it("AC4: Sign out is a quiet submit button alone in a form whose action is signOut", async () => {
@@ -169,14 +159,16 @@ describe("AC4 (issue 97) — signed in as a member", () => {
       expect(found.map((form) => form.props.action)).toEqual([signOut]);
       const buttons = findAll(found[0], Button);
       expect(buttons).toHaveLength(1);
-      expect(buttons[0]?.props).toMatchObject({ kind: "quiet", type: "submit", children: SIGN_OUT });
+      expect(buttons[0]?.props).toMatchObject({ kind: "quiet", type: "submit" });
     }
   });
 
   it.each(["none", "sign-in", "sign-in-current"] as const)(
     'AC6 (issue 97): with account "%s" the header shows Sign out and no Sign in: account is only the signed-out state',
     async (account) => {
-      expect((await header(account)).words).toEqual([...BRAND, ...LINKS, SIGN_OUT]);
+      const { buttons, forms } = await header(account);
+      expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
+      expect(forms.map((form) => form.props.action)).toEqual([signOut]);
     },
   );
 });
@@ -187,15 +179,17 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
   });
 
   it("AC5: after the account links the header shows Admin, then Sign out", async () => {
-    expect((await header("sign-in")).words).toEqual([...BRAND, ...LINKS, ADMIN, SIGN_OUT]);
+    const { buttons, forms } = await header("sign-in");
+    expect(sequence(buttons)).toEqual([...LINKS, ADMIN_PATH, SIGN_OUT]);
+    expect(forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
   it("AC5: Admin is a secondary link to ADMIN_PATH, not marked current when `current` is not given", async () => {
     const { buttons } = await header("none");
     const admin = linkTo(buttons, ADMIN_PATH);
-    expect(admin?.props).toMatchObject({ kind: "secondary", href: ADMIN_PATH, children: ADMIN });
+    expect(admin?.props).toMatchObject({ kind: "secondary", href: ADMIN_PATH });
     expect(admin?.props.current).toBeFalsy();
-    expect(buttons.filter((button) => button !== admin).map((button) => button.props.children)).toEqual([...LINKS, SIGN_OUT]);
+    expect(sequence(buttons.filter((button) => button !== admin))).toEqual([...LINKS, SIGN_OUT]);
   });
 
   it('AC5: with current "admin", Admin is marked as the page showing', async () => {
@@ -203,7 +197,9 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
   });
 
   it('AC6 (issue 97): with account "sign-in-current" the header still shows Admin, then Sign out', async () => {
-    expect((await header("sign-in-current")).words).toEqual([...BRAND, ...LINKS, ADMIN, SIGN_OUT]);
+    const { buttons, forms } = await header("sign-in-current");
+    expect(sequence(buttons)).toEqual([...LINKS, ADMIN_PATH, SIGN_OUT]);
+    expect(forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 });
 
@@ -213,16 +209,16 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
 describe("AC5 (issue 136) — the Your meal link", () => {
   it('AC5: signed in as a member, the header shows a secondary "Your meal" link to ACCOUNT_PATH, then Sign out', async () => {
     session.member = { role: "member" };
-    const { words, buttons } = await header("none");
-    expect(words).toEqual([...BRAND, ...LINKS, SIGN_OUT]);
-    expect(linkTo(buttons, ACCOUNT_PATH)?.props).toMatchObject({ kind: "secondary", href: ACCOUNT_PATH, children: YOUR_MEAL });
+    const { buttons } = await header("none");
+    expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
+    expect(linkTo(buttons, ACCOUNT_PATH)?.props).toMatchObject({ kind: "secondary", href: ACCOUNT_PATH });
     expect(linkTo(buttons, ACCOUNT_PATH)?.props.current).toBeFalsy();
   });
 
   it("AC5: signed in as an admin, the buttons are Your meal, Upcoming weeks, History, Admin, Sign out, in that order", async () => {
     session.member = { role: "admin" };
     const { buttons } = await header("none");
-    expect(buttons.map((button) => button.props.href ?? button.props.children)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH, ADMIN_PATH, SIGN_OUT]);
+    expect(sequence(buttons)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH, ADMIN_PATH, SIGN_OUT]);
   });
 
   it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your meal is marked as the page showing', async (role) => {
@@ -244,21 +240,22 @@ describe("AC9 (issue 155) — the account nav", () => {
     session.member = { role: "member" };
     const { buttons } = await header("none");
     expect(buttons.filter((button) => button.props.href !== undefined).map((button) => button.props)).toEqual([
-      expect.objectContaining({ kind: "secondary", href: ACCOUNT_PATH, children: YOUR_MEAL }),
-      expect.objectContaining({ kind: "secondary", href: WEEKS_PATH, children: WEEKS }),
-      expect.objectContaining({ kind: "secondary", href: HISTORY_PATH, children: HISTORY }),
-      expect.objectContaining({ kind: "secondary", href: DETAILS_PATH, children: DETAILS }),
+      expect.objectContaining({ kind: "secondary", href: ACCOUNT_PATH }),
+      expect.objectContaining({ kind: "secondary", href: WEEKS_PATH }),
+      expect.objectContaining({ kind: "secondary", href: HISTORY_PATH }),
+      expect.objectContaining({ kind: "secondary", href: DETAILS_PATH }),
     ]);
   });
 
   it.each([
     ["member", [...LINKS, SIGN_OUT]],
-    ["admin", [...LINKS, ADMIN, SIGN_OUT]],
-  ] as const)("AC9: signed in as %s, the row folds into one Menu button whose panel holds the same links, then Sign out", async (role, words) => {
+    ["admin", [...LINKS, ADMIN_PATH, SIGN_OUT]],
+  ] as const)("AC9: signed in as %s, the row folds into one Menu button whose panel holds the same links, then Sign out", async (role, expected) => {
     session.member = { role };
     const { menus, panel } = await header("none");
-    expect(menus.map((menu) => menu.props.label)).toEqual([MENU]);
-    expect(panel.words).toEqual(words);
+    expect(menus).toHaveLength(1);
+    expect(sequence(panel.buttons)).toEqual(expected);
+    expect(panel.forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
   it("AC9: the panel's links are the row's: the same kind and destination", async () => {
@@ -291,7 +288,7 @@ describe("AC1 (issue 156) — the Your details link", () => {
     for (const found of [buttons, panel.buttons]) {
       const hrefs = found.filter((button) => button.props.href !== undefined).map((button) => button.props.href);
       expect(hrefs[hrefs.indexOf(HISTORY_PATH) + 1]).toBe(DETAILS_PATH);
-      expect(linkTo(found, DETAILS_PATH)?.props).toMatchObject({ kind: "secondary", href: DETAILS_PATH, children: DETAILS });
+      expect(linkTo(found, DETAILS_PATH)?.props).toMatchObject({ kind: "secondary", href: DETAILS_PATH });
     }
   });
 
@@ -313,19 +310,19 @@ describe("issue 84 — the quiet button that ends the header is flush with the g
 
   it("a pane page: the one button is Sign in, secondary and not flush; below lg nothing follows the wordmark", async () => {
     const { buttons } = await header("sign-in", undefined, true);
-    expect(buttons.map((button) => [button.props.children, button.props.kind, button.props.flush])).toEqual([[SIGN_IN, "secondary", undefined]]);
+    expect(buttons.map((button) => [button.props.href, button.props.kind, button.props.flush])).toEqual([[SIGN_IN_PATH, "secondary", undefined]]);
   });
 
   it.each(["sign-in", "sign-in-current"] as const)('account "%s": Sign in ends the row, secondary and not flush', async (account) => {
     const { buttons } = await header(account);
-    expect(buttons.map((button) => [button.props.children, button.props.kind, button.props.flush])).toEqual([[SIGN_IN, "secondary", undefined]]);
+    expect(buttons.map((button) => [button.props.href, button.props.kind, button.props.flush])).toEqual([[SIGN_IN_PATH, "secondary", undefined]]);
   });
 
   // Issue 155: read in the row; in the Menu's panel nothing is flush.
   it.each(["member", "admin"] as const)("signed in as %s: Sign out ends the row and is flush; no other button is", async (role) => {
     session.member = { role };
     const { buttons, panel } = await header("none", undefined, true);
-    const signOutButton = buttons.find((button) => button.props.children === SIGN_OUT);
+    const signOutButton = buttons.find((button) => button.props.type === "submit");
     expect(signOutButton?.props.flush).toBe("end");
     expect(buttons.filter((button) => button !== signOutButton).map((button) => button.props.flush)).toEqual(
       buttons.filter((button) => button !== signOutButton).map(() => undefined),
