@@ -772,7 +772,14 @@ export class InMemoryRepository implements Repository {
     const skipped = [...this.ledger.values()]
       .filter((row) => row.subscriptionId === subscriptionId && row.status === "skipped")
       .map((row) => row.pickupDate);
-    return { paid, weekCredits, skipped };
+    const locked = [...this.ledger.values()]
+      .filter((row) => row.subscriptionId === subscriptionId && row.status === "locked")
+      .map((row) => row.pickupDate)
+      .sort();
+    const declined = this.declinedRows(subscriptionId)
+      .map((row) => row.pickupDate)
+      .sort();
+    return { paid, weekCredits, skipped, locked, declined };
   }
 
   async skipWeek(subscriptionId: string, weekOf: string): Promise<boolean> {

@@ -25,6 +25,8 @@ const LINES = {
   closedPaid: "account.history.closedPaid",
   skipped: "account.weeks.skipped",
   weekCredit: "account.weeks.weekCredit",
+  locked: "account.history.locked",
+  declined: "account.history.declined",
 } as const satisfies Record<HistoryRow["line"], string>;
 
 /**

@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import type { UpcomingRow } from "@core/account-weeks.js";
+import { lockedWeek, type UpcomingRow } from "@core/account-weeks.js";
 import type { Language, Translator } from "@core/i18n.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { formatUsdWhole } from "@core/money.js";
@@ -19,10 +19,11 @@ import { MealPickers } from "../../meal-pickers";
 import { titled } from "../../page-title";
 import { ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH, ACCOUNT_WEEKS_SWITCH_OPEN } from "../../paths";
 import { SiteHeader } from "../../site-header";
+import { declinedNotice } from "../declined-notice";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
 import { skipWeek, switchMeal, unskipWeek } from "./actions";
-import { loadUpcomingRows } from "./rows";
+import { loadNextPickup, loadUpcomingRows } from "./rows";
 
 export const generateMetadata = titled("account.weeks.title");
 
@@ -38,6 +39,8 @@ function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
   if (row.marker === "closed") return t(row.closedPaid ? "account.weeks.closedPaid" : "account.weeks.closedNoCharge");
   if (row.marker === "weekCredit") return t("account.weeks.weekCredit");
   if (row.marker === "skipped") return t("account.weeks.skipped");
+  if (row.marker === "locked") return t("account.noPickupLocked");
+  if (row.marker === "declined") return t("account.weeks.declined");
   return t("account.marker.paid");
 }
 
@@ -60,7 +63,7 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
 
 /**
  * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
- * week, each marked Paid, Closed, Week credit or Skipped, or coming with no badge, with a Skip or Unskip button before its cutoff
+ * week, each marked Paid, Closed, Week credit, Skipped, Locked or Card declined (issue 198), or coming with no badge, with a Skip or Unskip button before its cutoff
  * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with. Above the weeks, the meal
  * card (issue 138): the newest picks and the weekly price, and with `?switch=1` and a switch week listed, the pickers
  * in a form posting that week to `switchMeal`.
@@ -71,7 +74,16 @@ export default async function UpcomingWeeks(props: { searchParams?: Promise<Quer
 export default async function UpcomingWeeks({ searchParams }: { searchParams?: Promise<Query> } = {}): Promise<ReactElement> {
   const subscribed = await requireSubscriber();
   const { product, confirmation } = subscribed;
-  const [t, language, upcoming, query] = await Promise.all([getTranslator(), getLanguage(), loadUpcomingRows(subscribed, new Date()), searchParams]);
+  const now = new Date();
+  const locked = lockedWeek(confirmation);
+  const [t, language, upcoming, query, next] = await Promise.all([
+    getTranslator(),
+    getLanguage(),
+    loadUpcomingRows(subscribed, now),
+    searchParams,
+    locked === null ? null : loadNextPickup(subscribed, now),
+  ]);
+  const { notice } = await declinedNotice(subscribed, next, t, language);
   const rows = upcoming.map((row) => ({
     id: row.week.weekOf,
     title: listedWeekTitle(t, row.week, language),
@@ -84,7 +96,7 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
   const firstWeek = upcoming[0]?.week.weekOf;
   const startsAt = upcoming.find((row) => row.week.weekOf === confirmation.optionsFromWeek);
   const notStarted = firstWeek !== undefined && startsAt !== undefined && startsAt.week.weekOf > firstWeek ? startsAt : null;
-  const switchOn = switchWeek(upcoming);
+  const switchOn = switchWeek(upcoming, locked);
   const switchesFrom = upcoming.find((row) => row.week.weekOf === switchOn);
   const open = query?.switch === ACCOUNT_WEEKS_SWITCH_OPEN && switchesFrom !== undefined;
   // Nothing more is charged once cancelled, so the intro line, which says when a week is charged, and the weekly price are left out.
@@ -96,7 +108,8 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.weeks.title")}</Heading>
-          {!cancelled && <Hint>{t("account.weeks.intro")}</Hint>}
+          {notice}
+          {!cancelled && locked === null && <Hint>{t("account.weeks.intro")}</Hint>}
           {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <Notice icon="alert">{t("account.weeks.cutoffPassed")}</Notice>}
           <Card width="fill">
             <Heading level={2}>{t("header.yourMeal")}</Heading>

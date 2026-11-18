@@ -9,17 +9,20 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator } from "@core/i18n.js";
+import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Badge, type BadgeKind } from "../../../components/ui/badge";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { redirectOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
+import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
+import { payDeclinedWeek } from "../declined-fixture";
 import History from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -208,5 +211,56 @@ describe("AC2, AC5 (issue 139) — History after a cancel", () => {
     const { rows } = await render();
     expect(rows.map((row) => row[0])).toEqual([titleOf("2027-01-24"), titleOf(JAN_3)]);
     for (const row of rows) expect(row).toContain(formatUsdWhole(4500));
+  });
+});
+
+// Issue 198: a locked subscription's past weeks. Each row's marker, amount and line, a closed week's among them, are
+// historyRows' (src/account-weeks.test.ts); here one Locked and one Card declined row go through the page, read whole as
+// above, with the badge's kind by what Badge draws for it.
+describe("issue 198 — History of a locked subscription", () => {
+  const JAN_17 = "2027-01-17";
+  const JAN_24 = "2027-01-24";
+  const JAN_31 = "2027-01-31";
+
+  /** Ada, signed in, subscribed from January 3, with a declined row for `declinedOn`; her ids. */
+  const declinedAda = async (declinedOn: string): Promise<{ memberId: string; subscriptionId: string }> => {
+    const member = await ada();
+    const rows = await signup(member, JAN_3);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    await services.repo.addLedgerRow(rows.subscriptionId, declinedOn, "declined", 4500);
+    signIn(member);
+    return { memberId: member.id, subscriptionId: rows.subscriptionId };
+  };
+
+  /** What Badge draws for `kind` with the catalog line `key`. */
+  const badgeOf = (kind: BadgeKind, key: MessageKey): string => renderToStaticMarkup(createElement(Badge, { kind, children: t(key) }));
+
+  /** The markup of the row titled `title`. */
+  const rowMarkup = (html: string, title: string): string =>
+    [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title) ?? "";
+
+  it("AC10: after the card update, a past week holding a locked row is Locked: the locked line, $0, the Locked badge of the declined kind, in date order among the others", async () => {
+    // January 17 declined; the runs at the next two cutoffs locked January 24 and 31; then a card update paid January 17.
+    const { memberId, subscriptionId } = await declinedAda(JAN_17);
+    await services.repo.addLedgerRow(subscriptionId, JAN_24, "locked", 0);
+    await services.repo.addLedgerRow(subscriptionId, JAN_31, "locked", 0);
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+    const { html, rows } = await render();
+    expect(rows.map((row) => row[0])).toEqual([titleOf(JAN_31), titleOf(JAN_24), titleOf(JAN_17), titleOf(JAN_3)]);
+    expect(rowTitled(rows, titleOf(JAN_24))).toEqual([titleOf(JAN_24), t("account.history.locked"), formatUsdWhole(0), t("account.marker.locked")]);
+    expect(rowMarkup(html, titleOf(JAN_24))).toContain(badgeOf("declined", "account.marker.locked"));
+  });
+
+  it("AC12: a past declined week, unpaid, is Card declined, as account home's badge: the declined line and $0, with no meal line", async () => {
+    await declinedAda(JAN_31);
+    const { html, rows } = await render();
+    expect(rowTitled(rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), t("account.history.declined"), formatUsdWhole(0), t(SUBSCRIPTION_BADGES.declined.key)]);
+    expect(rowMarkup(html, titleOf(JAN_31))).toContain(badgeOf(SUBSCRIPTION_BADGES.declined.kind, SUBSCRIPTION_BADGES.declined.key));
+  });
+
+  it("AC13: once a card update pays the declined week, it is Paid, with its meal and amount, as any paid week; guards AC12", async () => {
+    const { memberId, subscriptionId } = await declinedAda(JAN_31);
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+    expect(rowTitled((await render()).rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), MEAL, t("account.marker.paid"), formatUsdWhole(4500), t("account.marker.paid")]);
   });
 });

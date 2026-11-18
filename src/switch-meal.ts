@@ -4,9 +4,11 @@ import type { ProductWithOptions } from "./products.js";
 
 /**
  * The subscription's switch week, its Sunday key: the first row whose cutoff has not passed and whose marker is
- * `coming`, `skipped`, or `closed` with no paid row. Null when no listed week is one.
+ * `coming`, `skipped`, or `closed` with no paid row. Null when no listed week is one, and (issue 198) while the subscription
+ * has a `declinedWeek` (`lockedWeek`): a locked subscription cannot switch.
  */
-export function switchWeek(rows: UpcomingRow[]): string | null {
+export function switchWeek(rows: UpcomingRow[], declinedWeek: string | null = null): string | null {
+  if (declinedWeek !== null) return null;
   const row = rows.find(
     (candidate) =>
       !candidate.week.cutoffPassed &&

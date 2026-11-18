@@ -1,4 +1,4 @@
-import { historyRows, lastPickup, upcomingRows, type HistoryRow, type UpcomingRow } from "@core/account-weeks.js";
+import { historyRows, lastPickup, lockedWeek, upcomingRows, type HistoryRow, type UpcomingRow } from "@core/account-weeks.js";
 import { nextPickup, pastWeeks, upcomingWeeks, weeksFrom, type AdminWeek, type ChangedWeek } from "@core/pickup-week.js";
 import type { MemberWeeks } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -18,7 +18,7 @@ async function readWeeks(product: ProductWithOptions, subscriptionId: string): P
  */
 export async function loadUpcomingRows({ product, confirmation }: Subscribed, now: Date): Promise<UpcomingRow[]> {
   const [changed, ledger] = await readWeeks(product, confirmation.subscriptionId);
-  return upcomingRows(upcomingWeeks(product, now, changed, confirmation.pickupDate), ledger, product, confirmation.status === "cancelled");
+  return upcomingRows(upcomingWeeks(product, now, changed, confirmation.pickupDate), ledger, product, confirmation.status === "cancelled", lockedWeek(confirmation));
 }
 
 /**

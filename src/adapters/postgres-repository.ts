@@ -1262,8 +1262,8 @@ export class PostgresRepository implements Repository {
   }
 
   async listMemberWeeks(subscriptionId: string): Promise<MemberWeeks> {
-    if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [], skipped: [] };
-    const [paid, paidOptions, weekCredits, skipped] = await Promise.all([
+    if (!UUID_SHAPE.test(subscriptionId)) return { paid: [], weekCredits: [], skipped: [], locked: [], declined: [] };
+    const [paid, paidOptions, weekCredits, skipped, locked, declined] = await Promise.all([
       this.db.query<{ week_of: string; amount_cents: number; week_credit: boolean }>(
         `select to_char(pickup_date, 'YYYY-MM-DD') as week_of, amount_cents,
                 exists (select 1 from week_credits c where c.spent_on = ledger.id) as week_credit
@@ -1297,6 +1297,21 @@ export class PostgresRepository implements Repository {
           order by pickup_date`,
         [subscriptionId],
       ),
+      this.db.query<{ week_of: string }>(
+        `select to_char(pickup_date, 'YYYY-MM-DD') as week_of
+           from ledger
+          where subscription_id = $1 and status = 'locked'
+          order by pickup_date`,
+        [subscriptionId],
+      ),
+      this.db.query<{ week_of: string }>(
+        `select to_char(d.pickup_date, 'YYYY-MM-DD') as week_of
+           from subscriptions s
+           cross join lateral (select declined.pickup_date ${DECLINED_ROWS}) d
+          where s.id = $1
+          order by d.pickup_date`,
+        [subscriptionId],
+      ),
     ]);
     return {
       paid: paid.rows.map((row) => ({
@@ -1307,6 +1322,8 @@ export class PostgresRepository implements Repository {
       })),
       weekCredits: weekCredits.rows.map((row) => ({ grantedForWeek: row.granted_for_week })),
       skipped: skipped.rows.map((row) => row.week_of),
+      locked: locked.rows.map((row) => row.week_of),
+      declined: declined.rows.map((row) => row.week_of),
     };
   }
 

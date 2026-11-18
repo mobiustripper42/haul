@@ -26,6 +26,7 @@ import { alertTexts, attributesOf, findAll, redirectOf, textsOf } from "../scree
 import { SiteHeader } from "../site-header";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
 import { addSupperClub } from "../admin/subscribers-fixture";
+import { payDeclinedWeek } from "./declined-fixture";
 import Account from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -277,12 +278,12 @@ describe("AC8 (issue 196) — the next pickup while locked", () => {
     return rows.subscriptionId;
   };
 
-  it("AC8: once the declined week's pickup has passed, Next pickup and its where line are replaced by one line, not a Notice; the charge line stays", async () => {
+  it("AC8: once the declined week's pickup has passed, Next pickup and its where line are replaced by one line, not a Notice; the charge line is not shown (issue 198, AC15)", async () => {
     await declinedAda("2027-01-31");
     const { html, runs, text, notices } = await render();
     expect(namesNoWeek(text)).toBe(true);
     expect(runs).toContain(NO_PICKUP);
-    expect(text).toContain(formatUsdWhole(4500));
+    expect(runs).not.toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
     // Issue 145: the declined Notice is the page's only one, and the no-pickup line is in none.
     expect(notices).toBe(1);
     expect(alertTexts(html).some((alert) => alert.includes(NO_PICKUP))).toBe(false);
@@ -499,5 +500,36 @@ describe("issue 145 — AC1, AC13: account home with a declined card", () => {
     expect(badge).toBe(SUBSCRIPTION_BADGES.cancelled.kind);
     expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.cancelled.key));
     expect(hrefsOf(html)).not.toContain("/account/card");
+  });
+});
+
+// Issue 198: the charge line while locked. Whether a subscription is locked is lockedWeek's (src/account-weeks.test.ts);
+// here one locked and one unlocked case through the page. The charge line is shown in some states and not others: a
+// choice, checked by its key. Unlike the no-pickup line (issue 196, above), it goes as soon as the subscription holds a
+// declined row, while the declined week's pickup is still to come.
+describe("AC15 (issue 198) — the charge line while locked", () => {
+  const CHARGE_LINE = t("supperClub.next.charge", { price: formatUsdWhole(4500) });
+
+  /** Ada, signed in, with an active subscription paid for January 3 and a declined row for February 7, its pickup to come; her ids. */
+  const lockedAda = async (): Promise<{ memberId: string; subscriptionId: string }> => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    await services.repo.addLedgerRow(rows.subscriptionId, FEB_7, "declined", 4500);
+    signIn(member);
+    return { memberId: member.id, subscriptionId: rows.subscriptionId };
+  };
+
+  it("AC15: while locked, the charge line is not shown, though the declined week's pickup is still to come and Next pickup names it", async () => {
+    await lockedAda();
+    const { runs, text } = await render();
+    expect(text).toContain(titleOf(FEB_7));
+    expect(runs).not.toContain(CHARGE_LINE);
+  });
+
+  it("AC15: once a card update pays the declined week, the charge line is shown again; guards the case above", async () => {
+    const { memberId, subscriptionId } = await lockedAda();
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+    expect((await render()).runs).toContain(CHARGE_LINE);
   });
 });

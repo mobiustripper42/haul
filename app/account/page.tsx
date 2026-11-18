@@ -1,5 +1,5 @@
+import { lockedWeek } from "@core/account-weeks.js";
 import { LANGUAGES } from "@core/i18n.js";
-import { weekNamed } from "@core/ledger-charge.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { memberDisplayName } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
@@ -12,10 +12,10 @@ import { Notice } from "../../components/ui/notice";
 import { Shell } from "../../components/ui/shell";
 import { getLanguage, getTranslator } from "../language";
 import { titled } from "../page-title";
-import { ACCOUNT_CANCEL_PATH, ACCOUNT_CARD_PATH } from "../paths";
-import { getRepository } from "../services";
+import { ACCOUNT_CANCEL_PATH } from "../paths";
 import { SiteHeader } from "../site-header";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
+import { declinedNotice } from "./declined-notice";
 import { requireSubscriber } from "./subscriber";
 import { loadLastPickup, loadNextPickup } from "./weeks/rows";
 
@@ -37,13 +37,10 @@ export default async function Account() {
   const now = new Date();
   const next = cancelled ? null : await loadNextPickup({ member, product, confirmation }, now);
   // Issue 196: a subscription holding a declined row is locked once no week on or before the declined week is still coming.
-  const locked = !cancelled && confirmation.declinedWeek !== null && next === null;
+  const locked = lockedWeek(confirmation) !== null && next === null;
   const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
   // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
-  const declinedRows = cancelled ? [] : await getRepository().listDeclinedCharges(confirmation.subscriptionId);
-  const declined = declinedRows.length > 0;
-  const declinedWeek = next && declinedRows.find((row) => !row.closed);
-  const declinedLine = declinedWeek && t("account.card.declinedWeek", { week: await weekNamed(getRepository(), product.id, declinedWeek.pickupDate, language) });
+  const { declined, notice } = await declinedNotice({ member, product, confirmation }, next, t, language);
   const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
   const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
   const name = memberDisplayName(member);
@@ -60,16 +57,7 @@ export default async function Account() {
               {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
             </Notice>
           )}
-          {declined && (
-            <Notice icon="alert" lead={t("account.card.declinedLead")}>
-              {[t("account.card.declinedBody"), declinedLine].filter(Boolean).join(" ")}
-              <span className="mt-3 block">
-                <Button kind="primary" href={ACCOUNT_CARD_PATH}>
-                  {t("account.updateCard")}
-                </Button>
-              </span>
-            </Notice>
-          )}
+          {notice}
           <Card width="fill">
             <div className="flex flex-wrap items-center justify-between gap-3">
               <p className="font-semibold">{mealLabel(confirmation.options)}</p>
@@ -82,7 +70,7 @@ export default async function Account() {
               </>
             )}
             {locked && <p>{t("account.noPickupLocked")}</p>}
-            {!cancelled && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+            {!cancelled && lockedWeek(confirmation) === null && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
           </Card>
           <Card width="fill">
             <Heading level={2}>{t("account.details")}</Heading>
