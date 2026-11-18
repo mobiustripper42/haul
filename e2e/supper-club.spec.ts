@@ -4,7 +4,7 @@
 // starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
 // `supper-club` seed. Controls are found by role and the catalog's wording (`en`, and `t` for strings with values); the
 // seed's own names (AC14, and `menu`'s "Vegan") and the paths a criterion names stay typed. A line is asserted by its
-// catalog line only where the page picks it (the refused card, a wrong code, the signed-in line); amounts are values. Issue 56: a pick changing the words, the
+// catalog line only where the page picks it (the refused or failed card, a wrong code, the signed-in line); amounts are values. Issue 56: a pick changing the words, the
 // client stopping an unticked pay, a card refused before it is sent, and a paid signup, on the fake,
 // through CardEntry's test field; a decline is proven in Vitest, because e2e cannot force one from the
 // browser (DEC-023).
@@ -36,8 +36,8 @@ const onPath = (path: string) => (url: URL) => url.pathname === path;
 
 /** JoinPage's left column: the first of the two sections the page's main holds (app/supper-club/join-page.tsx). */
 const leftColumn = (page: Page) => page.getByRole("main").locator(":scope > section").first();
-/** "Back to your choices", found by where it goes: with no return path held, the Supper Club page. */
-const backToChoicesLink = (page: Page) => page.getByRole("main").locator('a[href="/supper-club"]');
+/** "Back to your choices" by role and name, hidden ones included, so a check that it is hidden finds it hidden rather than absent. */
+const backToChoicesLink = (page: Page) => page.getByRole("main").getByRole("link", { name: BACK_TO_CHOICES, exact: true, includeHidden: true });
 
 // Portioned for 2, which is not the default: the seed puts Portioned for 4 first.
 // The prices are the seed's; "a week" is the catalog's.
@@ -100,6 +100,8 @@ const joinAndPay = (page: Page, price: string) => page.getByRole("button", { nam
 const REFUSED_CARD = "refused";
 // Exact, because the decline notice ends in the same words and is a different message.
 const cardRefusal = (page: Page) => page.getByText(en["supperClub.cardRefused"], { exact: true });
+// CardEntry picks between the failed line and the refused line (components/ui/card-entry.tsx).
+const cardFailure = (page: Page) => page.getByText(en["supperClub.cardFailed"], { exact: true });
 
 /** Signs ERIC in from the page with the non-default picks, so section 4 shows. */
 async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
@@ -259,6 +261,8 @@ test("AC6: Back to your choices leaves either pane for the Supper Club page, the
   desktopOnly(testInfo);
   await pickChoices(page);
   await pressSignIn(page);
+  // The link AC11 finds hidden below lg is this control, shown here.
+  await expect(backToChoicesLink(page)).toBeVisible();
   await inMain(page, BACK_TO_CHOICES).click();
   await expectChoicesKept(page);
 
@@ -467,6 +471,7 @@ test("AC1 (issue 56): a card form that gives no token shows the failure in the f
 
   await joinAndPay(page, "$42").click();
 
+  await expect(cardFailure(page)).toBeVisible();
   await expect(testCard(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
   expect(posts()).toBe(0);
@@ -482,6 +487,7 @@ test("AC1 (issue 56): a card Square refuses keeps the field, says so under it an
   await expect(testCard(page)).toBeVisible();
   const field = (await testCard(page).boundingBox())!;
   expect((await cardRefusal(page).boundingBox())!.y).toBeGreaterThanOrEqual(field.y + field.height);
+  await expect(cardFailure(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
   await expect(page.getByRole("checkbox")).toBeChecked();
   expect(posts()).toBe(0);
@@ -503,6 +509,7 @@ test("AC1 (issue 56): a refusal lasts until the next pay, and an empty field the
 
   await pay(page, "");
 
+  await expect(cardFailure(page)).toBeVisible();
   await expect(cardRefusal(page)).toHaveCount(0);
   await expect(testCard(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));

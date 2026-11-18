@@ -7,7 +7,7 @@
 // sold-out-card.test.ts; `OptionPicker`'s radios are components/ui/option-picker.test.ts; the frame around
 // the page is join-page.test.ts; `resolveChoices`'s edge cases are src/choices.test.ts. A changed pick
 // updating the words is a browser's, in e2e/supper-club.spec.ts.
-import type { ComponentProps, ReactNode } from "react";
+import { type ComponentProps, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
@@ -133,6 +133,25 @@ const formsOf = (element: ReactNode) => findAll(findAll(element, Shell), "form")
 const joinForm = (element: ReactNode) => formsOf(element).find((form) => form.props.method === "get");
 const noticesOf = (element: ReactNode) => findAll(element, Notice).map((notice) => notice.props.children);
 
+/** Every element in the tree, in document order (the walk findAll makes). */
+const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] => {
+  if (Array.isArray(node)) return node.flatMap((child) => elementsOf(child as ReactNode));
+  if (!isValidElement<Record<string, unknown>>(node)) return [];
+  return [node, ...elementsOf(node.props.children as ReactNode)];
+};
+/** Where each match first stands in the tree's document order, -1 where none does. */
+const positionsOf = (element: ReactNode, matches: ReadonlyArray<(el: ReactElement<Record<string, unknown>>) => boolean>) => {
+  const all = elementsOf(element);
+  return matches.map((match) => all.findIndex(match));
+};
+const lineReading = (text: string) => (el: ReactElement<Record<string, unknown>>) => el.type === "p" && el.props.children === text;
+const ofType = (type: unknown) => (el: ReactElement<Record<string, unknown>>) => el.type === type;
+/** Expects every position found, each after the one before. */
+const expectInOrder = (positions: number[]) => {
+  expect(positions.every((at) => at > -1)).toBe(true);
+  expect(positions).toEqual([...positions].sort((a, b) => a - b));
+};
+
 const legend = (n: number, name: string) => t("supperClub.pickerLegend", { n, name });
 const accountLegend = (n: number) => t("supperClub.accountLegend", { n });
 
@@ -246,8 +265,7 @@ describe("AC3 — signed in", () => {
   // A member with no name is the email line of the two signedInText picks between; the named line is AC9 (issue 101).
   it('AC3: section 3 reads "Signed in as {email}." with its period, then section 4', async () => {
     const { element } = await render();
-    expect(findAll(element, "p").map((p) => p.props.children)).toContain(t("supperClub.signedInAs", { email: "ada@example.com" }));
-    expect(sectionOf(element)).toBeDefined();
+    expectInOrder(positionsOf(element, [lineReading(t("supperClub.signedInAs", { email: "ada@example.com" })), ofType(PaymentSection)]));
   });
 
   it("AC3: the pickers stay, in a GET form to this page", async () => {
@@ -371,6 +389,8 @@ describe("AC10 — the retry state", () => {
     await stranded();
     const { element } = await render();
     expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
+    const tryAgain = (el: ReactElement<Record<string, unknown>>) => el.type === Button && el.props.type === "submit";
+    expectInOrder(positionsOf(element, [ofType(Notice), ofType(PricePanel), tryAgain]));
     expect(findAll(element, PricePanel).map((panel) => [panel.props.summary, panel.props.rows])).toEqual([
       ["3–4 person · Vegan", [{ label: expect.any(String), value: "$80" }]],
     ]);
@@ -530,7 +550,6 @@ describe("issue 77 — the page opens on JoinPage's frame", () => {
 describe("AC9 (issue 101) — step 3 names the member", () => {
   const PAULA = "paid@example.com";
   const SIGNED_IN_AS_PAULA = t("supperClub.signedInAsNamed", { name: "Paula Paid", email: PAULA });
-  const lines = (element: ReactNode) => findAll(element, "p").map((p) => p.props.children);
 
   const signInPaula = async () => {
     const member = await services.repo.saveAccount({ email: PAULA, firstName: "Paula", lastName: "Paid", phone: "216-555-0105", language: "en" });
@@ -543,8 +562,7 @@ describe("AC9 (issue 101) — step 3 names the member", () => {
   it('AC9: in the normal state, section 3 reads "Signed in as Paula Paid, paid@example.com.", then section 4', async () => {
     await signInPaula();
     const { element } = await render();
-    expect(lines(element)).toContain(SIGNED_IN_AS_PAULA);
-    expect(sectionOf(element)).toBeDefined();
+    expectInOrder(positionsOf(element, [lineReading(SIGNED_IN_AS_PAULA), ofType(PaymentSection)]));
   });
 
   it("AC9: in the retry state it reads the same line, before the notice", async () => {
@@ -552,7 +570,7 @@ describe("AC9 (issue 101) — step 3 names the member", () => {
     const signup = await services.repo.savePendingSignup(rowsFor(member.id));
     await services.repo.saveSubscriptionCard(signup.subscriptionId, cardOf("ccof:card-1"));
     const { element } = await render();
-    expect(lines(element)).toContain(SIGNED_IN_AS_PAULA);
     expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
+    expectInOrder(positionsOf(element, [lineReading(SIGNED_IN_AS_PAULA), ofType(Notice)]));
   });
 });

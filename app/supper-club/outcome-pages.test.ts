@@ -162,8 +162,8 @@ describe("AC13 — the confirmation", () => {
     return { element, html: renderToStaticMarkup(element) };
   };
 
-  /** The confirmation's own markup, without the header's or the left column's. */
-  const doneHtml = (element: ReactNode) => renderToStaticMarkup(findAll(element, "div").find((div) => div.props.className === "pane-done") ?? null);
+  /** The confirmation's own markup: JoinPage's last section, the pane (join-page.tsx), without the header or the left column. */
+  const doneHtml = (element: ReactNode) => renderToStaticMarkup(findAll(element, "section").at(-1) ?? null);
   const doneTexts = (element: ReactNode) => textsOf(doneHtml(element));
 
   /** Of `values`, those found in the texts one after another, each after the last: the values in the order shown. */
@@ -184,7 +184,13 @@ describe("AC13 — the confirmation", () => {
     const wanted = [EMAIL, "3–4 people", "Vegan", formatUsdWhole(8000), formatUsdWhole(8000), formatPickupDate("2027-01-03", "en"), formatUsdWhole(8000)];
     expect(inSequence(doneTexts(element), wanted)).toEqual(wanted);
     // A member with a first name is thanked by it: the other of the two thank-you lines.
-    expect(doneTexts(element)).toContain(t("supperClub.done.thanks", { firstName: "Ada", email: EMAIL }));
+    const thanks = t("supperClub.done.thanks", { firstName: "Ada", email: EMAIL });
+    expect(doneTexts(element)).toContain(thanks);
+    // By place in the markup: the title, the thanks, the box, then the account button and the farm-site button.
+    const markup = screenMarkup(doneHtml(element));
+    const places = [markup.indexOf("<h1"), markup.indexOf(thanks), markup.indexOf("3–4 people"), markup.indexOf(`href="${ACCOUNT_PATH}"`), markup.indexOf(`href="${FARM_SITE_URL}"`)];
+    expect(places.every((at) => at > -1)).toBe(true);
+    expect(places).toEqual([...places].sort((a, b) => a - b));
   });
 
   it("AC13: Paid today is the first charge, and Then the weekly price", async () => {
@@ -203,7 +209,7 @@ describe("AC13 — the confirmation", () => {
 
   it('AC13: a member with no first name gets "Thank you. We emailed…"', async () => {
     await subscribe(await signIn(null));
-    expect(textsOf((await render()).html)).toContain(t("supperClub.done.thanksNoName", { email: EMAIL }));
+    expect(doneTexts((await render()).element)).toContain(t("supperClub.done.thanksNoName", { email: EMAIL }));
   });
 
   it("AC13: the design's bracketed placeholders are left out, not printed", async () => {

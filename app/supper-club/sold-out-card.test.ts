@@ -2,6 +2,7 @@
 // notice that opens it under AC9, the "Questions?" line under AC16 and the back button; that the page shows
 // it, and when, is app/supper-club/page.test.ts's. It has no hooks, so it is called directly and read
 // through its props.
+import { isValidElement } from "react";
 import { describe, expect, it } from "vitest";
 import { createTranslator } from "@core/i18n.js";
 import { Button } from "../../components/ui/button";
@@ -18,7 +19,10 @@ const render = (over: { notice?: boolean; email?: string } = {}) => SoldOutCard(
 
 describe("AC15, AC16 — the card's lines", () => {
   it('AC16: with an email, the "Questions?" line stands between the paragraph and the button, as a hint', () => {
-    expect(findAll(render({ email: EMAIL }), Hint).map((hint) => hint.props.children)).toEqual([t("supperClub.soldOut.contact", { email: EMAIL })]);
+    const card = render({ email: EMAIL });
+    expect(findAll(card, Hint).map((hint) => hint.props.children)).toEqual([t("supperClub.soldOut.contact", { email: EMAIL })]);
+    // The card's parts in order: the title line, the paragraph, the hint, the button.
+    expect((card.props.children as unknown[]).filter((child) => isValidElement(child)).map((child) => child.type)).toEqual(["p", "p", Hint, Button]);
   });
 
   it("AC16: with no email there is no hint", () => {
