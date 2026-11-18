@@ -53,6 +53,8 @@ const ledger = ({ paid = [], weekCredits = [], skipped = [] }: { paid?: string[]
   paid: paid.map((weekOf) => ({ weekOf, amountCents: 4500, weekCredit: false, options: [] })),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
   skipped,
+  locked: [],
+  declined: [],
 });
 
 const switchWeekOf = (weeks: AdminWeek[], member: MemberWeeks = ledger()): string | null => switchWeek(upcomingRows(weeks, member, PRODUCT));
@@ -101,6 +103,17 @@ describe("AC3 — switchWeek: before a week's cutoff a switch reaches it; after,
 
   it("AC3: a closed week with no paid row whose cutoff has passed is not the switch week: the next one is", () => {
     expect(switchWeekOf([week(FEB_7, { closed: true, cutoffPassed: true }), week(FEB_14)])).toBe(FEB_14);
+  });
+});
+
+// Issue 198: while locked there is no switch week. The rows are built as the page and the action build them, with the
+// declined week; a skipped week and a closed one with no paid row after it would be the switch week if switchWeek
+// read the rows alone.
+describe("AC2 (issue 198) — switchWeek: none while locked", () => {
+  it("AC2: with a declined week there is no switch week: null, though a skipped week and a closed one with no paid row are listed before their cutoffs", () => {
+    const weeks = [week(FEB_7, { cutoffPassed: true }), week(FEB_14), week(FEB_21, { closed: true })];
+    const member: MemberWeeks = { ...ledger({ skipped: [FEB_14] }), declined: [FEB_7] };
+    expect(switchWeek(upcomingRows(weeks, member, PRODUCT, false, FEB_7), FEB_7)).toBeNull();
   });
 });
 

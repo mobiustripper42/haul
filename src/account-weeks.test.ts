@@ -3,9 +3,9 @@
 // (src/pickup-week.test.ts); what each row says on screen is each page's test. Only `weekOf` and `closedAt` decide a
 // row here, and the product's cutoff a Coming week's charge date; the rest of each week is carried along.
 import { describe, expect, it } from "vitest";
-import { historyRows, lastPickup, upcomingRows, type HistoryRow, type UpcomingRow } from "./account-weeks.js";
+import { historyRows, lastPickup, lockedWeek, upcomingRows, type HistoryRow, type UpcomingRow } from "./account-weeks.js";
 import { pickupWeek, type AdminWeek } from "./pickup-week.js";
-import type { MemberWeeks } from "./ports/repository.js";
+import type { MemberSubscription, MemberWeeks } from "./ports/repository.js";
 import type { ProductWithOptions } from "./products.js";
 
 const PRODUCT: ProductWithOptions = {
@@ -40,6 +40,8 @@ const member = (paid: (string | [string, number])[], weekCredits: string[] = [])
   ),
   weekCredits: weekCredits.map((grantedForWeek) => ({ grantedForWeek })),
   skipped: [],
+  locked: [],
+  declined: [],
 });
 
 /** Issue 150: the same ledger with `weeks` paid by a week credit, at 0 cents. */
@@ -379,5 +381,181 @@ describe("AC10 (issue 150) — lastPickup counts a week paid by a week credit", 
   it("AC10: a week credit only predicted on Upcoming weeks, with no ledger row, is no pickup: the last paid week is", () => {
     const rows = [upcomingRow(FEB_7, "paid"), upcomingRow(FEB_14, "weekCredit", false)];
     expect(lastPickup(rows, [])).toEqual({ week: week(FEB_7), passed: false });
+  });
+});
+
+// Issue 198: a locked subscription's weeks. A subscription is locked while it is active and holds a declined ledger row;
+// `lockedWeek` is that one answer, and `upcomingRows` takes it as the declined week. Buttons, Locked, the declined week and
+// where a week credit lands while locked are tested here and nowhere else: the page and the actions take one locked and
+// one unlocked case through them (app/account/weeks/*.test.ts). What a row says on screen is each page's test.
+
+/** Issue 198: the same ledger with `locked` rows for `locked`, and `declined` rows for `declined`. */
+const holding = (ledger: MemberWeeks, { locked = [], declined = [] }: { locked?: string[]; declined?: string[] }): MemberWeeks => ({ ...ledger, locked, declined });
+
+describe("AC1 (issue 198) — lockedWeek: whether a subscription is locked", () => {
+  /** A subscription as the account pages read it, `status`, holding a declined row for `declinedWeek` or none. */
+  const subscription = (status: MemberSubscription["status"], declinedWeek: string | null): MemberSubscription => ({
+    subscriptionId: "subscription",
+    pickupDate: "2027-01-03",
+    firstDay: "2027-01-03",
+    lastDay: "2027-01-04",
+    chargedDate: "2026-12-01",
+    firstChargeCents: 4500,
+    weeklyCents: 4500,
+    options: [],
+    optionsFromWeek: "2027-01-03",
+    choices: {},
+    status,
+    cancelledAt: status === "cancelled" ? new Date("2027-02-03T17:00:00.000Z") : null,
+    declinedWeek,
+  });
+
+  it("AC1: an active subscription holding a declined row is locked: lockedWeek is the declined week", () => {
+    expect(lockedWeek(subscription("active", FEB_7))).toBe(FEB_7);
+  });
+
+  it("AC1: a cancelled subscription is never locked, though it holds a declined row, and an active one holding none is not: null; guards the case above", () => {
+    expect(lockedWeek(subscription("cancelled", FEB_7))).toBeNull();
+    expect(lockedWeek(subscription("active", null))).toBeNull();
+  });
+});
+
+describe("AC1 (issue 198) — upcomingRows: no button while locked", () => {
+  it("AC1: with a declined week, no listed week has a button: neither a Coming nor a Skipped week before its cutoff", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21), week(FEB_28)];
+    const ledger = holding(skipping(member([]), [FEB_21]), { declined: [FEB_7] });
+    expect(upcomingRows(weeks, ledger, PRODUCT, false, FEB_7).map((row) => [row.week.weekOf, row.action])).toEqual([
+      [FEB_7, null],
+      [FEB_14, null],
+      [FEB_21, null],
+      [FEB_28, null],
+    ]);
+  });
+});
+
+describe("AC6 (issue 198) — upcomingRows: the weeks after the declined week are Locked", () => {
+  it("AC6: an open week after the declined week, with no paid or skipped row, is Locked, with no charge date and no button", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21)];
+    const rows = upcomingRows(weeks, holding(member([]), { declined: [FEB_7] }), PRODUCT, false, FEB_7);
+    expect(rows.slice(1)).toEqual([
+      { week: week(FEB_14), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+      { week: week(FEB_21), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+    ]);
+  });
+});
+
+describe("AC7 (issue 198) — upcomingRows: a week holding a locked row", () => {
+  // January 31 was declined; the run at February 7's cutoff wrote February 7 a locked row; then a card update paid
+  // January 31, so there is no declined week any more.
+  const afterUpdate = holding(member(["2027-01-31"]), { locked: [FEB_7] });
+
+  it("AC7: a week holding a locked row is Locked, though its cutoff has passed and its pickup is to come, and after the card update, with no declined week", () => {
+    const rows = upcomingRows([pastCutoff(week(FEB_7)), week(FEB_14)], afterUpdate, PRODUCT, false, null);
+    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null });
+  });
+
+  it("AC7: a closed week holding a locked row is Closed: closed wins; guards the case above", () => {
+    const rows = upcomingRows([week(FEB_7, { closed: true }), week(FEB_14)], afterUpdate, PRODUCT, false, null);
+    expect(rows[0]).toMatchObject({ marker: "closed", closedPaid: false, chargeDate: null, action: null });
+  });
+});
+
+describe("AC8 (issue 198) — upcomingRows: Skipped, Closed and Paid weeks after the declined week", () => {
+  it("AC8: each keeps its marker, with no button", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21, { closed: true }), week(FEB_28), week(MAR_7)];
+    const ledger = holding(skipping(member([FEB_14]), [FEB_28]), { declined: [FEB_7] });
+    expect(actions(upcomingRows(weeks, ledger, PRODUCT, false, FEB_7)).slice(1, 4)).toEqual([
+      [FEB_14, "paid", null],
+      [FEB_21, "closed", null],
+      [FEB_28, "skipped", null],
+    ]);
+  });
+});
+
+describe("AC9 (issue 198) — upcomingRows: a week credit lands on no Locked week", () => {
+  it("AC9: while locked, an unspent week credit lands on none of the Locked weeks after the declined week", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21)];
+    const ledger = holding(member([], ["2027-01-31"]), { declined: [FEB_7] });
+    expect(markers(upcomingRows(weeks, ledger, PRODUCT, false, FEB_7))).toEqual([
+      [FEB_7, "declined"],
+      [FEB_14, "locked"],
+      [FEB_21, "locked"],
+    ]);
+  });
+
+  it("AC9: after the card update, a week credit passes over a week holding a locked row to the next week that qualifies", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21)];
+    const ledger = holding(member(["2027-01-31"], ["2027-01-24"]), { locked: [FEB_7] });
+    expect(markers(upcomingRows(weeks, ledger, PRODUCT, false, null))).toEqual([
+      [FEB_7, "locked"],
+      [FEB_14, "weekCredit"],
+      [FEB_21, "coming"],
+    ]);
+  });
+});
+
+describe("AC10 (issue 198) — historyRows: a past week holding a locked row", () => {
+  const JAN_3 = "2027-01-03";
+
+  it("AC10: it is Locked, at 0, with the locked line", () => {
+    expect(historyRows([week("2027-01-24")], holding(member([JAN_3]), { locked: ["2027-01-24"] }), JAN_3)).toEqual([
+      { week: week("2027-01-24"), marker: "locked", amountCents: 0, line: "locked" },
+    ]);
+  });
+
+  it("AC10: it is listed in the order given, among the other listed weeks", () => {
+    const weeks = [week("2027-01-31"), week("2027-01-24"), week("2027-01-17"), week("2027-01-10")];
+    const ledger = holding(member([JAN_3, "2027-01-24"]), { locked: ["2027-01-31", "2027-01-17"] });
+    expect(historyRows(weeks, ledger, JAN_3).map((row) => [row.week.weekOf, row.marker])).toEqual([
+      ["2027-01-31", "locked"],
+      ["2027-01-24", "paid"],
+      ["2027-01-17", "locked"],
+    ]);
+  });
+
+  it("AC10: a closed past week holding a locked row is No meal, Closed, at 0: closed wins; guards the cases above", () => {
+    const closed = week("2027-01-24", { closed: true });
+    expect(historyRows([closed], holding(member([JAN_3]), { locked: ["2027-01-24"] }), JAN_3)).toEqual([{ week: closed, marker: "noMeal", amountCents: 0, line: "closed" }]);
+  });
+});
+
+describe("AC11 (issue 198) — upcomingRows: the declined week", () => {
+  it("AC11: the declined week's row is Card declined, with no charge date and no button", () => {
+    const rows = upcomingRows([pastCutoff(week(FEB_7)), week(FEB_14)], holding(member([]), { declined: [FEB_7] }), PRODUCT, false, FEB_7);
+    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "declined", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null });
+  });
+
+  it("AC11: closed by an admin, the declined week is Closed instead, and the weeks after it are still Locked", () => {
+    const weeks = [pastCutoff(week(FEB_7, { closed: true })), week(FEB_14)];
+    expect(markers(upcomingRows(weeks, holding(member([]), { declined: [FEB_7] }), PRODUCT, false, FEB_7))).toEqual([
+      [FEB_7, "closed"],
+      [FEB_14, "locked"],
+    ]);
+  });
+});
+
+describe("AC12 (issue 198) — historyRows: a past declined week", () => {
+  const JAN_3 = "2027-01-03";
+
+  it("AC12: a past week holding a declined row, unpaid, is Card declined, at 0, with the declined line", () => {
+    expect(historyRows([week("2027-01-31")], holding(member([JAN_3]), { declined: ["2027-01-31"] }), JAN_3)).toEqual([
+      { week: week("2027-01-31"), marker: "declined", amountCents: 0, line: "declined" },
+    ]);
+  });
+
+  it("AC12: closed by an admin, it is No meal, Closed, at 0, as any closed week; guards the case above", () => {
+    const closed = week("2027-01-31", { closed: true });
+    expect(historyRows([closed], holding(member([JAN_3]), { declined: ["2027-01-31"] }), JAN_3)).toEqual([{ week: closed, marker: "noMeal", amountCents: 0, line: "closed" }]);
+  });
+});
+
+describe("AC14 (issue 198) — upcomingRows: once the card update pays the declined week", () => {
+  it("AC14: the weeks with no locked row are Coming again, each with Skip; guards AC1 and AC6", () => {
+    const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21)];
+    const ledger = holding(member(["2027-01-31"]), { locked: [FEB_7] });
+    expect(actions(upcomingRows(weeks, ledger, PRODUCT, false, null)).slice(1)).toEqual([
+      [FEB_14, "coming", "skip"],
+      [FEB_21, "coming", "skip"],
+    ]);
   });
 });

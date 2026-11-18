@@ -1,6 +1,7 @@
 import type { HistoryRow, UpcomingRow } from "@core/account-weeks.js";
 import type { MessageKey } from "@core/messages/en.js";
 import type { BadgeKind } from "../../components/ui/badge";
+import { SUBSCRIPTION_BADGES } from "../subscription-badges";
 
 /** The markers that take a badge: a coming week takes none, for the whole of Upcoming weeks is coming (PR #160). */
 export type Marker = Exclude<UpcomingRow["marker"] | HistoryRow["marker"], "coming">;
@@ -12,4 +13,6 @@ export const MARKER_BADGES: Readonly<Record<Marker, { kind: BadgeKind; key: Mess
   weekCredit: { kind: "note", key: "account.marker.weekCredit" },
   noMeal: { kind: "closed", key: "account.marker.noMeal" },
   skipped: { kind: "closed", key: "account.marker.skipped" },
+  locked: { kind: "locked", key: "account.marker.locked" },
+  declined: SUBSCRIPTION_BADGES.declined,
 };

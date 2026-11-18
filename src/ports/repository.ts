@@ -171,6 +171,10 @@ export type MemberWeeks = {
   paid: { weekOf: string; amountCents: number; weekCredit: boolean; options: { typeName: string; optionName: string }[] }[];
   weekCredits: { grantedForWeek: string }[];
   skipped: string[];
+  /** Issue 198: the pickup date of each `locked` ledger row, in date order. */
+  locked: string[];
+  /** Issue 198: the pickup date of each `declined` ledger row, in date order. */
+  declined: string[];
 };
 
 /**

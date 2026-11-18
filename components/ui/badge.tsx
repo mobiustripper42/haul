@@ -15,6 +15,8 @@ const LOOKS = {
   cancelled: OUTLINE,
   /** A card the charge run could not charge (issue 145). */
   declined: "bg-danger-soft text-danger",
+  /** A week a declined card locked (issue 198): the closed look, with a padlock. */
+  locked: OUTLINE,
 } as const;
 
 export type BadgeKind = keyof typeof LOOKS;
@@ -33,6 +35,12 @@ const ICONS: Partial<Record<BadgeKind, ReactNode>> = {
     <>
       <circle cx="12" cy="12" r="9" />
       <path d="M12 7.5v5M12 16v.5" />
+    </>
+  ),
+  locked: (
+    <>
+      <rect x="5" y="11" width="14" height="10" rx="2" />
+      <path d="M8 11V7a4 4 0 0 1 8 0v4" />
     </>
   ),
 };

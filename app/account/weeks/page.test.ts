@@ -9,17 +9,22 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator } from "@core/i18n.js";
+import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Badge, type BadgeKind } from "../../../components/ui/badge";
+import { Button } from "../../../components/ui/button";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
+import { ACCOUNT_CARD_PATH } from "../../paths";
 import { alertTexts, attributesOf, redirectOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
+import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
+import { payDeclinedWeek } from "../declined-fixture";
 import UpcomingWeeks from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -395,5 +400,133 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
     const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
     expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
     expect(textsOf(card).join(" ")).not.toContain(formatUsdWhole(4500));
+  });
+});
+
+// Issue 198: a locked subscription's Upcoming weeks. Which week is Locked or Card declined, and that no week has a button
+// and there is no switch week while locked, is upcomingRows' and switchWeek's (src/account-weeks.test.ts,
+// src/switch-meal.test.ts); when the declined Notice names its week is account home's (app/account/page.test.ts). Here
+// one locked case of each goes through the page, the unlocked ones being the tests above. A row's line and badge are read
+// by their catalog lines and the badge's kind by what Badge draws for it; the Notice by its week, its button and where
+// it sits.
+describe("issue 198 — Upcoming weeks while locked", () => {
+  const FEB_7 = "2027-02-07";
+  const FEB_14 = "2027-02-14";
+
+  /** Ada, signed in, subscribed from January 3, with March 7 skipped, then a declined row for `declinedOn`; her ids. */
+  const lockedAda = async (declinedOn = FEB_7): Promise<{ memberId: string; subscriptionId: string }> => {
+    const member = await ada();
+    const rows = await signup(member, "2027-01-03");
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    await services.repo.skipWeek(rows.subscriptionId, MAR_7);
+    await services.repo.addLedgerRow(rows.subscriptionId, declinedOn, "declined", 4500);
+    signIn(member);
+    return { memberId: member.id, subscriptionId: rows.subscriptionId };
+  };
+
+  /**
+   * January 31 declined; the run at February 7's cutoff wrote February 7 a locked row; then, now, a card update paid
+   * January 31. Nothing is declined any more.
+   */
+  const updatedAda = async (): Promise<void> => {
+    const { memberId, subscriptionId } = await lockedAda("2027-01-31");
+    await services.repo.addLedgerRow(subscriptionId, FEB_7, "locked", 0);
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+  };
+
+  /** The page drawn with `query`: its markup, each row's runs, and the meal card's markup, the Card before the weeks card. */
+  const renderLocked = async (query: { switch?: string } = {}): Promise<{ html: string; rows: string[][]; card: string }> => {
+    const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
+    const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
+    const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
+    return { html, rows, card };
+  };
+
+  /** The markup of the row titled `title`. */
+  const rowMarkup = (html: string, title: string): string =>
+    [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title) ?? "";
+
+  /** What Badge draws for `kind` with the catalog line `key`. */
+  const badgeOf = (kind: BadgeKind, key: MessageKey): string => renderToStaticMarkup(createElement(Badge, { kind, children: t(key) }));
+
+  /** Where each link in `markup` goes, as a path and query. */
+  const linksOf = (markup: string): string[] =>
+    attributesOf(markup, "a").map((link) => {
+      const url = new URL(link.href ?? "", "http://haul.test/account/weeks");
+      return `${url.pathname}${url.search}`;
+    });
+
+  it("AC1: no listed week has a Skip or Unskip: the page has no form, though a Coming and a Skipped week are before their cutoffs", async () => {
+    await lockedAda();
+    const { html } = await renderLocked();
+    expect(html).not.toContain("<form");
+  });
+
+  it("AC2: the meal card has no Switch size or menu, and ?switch=1 opens no pickers", async () => {
+    await lockedAda();
+    for (const query of [{}, { switch: "1" }]) {
+      const { card } = await renderLocked(query);
+      expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
+      expect(linksOf(card)).not.toContain("/account/weeks?switch=1");
+      expect(card).not.toContain("<form");
+    }
+  });
+
+  it("AC5: the one Notice sits above the meal card, names the declined week whose pickup is to come, and ends with a primary Update your card to /account/card; the intro line is left out", async () => {
+    await lockedAda();
+    const { html } = await renderLocked();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(t("account.card.declinedWeek", { week: titleOf(FEB_7) }));
+    const notice = /<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/.exec(html)?.[2] ?? "";
+    expect(notice).toContain(renderToStaticMarkup(createElement(Button, { kind: "primary", href: ACCOUNT_CARD_PATH, children: t("account.updateCard") })));
+    expect(html.indexOf('role="alert"')).toBeGreaterThan(-1);
+    expect(html.indexOf('role="alert"')).toBeLessThan(html.indexOf("<section"));
+    expect(textsOf(html)).not.toContain(t("account.weeks.intro"));
+  });
+
+  it("AC6: a week after the declined week is Locked: the no-pickup line, the Locked badge of the locked kind, no charge day and no button", async () => {
+    await lockedAda();
+    const { html, rows } = await renderLocked();
+    expect(rowTitled(rows, titleOf(FEB_14))).toEqual([titleOf(FEB_14), t("account.noPickupLocked"), t("account.marker.locked")]);
+    expect(rowMarkup(html, titleOf(FEB_14))).toContain(badgeOf("locked", "account.marker.locked"));
+  });
+
+  it("AC7: after the card update, a week holding a locked row whose cutoff has passed and whose pickup is to come is still Locked", async () => {
+    await updatedAda();
+    const { html, rows } = await renderLocked();
+    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.noPickupLocked"), t("account.marker.locked")]);
+    expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("locked", "account.marker.locked"));
+  });
+
+  it("AC11: the declined week is Card declined, as account home's badge: its line, no charge day and no button", async () => {
+    await lockedAda();
+    const { html, rows } = await renderLocked();
+    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.weeks.declined"), t(SUBSCRIPTION_BADGES.declined.key)]);
+    expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf(SUBSCRIPTION_BADGES.declined.kind, SUBSCRIPTION_BADGES.declined.key));
+  });
+
+  it("AC11: closed by an admin, the declined week is Closed, and the subscription stays locked: the Notice still shows, and the next week is Locked", async () => {
+    await lockedAda();
+    await close(FEB_7);
+    const { html, rows } = await renderLocked();
+    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.weeks.closedNoCharge"), t("account.marker.closed")]);
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(rowTitled(rows, titleOf(FEB_14))).toEqual([titleOf(FEB_14), t("account.noPickupLocked"), t("account.marker.locked")]);
+  });
+
+  it("AC13: once a card update pays the declined week, it is Paid, as any paid week; guards AC11", async () => {
+    const { memberId, subscriptionId } = await lockedAda();
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+    const { rows } = await renderLocked();
+    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.marker.paid"), t("account.marker.paid")]);
+  });
+
+  it("AC14: once a card update pays the declined week, a week with no locked row has Skip again, Switch size or menu is back, and there is no Notice; guards AC1, AC2 and AC5", async () => {
+    await updatedAda();
+    const { html, card } = await renderLocked();
+    expect(formsIn(html, titleOf(FEB_14))).toEqual([{ action: "skipWeek", week: FEB_14 }]);
+    expect(linksOf(card)).toEqual(["/account/weeks?switch=1"]);
+    expect(alertTexts(html)).toEqual([]);
   });
 });

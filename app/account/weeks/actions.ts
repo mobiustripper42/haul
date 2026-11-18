@@ -6,7 +6,7 @@
 // trigger names the member. A passed cutoff goes back with the Notice; every other refusal comes from a stale or
 // forged form and goes back silently, as the admin weeks' actions do.
 import { redirect } from "next/navigation";
-import type { UpcomingRow } from "@core/account-weeks.js";
+import { lockedWeek, type UpcomingRow } from "@core/account-weeks.js";
 import { cutoffInstant, isDate } from "@core/pickup-week.js";
 import type { Repository } from "@core/ports/repository.js";
 import { priceOfChoices } from "@core/products.js";
@@ -63,7 +63,7 @@ export async function switchMeal(formData: FormData): Promise<void> {
   await changeWeek(formData, ({ subscribed, rows, week }) => {
     const { product, confirmation } = subscribed;
     const choices = strictChoices(product, formData);
-    if (choices === null || switchWeek(rows) !== week) return null;
+    if (choices === null || switchWeek(rows, lockedWeek(confirmation)) !== week) return null;
     return (repo) => repo.switchPicks(confirmation.subscriptionId, choices, week, priceOfChoices(product, choices));
   });
 }

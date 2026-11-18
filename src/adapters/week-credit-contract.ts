@@ -383,15 +383,44 @@ export function runWeekCreditContract(
       it("AC3 (issue 155): an unknown id and a string that isn't a UUID give nothing", async () => {
         await paidFor(WEEK);
         for (const id of ["00000000-0000-4000-8000-000000000000", "not-a-uuid"]) {
-          expect(await repo.listMemberWeeks(id)).toEqual({ paid: [], weekCredits: [], skipped: [] });
+          expect(await repo.listMemberWeeks(id)).toEqual({ paid: [], weekCredits: [], skipped: [], locked: [], declined: [] });
         }
+      });
+    });
+
+    // Issue 198: the weeks of a subscription's `locked` and `declined` rows, each in date order, as the account pages
+    // read them to mark a week Locked or Card declined (src/account-weeks.test.ts). A locked row is `enrolWeek`'s
+    // (issue 196), written here later week first so the order read is the repository's own.
+    describe("issue 198 — listMemberWeeks' locked and declined weeks", () => {
+      const FEB_7 = "2027-02-07";
+
+      it("AC7 (issue 198): the subscription's locked rows' weeks, in date order; another subscription's are not its, and a declined row is not a locked one", async () => {
+        const ada = await paidFor(EARLIER);
+        const grace = await paidFor(EARLIER);
+        await addLedgerRow(ada.subscriptionId, WEEK, "declined", 5000);
+        await addLedgerRow(grace.subscriptionId, WEEK, "declined", 5000);
+        await repo.enrolWeek(product.id, FEB_7, cutoffInstant(product, FEB_7));
+        await repo.enrolWeek(product.id, NEXT, cutoffInstant(product, NEXT));
+        expect((await repo.listMemberWeeks(ada.subscriptionId)).locked).toEqual([NEXT, FEB_7]);
+      });
+
+      it("AC12 (issue 198): the subscription's declined rows' weeks, in date order; its paid, pending and skipped rows and another subscription's declined row are in neither list", async () => {
+        const ada = await paidFor(EARLIER);
+        const grace = await paidFor(EARLIER);
+        await addLedgerRow(ada.subscriptionId, FEB_7, "declined", 5000);
+        await addLedgerRow(ada.subscriptionId, WEEK, "declined", 5000);
+        await addLedgerRow(ada.subscriptionId, NEXT, "pending", 5000);
+        await addLedgerRow(grace.subscriptionId, NEXT, "declined", 5000);
+        expect(await repo.skipWeek(ada.subscriptionId, "2027-02-14")).toBe(true);
+        const found = await repo.listMemberWeeks(ada.subscriptionId);
+        expect({ locked: found.locked, declined: found.declined }).toEqual({ locked: [], declined: [WEEK, FEB_7] });
       });
     });
 
     // Issue 137: a skip is a ledger row of its own, status `skipped`, read back through listMemberWeeks. The
     // repository checks no cutoff and no listing (the actions do: app/account/weeks/actions.test.ts), only the
     // subscription's ledger rows for the week. A refusal of a week with a pending or declined row is owned here: the
-    // account pages read such a week as Coming.
+    // account pages read a pending week as Coming still, and a declined one as Card declined (issue 198).
     describe("issue 137 — skipWeek and unskipWeek", () => {
       const skippedOf = async (subscriptionId: string) => (await repo.listMemberWeeks(subscriptionId)).skipped;
 

@@ -311,3 +311,44 @@ describe("issue 138 — switchMeal", () => {
     expect(await mealOf(memberId)).toEqual(before);
   });
 });
+
+// Issue 198: a locked subscription, one holding a declined row (February 7's, as the run at its cutoff left it). That no
+// week offers a button and there is no switch week while locked is upcomingRows' and switchWeek's
+// (src/account-weeks.test.ts, src/switch-meal.test.ts); here each action takes one locked case through them, its unlocked
+// case being the issue 137 and 138 tests above. Every refusal goes back silently, as a stale form's does.
+describe("issue 198 — the actions while locked", () => {
+  const MAR_7 = "2027-03-07";
+
+  /** Ada, subscribed and signed in, with March 7 skipped, then February 7 declined. */
+  const lockedAda = async (): Promise<Subscriber> => {
+    const found = await ada();
+    await services.repo.skipWeek(found.subscriptionId, MAR_7);
+    await services.repo.addLedgerRow(found.subscriptionId, PAST_CUTOFF, "declined", 4500);
+    return found;
+  };
+
+  it("AC3: a skip for a week whose cutoff is still ahead goes back with no Notice, and stores nothing", async () => {
+    const { subscriptionId } = await lockedAda();
+    await expect(redirectOf(skipWeek(form({ week: OPEN })))).resolves.toBe(WEEKS_PATH);
+    expect(await skippedOf(subscriptionId)).toEqual([MAR_7]);
+  });
+
+  it("AC3: an unskip for a Skipped week whose cutoff is still ahead goes back with no Notice, and the skip stays", async () => {
+    const { subscriptionId } = await lockedAda();
+    await expect(redirectOf(unskipWeek(form({ week: MAR_7 })))).resolves.toBe(WEEKS_PATH);
+    expect(await skippedOf(subscriptionId)).toEqual([MAR_7]);
+  });
+
+  /** Each option type's id → the id of its option named in `names`. */
+  const choiceOf = (names: string[]): Record<string, string> =>
+    Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => names.includes(option.name))?.id ?? "no such option"]));
+
+  // February 14 would be the switch week unlocked; March 7, skipped, would be it if the rows were locked and switchWeek
+  // were not told.
+  it.each([OPEN, MAR_7])("AC4: a switch with valid picks, posted for %s, goes back with no Notice, and the picks are unchanged", async (week) => {
+    const { memberId } = await lockedAda();
+    const before = await services.repo.findSignupConfirmation(memberId, product.id);
+    await expect(redirectOf(switchMeal(form({ week, ...choiceOf(["2 people", "Vegan"]) })))).resolves.toBe(WEEKS_PATH);
+    expect(await services.repo.findSignupConfirmation(memberId, product.id)).toEqual(before);
+  });
+});
