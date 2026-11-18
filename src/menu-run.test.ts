@@ -1,7 +1,7 @@
 // Issue 141: the menu run over an InMemoryRepository and a FakeEmail. Owned here: which week is current and what menu it
 // holds (`currentWeekMenu`, which the menu page reads too), the email weekday read from the env (`menuEmailWeekday`),
 // when the week's menu email goes out and to whom, the stamp that makes it once, the missing-menu reminder and the event
-// that makes it once a day, and the words of both emails as they are sent (new copy, typed once here). Which rows a week
+// that makes it once a day, and which email each recipient gets, checked against renderEmail. Which rows a week
 // makes and their picks are the repository's (`listWeekMade`, src/adapters/menu-contract.ts); the email date's edges are
 // menuEmailDate's (src/pickup-week.test.ts); the off link's token is src/menu-email-link.test.ts's.
 //
@@ -11,13 +11,13 @@ import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
-import { legalFooter } from "./email-templates.js";
+import { renderEmail } from "./email-templates.js";
 import { createTranslator, type Language } from "./i18n.js";
-import { menuEmailTokenMatches } from "./menu-email-link.js";
+import { menuEmailOffLink, menuEmailTokenMatches } from "./menu-email-link.js";
 import { currentWeekMenu, menuEmailWeekday, runMenuRun, type MenuRunDeps, type MenuRunReport } from "./menu-run.js";
 import type { Member } from "./members.js";
 import type { Menu } from "./menus.js";
-import { addDays, formatPickupDate, pickupWeek, pickupWhereLine, weekTitle, type PickupWeek } from "./pickup-week.js";
+import { addDays, formatPickupDate, pickupWeek, pickupWhereLine, weekdayName, weekTitle, type PickupWeek } from "./pickup-week.js";
 import { EmailSendError, type EmailMessage } from "./ports/email.js";
 import { priceOfChoices, type ProductWithOptions } from "./products.js";
 import { errorFields } from "./record-event.js";
@@ -34,10 +34,10 @@ const SITE_URL = "https://members.example.test";
 const ACCOUNT_WEEKS_URL = "https://members.example.test/account/weeks";
 const ADMIN_WEEKS_URL = "https://members.example.test/admin/weeks";
 const SECRET = "s".repeat(32) + "-test-secret";
-const MENU_SUBJECT = "This week's Supper Club menu";
-
-const en = createTranslator("en");
-const es = createTranslator("es");
+/** The autumn menu's two options and their lines, in position order, as the email's menus value. */
+const AUTUMN_MENUS = "Standard\nSquash soup\nRye bread\n\nVegan\nLentil soup\nRye bread";
+/** The cutoff date of the week after January 17: the date the menu email's charge line carries. */
+const CHARGED = "2027-01-18";
 
 let repo: InMemoryRepository;
 let email: FakeEmail;
@@ -146,7 +146,6 @@ let admins = 0;
 const admin = async (language: Language = "en"): Promise<Member> => repo.createMember({ email: `admin-${++admins}@example.com`, role: "admin", language });
 
 const sentTo = (member: Member): EmailMessage[] => email.sent.filter((message) => message.to === member.email);
-const menuEmails = (): EmailMessage[] => email.sent.filter((message) => message.subject === MENU_SUBJECT);
 const reminders = () => repo.events().filter((event) => event.kind === "menu_reminder_sent");
 
 /** Of `parts`, those found in `text` one after another, each after the end of the last: equal to `parts` when all are there in that order. */
@@ -164,6 +163,45 @@ function inSequence(text: string, parts: readonly string[]): string[] {
 
 const titleOf = (week: PickupWeek, language: Language = "en") => weekTitle(createTranslator(language), week, language);
 const ordinary = (weekOf: string) => pickupWeek(weekOf, null);
+
+/** The menu email `who` gets for `week`, a meal line for each of `meals` (each box's picks), in their language. */
+function menuEmailFor(who: Member, week: PickupWeek, meals: string[]): EmailMessage {
+  const t = createTranslator(who.language);
+  return {
+    to: who.email,
+    ...renderEmail(
+      "menuEmail",
+      who.language,
+      {
+        heading: t("menu.heading", { week: titleOf(week, who.language) }),
+        menus: AUTUMN_MENUS,
+        meals: meals.map((picks) => t("email.menu.meal", { picks })).join("\n"),
+        pickupLine: t("menu.pickup", { pickup: pickupWhereLine(t, week, who.language) }),
+        date: formatPickupDate(CHARGED, who.language),
+        link: ACCOUNT_WEEKS_URL,
+        offLink: menuEmailOffLink(SITE_URL, who.id, SECRET),
+      },
+      SITE_URL,
+    ),
+  };
+}
+
+/** The missing-menu email `who` gets naming `weeks`, the email weekday being `weekdayOn`'s, in their language. */
+function missingMenuFor(who: Member, weeks: PickupWeek[], weekdayOn: string): EmailMessage {
+  return {
+    to: who.email,
+    ...renderEmail(
+      "missingMenu",
+      who.language,
+      { weeks: weeks.map((week) => titleOf(week, who.language)).join(" · "), weekday: weekdayName(weekdayOn, who.language), link: ADMIN_WEEKS_URL },
+      SITE_URL,
+    ),
+  };
+}
+
+/** Thursday and Tuesday: days whose weekday names the run's email weekday 4 and 2. */
+const A_THURSDAY = "2027-01-14";
+const A_TUESDAY = "2027-01-12";
 
 describe("AC2 — menuEmailWeekday", () => {
   it.each([
@@ -278,12 +316,7 @@ describe("AC3 — who gets the menu email", () => {
 
     await run();
 
-    expect(sentTo(ada.member)).toHaveLength(1);
-    const text = sentTo(ada.member)[0]?.text ?? "";
-    expect(inSequence(text, ["Your meal: 2 people · Standard.", "Your meal: 3–4 people · Vegan."])).toEqual([
-      "Your meal: 2 people · Standard.",
-      "Your meal: 3–4 people · Vegan.",
-    ]);
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["2 people · Standard", "3–4 people · Vegan"])]);
   });
 
   it("AC3: the meal line is the picks in effect for the week: switched from January 17, it is the new picks", async () => {
@@ -291,7 +324,7 @@ describe("AC3 — who gets the menu email", () => {
     const ada = await withRow("paid");
     expect(await repo.switchPicks(ada.subscriptionId, picks(1, 1), WEEK, 8000)).toBe("switched");
     await run();
-    expect(sentTo(ada.member)[0]?.text).toContain("Your meal: 3–4 people · Vegan.");
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["3–4 people · Vegan"])]);
   });
 
   it("AC3: switched only from January 24, the meal line is still the picks January 17 was made with", async () => {
@@ -299,7 +332,7 @@ describe("AC3 — who gets the menu email", () => {
     const ada = await withRow("paid");
     expect(await repo.switchPicks(ada.subscriptionId, picks(1, 1), NEXT, 8000)).toBe("switched");
     await run();
-    expect(sentTo(ada.member)[0]?.text).toContain("Your meal: 2 people · Standard.");
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["2 people · Standard"])]);
   });
 
   it("AC3: the week is the current one, not merely the next to cut off: with January 17 closed the run's week is January 24, before its own email day", async () => {
@@ -307,7 +340,7 @@ describe("AC3 — who gets the menu email", () => {
     await withRow("paid", { week: NEXT });
     await repo.closePickupWeek(product.id, WEEK, null, new Date("2027-01-12T15:00:00.000Z"));
     expect((await run()).menuEmail).toEqual({ weekOf: NEXT, sent: 0 });
-    expect(menuEmails()).toEqual([]);
+    expect(email.sent).toEqual([]);
   });
 
   it("AC3: with no current week at all, the report's week is null", async () => {
@@ -320,7 +353,7 @@ describe("AC4 — when the menu email goes out, and only once", () => {
   it("AC4: a week with no menu sends nothing and stamps nothing", async () => {
     await withRow("paid");
     expect((await run()).menuEmail).toEqual({ weekOf: WEEK, sent: 0 });
-    expect(menuEmails()).toEqual([]);
+    expect(email.sent).toEqual([]);
     expect(await repo.findWeekMenu(product.id, WEEK)).toBeNull();
   });
 
@@ -328,7 +361,7 @@ describe("AC4 — when the menu email goes out, and only once", () => {
     await assign(WEEK);
     await withRow("paid");
     expect((await run(at("2027-01-13T17:00:00.000Z"))).menuEmail).toEqual({ weekOf: WEEK, sent: 0 });
-    expect(menuEmails()).toEqual([]);
+    expect(email.sent).toEqual([]);
     expect((await repo.findWeekMenu(product.id, WEEK))?.sentAt).toBeNull();
   });
 
@@ -336,9 +369,9 @@ describe("AC4 — when the menu email goes out, and only once", () => {
     await assign(WEEK);
     const ada = await withRow("paid");
     await run(at("2027-01-14T04:30:00.000Z"));
-    expect(menuEmails()).toEqual([]);
+    expect(email.sent).toEqual([]);
     await run(at("2027-01-14T05:00:00.000Z"));
-    expect(sentTo(ada.member).map((message) => message.subject)).toEqual([MENU_SUBJECT]);
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["2 people · Standard"])]);
   });
 
   it("AC4: after its email day, a week not yet stamped still goes out: a menu put on late is sent on Saturday the 16th", async () => {
@@ -397,70 +430,38 @@ describe("AC4 — when the menu email goes out, and only once", () => {
 describe("AC5 — the menu email", () => {
   const WEEK_DAYS = ordinary(WEEK);
 
-  it("AC5: in English: the subject, then Menu for the week, each menu option's name and lines in position order, the meal line, Pick up, the week after's charge and the Upcoming weeks link, the sign-off, the off link, and the legal footer", async () => {
+  it("AC5: in English: the menu email for the week, each menu option's name and lines in position order, the meal, the week after's charge date, the Upcoming weeks link and the off link", async () => {
     await assign(WEEK);
     const ada = await withRow("paid");
     await run();
-
-    expect(email.sent.map((message) => [message.to, message.subject])).toEqual([[ada.member.email, MENU_SUBJECT]]);
-    const text = email.sent[0]?.text ?? "";
-    const order = [
-      `Menu for ${titleOf(WEEK_DAYS)}\n`,
-      "Standard",
-      "Squash soup",
-      "Rye bread",
-      "Vegan",
-      "Lentil soup",
-      "Rye bread",
-      "Your meal: 2 people · Standard.\n",
-      `Pick up ${pickupWhereLine(en, WEEK_DAYS, "en")}\n`,
-      "The week after is charged at the end of Monday, January 18. To skip or switch it, sign in before then.",
-      ACCOUNT_WEEKS_URL,
-      en("email.signOff"),
-      "\nTurn off the weekly menu email: ",
-    ];
-    expect(inSequence(text, order)).toEqual(order);
-    expect(text.endsWith(`\n${legalFooter(en, SITE_URL)}`)).toBe(true);
+    expect(email.sent).toEqual([menuEmailFor(ada.member, WEEK_DAYS, ["2 people · Standard"])]);
   });
 
   it("AC5: the off link is /menu-emails/off under the site, naming the member and carrying a token signed with the session secret the run is given", async () => {
     await assign(WEEK);
     const ada = await withRow("paid");
     await run();
-    const link = /Turn off the weekly menu email: (\S+)\n/.exec(email.sent[0]?.text ?? "")?.[1] ?? "http://no.link/";
+    const link = new RegExp(`(${SITE_URL}/menu-emails/off\\?\\S+)`).exec(email.sent[0]?.text ?? "")?.[1] ?? "http://no.link/";
     const url = new URL(link);
     expect(`${url.origin}${url.pathname}`).toBe(`${SITE_URL}/menu-emails/off`);
     expect(url.searchParams.get("m")).toBe(ada.member.id);
     expect(menuEmailTokenMatches(ada.member.id, url.searchParams.get("t") ?? "", SECRET)).toBe(true);
   });
 
-  it("AC5: a moved week is named by its moved days, and Pick up names them", async () => {
+  it("AC5: a moved week is named by its moved days, in the heading and the pickup line", async () => {
     const moved: PickupWeek = { weekOf: WEEK, firstDay: "2027-01-16", lastDay: "2027-01-17" };
     await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: moved.firstDay, lastDay: moved.lastDay });
     await assign(WEEK);
-    await withRow("paid");
+    const ada = await withRow("paid");
     await run();
-    const text = email.sent[0]?.text ?? "";
-    expect(text).toContain(`Menu for ${titleOf(moved)}\n`);
-    expect(text).toContain(`Pick up ${pickupWhereLine(en, moved, "en")}\n`);
+    expect(email.sent).toEqual([menuEmailFor(ada.member, moved, ["2 people · Standard"])]);
   });
 
-  it("AC5: a member whose language is Spanish gets it in Spanish: its own subject, the Spanish week, Recogida over the Spanish pickup line, the Spanish date and footer", async () => {
+  it("AC5: a member whose language is Spanish gets it in Spanish: the Spanish week, pickup line and date", async () => {
     await assign(WEEK);
     const ana = await withRow("paid", { language: "es" });
     await run();
-    const [message] = sentTo(ana.member);
-    expect(message?.subject ?? "").toMatch(/\S/);
-    expect(message?.subject).not.toBe(MENU_SUBJECT);
-    const text = message?.text ?? "";
-    expect(inSequence(text, [titleOf(WEEK_DAYS, "es"), `Recogida: ${pickupWhereLine(es, WEEK_DAYS, "es")}\n`, formatPickupDate("2027-01-18", "es")])).toEqual([
-      titleOf(WEEK_DAYS, "es"),
-      `Recogida: ${pickupWhereLine(es, WEEK_DAYS, "es")}\n`,
-      formatPickupDate("2027-01-18", "es"),
-    ]);
-    expect(text).not.toContain("Menu for");
-    expect(text).not.toContain("Turn off the weekly menu email");
-    expect(text.endsWith(`\n${legalFooter(es, SITE_URL)}`)).toBe(true);
+    expect(sentTo(ana.member)).toEqual([menuEmailFor(ana.member, WEEK_DAYS, ["2 people · Standard"])]);
   });
 
   it("AC5: the menu texts go out as written, in every language: the Spanish email carries the same dishes", async () => {
@@ -480,9 +481,7 @@ describe("AC5 — the menu email", () => {
 });
 
 describe("AC6 — the missing-menu email", () => {
-  const BODY = (weekday: string) =>
-    `The menu email to members goes out on ${weekday} once the week has a menu, and the menu page says the menu is on the way until then. Assign a menu to the week under Weeks: ${ADMIN_WEEKS_URL}.`;
-  const reminderTo = (member: Member) => sentTo(member).filter((message) => message.subject !== MENU_SUBJECT);
+  // The admins below hold no box, so every email one of them gets is the missing-menu email.
 
   it("AC6: on January 14, with January 17's menu set and January 24's not, every admin gets one email in English naming January 24, and a member none", async () => {
     await assign(WEEK);
@@ -491,10 +490,7 @@ describe("AC6 — the missing-menu email", () => {
 
     const report = await run();
 
-    expect(reminderTo(lenny).map((message) => message.subject)).toEqual([`No menu yet for ${titleOf(ordinary(NEXT))}`]);
-    const text = reminderTo(lenny)[0]?.text ?? "";
-    expect(text.startsWith(BODY("Thursday"))).toBe(true);
-    expect(inSequence(text, [en("email.signOff"), legalFooter(en, SITE_URL)])).toEqual([en("email.signOff"), legalFooter(en, SITE_URL)]);
+    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_THURSDAY)]);
     expect(sentTo(member)).toEqual([]);
     expect(report.reminder).toEqual({ weeks: [NEXT], sent: 1 });
   });
@@ -503,18 +499,14 @@ describe("AC6 — the missing-menu email", () => {
     await assign(WEEK);
     const lenny = await admin();
     await run({ emailWeekday: 2 });
-    expect(reminderTo(lenny)[0]?.text.startsWith(BODY("Tuesday"))).toBe(true);
+    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_TUESDAY)]);
   });
 
-  it("AC6: an admin whose language is Spanish gets it in Spanish: the Spanish week and weekday, the Weeks link and the Spanish footer", async () => {
+  it("AC6: an admin whose language is Spanish gets it in Spanish: the Spanish week and weekday, and the Weeks link", async () => {
     await assign(WEEK);
     const michael = await admin("es");
     await run();
-    const [message] = reminderTo(michael);
-    expect(message?.subject).toContain(titleOf(ordinary(NEXT), "es"));
-    expect(message?.subject).not.toBe(`No menu yet for ${titleOf(ordinary(NEXT))}`);
-    expect(inSequence(message?.text ?? "", ["jueves", ADMIN_WEEKS_URL])).toEqual(["jueves", ADMIN_WEEKS_URL]);
-    expect(message?.text.endsWith(`\n${legalFooter(es, SITE_URL)}`)).toBe(true);
+    expect(sentTo(michael)).toEqual([missingMenuFor(michael, [ordinary(NEXT)], A_THURSDAY)]);
   });
 
   it("AC6: an admin who turned the menu email off still gets it", async () => {
@@ -522,13 +514,13 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await repo.setMenuEmails(lenny.id, false);
     await run();
-    expect(reminderTo(lenny)).toHaveLength(1);
+    expect(sentTo(lenny)).toHaveLength(1);
   });
 
   it("AC6: several weeks are one email, each week's title joined with ' · ', and the event carries them ascending", async () => {
     const lenny = await admin();
     await run(at("2027-01-16T17:00:00.000Z"));
-    expect(reminderTo(lenny).map((message) => message.subject)).toEqual([`No menu yet for ${titleOf(ordinary(WEEK))} · ${titleOf(ordinary(NEXT))}`]);
+    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(WEEK), ordinary(NEXT)], A_THURSDAY)]);
     expect(reminders()).toEqual([expect.objectContaining({ kind: "menu_reminder_sent", memberId: lenny.id, detail: { weeks: [WEEK, NEXT], date: "2027-01-16" } })]);
   });
 
@@ -548,7 +540,7 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await run();
     expect((await run(at("2027-01-15T04:30:00.000Z"))).reminder).toEqual({ weeks: [NEXT], sent: 0 });
-    expect(reminderTo(lenny)).toHaveLength(1);
+    expect(sentTo(lenny)).toHaveLength(1);
     expect(reminders()).toHaveLength(1);
   });
 
@@ -557,7 +549,7 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await run();
     expect((await run(at("2027-01-15T15:00:00.000Z"))).reminder).toEqual({ weeks: [NEXT], sent: 1 });
-    expect(reminderTo(lenny)).toHaveLength(2);
+    expect(sentTo(lenny)).toHaveLength(2);
     expect(reminders().map((event) => (event.kind === "rate_limit_refusal" ? null : event.detail?.date))).toEqual(["2027-01-14", "2027-01-15"]);
   });
 
@@ -566,7 +558,7 @@ describe("AC6 — the missing-menu email", () => {
     await assign(NEXT);
     const lenny = await admin();
     expect((await run()).reminder).toEqual({ weeks: [], sent: 0 });
-    expect(reminderTo(lenny)).toEqual([]);
+    expect(sentTo(lenny)).toEqual([]);
     expect(reminders()).toEqual([]);
   });
 
@@ -581,7 +573,7 @@ describe("AC6 — the missing-menu email", () => {
 
     expect((await run()).reminder).toEqual({ weeks: [NEXT], sent: 1 });
 
-    expect(reminderTo(michael)).toHaveLength(1);
+    expect(sentTo(michael)).toHaveLength(1);
     expect(reminders().map((event) => (event.kind === "rate_limit_refusal" ? null : event.memberId))).toEqual([michael.id]);
     expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining(errorFields(failure)));
     expect(inspect(logged.mock.calls, { depth: 5 })).not.toContain("the provider's whole reply");

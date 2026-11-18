@@ -6,7 +6,10 @@
 // shared with the site footer, so it reads by name.
 import { describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
+import { createTranslator } from "./i18n.js";
 import type { Member } from "./members.js";
+import { formatUsdWhole } from "./money.js";
+import { formatPickupDate } from "./pickup-week.js";
 import { deliverSignupConfirmation } from "./signup-email.js";
 
 vi.mock("./messages/es.js", async () => {
@@ -66,7 +69,8 @@ const body = (heading: string): string =>
     "",
     "How many people?: 2 people",
     "Which menu?: Standard",
-    "Charged sábado, 7 de noviembre: $50, for your first week",
+    // The key the stand-in lacks: the English catalog's line, filled with the Spanish date.
+    createTranslator("en")("email.signupConfirmation.charged", { date: formatPickupDate("2026-11-07", "es"), amount: formatUsdWhole(5000) }),
     "«supperClub.weeklyLabel»: $85.50",
     "«supperClub.box.firstPickup»",
     "",

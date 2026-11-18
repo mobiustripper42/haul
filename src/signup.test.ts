@@ -2,7 +2,6 @@
 // reply that gets lost after Square took the money and a write that fails are each made by a spy on one
 // method, which falls through to the fake once it is spent. What only Postgres can show (the actor on a
 // trigger row, callers racing on a unique index) is in src/adapters/postgres-product.test.ts.
-import { readFileSync } from "node:fs";
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakePayments } from "./adapters/fake-payments.js";
@@ -1374,19 +1373,5 @@ describe("AC1, AC2, AC3 (issue 58) — confirmedNow, the whole guard against a s
     await submit();
     otherTabConfirmsDuring("findPaymentByReference");
     expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: false });
-  });
-});
-
-describe("AC14 — docs/SPEC.md §7.3", () => {
-  const spec = readFileSync(new URL("../docs/SPEC.md", import.meta.url), "utf8");
-
-  it("AC14: Square is no longer called the customer directory there", () => {
-    expect(spec).not.toContain("Square is the processor and the customer directory");
-  });
-
-  it("AC14: it says Square holds cards and charges, and that a customer Haul creates carries email only", () => {
-    const flat = spec.replace(/\s+/g, " ");
-    expect(flat).toMatch(/Square holds cards and charges/);
-    expect(flat).toMatch(/email only/);
   });
 });

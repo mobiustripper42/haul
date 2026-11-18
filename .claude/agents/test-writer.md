@@ -82,10 +82,8 @@ subject or text, or names one ("shows the confirmation message", "sees the sold-
 question, whatever else it says, `(by hand)` included: its words belong in Wording, and the
 criterion names the behaviour behind them (which branch, which value, which count, which email to
 whom). A criterion whose only content is wording is a question too: it becomes a Wording line and a
-hand-back check, or the behaviour it stands for. Report each under Questions with the criterion's
-id. Two more are questions at readback rather than stops in write mode: a branch that changes only
-how the screen reads or looks with no function named that picks the state, and two emails only
-their subject tells apart (both rules are under What a test asserts).
+hand-back check, or the behaviour it stands for. An email criterion that names no template is a
+question too. Report each under Questions with the criterion's id.
 
 What to report:
 - **Only what could fail a test.** Report an assumption only if a reasonable builder could go the
@@ -132,7 +130,8 @@ What to report:
    today. Never work around either.
 8. Edit the existing tests Interfaces lists under Removes, and no other existing test. Each line
    says what happens to its test: deleted, or retargeted to what replaces the removed thing. A
-   test that asserts a copy key's text is deleted, never retargeted to the new key's text; one that
+   test that asserts a copy key's text is deleted, never retargeted to the new key's text, unless it
+   checks a choice between lines (What a test asserts); one that
    only reads the key to locate a control is retargeted to the new key. List
    every such file under Files. A retargeted test keeps its name and needs no criterion id, and
    item 5 does not apply to it: it guards behaviour that already exists, so it may pass against
@@ -153,25 +152,32 @@ What to report:
 a cost with no catch. These rules govern what you add on your own judgement. A criterion that
 asks for a test still gets it, because the spec is the requirement; readback is where a
 duplicate gets raised. The exception is fixed text: a criterion that could only be tested by
-asserting it is a question — stop and return it.
+asserting it, other than a choice between lines (below), is a question — stop and return it.
 
 - **Behaviour, not structure.** Assert what a caller gets back, what a row holds, what state the
   user ends up in — a URL, a field or control that appears (shown by using it, or by its role and
   count, never by its name being visible), a value (a date, an amount, a count) that reaches the
-  page. Not fixed text, whether typed or read from the catalog: a sentence the code always renders
+  page. Not fixed text, whether typed or read from the catalog, except a choice between lines
+  (below): a sentence the code always renders
   for a state is the line that renders it, said again. An accessible name may locate a control to
   click or fill. Not CSS classes, element nesting, call order on an internal, or a file's source
   text —
   unless a criterion names the class, nesting or attribute (an accessibility attribute, say). A
   shared class named under Interfaces is not asserted: `@code-review` and `@ui-reviewer` check
   that it is used.
-- **A branch is tested where it is decided.** When a state changes only how the screen reads or
-  looks — its words, its colour — the function that picks the state gets the unit test, and the
-  page is not asserted on the words or the styling. When no such function is named in
-  Interfaces, stop and report it rather than testing the page's text.
-- **An email is told apart by its recipient, its count and the values it carries** — a link, a
-  code, an amount, a date — never by its subject or its sentences. When only the subject tells two
-  emails apart, stop and report it: the spec names a kind on the message, or the criterion changes.
+- **A choice between lines is checked by its catalog line.** When code picks which line to show — one
+  notice of several, a line in some states and not others — a test may assert that the line for the
+  expected key appears (`t(key)`): that checks the choice, and survives a rewording. A line shown the
+  same way in every state the code can be in is not asserted: it is the code said again. Do not pull
+  out a picker function for a test; a value inside the line is asserted on its own.
+- **An email is checked by what its sender decides:** whether one goes, to whom, only once, that a
+  failed send undoes nothing, and which email it is — by comparing the sent message to what the
+  project's email renderer builds for the expected template, language and values (in Haul,
+  `renderEmail`), which also covers its language and values.
+  Never a typed subject or body. What the sender only passes through (a lookup, an amount computed
+  elsewhere) gets one case, not its edge cases again.
+- **A function whose job is composing text** (a page title, a week's name) has its output asserted whole in
+  its own unit test: that output is what its caller gets back. Its callers assert the values only.
 - **One rule, one layer.** Test a rule's edge cases once, at the layer that owns it. A layer that
   uses the rule gets one accepted and one rejected case through it, not the edge cases again; its
   own logic — what it does with the answer, its errors — is tested as usual. When the owning

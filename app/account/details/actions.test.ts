@@ -9,7 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator } from "@core/i18n.js";
+import { renderEmail } from "@core/email-templates.js";
 import type { Member } from "@core/members.js";
 import { PaymentsError } from "@core/ports/payments.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -258,8 +258,8 @@ describe("AC7 (issue 156) — a save with a new email", () => {
     await ada();
     await redirectOf(saveDetails(details({ email: NEW, language: "es" })));
     await runScheduled();
-    expect(email.sent.map((message) => message.subject)).toEqual([createTranslator("es")("details.codeEmail.subject")]);
-    expect(email.last()?.subject).not.toBe(createTranslator("en")("details.codeEmail.subject"));
+    const code = codeIn(email.last()?.text);
+    expect(email.sent).toEqual([{ to: NEW, ...renderEmail("emailChangeCode", "es", { code, minutes: 10 }, services.siteUrl) }]);
   });
 });
 
@@ -467,7 +467,8 @@ describe("AC9 (issue 141) — the menu email checkbox", () => {
 });
 
 describe("AC19 (issue 156) — the notice to the old address", () => {
-  const SUBJECT = "Your Ohio City Farm sign-in email was changed";
+  /** The notice the old address gets, naming NEW, in `language`. */
+  const changedNotice = (language: "en" | "es" = "en") => ({ to: OLD, ...renderEmail("emailChanged", language, { email: NEW }, services.siteUrl) });
 
   it("AC19: after the response, and not before, the old address gets one email saying the sign-in email changed", async () => {
     await ada();
@@ -475,8 +476,7 @@ describe("AC19 (issue 156) — the notice to the old address", () => {
     await redirectOf(confirmEmailChange(form({ code })));
     expect(email.sent).toEqual([]);
     await runScheduled();
-    expect(sentTo(OLD).map((message) => message.subject)).toEqual([SUBJECT]);
-    expect(sentTo(OLD)[0]?.text).toContain(NEW);
+    expect(sentTo(OLD)).toEqual([changedNotice()]);
   });
 
   it("AC19: it is in the member's email language", async () => {
@@ -484,8 +484,7 @@ describe("AC19 (issue 156) — the notice to the old address", () => {
     const code = await pendingChange(NEW, { language: "es" });
     await redirectOf(confirmEmailChange(form({ code })));
     await runScheduled();
-    expect(sentTo(OLD).map((message) => message.subject)).toEqual([createTranslator("es")("details.changedEmail.subject")]);
-    expect(sentTo(OLD)[0]?.subject).not.toBe(SUBJECT);
+    expect(sentTo(OLD)).toEqual([changedNotice("es")]);
   });
 
   it("AC19: if it fails to send, the change still stands", async () => {

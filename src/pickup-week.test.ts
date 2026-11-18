@@ -198,15 +198,11 @@ describe("AC4, AC5 (issue 133) — pickupWhereLine and firstPickupLine", () => {
   });
 
   it("AC4: firstPickupLine is the first pickup line with the week's first day", () => {
-    expect(firstPickupLine(t, { weekOf: "2027-01-03", firstDay: "2027-01-02", lastDay: "2027-01-03" }, "en")).toBe(
-      t("supperClub.box.firstPickup", { date: "Saturday, January 2" }),
-    );
+    expect(firstPickupLine(t, { weekOf: "2027-01-03", firstDay: "2027-01-02", lastDay: "2027-01-03" }, "en")).toBe(t("supperClub.box.firstPickup", { date: formatPickupDate("2027-01-02", "en") }));
   });
 
   it("AC5: in an ordinary week it is the Sunday, as today", () => {
-    expect(firstPickupLine(t, { weekOf: "2027-01-03", firstDay: "2027-01-03", lastDay: "2027-01-04" }, "en")).toBe(
-      t("supperClub.box.firstPickup", { date: "Sunday, January 3" }),
-    );
+    expect(firstPickupLine(t, { weekOf: "2027-01-03", firstDay: "2027-01-03", lastDay: "2027-01-04" }, "en")).toBe(t("supperClub.box.firstPickup", { date: formatPickupDate("2027-01-03", "en") }));
   });
 });
 

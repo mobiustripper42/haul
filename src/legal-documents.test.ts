@@ -61,7 +61,7 @@ describe("AC2 — the Privacy Policy's opening", () => {
   it("AC2: its first block is the opening paragraph, before its first heading", () => {
     const blocks = parseLegalDocument(en["legal.privacy.text"]);
     expect(blocks[0]?.kind).toBe("paragraph");
-    expect(blocks[1]).toEqual(heading("What we collect"));
+    expect(blocks[1]?.kind).toBe("heading");
   });
 });
 
