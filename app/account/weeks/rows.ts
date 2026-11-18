@@ -14,7 +14,8 @@ async function readWeeks(product: ProductWithOptions, subscriptionId: string): P
 /**
  * The member's Upcoming rows at `now` (issue 137): the one home the Upcoming weeks page and its Skip and Unskip
  * actions load them through, so they cannot disagree about which weeks exist or which button each has. A cancelled
- * subscription (issue 139) keeps only its paid weeks, with no button.
+ * subscription (issue 139) keeps only its paid weeks, with no button. A locked one (issue 198) passes `lockedWeek`, the
+ * one place the lock is read: no button, and the weeks after the declined week read Locked.
  */
 export async function loadUpcomingRows({ product, confirmation }: Subscribed, now: Date): Promise<UpcomingRow[]> {
   const [changed, ledger] = await readWeeks(product, confirmation.subscriptionId);

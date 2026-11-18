@@ -3,7 +3,7 @@ schema: 1
 id: DEC-045
 title: "A locked subscription can neither skip nor switch"
 topic: "Product rules"
-status: "draft"
+status: "active"
 date: "2026-11-17"
 ruling: "A locked subscription is offered no Skip, Unskip or Switch, and the server refuses them silently. Weeks after the declined week read Locked, the declined week reads Card declined, and the declined Notice tops Upcoming weeks."
 claims:

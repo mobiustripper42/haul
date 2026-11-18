@@ -21,7 +21,7 @@ export async function declinedNotice(subscribed: Subscribed, next: AdminWeek | n
   const declined = declinedRows.length > 0;
   const declinedWeek = next && declinedRows.find((row) => !row.closed);
   const declinedLine = declinedWeek && t("account.card.declinedWeek", { week: await weekNamed(getRepository(), product.id, declinedWeek.pickupDate, language) });
-  const notice = declined && (
+  const notice: ReactElement | null = declined ? (
     <Notice icon="alert" lead={t("account.card.declinedLead")}>
       {[t("account.card.declinedBody"), declinedLine].filter(Boolean).join(" ")}
       <span className="mt-3 block">
@@ -30,6 +30,6 @@ export async function declinedNotice(subscribed: Subscribed, next: AdminWeek | n
         </Button>
       </span>
     </Notice>
-  );
-  return { declined, notice: notice || null };
+  ) : null;
+  return { declined, notice };
 }
