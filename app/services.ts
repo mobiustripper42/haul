@@ -4,6 +4,7 @@ import { asAppRole } from "@core/adapters/pg-connect.js";
 import { PostgresRepository } from "@core/adapters/postgres-repository.js";
 import { ResendEmail } from "@core/adapters/resend-email.js";
 import { SquarePayments } from "@core/adapters/square-payments.js";
+import { compsCountTowardCap } from "@core/comps.js";
 import { menuEmailWeekday } from "@core/menu-run.js";
 import type { EmailPort } from "@core/ports/email.js";
 import type { PaymentsPort } from "@core/ports/payments.js";
@@ -27,7 +28,7 @@ export function getRepository(): Repository {
   if (!repository) {
     const url = process.env.DATABASE_URL || (isProduction() ? undefined : DEV_DATABASE_URL);
     if (!url) throw new Error("DATABASE_URL must be set in production");
-    repository = new PostgresRepository(url);
+    repository = new PostgresRepository(url, { compsCountTowardCap: compsCountTowardCap({ COMPS_COUNT_TOWARD_CAP: process.env.COMPS_COUNT_TOWARD_CAP }) });
   }
   return repository;
 }

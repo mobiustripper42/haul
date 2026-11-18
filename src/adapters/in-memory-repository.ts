@@ -41,6 +41,8 @@ type StoredSubscription = {
   /** The time of the cancel; set exactly when `status` is `cancelled`. */
   cancelledAt: Date | null;
   squareCardId: string | null;
+  /** Issue 194: set by `markComped`; a comp's weeks are written paid at 0 cents. Absent means not comped. */
+  comped?: boolean;
   /** The card's brand and last four, stored beside its id (issue 145); null with no card, or one bound before they were. */
   cardBrand: string | null;
   cardLast4: string | null;
@@ -103,6 +105,9 @@ export class InMemoryRepository implements Repository {
   // Set on the view `withActor` hands its function, which shares this repository's state.
   private actor: Actor = null;
   private scoped = false;
+
+  /** Issue 194: whether comped subscriptions count toward a product's cap; default false, as `getRepository` builds it. */
+  constructor(private readonly options: { compsCountTowardCap?: boolean } = {}) {}
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
     const email = normalizeEmail(input.email);
@@ -317,6 +322,7 @@ export class InMemoryRepository implements Repository {
     return [...this.subscriptions.values()].filter(
       (s) =>
         s.productId === productId &&
+        (this.options.compsCountTowardCap || !s.comped) &&
         (s.status === "active" || (s.squareCardId !== null && this.ledgerOf(s.id)?.status === "pending")),
     ).length;
   }
@@ -561,8 +567,8 @@ export class InMemoryRepository implements Repository {
    * A row, attempt 1, for each of the product's subscriptions due `weekOf` as of `cutoff` and holding no row for it; none for
    * a closed week (issue 150). A subscription holding an unspent week credit granted for an earlier week gets its row
    * `paid` at 0 cents, paid at the cutoff, with its oldest such week credit (by the granted-for week, then the credit's id)
-   * spent on it, whatever its picks sum to; else one whose picks in effect for the week (DEC-033) sum to 0 cents gets the
-   * same row, spending nothing; any other gets a `pending` row at the sum. Issue 196: an `active` subscription holding a
+   * spent on it, whatever its picks sum to; else a comped one (issue 194), or one whose picks in effect for the week (DEC-033) sum to 0
+   * cents, gets the same row, spending nothing; any other gets a `pending` row at the sum. Issue 196: an `active` subscription holding a
    * `declined` row for an earlier week is locked, and gets a `locked` row at 0 cents first of all: before a week credit,
    * which stays unspent, and before the 0-cent rule. A cancelled one holding such a row gets no row. Returns what it wrote, by kind.
    */
@@ -586,8 +592,9 @@ export class InMemoryRepository implements Repository {
       const credit = this.unspentCreditsBefore(subscription.id, weekOf)[0];
       if (!picks && !credit) continue;
       const cents = picks ? priceOfChoices(product, picks.optionIds) : 0;
-      const paid = credit !== undefined || cents === 0;
-      const ledgerId = await this.addLedgerRow(subscription.id, weekOf, paid ? "paid" : "pending", credit ? 0 : cents, paid ? cutoff : undefined);
+      const comped = subscription.comped === true;
+      const paid = credit !== undefined || comped || cents === 0;
+      const ledgerId = await this.addLedgerRow(subscription.id, weekOf, paid ? "paid" : "pending", credit || comped ? 0 : cents, paid ? cutoff : undefined);
       if (credit) {
         this.weekCredits.set(credit.id, { ...credit, spentOn: ledgerId });
         written.byWeekCredit.push({ ledgerId, memberId: subscription.memberId });
@@ -809,6 +816,12 @@ export class InMemoryRepository implements Repository {
     if (JSON.stringify(sets.map(setKey)) === JSON.stringify(subscription.sets.map(setKey))) return "unchanged";
     this.subscriptions.set(subscriptionId, { ...subscription, sets, weeklyCents });
     return "switched";
+  }
+
+  /** Issue 194: a test seam on the fake only, not on `Repository`: marks the subscription comped, as `db:comp` sets the column. */
+  markComped(subscriptionId: string): void {
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (subscription) this.subscriptions.set(subscriptionId, { ...subscription, comped: true });
   }
 
   /** A test seam on the fake only, not on `Repository`: a ledger row the charge run would write, and its id. */

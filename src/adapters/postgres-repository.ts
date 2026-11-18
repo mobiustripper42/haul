@@ -230,11 +230,14 @@ export class PostgresRepository implements Repository {
   private db: Db;
   // Set on the view `withActor` hands its function.
   private scoped = false;
+  private readonly compsCountTowardCap: boolean;
 
   // TLS is applied inside the constructor, through `createPool`, per DEC-001.
-  constructor(url: string) {
+  // Issue 194: `compsCountTowardCap` says whether comped subscriptions count as held spots; default false.
+  constructor(url: string, options: { compsCountTowardCap?: boolean } = {}) {
     this.pool = createPool(url);
     this.db = this.pool;
+    this.compsCountTowardCap = options.compsCountTowardCap ?? false;
   }
 
   async createMember(input: { email: string; language?: Language; role?: Role }): Promise<Member> {
@@ -585,10 +588,11 @@ export class PostgresRepository implements Repository {
       `select count(*)::int as held
          from subscriptions s
         where s.product_id = $1
+          and ($2 or not s.comped)
           and (s.status = 'active'
                or (s.status = 'pending' and s.square_card_id is not null
                    and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'pending')))`,
-      [productId],
+      [productId, this.compsCountTowardCap],
     );
     return rows[0]?.held ?? 0;
   }
@@ -1043,8 +1047,8 @@ export class PostgresRepository implements Repository {
    * One statement: a row, attempt 1, for every subscription of the product due `weekOf` as of `cutoff`, none for a closed
    * week; a subscription already holding a row for the week is left as it is (issue 150). A subscription holding an unspent
    * week credit granted for an earlier week gets its row `paid` at 0 cents, `paid_at` the cutoff, with its oldest such week
-   * credit spent on it (by the granted-for week, then the credit's id) whatever its picks sum to; else one whose picks
-   * in effect for the week (DEC-033) sum to 0 cents gets the same row, spending nothing; any other gets a `pending` row at
+   * credit spent on it (by the granted-for week, then the credit's id) whatever its picks sum to; else a comped one
+   * (issue 194), or one whose picks in effect for the week (DEC-033) sum to 0 cents, gets the same row, spending nothing; any other gets a `pending` row at
    * the sum. The spend rides on the insert, so a row that conflicts spends nothing. Issue 196: an `active` subscription holding
    * a `declined` row for an earlier week is locked, and gets a `locked` row at 0 cents first of all: before a week credit,
    * which stays unspent, and before the 0-cent rule. A cancelled one holding such a row gets no row. Returns what it wrote, by kind.
@@ -1053,7 +1057,7 @@ export class PostgresRepository implements Repository {
     if (!UUID_SHAPE.test(productId)) return { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
     const { rows } = await this.db.query<{ ledger_id: string; member_id: string; status: string; by_credit: boolean }>(
       `with due as (
-         select s.id as subscription_id, s.member_id, s.created_at, picked.cents,
+         select s.id as subscription_id, s.member_id, s.created_at, s.comped, picked.cents,
                 ${holdsDeclinedRowBefore("$2::date")} as locked,
                 (select c.id from week_credits c join ledger granted on granted.id = c.granted_for
                   where c.subscription_id = s.id and c.spent_on is null and granted.pickup_date < $2::date
@@ -1068,10 +1072,10 @@ export class PostgresRepository implements Repository {
        ), inserted as (
          insert into ledger (subscription_id, pickup_date, amount_cents, status, attempt, paid_at)
          select subscription_id, $2::date,
-                case when locked or credit_id is not null then 0 else cents end,
-                case when locked then 'locked' when credit_id is not null or cents = 0 then 'paid' else 'pending' end,
+                case when locked or credit_id is not null or comped then 0 else cents end,
+                case when locked then 'locked' when credit_id is not null or comped or cents = 0 then 'paid' else 'pending' end,
                 1,
-                case when not locked and (credit_id is not null or cents = 0) then $3::timestamptz end
+                case when not locked and (credit_id is not null or comped or cents = 0) then $3::timestamptz end
            from due
           where locked or credit_id is not null or cents is not null
           order by created_at, subscription_id
