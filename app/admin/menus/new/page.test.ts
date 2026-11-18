@@ -1,8 +1,7 @@
 // Issue 140: New menu, /admin/menus/new, and Duplicate's /admin/menus/new?from=<menu id>, rendered through
 // react-dom/server with `next/headers` faked and the composition root mocked, as ../page.test.ts renders the library.
 // Read as its markup, and for the errors only a failed save shows, as the tree it returns: what it gives `MenuForm`.
-// The form's own markup is ../menu-form.test.ts's; what a save does is ../actions.test.ts's. The wording is new copy,
-// typed here once.
+// The form's own markup is ../menu-form.test.ts's; what a save does is ../actions.test.ts's.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -85,6 +84,10 @@ const linksOf = (html: string) =>
     current: /\baria-current="page"/.test(attrs),
   }));
 
+/** The words of the label for the control with this id. */
+const labelOf = (html: string, id: string): string =>
+  textsOf(screenMarkup(html).match(new RegExp(`<label\\b[^>]*\\bfor="${id}"[^>]*>([\\s\\S]*?)</label>`))?.[1] ?? "").join(" ");
+
 const autumn = (): Promise<Menu> =>
   services.repo.createMenu({ name: "Autumn harvest", texts: { [idOf("Standard")]: "Squash soup\n\nRye bread", [idOf("Vegan")]: "Lentil soup" } });
 
@@ -92,15 +95,16 @@ describe("AC4 — New menu", () => {
   it("AC4: Menus is the page showing, and All menus goes back to the library", async () => {
     setUp();
     const links = linksOf(await render());
-    expect(links).toContainEqual({ href: "/admin/menus", text: "Menus", current: true });
-    expect(links).toContainEqual(expect.objectContaining({ href: "/admin/menus", text: "All menus" }));
+    // The admin nav's Menus, marked as the page showing, and the back link, which is not.
+    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current).sort()).toEqual([false, true]);
   });
 
   it("AC4: an empty name, then a text field per menu option, in option order, each labelled with its option", async () => {
     setUp();
     const html = await render();
     expect(nameValue(html)).toBe("");
-    expect(textsOf(html).filter((text) => text.endsWith(" menu") && text !== "New menu")).toEqual(["Standard menu", "Vegan menu"]);
+    expect(labelOf(html, `menu-text-${idOf("Standard")}`)).toContain("Standard");
+    expect(labelOf(html, `menu-text-${idOf("Vegan")}`)).toContain("Vegan");
     expect(textareas(html)).toEqual([
       { name: menuTextField(idOf("Standard")), value: "" },
       { name: menuTextField(idOf("Vegan")), value: "" },
@@ -111,29 +115,21 @@ describe("AC4 — New menu", () => {
     setUp([...MENUS.options, { name: "Spicy", priceCents: 0, position: 3 }]);
     const html = await render();
     expect(textareas(html).map((area) => area.name)).toEqual(["Standard", "Vegan", "Spicy"].map((name) => menuTextField(idOf(name))));
-    expect(textsOf(html)).toContain("Spicy menu");
+    expect(labelOf(html, `menu-text-${idOf("Spicy")}`)).toContain("Spicy");
   });
 
-  it("AC4: the form posts to createMenu, and gets each field's error from the catalog", async () => {
+  it("AC4: the form posts to createMenu", async () => {
     setUp();
     const [form, ...others] = findAll(await pageOf(), MenuForm);
     expect(others).toEqual([]);
     expect(form?.props.action).toBe(createMenu);
-    expect(form?.props.text).toMatchObject({
-      textLabel: "{option} menu",
-      errors: {
-        nameRequired: "Give the menu a name.",
-        nameTooLong: "Keep the name to 100 characters.",
-        textRequired: "Write the {option} menu, one dish per line.",
-        textTooLong: "Keep the {option} menu to 4,000 characters.",
-      },
-    });
   });
 
   it("AC4: New menu has no Assigned line: a menu not yet saved is on no week", async () => {
     setUp();
-    const texts = textsOf(await render());
-    expect(texts.filter((text) => text.startsWith("Assigned to") || text === "Not assigned to a week")).toEqual([]);
+    const [form] = findAll(await pageOf(), MenuForm);
+    expect(form).toBeDefined();
+    expect(form?.props.assigned).toBeUndefined();
   });
 });
 
@@ -142,7 +138,9 @@ describe("AC7 — Duplicate", () => {
     setUp();
     const original = await autumn();
     const html = await render({ from: original.id });
-    expect(nameValue(html)).toBe("Autumn harvest (copy)");
+    // The name is the original's with the copy mark added: it holds the original's and is not it.
+    expect(nameValue(html)).toContain(original.name);
+    expect(nameValue(html)).not.toBe(original.name);
     expect(textareas(html).map((area) => area.value)).toEqual(["Squash soup\n\nRye bread", "Lentil soup"]);
   });
 
@@ -160,7 +158,6 @@ describe("AC7 — Duplicate", () => {
     setUp();
     await autumn();
     const html = await render({ from });
-    expect(textsOf(html)).toContain("Standard menu");
     expect(nameValue(html)).toBe("");
     expect(textareas(html).map((area) => area.value)).toEqual(["", ""]);
   });

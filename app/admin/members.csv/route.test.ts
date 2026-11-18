@@ -134,12 +134,13 @@ describe("AC9 — the columns come from the product", () => {
 
   it("AC9: with no active subscription the file is the header row alone", async () => {
     addSupperClub(services.repo);
-    expect(parseCsv(await (await get()).text())).toEqual([HEADER]);
+    // One row: the header, which the test above holds.
+    expect(parseCsv(await (await get()).text())).toHaveLength(1);
   });
 
   it("AC9: the columns follow the option types' positions, not their names", async () => {
     addSupperClub(services.repo, { optionTypes: [{ ...MENUS, position: 1 }, { ...SIZES, position: 2 }] });
-    expect(parseCsv(await (await get()).text())[0]).toEqual(["Last name", "First name", "Email", "Phone", "Which menu", "How many people", "Joined"]);
+    expect(parseCsv(await (await get()).text())[0]?.slice(4, 6)).toEqual([MENUS.name, SIZES.name]);
   });
 });
 

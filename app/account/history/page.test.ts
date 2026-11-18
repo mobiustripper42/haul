@@ -1,15 +1,16 @@
 // Issue 155: History, `await History()` with `next/headers` faked and the composition root mocked, as
 // app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
 // which weeks are past is pastWeeks' and each row's marker, amount and line historyRows' (src/pickup-week.test.ts,
-// src/account-weeks.test.ts). Here one case of each goes through the page, and what each row says on screen, read
-// as the runs of text in its row. The page's words are new copy, typed once here. The header is faked, so what is
-// read of it is the call the page makes.
+// src/account-weeks.test.ts). Here one case of each goes through the page, read by the values in its row: the title,
+// the meal and the amount, never the marker's words (issue 211). The header is faked, so what is read of it is the
+// call the page makes.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
+import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -125,7 +126,7 @@ describe("AC1 (issue 155) — who gets in", () => {
 
 // One member's past weeks: January 3 paid at signup ($45); January 10 paid by the charge run ($50); January 17
 // closed with no charge; January 24 paid ($45) and then closed; January 31 neither, so not listed.
-describe("AC7 (issue 155) — what each row says, left then right", () => {
+describe("AC7 (issue 155) — what each row holds", () => {
   const arrange = async (): Promise<string[][]> => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 5000);
@@ -135,36 +136,34 @@ describe("AC7 (issue 155) — what each row says, left then right", () => {
     return (await render()).rows;
   };
 
-  it("AC7: the first week: the meal, Paid at signup, the amount charged, then Paid", async () => {
-    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, "Paid at signup", "$45", "Paid"]);
+  it("AC7: the first week: the meal and the amount charged at signup", async () => {
+    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(4500)]));
   });
 
-  it("AC7: a later paid week: the meal, Paid, the ledger's amount, then Paid", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual([titleOf("2027-01-10"), MEAL, "Paid", "$50", "Paid"]);
+  it("AC7: a later paid week: the meal and the ledger's amount", async () => {
+    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(5000)]));
   });
 
-  it("AC7: a closed week with no charge: Closed, $0, then No meal, with no meal line", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), "Closed", "$0", "No meal"]);
+  it("AC7: a closed week with no charge: $0, with no meal line", async () => {
+    const row = rowTitled(await arrange(), titleOf("2027-01-17"));
+    expect(row).toContain(formatUsdWhole(0));
+    expect(row).not.toContain(MEAL);
   });
 
-  it("AC7: a week closed after it was paid: the meal, that a week credit covers a later week, the amount, then No meal", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([
-      titleOf("2027-01-24"),
-      MEAL,
-      "Closed after it was paid: a week credit covers a later week.",
-      "$45",
-      "No meal",
-    ]);
+  it("AC7: a week closed after it was paid: the meal and the amount", async () => {
+    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(4500)]));
   });
 });
 
 // Issue 137: a past week the member skipped. Its marker, amount and line are historyRows' (src/account-weeks.test.ts),
 // a week both closed and skipped among them; here the row goes through the page once.
 describe("AC7 (issue 137) — a past skipped week", () => {
-  it("AC7: a skipped week: Skipped: not charged., $0, then Skipped, with no meal line", async () => {
+  it("AC7: a skipped week: $0, with no meal line", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.skipWeek(subscriptionId, "2027-01-17");
-    expect(rowTitled((await render()).rows, titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), "Skipped: not charged.", "$0", "Skipped"]);
+    const row = rowTitled((await render()).rows, titleOf("2027-01-17"));
+    expect(row).toContain(formatUsdWhole(0));
+    expect(row).not.toContain(MEAL);
   });
 });
 
@@ -185,12 +184,13 @@ describe("AC4 (issue 138) — a paid week's picks, after a switch", () => {
 });
 
 describe("AC8 (issue 155) — no past weeks", () => {
-  it("AC8: a member whose first week has not passed sees the heading and the intro line only: no card and no message", async () => {
+  it("AC8: a member whose first week has not passed sees no card, no rows and no message", async () => {
     await subscribedAda("2027-02-07");
-    const { html, runs } = await render();
-    expect(runs).toEqual(["the header", "History", "Every week since your first pickup, newest first."]);
+    const { html, rows } = await render();
     // A Card is a <section>.
     expect(html).not.toContain("<section");
+    expect(rows).toEqual([]);
+    expect(html).not.toContain('role="alert"');
   });
 });
 
@@ -204,12 +204,12 @@ describe("AC9 (issue 155) — the header on History", () => {
 
 // Issue 139: a cancel touches no ledger row, so History is unchanged after it; here one case goes through the page.
 describe("AC2, AC5 (issue 139) — History after a cancel", () => {
-  it("AC2: a cancelled member's History still lists each week charged before the cancel, Paid", async () => {
+  it("AC2: a cancelled member's History still lists each week charged before the cancel, with its amount", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-24", "paid", 4500);
     expect(await services.repo.cancelSubscription(subscriptionId, NOW)).toBe(true);
     const { rows } = await render();
     expect(rows.map((row) => row[0])).toEqual([titleOf("2027-01-24"), titleOf(JAN_3)]);
-    expect(rows.map((row) => row.at(-1))).toEqual(["Paid", "Paid"]);
+    for (const row of rows) expect(row).toContain(formatUsdWhole(4500));
   });
 });

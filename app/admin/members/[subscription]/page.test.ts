@@ -2,21 +2,24 @@
 // and the composition root mocked, as app/admin/page.test.ts renders /admin. Who counts as an admin is
 // app/session.test.ts's; which subscriptions the page can find is listSubscribers' and refundOwed its
 // (src/adapters/signup-contract.ts); which week is the last pickup lastPickup's (src/account-weeks.test.ts). Here each of
-// the page's states goes through it once. What the confirm does is ./actions.test.ts's. The page's words are new copy,
-// typed once here; "Active" is the account's badge word, read from the catalog.
-import { createElement } from "react";
+// the page's states goes through it once. What the confirm does is ./actions.test.ts's; the badge's words are
+// app/subscription-badges.tsx's, so the page is checked by what it hands the badge. The credit line, shown in some
+// states and not others, is checked by its catalog line.
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
-import { en } from "@core/messages/en.js";
 import type { Role } from "@core/members.js";
 import { pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Button } from "../../../../components/ui/button";
+import { Heading } from "../../../../components/ui/heading";
+import { SubscriptionStatus } from "../../../subscription-badges";
 import { AdminNav } from "../../admin-nav";
 import { emptyRequest } from "../../../next-headers-fake";
-import { attributesOf, redirectOf, sentencesOf, textsOf } from "../../../screen-test-helpers";
+import { attributesOf, findAll, redirectOf, sentencesOf, textsOf } from "../../../screen-test-helpers";
 import { addSupperClub, pendingSignup } from "../../subscribers-fixture";
 import AdminMember from "./page";
 
@@ -124,24 +127,29 @@ const linksOf = (html: string): { to: string; text: string }[] =>
     return { to: `${url.pathname}${url.search}`, text: textsOf(inner).join(" ") };
   });
 
-/** Each form: the action it posts to, its hidden fields, and its submit buttons' words. */
+/** Each form: the action it posts to, its hidden fields, and how many submit buttons it has. */
 const formsOf = (html: string) =>
   [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].map(([, attrs = "", inner = ""]) => {
     const buttons = attributesOf(inner, "button");
     return {
       action: buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action ?? "",
       hidden: Object.fromEntries(attributesOf(inner, "input").filter((input) => input.type === "hidden").map((input) => [input.name, input.value])),
-      submits: [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
-        .filter(([, a = ""]) => attributesOf(`<button${a}>`, "button")[0]?.type === "submit")
-        .map(([, , text = ""]) => textsOf(text).join(" ")),
+      submits: buttons.filter((button) => button.type === "submit").length,
     };
   });
 
 const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null), "en");
 
-const CARD_HEADING = "Cancel the Supper Club for Rosa Bennett?";
-const NOTHING_MORE = "Nothing more is charged, and they can sign up again. Do this only when they asked you to.";
-const CREDIT_LINE = "They have a week credit; refund it in Square.";
+/** Every element in the tree a page returns, in document order. */
+const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] => {
+  if (Array.isArray(node)) return node.flatMap((child) => elementsOf(child as ReactNode));
+  if (!isValidElement<Record<string, unknown>>(node)) return [];
+  return [node, ...elementsOf(node.props.children as ReactNode)];
+};
+
+/** What the page gives the status badge: the status and the flags beside it. */
+const statusOf = async (subscription: string, query: { cancel?: string } = {}) =>
+  findAll(await pageOf(subscription, query), SubscriptionStatus)[0]?.props;
 
 describe("AC11 (issue 139) — only an admin opens the member page", () => {
   it("AC11: a signed-out visitor is sent to /sign-in", async () => {
@@ -181,56 +189,71 @@ describe("AC13 (issue 139) — the page, as it opens", () => {
   it('AC13: the admin nav with Members current, then All members back to /admin, the heading "Bennett, Rosa" and Active', async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
-    const { html, sentences } = await render(subscriptionId);
+    const element = await pageOf(subscriptionId);
     expect(AdminNav).toHaveBeenCalledWith({ current: "members" });
-    const wanted = ["the admin nav", "All members", "Bennett, Rosa", en["account.active"]];
-    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
-    expect(linksOf(html)).toContainEqual({ to: "/admin", text: "All members" });
+    // The nav is the faked AdminNav's <nav>, which the page awaits in place.
+    expect(
+      elementsOf(element)
+        .map((node) =>
+          node.type === "nav"
+            ? "nav"
+            : node.type === Button && node.props.href === "/admin"
+              ? "back"
+              : node.type === Heading
+                ? `heading ${String(node.props.children)}`
+                : node.type === SubscriptionStatus
+                  ? "status"
+                  : null,
+        )
+        .filter((name) => name !== null),
+    ).toEqual(["nav", "back", "heading Bennett, Rosa", "status"]);
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active" });
   });
 
   it("AC8: while active, Cancel for this member is a link to the page with ?cancel=1, and there is no form", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     const { html } = await render(subscriptionId);
-    expect(linksOf(html)).toContainEqual({ to: `/admin/members/${subscriptionId}?cancel=1`, text: "Cancel for this member" });
+    expect(linksOf(html).map((link) => link.to)).toContain(`/admin/members/${subscriptionId}?cancel=1`);
     expect(formsOf(html)).toEqual([]);
   });
 });
 
 describe("AC8, AC13 (issue 139) — the confirm, at ?cancel=1", () => {
-  it("AC13: with a paid week to come, the card's heading, the last pickup sentence, the confirm posting the subscription to cancelForMember, and Keep it", async () => {
+  it("AC13: with a paid week to come, the card names the last pickup, the confirm posts the subscription to cancelForMember, and Keep it goes back", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 5000);
     const { html, sentences } = await render(subscriptionId, { cancel: "1" });
-    const wanted = [CARD_HEADING, `Their last pickup is ${titleOf(FEB_7)}, already paid. ${NOTHING_MORE}`, "Cancel their Supper Club", "Keep it"];
-    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
-    expect(formsOf(html)).toEqual([{ action: "cancelForMember", hidden: { subscription: subscriptionId }, submits: ["Cancel their Supper Club"] }]);
-    expect(linksOf(html)).toContainEqual({ to: `/admin/members/${subscriptionId}`, text: "Keep it" });
-    expect(sentences).not.toContain("Cancel for this member");
+    expect(sentences.join(" ")).toContain(titleOf(FEB_7));
+    expect(formsOf(html)).toEqual([{ action: "cancelForMember", hidden: { subscription: subscriptionId }, submits: 1 }]);
+    const links = linksOf(html).map((link) => link.to);
+    expect(links).toContain(`/admin/members/${subscriptionId}`);
+    expect(links).not.toContain(`/admin/members/${subscriptionId}?cancel=1`);
   });
 
   it("AC13: with no paid week still to come, the sentence has no last pickup", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
-    const { sentences } = await render(subscriptionId, { cancel: "1" });
-    expect(sentences).toContain(NOTHING_MORE);
-    expect(sentences.some((sentence) => sentence.startsWith("Their last pickup"))).toBe(false);
+    const { html, sentences } = await render(subscriptionId, { cancel: "1" });
+    expect(formsOf(html)).toHaveLength(1);
+    // January 3, the one week paid, has passed: the card names no week.
+    expect(sentences.join(" ")).not.toContain(titleOf("2027-01-03"));
   });
 
-  it.each([1, 2])("AC4, AC13: with %i unused week credits, the card says They have a week credit; refund it in Square., one wording whatever the count", async (count) => {
+  it.each([1, 2])("AC4, AC13: with %i unused week credits, the card shows the credit line, one line whatever the count", async (count) => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     for (const weekOf of ["2027-01-17", "2027-01-24"].slice(0, count)) await weekCredit(subscriptionId, weekOf);
-    expect((await render(subscriptionId, { cancel: "1" })).sentences).toContain(CREDIT_LINE);
+    expect((await render(subscriptionId, { cancel: "1" })).sentences).toContain(t("admin.member.credit"));
   });
 
   it("AC13: with no week credit, there is no credit line", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
-    const { sentences } = await render(subscriptionId, { cancel: "1" });
-    expect(sentences).toContain(CARD_HEADING);
-    expect(sentences).not.toContain(CREDIT_LINE);
+    const { html, sentences } = await render(subscriptionId, { cancel: "1" });
+    expect(formsOf(html)).toHaveLength(1);
+    expect(sentences).not.toContain(t("admin.member.credit"));
   });
 });
 
@@ -241,11 +264,9 @@ describe("AC4, AC9 (issue 139) — a cancelled subscription", () => {
     await weekCredit(subscriptionId, "2027-01-24");
     await services.repo.cancelSubscription(subscriptionId, NOW);
     for (const query of [{}, { cancel: "1" }]) {
-      const { html, sentences } = await render(subscriptionId, query);
-      const wanted = ["Bennett, Rosa", "Cancelled", "Refund owed"];
-      expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
-      expect(sentences).not.toContain(CARD_HEADING);
-      expect(sentences).not.toContain("Cancel for this member");
+      const { html } = await render(subscriptionId, query);
+      expect(await statusOf(subscriptionId, query)).toMatchObject({ status: "cancelled", refundOwed: true });
+      expect(linksOf(html).map((link) => link.to)).not.toContain(`/admin/members/${subscriptionId}?cancel=1`);
       expect(formsOf(html)).toEqual([]);
     }
   });
@@ -254,30 +275,24 @@ describe("AC4, AC9 (issue 139) — a cancelled subscription", () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    const { sentences } = await render(subscriptionId);
-    expect(sentences).toContain("Cancelled");
-    expect(sentences).not.toContain("Refund owed");
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "cancelled", refundOwed: false });
   });
 });
 
-// Issue 135: which subscriptions carry the flag is listSubscribers' (src/adapters/charge-run-contract.ts); the word's
-// wording is app/admin/page.test.ts's, so it is read from the catalog here.
+// Issue 135: which subscriptions carry the flag is listSubscribers' (src/adapters/charge-run-contract.ts); how the badge
+// shows it is app/subscription-badges.tsx's. Here the page hands the badge the row's flag.
 describe("AC4 (issue 135) — Card declined beside the status", () => {
-  it("AC4: an active subscription holding a declined week reads its name, Active, then Card declined beside it", async () => {
+  it("AC4: an active subscription holding a declined week shows Active, then Card declined beside it", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "declined", 5000);
-    const { sentences } = await render(subscriptionId);
-    const wanted = ["Bennett, Rosa", en["account.active"], en["admin.members.cardDeclined"]];
-    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: true });
   });
 
-  it("AC4: an active subscription with no declined week reads Active alone", async () => {
+  it("AC4: an active subscription with no declined week shows Active alone", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 5000);
-    const { sentences } = await render(subscriptionId);
-    expect(sentences).toContain(en["account.active"]);
-    expect(sentences).not.toContain(en["admin.members.cardDeclined"]);
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: false });
   });
 });

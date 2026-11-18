@@ -1,7 +1,7 @@
 // Issue 140: Edit menu, /admin/menus/<id>, rendered through react-dom/server with `next/headers` faked and the
 // composition root mocked, as ../page.test.ts renders the library; `notFound` throws as the real one does, as
 // app/admin/members/[subscription]/page.test.ts has it. The form's own markup is ../menu-form.test.ts's and what a
-// save does ../actions.test.ts's; the Assigned line's wording is ../assigned.test.ts's. The wording is new copy.
+// save does ../actions.test.ts's; which Assigned line shows is ../assigned.test.ts's.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -96,6 +96,10 @@ const linksOf = (html: string) =>
     current: /\baria-current="page"/.test(attrs),
   }));
 
+/** The words of the label for the control with this id. */
+const labelOf = (html: string, id: string): string =>
+  textsOf(screenMarkup(html).match(new RegExp(`<label\\b[^>]*\\bfor="${id}"[^>]*>([\\s\\S]*?)</label>`))?.[1] ?? "").join(" ");
+
 describe("Interfaces — a menu the library does not hold is not found", () => {
   it.each([
     ["an unknown id", "00000000-0000-4000-8000-000000000000"],
@@ -109,22 +113,17 @@ describe("AC5 — Edit menu", () => {
   it("AC5: Menus is the page showing, All menus goes back to the library, and the fields hold the menu's name and texts", async () => {
     const html = await render(menu.id);
     const links = linksOf(html);
-    expect(links).toContainEqual({ href: "/admin/menus", text: "Menus", current: true });
-    expect(links).toContainEqual(expect.objectContaining({ href: "/admin/menus", text: "All menus" }));
+    // The admin nav's Menus, marked as the page showing, and the back link, which is not.
+    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current).sort()).toEqual([false, true]);
     expect(attributesOf(html, "input").find((input) => input.name === MENU_NAME_FIELD)?.value).toBe("Autumn harvest");
     expect(textareaValues(html)).toEqual(["Squash soup\n\nRye bread", "Lentil soup"]);
-    expect(textsOf(html)).toEqual(expect.arrayContaining(["Standard menu", "Vegan menu"]));
+    expect(labelOf(html, `menu-text-${standard}`)).toContain("Standard");
+    expect(labelOf(html, `menu-text-${vegan}`)).toContain("Vegan");
   });
 
-  it("AC5: a menu on a week shows the weeks it is on, then how to assign it", async () => {
+  it("AC5: a menu on a week shows the weeks it is on", async () => {
     await services.repo.assignWeekMenu(product.id, FEB_14, menu.id);
-    const texts = textsOf(await render(menu.id));
-    const wanted = ["Assigned to February 14 and 15", "Assign menus to weeks under Weeks."];
-    expect(texts.filter((text) => wanted.includes(text))).toEqual(wanted);
-  });
-
-  it("AC5: a menu on no week says so", async () => {
-    expect(textsOf(await render(menu.id))).toContain("Not assigned to a week");
+    expect(textsOf(await render(menu.id)).join(" ")).toContain("February 14 and 15");
   });
 
   it("AC5: the form's save is saveMenu for this menu: what it posts replaces this menu and lands on the list with it saved", async () => {
@@ -141,7 +140,6 @@ describe("AC5 — Edit menu", () => {
 
   it("AC7: Duplicate is on the list only: the editor has none", async () => {
     const html = await render(menu.id);
-    expect(textsOf(html)).not.toContain("Duplicate");
     expect(linksOf(html).filter((link) => link.href.includes("from="))).toEqual([]);
   });
 });

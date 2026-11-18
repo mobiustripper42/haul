@@ -87,13 +87,14 @@ describe("AC5 — the pick-list CSV", () => {
   it("AC8: with no week named it is the first upcoming week's", async () => {
     const response = await get();
     expect(filenameOf(response)).toBe("supper-club-pick-list-2027-02-07.csv");
-    expect(parseCsv(await response.text())).toEqual([
-      HEADER,
+    // The header and the total row's label are the test above's; this is the week's counts and its total.
+    const rows = parseCsv(await response.text()).slice(1);
+    expect(rows.slice(0, -1)).toEqual([
       ["3–4 people", "Standard", "2"],
       ["3–4 people", "Vegan", "0"],
       ["2 people", "Standard", "1"],
       ["2 people", "Vegan", "1"],
-      ["Meals to make", "", "4"],
     ]);
+    expect(rows.at(-1)?.at(-1)).toBe("4");
   });
 });

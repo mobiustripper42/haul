@@ -5,13 +5,11 @@
 // Read as the tree the page returns: what it gives `MembersList`, `Heading`, `Hint` and `Button`. The list's
 // own markup is app/admin/members-list.test.ts's, the header's is app/site-header.test.ts's (faked here, so
 // what is read is the call the page makes), and who counts as an admin is app/session.test.ts's.
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator } from "@core/i18n.js";
 import { subscriberName } from "@core/member-list.js";
-import { en } from "@core/messages/en.js";
 import type { Role } from "@core/members.js";
 import type { Card } from "@core/ports/payments.js";
 import type { Subscriber } from "@core/ports/repository.js";
@@ -20,7 +18,7 @@ import { Button } from "../../components/ui/button";
 import { Heading } from "../../components/ui/heading";
 import { Hint } from "../../components/ui/hint";
 import { emptyRequest } from "../next-headers-fake";
-import { findAll, inOrder, redirectOf, textsOf } from "../screen-test-helpers";
+import { findAll, redirectOf, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import Admin from "./page";
 import { MembersList } from "./members-list";
@@ -53,8 +51,17 @@ vi.mock("../services", () => ({
 }));
 vi.mock("../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
 
-const t = createTranslator("en");
 const DAY = 24 * 60 * 60_000;
+
+/** Every element in the tree a page returns, in document order. */
+const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] => {
+  if (Array.isArray(node)) return node.flatMap((child) => elementsOf(child as ReactNode));
+  if (!isValidElement<Record<string, unknown>>(node)) return [];
+  return [node, ...elementsOf(node.props.children as ReactNode)];
+};
+
+/** The numbers in a line, in order: the values it carries. */
+const numbersIn = (line: unknown): number[] => [...String(line).matchAll(/\d+/g)].map(([n]) => Number(n));
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -108,39 +115,36 @@ describe("issue 59 — /admin, signed in as an admin", () => {
 
       expect(rows.map((row) => row.email)).toEqual(["rosa@example.com"]);
     });
-
-    it("AC7, AC12: the list gets its no-match line, its joined line and its sort words from the catalog", async () => {
-      const product = addSupperClub(services.repo);
-      await activeSubscriber(services.repo, product, ROSA, PICKS);
-
-      const { list } = await page();
-
-      expect(list?.props.text).toMatchObject({
-        noMatch: en["admin.members.noMatch"],
-        sortBy: en["admin.members.sortBy"],
-        sortLabels: {
-          name: en["admin.members.name"],
-          joined: en["admin.members.joined"],
-          meal: en["admin.members.meal"],
-          status: en["admin.members.status"],
-        },
-        joinedLine: en["admin.members.joinedLine"],
-      });
-    });
   });
 
   describe("AC4 — the count line", () => {
     it("AC4: under the header sit the title, then the count, then Download spreadsheet", async () => {
       addSupperClub(services.repo, { cap: 7 });
-      const wanted = ["the header", en["admin.members.title"], t("admin.members.taken", { n: 0, cap: 7 }), en["admin.members.download"]];
+      const element = await Admin();
 
-      expect(inOrder(renderToStaticMarkup(await Admin()), wanted)).toEqual(wanted);
+      expect(
+        elementsOf(element)
+          .map((node) =>
+            // The header is the faked SiteHeader's <header>, which the page awaits in place.
+            node.type === "header"
+              ? "header"
+              : node.type === Heading && (node.props.level ?? 1) === 1
+                ? "title"
+                : node.type === Hint
+                  ? "count"
+                  : node.type === Button && node.props.href === "/admin/members.csv"
+                    ? "download"
+                    : null,
+          )
+          .filter((name) => name !== null),
+      ).toEqual(["header", "title", "count", "download"]);
+      expect(numbersIn(findAll(element, Hint)[0]?.props.children)).toEqual([0, 7]);
     });
 
-    it('AC4: the title is the page\'s one level-1 heading', async () => {
+    it("AC4: the title is the page's one level-1 heading", async () => {
       addSupperClub(services.repo);
       const headings = findAll(await Admin(), Heading).filter((heading) => heading.props.level === undefined || heading.props.level === 1);
-      expect(headings.map((heading) => heading.props.children)).toEqual([en["admin.members.title"]]);
+      expect(headings).toHaveLength(1);
     });
 
     it("AC4: n is the held spots, so it runs above the rows while a signup is mid-payment, and cap is the product's", async () => {
@@ -152,7 +156,9 @@ describe("issue 59 — /admin, signed in as an admin", () => {
 
       const { element, rows } = await page();
 
-      expect(findAll(element, Hint).map((hint) => hint.props.children)).toEqual([t("admin.members.taken", { n: 2, cap: 7 })]);
+      const hints = findAll(element, Hint);
+      expect(hints).toHaveLength(1);
+      expect(numbersIn(hints[0]?.props.children)).toEqual([2, 7]);
       expect(rows).toHaveLength(1);
     });
   });
@@ -171,10 +177,9 @@ describe("issue 59 — /admin, signed in as an admin", () => {
   });
 
   describe("AC7 — no active subscriptions", () => {
+    const level2Of = (element: Awaited<ReturnType<typeof Admin>>) => findAll(element, Heading).filter((heading) => heading.props.level === 2);
     const expectEmpty = (element: Awaited<ReturnType<typeof Admin>>) => {
-      const level2 = findAll(element, Heading).filter((heading) => heading.props.level === 2);
-      expect(level2.map((heading) => heading.props.children)).toEqual([en["admin.members.emptyTitle"]]);
-      expect(textsOf(renderToStaticMarkup(element))).toContain(en["admin.members.emptyBody"]);
+      expect(level2Of(element)).toHaveLength(1);
       expect(findAll(element, MembersList)).toEqual([]);
     };
 
@@ -190,14 +195,14 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       expectEmpty(await Admin());
     });
 
-    it("AC7: with active subscriptions the empty wording is not on the page", async () => {
+    it("AC7: with active subscriptions the page shows the list and not the empty card", async () => {
       const product = addSupperClub(services.repo);
       await activeSubscriber(services.repo, product, ROSA, PICKS);
 
       const element = await Admin();
 
       expect(findAll(element, MembersList)).toHaveLength(1);
-      expect(textsOf(renderToStaticMarkup(element))).not.toContain(en["admin.members.emptyTitle"]);
+      expect(level2Of(element)).toEqual([]);
     });
   });
 
@@ -208,7 +213,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       const links = findAll(await Admin(), Button).filter((button) => button.props.href === "/admin/members.csv");
 
       expect(links).toHaveLength(1);
-      expect(links[0]?.props).toMatchObject({ kind: "secondary", children: en["admin.members.download"] });
+      expect(links[0]?.props).toMatchObject({ kind: "secondary" });
     });
   });
 
@@ -224,37 +229,32 @@ describe("issue 59 — /admin, signed in as an admin", () => {
   // Issue 139: the list reads active and cancelled subscriptions, each with its own status (listSubscribers', in
   // src/adapters/signup-contract.ts); the list's own markup is app/admin/members-list.test.ts's. One case here.
   describe("AC9 (issue 139) — cancelled subscriptions on the list", () => {
-    it("AC9: the list gets a cancelled subscription beside an active one, each with its status, and the words for Active, Cancelled and Refund owed", async () => {
+    it("AC9: the list gets a cancelled subscription beside an active one, each with its status", async () => {
       const product = addSupperClub(services.repo);
       const rosa = await pendingSignup(services.repo, product, ROSA, PICKS);
       await services.repo.confirmSignupRows(rosa.ledgerId, `PAYMENT_${rosa.ledgerId}`, rosa.amountCents, new Date("2026-12-01T17:00:00.000Z"));
       await activeSubscriber(services.repo, product, CHIDI, PICKS);
       await services.repo.cancelSubscription(rosa.subscriptionId, new Date("2027-02-03T17:00:00.000Z"));
 
-      const { list, rows } = await page();
+      const { rows } = await page();
 
       expect(Object.fromEntries(rows.map((row) => [row.email, row.status]))).toEqual({ "rosa@example.com": "cancelled", "chidi@example.com": "active" });
-      expect(list?.props.text).toMatchObject({
-        status: { active: en["account.active"], cancelled: en["account.cancelled"] },
-        refundOwed: en["admin.members.refundOwed"],
-      });
     });
   });
 
   // Issue 135: which rows carry the flag is listSubscribers' (src/adapters/charge-run-contract.ts), and the list's markup
-  // is app/admin/members-list.test.ts's. Here the page hands the list each row's flag and the word, new copy typed once.
+  // is app/admin/members-list.test.ts's. Here the page hands the list each row's flag.
   describe("AC4 (issue 135) — Card declined on the list", () => {
-    it("AC4: the list gets an active subscription holding a declined week with cardDeclined true, another without it false, and the word Card declined", async () => {
+    it("AC4: the list gets an active subscription holding a declined week with cardDeclined true, another without it false", async () => {
       const product = addSupperClub(services.repo);
       const rosa = await pendingSignup(services.repo, product, ROSA, PICKS);
       await services.repo.confirmSignupRows(rosa.ledgerId, `PAYMENT_${rosa.ledgerId}`, rosa.amountCents, new Date("2026-12-01T17:00:00.000Z"));
       await services.repo.addLedgerRow(rosa.subscriptionId, "2027-01-10", "declined", 5000);
       await activeSubscriber(services.repo, product, CHIDI, PICKS);
 
-      const { list, rows } = await page();
+      const { rows } = await page();
 
       expect(Object.fromEntries(rows.map((row) => [row.email, row.cardDeclined]))).toEqual({ "rosa@example.com": true, "chidi@example.com": false });
-      expect(list?.props.text).toMatchObject({ cardDeclined: "Card declined" });
     });
   });
 

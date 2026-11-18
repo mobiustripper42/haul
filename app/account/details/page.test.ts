@@ -2,15 +2,14 @@
 // mocked, as app/account/cancel/page.test.ts renders its page. The form and the code step share one address: the code
 // step shows while the member has a pending change that has not expired. Who is let in is requireSubscriber's; what the
 // forms do is ./actions.test.ts's; the code step's own parts are app/sign-in/code-step.test.ts's, and the header's
-// links app/site-header.test.ts's. Here each of the page's branches goes through once. The words this task adds are
-// typed once here; the words it reuses are read from the catalog.
+// links app/site-header.test.ts's. Here each of the page's branches goes through once, by the forms, fields, notices
+// and values it shows, never its words (issue 211). The page's language is getLanguage's, app/language.test.ts's.
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator, type Language } from "@core/i18n.js";
+import type { Language } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { en } from "@core/messages/en.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { hashCode } from "@core/sign-in/code.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -18,7 +17,7 @@ import { Button } from "../../../components/ui/button";
 import { Notice } from "../../../components/ui/notice";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, findAll, inOrder, redirectOf, textsOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import { confirmEmailChange, keepOldEmail, resendEmailChange, saveDetails } from "./actions";
 import YourDetails from "./page";
@@ -63,16 +62,6 @@ const DAY = 24 * 60 * MINUTE;
 const OLD = "ada@example.com";
 const NEW = "ada.new@example.com";
 const DRAFT = "ocf_account_draft";
-
-const t = createTranslator("en");
-
-// This task's words.
-const CODE_TITLE = "Check your new email";
-const CODE_SENT = `We sent a 6-digit code to ${NEW}. Enter it to confirm the change. Until then you sign in with the old address.`;
-const KEEP_OLD = "Keep the old email";
-const SAVED = "Saved. Your details are up to date.";
-const INVALID = "That code didn't match, or it has expired. Check it and try again, or send a new code.";
-const SQUARE = "We couldn't update your email just now. Try the code again in a minute.";
 
 let product: ProductWithOptions;
 
@@ -125,6 +114,11 @@ const valuesOf = (html: string): Record<string, string | undefined> =>
 const selectedLanguages = (html: string) => attributesOf(html, "option").filter((option) => "selected" in option).map((option) => option.value);
 const actionsOf = (element: ReactElement) => findAll(element, "form").map((form) => form.props.action);
 const noticeIcons = (element: ReactElement) => findAll(element, Notice).map((notice) => notice.props.icon);
+/** Where each of `marks` first appears in the markup, so a test can say one element comes before another. */
+const positions = (html: string, marks: readonly string[]) => marks.map((mark) => html.indexOf(mark));
+const ascending = (numbers: number[]) => numbers.every((n, i) => n >= 0 && (i === 0 || n > (numbers[i - 1] ?? -1)));
+/** The code step is showing: its code form is on the page. */
+const codeStepShows = (element: ReactElement) => actionsOf(element).includes(confirmEmailChange);
 
 describe("AC1 (issue 156) — reaching /account/details", () => {
   it("AC1: a signed-out visitor is sent to /sign-in", async () => {
@@ -153,28 +147,25 @@ describe("AC2 (issue 156) — the form opens filled", () => {
 });
 
 describe("AC3 (issue 156) — the Saved notice", () => {
-  it(`AC3: with saved=1 the page shows "${SAVED}" in a check Notice, above the form`, async () => {
+  it("AC3: with saved=1 the page shows a check Notice, above the form", async () => {
     await ada();
     const { element, html } = await render({ saved: "1" });
-    expect(alertTexts(html)).toEqual([SAVED]);
     expect(noticeIcons(element)).toEqual(["check"]);
-    expect(inOrder(html, [en["account.details"], SAVED, en["createAccount.firstName"]])).toEqual([en["account.details"], SAVED, en["createAccount.firstName"]]);
+    expect(ascending(positions(html, ["<h1", 'role="alert"', "<form"]))).toBe(true);
   });
 
   it("AC3: without saved there is no notice, which guards the one above", async () => {
     await ada();
     const { html } = await render();
-    expect(textsOf(html)).toContain(en["account.details"]);
     expect(alertTexts(html)).toEqual([]);
   });
 });
 
 describe("AC4 (issue 156) — a save that broke a rule", () => {
-  it("AC4: with error=firstName the field shows Create Account's error line and is marked invalid, and the form holds what was typed", async () => {
+  it("AC4: with error=firstName the field is marked invalid, and the form holds what was typed", async () => {
     await ada();
     request.current.cookies[DRAFT] = JSON.stringify({ firstName: "", lastName: "Byron", email: OLD, phone: "216-555-0199", language: "en" });
     const { html } = await render({ error: "firstName" });
-    expect(textsOf(html)).toContain(en["createAccount.error.firstName"]);
     expect(attributesOf(html, "input").find((input) => input.name === "firstName")).toMatchObject({ "aria-invalid": "true" });
     expect(valuesOf(html)).toMatchObject({ firstName: "", lastName: "Byron", phone: "216-555-0199" });
   });
@@ -188,28 +179,21 @@ describe("AC4 (issue 156) — a save that broke a rule", () => {
   });
 });
 
-describe("AC5 (issue 156) — the page's language", () => {
-  it("AC5: a member whose emails are in Español sees the page in the request's language, English", async () => {
-    await ada("es");
-    const { html } = await render();
-    expect(textsOf(html)).toEqual(expect.arrayContaining([en["account.details"], en["createAccount.firstName"]]));
-  });
-});
-
 describe("AC7 (issue 156) — the code step", () => {
-  it("AC7: with a change pending, the step reads Keep the old email, the heading, the sentence naming the new address, the code field, Confirm email, the spam hint and Send a new code", async () => {
+  it("AC7: with a change pending, the step has Keep the old email's form, the new address, the code field in the confirm form, and the resend form, in that order", async () => {
     const member = await ada();
     await pending(member);
-    const { html } = await render();
-    const order = [KEEP_OLD, CODE_TITLE, CODE_SENT, en["signIn.codeLabel"], en["createAccount.confirm"], en["createAccount.spam"], en["signIn.resend"]];
-    expect(inOrder(html, order)).toEqual(order);
+    const { element, html } = await render();
+    expect(actionsOf(element)).toEqual([keepOldEmail, confirmEmailChange, resendEmailChange]);
+    expect(screenMarkup(html)).toContain(NEW);
+    expect(attributesOf(html, "input").filter((input) => input.name === "code")).toHaveLength(1);
   });
 
   it("AC7: the code step stands in place of the form: no field holds the member's details", async () => {
     const member = await ada();
     await pending(member);
-    const { html } = await render();
-    expect(textsOf(html)).toContain(CODE_TITLE);
+    const { element, html } = await render();
+    expect(codeStepShows(element)).toBe(true);
     expect(Object.keys(valuesOf(html)).filter((name) => ["firstName", "lastName", "email", "phone"].includes(name))).toEqual([]);
   });
 });
@@ -223,21 +207,22 @@ describe("AC10 (issue 156) — confirming", () => {
 });
 
 describe("AC11 (issue 156) — Square refused", () => {
-  it(`AC11: with error=square the code step shows "${SQUARE}" in an alert Notice`, async () => {
+  it("AC11: with error=square the code step shows an alert Notice", async () => {
     const member = await ada();
     await pending(member);
-    const { element, html } = await render({ error: "square" });
-    expect(alertTexts(html)).toEqual([SQUARE]);
+    const { element } = await render({ error: "square" });
     expect(noticeIcons(element)).toEqual(["alert"]);
-    expect(textsOf(html)).toContain(CODE_TITLE);
+    expect(codeStepShows(element)).toBe(true);
   });
 });
 
 describe("AC12 (issue 156) — a wrong or expired code", () => {
-  it("AC12: with error=invalid the code step shows its own wrong-code line, never sign-in's", async () => {
+  it("AC12: with error=invalid the code field is marked invalid, with one alert", async () => {
     const member = await ada();
     await pending(member);
-    expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([INVALID]);
+    const { html } = await render({ error: "invalid" });
+    expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
+    expect(alertTexts(html)).toHaveLength(1);
   });
 });
 
@@ -251,22 +236,20 @@ describe("AC13 (issue 156) — Send a new code and the wait notice", () => {
   it("AC13: with sent=1 the code step says a new code is on its way", async () => {
     const member = await ada();
     await pending(member);
-    expect(alertTexts((await render({ sent: "1" })).html)).toEqual([en["signIn.resent"]]);
+    expect(noticeIcons((await render({ sent: "1" })).element)).toEqual(["check"]);
   });
 
   it("AC13: with limited=5 and a change pending, the code step shows sign-in's wait notice in a lock Notice", async () => {
     const member = await ada();
     await pending(member);
-    const { element, html } = await render({ limited: "5" });
-    expect(alertTexts(html)).toEqual([t("signIn.limited.other", { minutes: 5 })]);
+    const { element } = await render({ limited: "5" });
     expect(noticeIcons(element)).toEqual(["lock"]);
-    expect(textsOf(html)).toContain(CODE_TITLE);
+    expect(codeStepShows(element)).toBe(true);
   });
 
   it("AC13: with limited=5 and no change pending, the form shows sign-in's wait notice in a lock Notice", async () => {
     await ada();
     const { element, html } = await render({ limited: "5" });
-    expect(alertTexts(html)).toEqual([t("signIn.limited.other", { minutes: 5 })]);
     expect(noticeIcons(element)).toEqual(["lock"]);
     expect(valuesOf(html)).toMatchObject({ email: OLD });
   });
@@ -279,29 +262,25 @@ describe("AC14 (issue 156) — Keep the old email", () => {
     const { element, html } = await render();
     const keep = findAll(element, "form").find((form) => form.props.action === keepOldEmail);
     const buttons = findAll(keep, Button);
-    expect(buttons.map((button) => button.props)).toEqual([expect.objectContaining({ kind: "quiet", back: true, type: "submit", children: KEEP_OLD })]);
-    expect(inOrder(html, [KEEP_OLD, CODE_TITLE])).toEqual([KEEP_OLD, CODE_TITLE]);
+    expect(buttons.map((button) => button.props)).toEqual([expect.objectContaining({ kind: "quiet", back: true, type: "submit" })]);
+    expect(ascending(positions(html, ["<form", "<h1"]))).toBe(true);
+    expect(actionsOf(element)[0]).toBe(keepOldEmail);
     expect(attributesOf(html, "a")).toEqual([]);
   });
 });
 
-// Issue 141: the menu email checkbox. Its words are new copy, typed once here; the Language field's label and Save are
-// read from the catalog. What Save stores is ./actions.test.ts's.
+// Issue 141: the menu email checkbox, placed by its field, not its words. What Save stores is ./actions.test.ts's.
 describe("AC9 (issue 141) — Email me the weekly menu", () => {
-  const LABEL = "Email me the weekly menu";
-  const HINT = "Sign-in codes, receipts and card notices always send.";
-
   /** The form's menuEmails field: whether it is there, a checkbox, and ticked. */
   const menuBox = (html: string) => {
     const input = attributesOf(html, "input").find((candidate) => candidate.name === "menuEmails");
     return { present: input !== undefined, type: input?.type, checked: input !== undefined && "checked" in input };
   };
 
-  it("AC9: after the Language field and before Save, the form has the checkbox with its hint, ticked for a member whose menu emails are on", async () => {
+  it("AC9: after the Language field and before Save, the form has the checkbox, ticked for a member whose menu emails are on", async () => {
     await ada();
     const { html } = await render();
-    const order = [en["createAccount.language"], LABEL, HINT, en["details.save"]];
-    expect(inOrder(html, order)).toEqual(order);
+    expect(ascending(positions(html, ['name="language"', 'name="menuEmails"', 'type="submit"']))).toBe(true);
     expect(menuBox(html)).toEqual({ present: true, type: "checkbox", checked: true });
   });
 
@@ -323,14 +302,16 @@ describe("AC20 (issue 156) — a pending change is stored", () => {
   it("AC20: a member who comes back nine minutes after asking sees the code step again", async () => {
     const member = await ada();
     await pending(member, 9 * MINUTE);
-    expect(textsOf((await render()).html)).toEqual(expect.arrayContaining([CODE_TITLE, CODE_SENT]));
+    const { element, html } = await render();
+    expect(codeStepShows(element)).toBe(true);
+    expect(screenMarkup(html)).toContain(NEW);
   });
 
   it("AC20: after the code has expired they see the form with the old address", async () => {
     const member = await ada();
     await pending(member, 11 * MINUTE);
-    const { html } = await render();
-    expect(textsOf(html)).not.toContain(CODE_TITLE);
+    const { element, html } = await render();
+    expect(codeStepShows(element)).toBe(false);
     expect(valuesOf(html)).toMatchObject({ email: OLD });
   });
 });
