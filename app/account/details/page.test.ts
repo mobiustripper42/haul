@@ -3,12 +3,12 @@
 // step shows while the member has a pending change that has not expired. Who is let in is requireSubscriber's; what the
 // forms do is ./actions.test.ts's; the code step's own parts are app/sign-in/code-step.test.ts's, and the header's
 // links app/site-header.test.ts's. Here each of the page's branches goes through once, by the forms, fields, notices
-// and values it shows, never its words (issue 211). The page's language is getLanguage's, app/language.test.ts's.
+// and values it shows, a notice it picks by its catalog line, never its words (issue 211). The page's language is getLanguage's, app/language.test.ts's.
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import type { Language } from "@core/i18n.js";
+import { createTranslator, pluralKey, type Language, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { hashCode } from "@core/sign-in/code.js";
@@ -62,6 +62,10 @@ const DAY = 24 * 60 * MINUTE;
 const OLD = "ada@example.com";
 const NEW = "ada.new@example.com";
 const DRAFT = "ocf_account_draft";
+
+const t = createTranslator("en");
+/** Sign-in's wait line for 5 minutes: the page shows it only when sent back with limited=5. */
+const WAIT_5 = t(pluralKey("en", "signIn.limited", 5) as MessageKey, { minutes: 5 });
 
 let product: ProductWithOptions;
 
@@ -210,8 +214,9 @@ describe("AC11 (issue 156) — Square refused", () => {
   it("AC11: with error=square the code step shows an alert Notice", async () => {
     const member = await ada();
     await pending(member);
-    const { element } = await render({ error: "square" });
+    const { element, html } = await render({ error: "square" });
     expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)).toEqual([t("details.squareFailed")]);
     expect(codeStepShows(element)).toBe(true);
   });
 });
@@ -222,7 +227,7 @@ describe("AC12 (issue 156) — a wrong or expired code", () => {
     await pending(member);
     const { html } = await render({ error: "invalid" });
     expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
-    expect(alertTexts(html)).toHaveLength(1);
+    expect(alertTexts(html)).toEqual([t("details.invalidCode")]);
   });
 });
 
@@ -242,8 +247,9 @@ describe("AC13 (issue 156) — Send a new code and the wait notice", () => {
   it("AC13: with limited=5 and a change pending, the code step shows sign-in's wait notice in a lock Notice", async () => {
     const member = await ada();
     await pending(member);
-    const { element } = await render({ limited: "5" });
+    const { element, html } = await render({ limited: "5" });
     expect(noticeIcons(element)).toEqual(["lock"]);
+    expect(alertTexts(html)).toEqual([WAIT_5]);
     expect(codeStepShows(element)).toBe(true);
   });
 
@@ -251,6 +257,7 @@ describe("AC13 (issue 156) — Send a new code and the wait notice", () => {
     await ada();
     const { element, html } = await render({ limited: "5" });
     expect(noticeIcons(element)).toEqual(["lock"]);
+    expect(alertTexts(html)).toEqual([WAIT_5]);
     expect(valuesOf(html)).toMatchObject({ email: OLD });
   });
 });

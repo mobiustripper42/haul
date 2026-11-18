@@ -289,7 +289,7 @@ describe("AC7, AC14 — the reopen dialog", () => {
     await services.repo.closePickupWeek(product.id, OPEN, null, BEFORE_FEB_14_CUTOFF);
     const { text, html } = await render({ reopen: OPEN });
     expect(text).toContain(tn("admin.weeks.reopenGave", 2));
-    expect(text).toContain(FEB_8_CUTOFF);
+    expect(text).toContain(t("admin.weeks.reopenCharged", { cutoff: FEB_8_CUTOFF }));
     expect(h2s(html)[0]).toContain(TITLE_FEB_14);
     expect(hasControl(html, "week", OPEN)).toBe(true);
   });
@@ -365,6 +365,7 @@ describe("AC2, AC6–AC8, AC14 — a closed row", () => {
     const row = rowOf(screen, TITLE_FEB_7, TITLE_FEB_14);
     expect(row.runs).toContain(t("admin.weeks.badgeClosed"));
     expect(row.runs).not.toContain(tn("admin.weeks.closedAfter", 0));
+    expect(row.runs).not.toContain(tn("admin.weeks.creditsGiven", 0));
     expect(targets(screen.html, "Reopen")).not.toContainEqual({ reopen: PAST_CUTOFF });
   });
 
@@ -448,7 +449,7 @@ describe("AC9, AC11, AC14 — the move panel", () => {
     const inputs = attributesOf(screen.html, "input").filter((input) => input.name === "firstDay" || input.name === "lastDay");
     expect(inputs.filter((input) => input["aria-invalid"] === "true").map((input) => input.name)).toEqual([atFault]);
     const describedBy = inputs.find((input) => input.name === atFault)?.["aria-describedby"]?.split(" ")[0] ?? "no id";
-    expect(screenMarkup(screen.html)).toMatch(new RegExp(`\\bid="${escapeRegExp(describedBy)}"[^>]*>[\\s\\S]*?${escapeRegExp(fault())}`));
+    expect(screenMarkup(screen.html)).toMatch(new RegExp(`\\bid="${escapeRegExp(describedBy)}"[^>]*>\\s*${escapeRegExp(fault())}\\s*<`));
     expect(hasControl(screen.html, "firstDay", first)).toBe(true);
     expect(hasControl(screen.html, "lastDay", last)).toBe(true);
   });

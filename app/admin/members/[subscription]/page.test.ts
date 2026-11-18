@@ -16,7 +16,7 @@ import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../../../components/ui/button";
 import { Heading } from "../../../../components/ui/heading";
-import { SubscriptionStatus } from "../../../subscription-badges";
+import { SUBSCRIPTION_BADGES, SubscriptionStatus } from "../../../subscription-badges";
 import { AdminNav } from "../../admin-nav";
 import { emptyRequest } from "../../../next-headers-fake";
 import { attributesOf, findAll, redirectOf, sentencesOf, textsOf } from "../../../screen-test-helpers";
@@ -147,7 +147,12 @@ const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] =>
   return [node, ...elementsOf(node.props.children as ReactNode)];
 };
 
-/** What the page gives the status badge: the status and the flags beside it. */
+/** What the page gives the status badge: the status, the flags beside it, and the words for each. */
+/** The words the badge is handed for `status`: the status's own, then Refund owed and Card declined. */
+const wordsFor = (status: "active" | "cancelled") => ({
+  words: { status: t(SUBSCRIPTION_BADGES[status].key), refundOwed: t("admin.members.refundOwed"), cardDeclined: t("admin.members.cardDeclined") },
+});
+
 const statusOf = async (subscription: string, query: { cancel?: string } = {}) =>
   findAll(await pageOf(subscription, query), SubscriptionStatus)[0]?.props;
 
@@ -207,7 +212,7 @@ describe("AC13 (issue 139) — the page, as it opens", () => {
         )
         .filter((name) => name !== null),
     ).toEqual(["nav", "back", "heading Bennett, Rosa", "status"]);
-    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active" });
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", ...wordsFor("active") });
   });
 
   it("AC8: while active, Cancel for this member is a link to the page with ?cancel=1, and there is no form", async () => {
@@ -226,6 +231,8 @@ describe("AC8, AC13 (issue 139) — the confirm, at ?cancel=1", () => {
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 5000);
     const { html, sentences } = await render(subscriptionId, { cancel: "1" });
     expect(sentences.join(" ")).toContain(titleOf(FEB_7));
+    // The card's heading names the member, first name first.
+    expect([...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(([, inner = ""]) => textsOf(inner).join(" "))).toEqual([expect.stringContaining("Rosa Bennett")]);
     expect(formsOf(html)).toEqual([{ action: "cancelForMember", hidden: { subscription: subscriptionId }, submits: 1 }]);
     const links = linksOf(html).map((link) => link.to);
     expect(links).toContain(`/admin/members/${subscriptionId}`);
@@ -265,7 +272,7 @@ describe("AC4, AC9 (issue 139) — a cancelled subscription", () => {
     await services.repo.cancelSubscription(subscriptionId, NOW);
     for (const query of [{}, { cancel: "1" }]) {
       const { html } = await render(subscriptionId, query);
-      expect(await statusOf(subscriptionId, query)).toMatchObject({ status: "cancelled", refundOwed: true });
+      expect(await statusOf(subscriptionId, query)).toMatchObject({ status: "cancelled", refundOwed: true, ...wordsFor("cancelled") });
       expect(linksOf(html).map((link) => link.to)).not.toContain(`/admin/members/${subscriptionId}?cancel=1`);
       expect(formsOf(html)).toEqual([]);
     }
@@ -275,7 +282,7 @@ describe("AC4, AC9 (issue 139) — a cancelled subscription", () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    expect(await statusOf(subscriptionId)).toMatchObject({ status: "cancelled", refundOwed: false });
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "cancelled", refundOwed: false, ...wordsFor("cancelled") });
   });
 });
 
@@ -286,13 +293,13 @@ describe("AC4 (issue 135) — Card declined beside the status", () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "declined", 5000);
-    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: true });
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: true, ...wordsFor("active") });
   });
 
   it("AC4: an active subscription with no declined week shows Active alone", async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 5000);
-    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: false });
+    expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", cardDeclined: false, ...wordsFor("active") });
   });
 });

@@ -67,6 +67,9 @@ const countsOf = async (query: Record<string, string>): Promise<number[]> => {
   return [...String(line).matchAll(/\d+/g)].map(([n]) => Number(n));
 };
 
+/** The level-2 headings' text: the week shown is named in the only one. */
+const h2sOf = (markup: string): string[] => [...markup.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(([, inner = ""]) => inner.replace(/<[^>]*>/g, "").trim());
+
 /** The pick list's total: the last cell of its last row. */
 const totalOf = (markup: string): string | undefined => tableRows(markup).at(-1)?.at(-1);
 
@@ -113,13 +116,13 @@ describe("signed in as an admin", () => {
     it("AC3: with no week named, the first upcoming week is selected and shown", async () => {
       const markup = await render();
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(textsOf(markup).join(" ")).toContain("February 7 and 8");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
     });
 
     it("AC3: ?week= names another week, which is selected and shown", async () => {
       const markup = await render({ week: FEB_14 });
       expect(weekOptions(markup).selected).toEqual([FEB_14]);
-      expect(textsOf(markup).join(" ")).toContain("February 14 and 15");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 14 and 15")]);
     });
 
     it("AC3 [Lead]: the select sends its week as week= through a GET form", async () => {
@@ -131,7 +134,7 @@ describe("signed in as an admin", () => {
     it("AC8: a week the select does not offer falls back to the first upcoming week", async () => {
       const markup = await render({ week: "2099-01-04" });
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(textsOf(markup).join(" ")).toContain("February 7 and 8");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
     });
   });
 

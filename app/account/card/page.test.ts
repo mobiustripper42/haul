@@ -249,8 +249,9 @@ describe("AC3, AC4 (issue 202) — state saved, the member's next week", () => {
 describe("AC4 — state declined", () => {
   it("AC4: an alert Notice shows; the card on file is still named and the form is still shown", async () => {
     await subscribedAda();
-    const { element, sentences } = await render({ state: "declined" });
+    const { element, html, sentences } = await render({ state: "declined" });
     expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)).toEqual([`${t("account.card.refusedLead")} ${t("account.card.refused")}`]);
     expect(sentences.some((sentence) => sentence.includes("4444"))).toBe(true);
     expect(cardFormOf(element)).toBeDefined();
   });
@@ -286,6 +287,7 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
     for (const query of [{}, { state: "unknown" }]) {
       const { element, html } = await render(query);
       expect(noticeIcons(element)).toEqual(["alert"]);
+      expect(alertTexts(html)).toEqual([t("supperClub.retryNotice")]);
       expect(submitsTo(html, "retryCard")).toHaveLength(1);
       expect(cardFormOf(element)).toBeUndefined();
     }
@@ -301,8 +303,9 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
 
   it("AC11: state error with no pending row shows the signup's payError Notice above the card form", async () => {
     await subscribedAda();
-    const { element } = await render({ state: "error" });
+    const { element, html } = await render({ state: "error" });
     expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)).toEqual([t("supperClub.payError")]);
     expect(cardFormOf(element)).toBeDefined();
   });
 
@@ -311,6 +314,7 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
     await chargeOut(member, subscriptionId);
     const { element, html } = await render({ state: "error" });
     expect(noticeIcons(element)).toEqual(["alert", "alert"]);
+    expect(alertTexts(html)).toEqual([t("supperClub.payError"), t("supperClub.retryNotice")]);
     expect(submitsTo(html, "retryCard")).toHaveLength(1);
     expect(cardFormOf(element)).toBeUndefined();
   });

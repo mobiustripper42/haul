@@ -1,8 +1,9 @@
 // Issue 155: History, `await History()` with `next/headers` faked and the composition root mocked, as
 // app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
 // which weeks are past is pastWeeks' and each row's marker, amount and line historyRows' (src/pickup-week.test.ts,
-// src/account-weeks.test.ts). Here one case of each goes through the page, read by the values in its row: the title,
-// the meal and the amount, never the marker's words (issue 211). The header is faked, so what is read of it is the
+// src/account-weeks.test.ts). Here one case of each goes through the page, read by its row whole: the title, the meal
+// and the amount as values, and the status line and badge, which the page picks by the row's line and marker, by
+// their catalog lines (issue 211). The header is faked, so what is read of it is the
 // call the page makes.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -137,21 +138,19 @@ describe("AC7 (issue 155) — what each row holds", () => {
   };
 
   it("AC7: the first week: the meal and the amount charged at signup", async () => {
-    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(4500)]));
+    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, t("account.history.signup"), formatUsdWhole(4500), t("account.marker.paid")]);
   });
 
   it("AC7: a later paid week: the meal and the ledger's amount", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(5000)]));
+    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual([titleOf("2027-01-10"), MEAL, t("account.marker.paid"), formatUsdWhole(5000), t("account.marker.paid")]);
   });
 
   it("AC7: a closed week with no charge: $0, with no meal line", async () => {
-    const row = rowTitled(await arrange(), titleOf("2027-01-17"));
-    expect(row).toContain(formatUsdWhole(0));
-    expect(row).not.toContain(MEAL);
+    expect(rowTitled(await arrange(), titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.marker.closed"), formatUsdWhole(0), t("account.marker.noMeal")]);
   });
 
   it("AC7: a week closed after it was paid: the meal and the amount", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual(expect.arrayContaining([MEAL, formatUsdWhole(4500)]));
+    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([titleOf("2027-01-24"), MEAL, t("account.history.closedPaid"), formatUsdWhole(4500), t("account.marker.noMeal")]);
   });
 });
 
@@ -161,9 +160,7 @@ describe("AC7 (issue 137) — a past skipped week", () => {
   it("AC7: a skipped week: $0, with no meal line", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.skipWeek(subscriptionId, "2027-01-17");
-    const row = rowTitled((await render()).rows, titleOf("2027-01-17"));
-    expect(row).toContain(formatUsdWhole(0));
-    expect(row).not.toContain(MEAL);
+    expect(rowTitled((await render()).rows, titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.weeks.skipped"), formatUsdWhole(0), t("account.marker.skipped")]);
   });
 });
 

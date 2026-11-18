@@ -15,7 +15,7 @@ import type { Member } from "@core/members.js";
 import { en } from "@core/messages/en.js";
 import { es } from "@core/messages/es.js";
 import { formatUsdWhole } from "@core/money.js";
-import { pickupWeek, weekdayName, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import { pickupWeek, pickupWhereLine, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -111,12 +111,13 @@ const change = (weekOf: string, over: Partial<ChangedWeek>) =>
   services.repo.savePickupWeek(product.id, { weekOf, closedAt: null, note: null, firstDay: null, lastDay: null, ...over });
 const close = (weekOf: string) => change(weekOf, { closedAt: new Date("2027-01-20T15:00:00.000Z") });
 
-/** The page's markup, its runs of text, all of it as one line, the meal card's badge kind, and how many Notices it shows. */
-const render = async (): Promise<{ html: string; runs: string[]; text: string; badge: unknown; notices: number }> => {
+/** The page's markup, its runs of text, all of it as one line, the meal card's badge kind and text, and how many Notices it shows. */
+const render = async (): Promise<{ html: string; runs: string[]; text: string; badge: unknown; badgeText: unknown; notices: number }> => {
   const element = await Account();
   const html = renderToStaticMarkup(element);
   const runs = textsOf(html);
-  return { html, runs, text: runs.join(" "), badge: findAll(element, Badge)[0]?.props.kind, notices: findAll(element, Notice).length };
+  const badge = findAll(element, Badge)[0]?.props;
+  return { html, runs, text: runs.join(" "), badge: badge?.kind, badgeText: badge?.children, notices: findAll(element, Notice).length };
 };
 
 /** The page's text holds none of the listed weeks' titles: no next pickup is named. */
@@ -226,9 +227,9 @@ describe("AC3b (issue 136) — the next pickup", () => {
     const member = await ada();
     await subscribed(member);
     signIn(member);
-    const { text } = await render();
+    const { runs, text } = await render();
     expect(text).toContain(titleOf(FEB_7, moved));
-    expect(text).toContain(weekdayName("2027-02-06", "en"));
+    expect(runs).toContain(pickupWhereLine(t, pickupWeek(FEB_7, moved), "en"));
   });
 
   it("AC3b: on a closed week's own Monday pickup day the week is still seen as closed, and passed over to the week after", async () => {
@@ -395,9 +396,10 @@ describe("issue 139 — account home, cancelled and not", () => {
     const subscriptionId = await subscribedAda({ picks: ["2 people", "Vegan"] });
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
     await cancel(subscriptionId);
-    const { html, runs, badge } = await render();
+    const { html, runs, badge, badgeText } = await render();
     expect(runs).toContain("2 people · Vegan");
     expect(badge).toBe(SUBSCRIPTION_BADGES.cancelled.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.cancelled.key));
     // The Notice names February 7 as the last pickup; the meal card names no week and no price.
     const mealCard = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => textsOf(match[1] ?? "").join(" "))[0] ?? "";
     expect(namesNoWeek(mealCard)).toBe(true);
@@ -422,9 +424,10 @@ describe("issue 139 — account home, cancelled and not", () => {
     if (!member) throw new Error("Ada is gone");
     const again = await signup(member, { picks: ["2 people", "Vegan"] });
     await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW);
-    const { html, runs, badge } = await render();
+    const { html, runs, badge, badgeText } = await render();
     expect(runs).toContain("2 people · Vegan");
     expect(badge).toBe(SUBSCRIPTION_BADGES.active.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.active.key));
     expect(alertTexts(html)).toEqual([]);
   });
 });
@@ -454,43 +457,47 @@ describe("issue 145 — AC1, AC13: account home with a declined card", () => {
   it("AC1: an active subscription holding a declined row whose pickup is to come: the one Notice names that week, Update your card goes to /account/card, and the badge is Card declined's, not Active's", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, FEB_7);
-    const { html, badge } = await render();
+    const { html, badge, badgeText } = await render();
     const alerts = alertTexts(html);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).toContain(titleOf(FEB_7));
     expect(hrefsOf(html)).toContain("/account/card");
     expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
   it("AC1: once the declined week's pickup has passed, the one Notice names no week; the button and badge stay", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, JAN_31);
-    const { html, badge } = await render();
+    const { html, badge, badgeText } = await render();
     const alerts = alertTexts(html);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).not.toContain(titleOf(JAN_31));
     expect(hrefsOf(html)).toContain("/account/card");
     expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
   it("AC13: when the declined row's week was closed, the Notice names no week, though its pickup is to come; the badge is still Card declined's", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, FEB_7);
     await close(FEB_7);
-    const { html, badge } = await render();
+    const { html, badge, badgeText } = await render();
     const alerts = alertTexts(html);
     expect(alerts).toHaveLength(1);
     expect(alerts[0]).not.toContain(titleOf(FEB_7));
     expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
   it("AC1: a cancelled subscription holding a declined row keeps the cancelled Notice and the Cancelled badge, and no declined Notice", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, JAN_31);
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    const { html, badge } = await render();
+    const { html, badge, badgeText } = await render();
     expect(alertTexts(html)).toHaveLength(1);
     expect(badge).toBe(SUBSCRIPTION_BADGES.cancelled.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.cancelled.key));
     expect(hrefsOf(html)).not.toContain("/account/card");
   });
 });

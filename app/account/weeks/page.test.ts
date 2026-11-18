@@ -2,7 +2,8 @@
 // app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
 // which weeks are listed is upcomingWeeks' and each week's marker upcomingRows' (src/pickup-week.test.ts,
 // src/account-weeks.test.ts), which also owns what each marker is. Here one case goes through the page, read by the
-// values, forms and links in each row and card, never their words (issue 211). The header is faked, so what is read
+// values, forms and links in each row and card, and a row's line and badge, which the page picks by its marker, by
+// their catalog lines (issue 211). The header is faked, so what is read
 // of it is the call the page makes.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -145,9 +146,12 @@ describe("AC2 (issue 155) — the 12 weeks", () => {
     const moved: ChangedWeek = { weekOf: "2027-03-14", closedAt: CLOSED_AT, note: null, firstDay: "2027-03-13", lastDay: "2027-03-14" };
     await services.repo.savePickupWeek(product.id, moved);
     await subscribedAda();
-    const titles = (await render()).rows.map((row) => row[0]);
+    const { rows } = await render();
+    const titles = rows.map((row) => row[0]);
     expect(titles).toContain(titleOf("2027-03-14"));
     expect(titles).not.toContain(titleOf("2027-03-14", moved));
+    // Closed with no charge: its line and the Closed badge, by their catalog lines.
+    expect(rowTitled(rows, titleOf("2027-03-14"))?.slice(1, 3)).toEqual([t("account.weeks.closedNoCharge"), t("account.marker.closed")]);
   });
 });
 
@@ -161,7 +165,7 @@ describe("AC3 (issue 155) — a coming week's row", () => {
     const { html, rows } = await render();
     const row = rowTitled(rows, titleOf(MAR_7));
     expect(row).toHaveLength(3);
-    expect(row?.join(" ")).toContain(formatPickupDate("2027-03-01", "en"));
+    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en") }));
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "skipWeek", week: MAR_7 }]);
   });
 });
@@ -205,7 +209,9 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
   };
 
   it("AC6: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek", async () => {
-    expect(formsIn((await arrange()).html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
+    const { html, rows } = await arrange();
+    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1, 3)).toEqual([t("account.weeks.skipped"), t("account.marker.skipped")]);
+    expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
   });
 
   it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {
@@ -229,8 +235,11 @@ describe("AC5 (issue 137) — a skipped Week credit week", () => {
     await services.repo.addLedgerRow(subscriptionId, "2027-02-14", "paid", 4500);
     await close("2027-02-14");
     await services.repo.skipWeek(subscriptionId, "2027-02-21");
-    const { html } = await render();
+    const { html, rows } = await render();
     expect(formsIn(html, titleOf("2027-02-21"))).toEqual([{ action: "unskipWeek", week: "2027-02-21" }]);
+    // February 14 closed after it was paid, and February 28 the week credit's: each line and badge by its catalog line.
+    expect(rowTitled(rows, titleOf("2027-02-14"))?.slice(1, 3)).toEqual([t("account.weeks.closedPaid"), t("account.marker.closed")]);
+    expect(rowTitled(rows, titleOf("2027-02-28"))?.slice(1, 3)).toEqual([t("account.weeks.weekCredit"), t("account.marker.weekCredit")]);
   });
 });
 
@@ -358,6 +367,8 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
       const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
       const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
       expect(rows.map((row) => row[0])).toEqual([titleOf("2027-02-07"), titleOf("2027-03-07")]);
+      // A paid week: Paid, as its line and its badge.
+      expect(rows[0]).toEqual([titleOf("2027-02-07"), t("account.marker.paid"), t("account.marker.paid")]);
       expect(html).not.toContain("<form");
       expect(attributesOf(html, "a").map((link) => link.href)).not.toContain("/account/weeks?switch=1");
     }
