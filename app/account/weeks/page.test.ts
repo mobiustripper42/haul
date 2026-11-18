@@ -485,18 +485,18 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(textsOf(html)).not.toContain(t("account.weeks.intro"));
   });
 
-  it("AC6: a week after the declined week is Locked: the no-pickup line, the Locked badge of the declined kind, no charge day and no button", async () => {
+  it("AC6: a week after the declined week is Locked: the no-pickup line, the Locked badge of the locked kind, no charge day and no button", async () => {
     await lockedAda();
     const { html, rows } = await renderLocked();
     expect(rowTitled(rows, titleOf(FEB_14))).toEqual([titleOf(FEB_14), t("account.noPickupLocked"), t("account.marker.locked")]);
-    expect(rowMarkup(html, titleOf(FEB_14))).toContain(badgeOf("declined", "account.marker.locked"));
+    expect(rowMarkup(html, titleOf(FEB_14))).toContain(badgeOf("locked", "account.marker.locked"));
   });
 
   it("AC7: after the card update, a week holding a locked row whose cutoff has passed and whose pickup is to come is still Locked", async () => {
     await updatedAda();
     const { html, rows } = await renderLocked();
     expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.noPickupLocked"), t("account.marker.locked")]);
-    expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("declined", "account.marker.locked"));
+    expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("locked", "account.marker.locked"));
   });
 
   it("AC11: the declined week is Card declined, as account home's badge: its line, no charge day and no button", async () => {

@@ -239,7 +239,7 @@ describe("issue 198 — History of a locked subscription", () => {
   const rowMarkup = (html: string, title: string): string =>
     [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title) ?? "";
 
-  it("AC10: after the card update, a past week holding a locked row is Locked: the locked line, $0, the Locked badge of the declined kind, in date order among the others", async () => {
+  it("AC10: after the card update, a past week holding a locked row is Locked: the locked line, $0, the Locked badge of the locked kind, in date order among the others", async () => {
     // January 17 declined; the runs at the next two cutoffs locked January 24 and 31; then a card update paid January 17.
     const { memberId, subscriptionId } = await declinedAda(JAN_17);
     await services.repo.addLedgerRow(subscriptionId, JAN_24, "locked", 0);
@@ -248,7 +248,7 @@ describe("issue 198 — History of a locked subscription", () => {
     const { html, rows } = await render();
     expect(rows.map((row) => row[0])).toEqual([titleOf(JAN_31), titleOf(JAN_24), titleOf(JAN_17), titleOf(JAN_3)]);
     expect(rowTitled(rows, titleOf(JAN_24))).toEqual([titleOf(JAN_24), t("account.history.locked"), formatUsdWhole(0), t("account.marker.locked")]);
-    expect(rowMarkup(html, titleOf(JAN_24))).toContain(badgeOf("declined", "account.marker.locked"));
+    expect(rowMarkup(html, titleOf(JAN_24))).toContain(badgeOf("locked", "account.marker.locked"));
   });
 
   it("AC12: a past declined week, unpaid, is Card declined, as account home's badge: the declined line and $0, with no meal line", async () => {

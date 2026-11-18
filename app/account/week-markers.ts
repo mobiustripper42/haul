@@ -13,6 +13,6 @@ export const MARKER_BADGES: Readonly<Record<Marker, { kind: BadgeKind; key: Mess
   weekCredit: { kind: "note", key: "account.marker.weekCredit" },
   noMeal: { kind: "closed", key: "account.marker.noMeal" },
   skipped: { kind: "closed", key: "account.marker.skipped" },
-  locked: { kind: "declined", key: "account.marker.locked" },
+  locked: { kind: "locked", key: "account.marker.locked" },
   declined: SUBSCRIPTION_BADGES.declined,
 };
