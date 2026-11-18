@@ -1,15 +1,17 @@
 // Issue 155: Upcoming weeks, `await UpcomingWeeks()` with `next/headers` faked and the composition root mocked, as
 // app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
 // which weeks are listed is upcomingWeeks' and each week's marker upcomingRows' (src/pickup-week.test.ts,
-// src/account-weeks.test.ts). Here one case of each goes through the page, and what each marker says on screen,
-// read as the runs of text in its row. The markers' words are new copy, typed once here. The header is faked, so
-// what is read of it is the call the page makes.
+// src/account-weeks.test.ts), which also owns what each marker is. Here one case goes through the page, read by the
+// values, forms and links in each row and card, and a row's line and badge, which the page picks by its marker, by
+// their catalog lines (issue 211). The header is faked, so what is read
+// of it is the call the page makes.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
+import { formatUsdWhole } from "@core/money.js";
 import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -144,47 +146,27 @@ describe("AC2 (issue 155) — the 12 weeks", () => {
     const moved: ChangedWeek = { weekOf: "2027-03-14", closedAt: CLOSED_AT, note: null, firstDay: "2027-03-13", lastDay: "2027-03-14" };
     await services.repo.savePickupWeek(product.id, moved);
     await subscribedAda();
-    const titles = (await render()).rows.map((row) => row[0]);
+    const { rows } = await render();
+    const titles = rows.map((row) => row[0]);
     expect(titles).toContain(titleOf("2027-03-14"));
     expect(titles).not.toContain(titleOf("2027-03-14", moved));
+    // Closed with no charge: its line and the Closed badge, by their catalog lines.
+    expect(rowTitled(rows, titleOf("2027-03-14"))?.slice(1, 3)).toEqual([t("account.weeks.closedNoCharge"), t("account.marker.closed")]);
   });
 });
 
-// One member's weeks: February 7 paid; February 14 paid, then closed, granting a week credit; February 21 closed
-// with no charge; the week credit lands on February 28; March 7 is coming, charged at the end of Monday, March 1.
-describe("AC3–AC5 (issue 155) — what each marker says, left then right", () => {
-  const arrange = async (): Promise<string[][]> => {
+// Which marker each week takes is upcomingRows' (src/account-weeks.test.ts); here the coming week's charge day, the one
+// value a marker's line carries, goes through the page. March 7 is coming, charged at the end of Monday, March 1.
+describe("AC3 (issue 155) — a coming week's row", () => {
+  // The whole page is coming weeks, so an ordinary one takes no badge and the badges mark what differs (Eric, PR #160).
+  it("AC3: a coming week names the day it is charged, has no badge, then Skip posting the week", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-02-07", "paid", 4500);
-    await services.repo.addLedgerRow(subscriptionId, "2027-02-14", "paid", 4500);
-    await close("2027-02-14");
-    await close("2027-02-21");
-    return (await render()).rows;
-  };
-
-  // The whole page is coming weeks, so an ordinary one takes no badge and the badges mark what differs (Eric, PR #160).
-  it("AC3: a coming week says when it is charged, has no badge, then Skip", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-03-07"))).toEqual([titleOf("2027-03-07"), "Charged at the end of Monday, March 1", "Skip"]);
-  });
-
-  it("AC3: a Paid week says Paid, then Paid", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-07"))).toEqual([titleOf("2027-02-07"), "Paid", "Paid"]);
-  });
-
-  it("AC4: a closed week with no paid row says there is no pickup and no charge, then Closed", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-21"))).toEqual([titleOf("2027-02-21"), "The farm is closed: no pickup, no charge.", "Closed"]);
-  });
-
-  it("AC4: a closed week with a paid row says a week credit covers a later week, then Closed", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-14"))).toEqual([
-      titleOf("2027-02-14"),
-      "The farm is closed: no pickup. A week credit covers a later week.",
-      "Closed",
-    ]);
-  });
-
-  it("AC5: the week the week credit lands on says it is made and not charged, then Week credit", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-02-28"))).toEqual([titleOf("2027-02-28"), "Week credit used, not charged.", "Week credit", "Skip"]);
+    const { html, rows } = await render();
+    const row = rowTitled(rows, titleOf(MAR_7));
+    expect(row).toHaveLength(3);
+    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en") }));
+    expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "skipWeek", week: MAR_7 }]);
   });
 });
 
@@ -226,27 +208,28 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     return render();
   };
 
-  it("AC1: a Skipped week says it is skipped and not charged, then Skipped, then Unskip", async () => {
-    expect(rowTitled((await arrange()).rows, titleOf(MAR_7))).toEqual([titleOf(MAR_7), "Skipped: not charged.", "Skipped", "Unskip"]);
-  });
-
   it("AC6: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek", async () => {
-    expect(formsIn((await arrange()).html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
+    const { html, rows } = await arrange();
+    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1, 3)).toEqual([t("account.weeks.skipped"), t("account.marker.skipped")]);
+    expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
   });
 
   it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {
     expect(formsIn((await arrange()).html, titleOf(MAR_14))).toEqual([{ action: "skipWeek", week: MAR_14 }]);
   });
 
-  it("AC6: a Coming week whose cutoff has passed has no button: its line, and nothing after", async () => {
+  it("AC6: a Coming week whose cutoff has passed has no button: its line, naming the charge day, and nothing after", async () => {
     const { html, rows } = await arrange();
-    expect(rowTitled(rows, titleOf("2027-02-07"))).toEqual([titleOf("2027-02-07"), t("account.weeks.charged", { date: formatPickupDate("2027-02-01", "en") })]);
+    const row = rowTitled(rows, titleOf("2027-02-07"));
+    expect(row).toHaveLength(2);
+    expect(row?.[1]).toContain(formatPickupDate("2027-02-01", "en"));
     expect(formsIn(html, titleOf("2027-02-07"))).toEqual([]);
   });
 });
 
 describe("AC5 (issue 137) — a skipped Week credit week", () => {
-  it("AC5: the Week credit week skipped is Skipped, and the week credit shows on the next open week", async () => {
+  // Where the week credit lands then is upcomingRows' (src/account-weeks.test.ts); here the skipped week's Unskip.
+  it("AC5: the Week credit week skipped is Skipped, with Unskip posting the week", async () => {
     // February 14 paid, then closed: its week credit lands on February 21, which is skipped, so on February 28.
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-02-14", "paid", 4500);
@@ -254,14 +237,16 @@ describe("AC5 (issue 137) — a skipped Week credit week", () => {
     await services.repo.skipWeek(subscriptionId, "2027-02-21");
     const { html, rows } = await render();
     expect(formsIn(html, titleOf("2027-02-21"))).toEqual([{ action: "unskipWeek", week: "2027-02-21" }]);
-    expect(rowTitled(rows, titleOf("2027-02-28"))?.slice(0, 3)).toEqual([titleOf("2027-02-28"), t("account.weeks.weekCredit"), t("account.marker.weekCredit")]);
+    // February 14 closed after it was paid, and February 28 the week credit's: each line and badge by its catalog line.
+    expect(rowTitled(rows, titleOf("2027-02-14"))?.slice(1, 3)).toEqual([t("account.weeks.closedPaid"), t("account.marker.closed")]);
+    expect(rowTitled(rows, titleOf("2027-02-28"))?.slice(1, 3)).toEqual([t("account.weeks.weekCredit"), t("account.marker.weekCredit")]);
   });
 });
 
 describe("AC3 (issue 137) — the cutoff Notice", () => {
   it("AC3: sent back with ?error=cutoff, the page shows the cutoff Notice", async () => {
     await subscribedAda();
-    expect(alertTexts(await renderWith({ error: "cutoff" }))).toEqual(["The cutoff for that week has passed, so it can't be changed."]);
+    expect(alertTexts(await renderWith({ error: "cutoff" }))).toHaveLength(1);
   });
 
   it("AC3: with no error, or another one, there is no Notice", async () => {
@@ -272,21 +257,18 @@ describe("AC3 (issue 137) — the cutoff Notice", () => {
   });
 });
 
+// The intro line is shown while active and left out once cancelled (issue 139, below): a choice, checked by its key.
 describe("AC8 (issue 137) — the intro line", () => {
-  it("AC8: under the heading, the intro line says when a week is charged, and that a week skipped by then isn't", async () => {
+  it("AC8: an active subscription's page shows the intro line", async () => {
     await subscribedAda();
-    expect(textsOf((await render()).html).slice(0, 3)).toEqual([
-      "the header",
-      t("account.weeks.title"),
-      "Each week is charged at the end of the Monday before pickup. Skip a week or switch your meal by then.",
-    ]);
+    expect(textsOf((await render()).html)).toContain(t("account.weeks.intro"));
   });
 });
 
 // Issue 138: the meal card, between the Notice and the weeks card. Which week a switch starts from is switchWeek's
 // (src/switch-meal.test.ts) and what a save does ./actions.test.ts's; here each of the card's states goes through the
 // page once. Ada signs up for 3–4 people and Standard at a stored $45 a week; her switch week is February 14, the
-// first listed week whose cutoff has not passed. The card's new words are typed once, here.
+// first listed week whose cutoff has not passed. The card is read by its picks, price, week and links.
 describe("issue 138 — the meal card", () => {
   const FEB_7 = "2027-02-07";
   const FEB_14 = "2027-02-14";
@@ -295,8 +277,8 @@ describe("issue 138 — the meal card", () => {
   const choiceOf = (names: string[]): Record<string, string> =>
     Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => names.includes(option.name))?.id ?? "no such option"]));
 
-  /** The meal line: the picks, then the weekly price. */
-  const mealLine = (meal: string, price: string): string => `${meal} · ${t("supperClub.price", { price })}`;
+  /** The meal card's visible text, as one string. */
+  const textOf = (card: string): string => textsOf(card).join(" ");
 
   /** The page drawn with `query`, and the meal card's markup: the first Card, which is a <section>. */
   const renderCard = async (query: { switch?: string } = {}): Promise<{ html: string; card: string }> => {
@@ -306,35 +288,37 @@ describe("issue 138 — the meal card", () => {
     return { html, card: sections.find((section) => !section.includes("<li")) ?? "" };
   };
 
-  /** Each link in `html`: where it goes, as a path and query, and its text. */
-  const linksOf = (html: string): { to: string; text: string }[] =>
-    [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => {
-      const url = new URL(attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "", "http://haul.test/account/weeks");
-      return { to: `${url.pathname}${url.search}`, text: textsOf(inner).join(" ") };
+  /** Where each link in `html` goes, as a path and query. */
+  const linksOf = (html: string): string[] =>
+    attributesOf(html, "a").map((link) => {
+      const url = new URL(link.href ?? "", "http://haul.test/account/weeks");
+      return `${url.pathname}${url.search}`;
     });
 
   it("AC5: closed, the card shows the meal and its weekly price, and Switch size or menu, a link to ?switch=1", async () => {
     await subscribedAda();
     const { card } = await renderCard();
-    expect(textsOf(card)).toEqual([t("header.yourMeal"), mealLine("3–4 people · Standard", "$45"), "Switch size or menu"]);
-    expect(linksOf(card)).toEqual([{ to: "/account/weeks?switch=1", text: "Switch size or menu" }]);
+    expect(textOf(card)).toContain("3–4 people · Standard");
+    expect(textOf(card)).toContain(formatUsdWhole(4500));
+    expect(linksOf(card)).toEqual(["/account/weeks?switch=1"]);
   });
 
   it("AC5: after a switch whose picks have not started, the card shows the new meal and price, and the week they start from", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), MAR_7, 5000);
     const { card } = await renderCard();
-    expect(textsOf(card)).toEqual([t("header.yourMeal"), mealLine("2 people · Vegan", "$50"), `From ${titleOf(MAR_7)} on.`, "Switch size or menu"]);
+    for (const value of ["2 people · Vegan", formatUsdWhole(5000), titleOf(MAR_7)]) expect(textOf(card)).toContain(value);
   });
 
   it("AC5: picks that started with the first listed week have no From line: they are the meal now", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), FEB_7, 5000);
     const { card } = await renderCard();
-    expect(textsOf(card)).toEqual([t("header.yourMeal"), mealLine("2 people · Vegan", "$50"), "Switch size or menu"]);
+    for (const value of ["2 people · Vegan", formatUsdWhole(5000)]) expect(textOf(card)).toContain(value);
+    for (const weekOf of [FEB_7, MAR_7]) expect(textOf(card)).not.toContain(titleOf(weekOf));
   });
 
-  it("AC3: open at ?switch=1, the card is a form posting the switch week to switchMeal, with the newest picks selected, the Applies line, Save and Cancel", async () => {
+  it("AC3: open at ?switch=1, the card is a form posting the switch week to switchMeal, with the newest picks selected, the week it applies from, one submit and Cancel back to the page", async () => {
     const subscriptionId = await subscribedAda();
     const newest = choiceOf(["2 people", "Vegan"]);
     await services.repo.switchPicks(subscriptionId, newest, MAR_7, 5000);
@@ -351,12 +335,9 @@ describe("issue 138 — the meal card", () => {
     const checked = Object.fromEntries(inputs.filter((input) => input.type === "radio" && "checked" in input).map((input) => [input.name, input.value]));
     expect(checked).toEqual(newest);
 
-    const runs = textsOf(card);
-    expect(runs).toContain(`Applies from ${titleOf(FEB_14)} on. Weeks already paid stay as they are.`);
-    expect(runs).not.toContain("Switch size or menu");
-    const submits = [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].filter(([, a = ""]) => attributesOf(`<button${a}>`, "button")[0]?.type === "submit");
-    expect(submits.map(([, , text = ""]) => textsOf(text).join(" "))).toEqual(["Save"]);
-    expect(linksOf(card)).toEqual([{ to: "/account/weeks", text: "Cancel" }]);
+    expect(textOf(inner)).toContain(titleOf(FEB_14));
+    expect(buttons.filter((button) => button.type === "submit")).toHaveLength(1);
+    expect(linksOf(card)).toEqual(["/account/weeks"]);
   });
 
   it("AC5: with no switch week listed, the card stays closed with no Switch size or menu, even at ?switch=1", async () => {
@@ -365,7 +346,9 @@ describe("issue 138 — the meal card", () => {
     for (const weekOf of sundaysFrom(FEB_7, 12)) await services.repo.addLedgerRow(subscriptionId, weekOf, "paid", 4500);
     for (const query of [{}, { switch: "1" }]) {
       const { card } = await renderCard(query);
-      expect(textsOf(card)).toEqual([t("header.yourMeal"), mealLine("3–4 people · Standard", "$45")]);
+      expect(textOf(card)).toContain("3–4 people · Standard");
+      expect(textOf(card)).toContain(formatUsdWhole(4500));
+      expect(linksOf(card)).toEqual([]);
       expect(card).not.toContain("<form");
     }
   });
@@ -383,12 +366,11 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
     for (const query of [{}, { switch: "1" }]) {
       const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
       const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
-      expect(rows).toEqual([
-        [titleOf("2027-02-07"), "Paid", "Paid"],
-        [titleOf("2027-03-07"), "Paid", "Paid"],
-      ]);
+      expect(rows.map((row) => row[0])).toEqual([titleOf("2027-02-07"), titleOf("2027-03-07")]);
+      // A paid week: Paid, as its line and its badge.
+      expect(rows[0]).toEqual([titleOf("2027-02-07"), t("account.marker.paid"), t("account.marker.paid")]);
       expect(html).not.toContain("<form");
-      expect(textsOf(html)).not.toContain("Switch size or menu");
+      expect(attributesOf(html, "a").map((link) => link.href)).not.toContain("/account/weeks?switch=1");
     }
   });
 
@@ -404,15 +386,14 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
   };
 
   it("AC5: the intro line, which says when a week is charged, is not shown", async () => {
-    const runs = textsOf(await renderCancelled());
-    expect(runs).toContain(t("account.weeks.title"));
-    expect(runs).not.toContain(t("account.weeks.intro"));
+    expect(textsOf(await renderCancelled())).not.toContain(t("account.weeks.intro"));
   });
 
   it("AC5: the meal card shows the meal without its weekly price", async () => {
     const html = await renderCancelled();
     // The meal card is the Card (a <section>) before the weeks card, which holds the list.
     const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
-    expect(textsOf(card)).toEqual([t("header.yourMeal"), "3–4 people · Standard"]);
+    expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
+    expect(textsOf(card).join(" ")).not.toContain(formatUsdWhole(4500));
   });
 });

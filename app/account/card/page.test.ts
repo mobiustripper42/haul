@@ -3,9 +3,8 @@
 // (app/account/subscriber.test.ts). What a save does is src/update-card.test.ts's; which paid row the page may name is
 // findPaidCharge's, and whether a charge is out is findPendingCharge's (src/adapters/charge-run-contract.ts): the page
 // maps the outcome in the URL to its message, and the data to Try again, so each state goes through it once, with the
-// page's own wording. The form is a client component; the page is read for what it hands it, as
-// app/supper-club/page.test.ts reads PaymentSection. The page's words are new copy, typed once here; "Your meal", the
-// card entry's own words and the signup's Try again, payError and retry Notice are existing copy, read from the catalog.
+// Notice it picks and the values in it (issue 211), never its words. The form is a client component; the page is read
+// for what it hands it, as app/supper-club/page.test.ts reads PaymentSection.
 import type { ComponentProps, ReactNode } from "react";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -14,13 +13,15 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { en } from "@core/messages/en.js";
+import { formatUsdWhole } from "@core/money.js";
 import { formatPickupDate, pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { Card } from "@core/ports/payments.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, findAll, redirectOf, sentencesOf, textsOf } from "../../screen-test-helpers";
+import { Notice } from "../../../components/ui/notice";
+import { alertTexts, attributesOf, findAll, redirectOf, sentencesOf } from "../../screen-test-helpers";
 import { CardForm } from "./card-form";
 import UpdateCard from "./page";
 
@@ -123,12 +124,9 @@ const render = async (query: Record<string, string | string[] | undefined> = {})
 type FormProps = ComponentProps<typeof CardForm>;
 const cardFormOf = (element: ReactNode) => findAll(element, CardForm)[0]?.props as unknown as FormProps | undefined;
 
-/** Each link on the page: where it goes, and its text. */
-const linksOf = (html: string): { href: string; text: string }[] =>
-  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
-    href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
-    text: textsOf(inner).join(" "),
-  }));
+/** Where each link on the page goes. */
+const hrefsOf = (html: string): string[] => attributesOf(html, "a").map((link) => link.href ?? "");
+const noticeIcons = (element: ReactNode) => findAll(element, Notice).map((notice) => notice.props.icon);
 
 const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null), "en");
 
@@ -141,7 +139,7 @@ const chargeOut = async (member: Member, subscriptionId: string): Promise<string
   return services.repo.addLedgerRow(subscriptionId, FEB_7, "pending", 4500);
 };
 
-/** The submits of the form posting to `action`, by their text; none when no form posts to it. */
+/** The submits of the form posting to `action`, by their attributes; none when no form posts to it. */
 const submitsTo = (html: string, action: string): string[] =>
   [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].flatMap(([, attrs = "", inner = ""]) => {
     const buttons = attributesOf(inner, "button");
@@ -149,12 +147,11 @@ const submitsTo = (html: string, action: string): string[] =>
     if (posts !== action) return [];
     return [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)]
       .filter(([, a = ""]) => attributesOf(`<button${a}>`, "button")[0]?.type === "submit")
-      .map(([, , text = ""]) => textsOf(text).join(" "));
+      .map(([, a = ""]) => a);
   });
 
-const HEADING = "Update your card";
-const ON_FILE_OLD = "On file now: card ending 4444. The new card replaces it for every charge from now on.";
-const DECLINED = "That card was declined. Nothing was charged. Check the details or try another card.";
+/** The On file now line's words before the card, read from the catalog: the line is shown in some states, not others. */
+const ON_FILE_OPENS = en["account.card.onFile"].split("{card}")[0] ?? "no such line";
 
 describe("AC2 — who reaches /account/card, and what it shows", () => {
   it("AC2: a member whose subscription is cancelled is sent to /account", async () => {
@@ -163,12 +160,12 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
     await expect(redirectOf(UpdateCard({ searchParams: Promise.resolve({}) }))).resolves.toBe("/account");
   });
 
-  it("AC2: in order, the back link Your meal, the heading, and On file now with the card's last four; no Notice", async () => {
+  it("AC2: in order, the back link to /account, the heading, and the card's last four; no Notice", async () => {
     await subscribedAda();
-    const { html, sentences } = await render();
-    const wanted = [en["header.yourMeal"], HEADING, ON_FILE_OLD];
-    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
-    expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
+    const { html } = await render();
+    const at = ['href="/account"', "<h1", "4444"].map((mark) => html.indexOf(mark));
+    expect(at.every((n, i) => n >= 0 && (i === 0 || n > (at[i - 1] ?? -1)))).toBe(true);
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
     expect(alertTexts(html)).toEqual([]);
   });
 
@@ -180,21 +177,8 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
   it("AC2: with no card's brand stored, the On file now line is left out; the rest of the page stays", async () => {
     await subscribedAda(null);
     const { element, sentences } = await render();
-    expect(sentences).toContain(HEADING);
-    expect(sentences.some((sentence) => sentence.startsWith("On file now"))).toBe(false);
+    expect(sentences.some((sentence) => sentence.startsWith(ON_FILE_OPENS))).toBe(false);
     expect(cardFormOf(element)).toBeDefined();
-  });
-
-  it("AC2: the card form is given the new card's label, the hint, Save card, and the signup's card entry words", async () => {
-    await subscribedAda();
-    expect(cardFormOf((await render()).element)?.text).toEqual({
-      cardLabel: "New card",
-      cardHint: "Secure card entry by Square. Any unpaid week is charged to the new card when you save it.",
-      save: "Save card",
-      testCard: en["supperClub.testCard"],
-      cardFailed: en["supperClub.cardFailed"],
-      cardRefused: en["supperClub.cardRefused"],
-    });
   });
 
   it("with no declined rows, the card entry's amount is the subscription's weekly price", async () => {
@@ -226,12 +210,14 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
 });
 
 describe("AC3 — state saved", () => {
-  it("AC3: the Notice reads Card saved. and when the next charge is, on the card now on file, and the form is gone", async () => {
+  it("AC3: a check Notice names when the next charge is and the card now on file, and the form is gone", async () => {
     await subscribedAda(NEW_CARD);
     const { element, html } = await render({ state: "saved" });
-    expect(alertTexts(html)).toEqual(["Card saved. Your next charge, at the end of Monday, February 8, uses card ending 1111."]);
+    expect(noticeIcons(element)).toEqual(["check"]);
+    expect(alertTexts(html)[0]).toContain(formatPickupDate("2027-02-08", "en"));
+    expect(alertTexts(html)[0]).toContain("1111");
     expect(cardFormOf(element)).toBeUndefined();
-    expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
+    expect(hrefsOf(html)).toContain("/account");
   });
 
 });
@@ -244,8 +230,9 @@ describe("AC3, AC4 (issue 202) — state saved, the member's next week", () => {
     const { subscriptionId } = await subscribedAda(NEW_CARD);
     await services.repo.skipWeek(subscriptionId, "2027-02-14");
     const { html } = await render({ state: "saved" });
-    const next = t("account.card.savedNext", { day: formatPickupDate("2027-02-15", "en"), card: t("account.card.ending", { last4: "1111" }) });
-    expect(alertTexts(html)).toEqual([`${en["account.card.saved"]} ${next}`]);
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(alertTexts(html)[0]).toContain(formatPickupDate("2027-02-15", "en"));
+    expect(alertTexts(html)[0]).toContain("1111");
   });
 
   // A real save clears or pends the declined row (src/ports/repository.ts), so this state is reached only by its URL.
@@ -253,17 +240,19 @@ describe("AC3, AC4 (issue 202) — state saved, the member's next week", () => {
     const { subscriptionId } = await subscribedAda(NEW_CARD);
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
     const { element, html } = await render({ state: "saved" });
-    expect(alertTexts(html)).toEqual([en["account.card.saved"]]);
+    expect(alertTexts(html)).toEqual([t("account.card.saved")]);
+    expect(noticeIcons(element)).toEqual(["check"]);
     expect(cardFormOf(element)).toBeUndefined();
   });
 });
 
 describe("AC4 — state declined", () => {
-  it("AC4: the Notice reads That card was declined. and the rest; the card on file is still named and the form is still shown", async () => {
+  it("AC4: an alert Notice shows; the card on file is still named and the form is still shown", async () => {
     await subscribedAda();
     const { element, html, sentences } = await render({ state: "declined" });
-    expect(alertTexts(html)).toEqual([DECLINED]);
-    expect(sentences).toContain(ON_FILE_OLD);
+    expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)).toEqual([`${t("account.card.refusedLead")} ${t("account.card.refused")}`]);
+    expect(sentences.some((sentence) => sentence.includes("4444"))).toBe(true);
     expect(cardFormOf(element)).toBeDefined();
   });
 });
@@ -273,9 +262,10 @@ describe("AC6 — state paid", () => {
     const { subscriptionId } = await subscribedAda(NEW_CARD);
     const paid = await services.repo.addLedgerRow(subscriptionId, JAN_31, "paid", 4500);
     const { element, html } = await render({ state: "paid", row: paid });
-    expect(alertTexts(html)).toEqual([`Card saved. We charged $45 to card ending 1111 for the unpaid week: ${titleOf(JAN_31)}.`]);
+    expect(noticeIcons(element)).toEqual(["check"]);
+    for (const value of [formatUsdWhole(4500), "1111", titleOf(JAN_31)]) expect(alertTexts(html)[0]).toContain(value);
     expect(cardFormOf(element)).toBeUndefined();
-    expect(linksOf(html)).toContainEqual({ href: "/account", text: en["header.yourMeal"] });
+    expect(hrefsOf(html)).toContain("/account");
   });
 
   it.each([
@@ -296,8 +286,9 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
     await chargeOut(member, subscriptionId);
     for (const query of [{}, { state: "unknown" }]) {
       const { element, html } = await render(query);
-      expect(alertTexts(html)).toEqual([en["supperClub.retryNotice"]]);
-      expect(submitsTo(html, "retryCard")).toEqual([en["supperClub.tryAgain"]]);
+      expect(noticeIcons(element)).toEqual(["alert"]);
+      expect(alertTexts(html)).toEqual([t("supperClub.retryNotice")]);
+      expect(submitsTo(html, "retryCard")).toHaveLength(1);
       expect(cardFormOf(element)).toBeUndefined();
     }
   });
@@ -313,7 +304,8 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
   it("AC11: state error with no pending row shows the signup's payError Notice above the card form", async () => {
     await subscribedAda();
     const { element, html } = await render({ state: "error" });
-    expect(alertTexts(html)).toEqual([en["supperClub.payError"]]);
+    expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)).toEqual([t("supperClub.payError")]);
     expect(cardFormOf(element)).toBeDefined();
   });
 
@@ -321,8 +313,9 @@ describe("AC8, AC10, AC11 — a charge out, and an error", () => {
     const { member, subscriptionId } = await subscribedAda();
     await chargeOut(member, subscriptionId);
     const { element, html } = await render({ state: "error" });
-    expect(alertTexts(html)).toEqual([en["supperClub.payError"], en["supperClub.retryNotice"]]);
-    expect(submitsTo(html, "retryCard")).toEqual([en["supperClub.tryAgain"]]);
+    expect(noticeIcons(element)).toEqual(["alert", "alert"]);
+    expect(alertTexts(html)).toEqual([t("supperClub.payError"), t("supperClub.retryNotice")]);
+    expect(submitsTo(html, "retryCard")).toHaveLength(1);
     expect(cardFormOf(element)).toBeUndefined();
   });
 });

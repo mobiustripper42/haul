@@ -1,22 +1,21 @@
 // Issue 139: the member's cancel confirm, `await CancelSupperClub()` with `next/headers` faked and the composition root
 // mocked, as app/account/page.test.ts renders /account. Who is let in is requireSubscriber's
 // (app/account/subscriber.test.ts) and which week is the last pickup lastPickup's (src/account-weeks.test.ts); here
-// each of the page's branches goes through it once. What the button does is ./actions.test.ts's. The page's words are
-// new copy, typed once here; "Your Supper Club" is the account title, read from the catalog.
+// each of the page's branches goes through it once, read by its links, form, Notice and the values in them, and the key
+// of the credit line it picks, never its words (issue 211). What the button does is ./actions.test.ts's.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { en } from "@core/messages/en.js";
 import { pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, redirectOf, sentencesOf, textsOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, redirectOf, screenMarkup } from "../../screen-test-helpers";
 import CancelSupperClub from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -104,23 +103,20 @@ const weekCredit = async (subscriptionId: string, weekOf: string): Promise<void>
 
 const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null), "en");
 
-const render = async (): Promise<{ html: string; sentences: string[] }> => {
-  const html = renderToStaticMarkup(await CancelSupperClub());
-  // The page has no badge, so a line in a <span> beside another reads through as one sentence.
-  return { html, sentences: sentencesOf(html, ["span"]) };
+/** The page's markup, React's script dropped and entities decoded, so a week's title can be found in it. */
+const render = async (): Promise<{ html: string }> => ({ html: screenMarkup(renderToStaticMarkup(await CancelSupperClub())) });
+
+/** Where each link on the page goes. */
+const hrefsOf = (html: string): string[] => attributesOf(html, "a").map((link) => link.href ?? "");
+
+/** The submit buttons on the page. */
+const submitsOf = (html: string) => attributesOf(html, "button").filter((button) => button.type === "submit");
+
+/** Each of `marks` is on the page, each after the one before it. */
+const inPageOrder = (html: string, marks: readonly string[]): boolean => {
+  const at = marks.map((mark) => html.indexOf(mark));
+  return at.every((n, i) => n >= 0 && (i === 0 || n > (at[i - 1] ?? -1)));
 };
-
-/** Each link on the page: where it goes, and its text. */
-const linksOf = (html: string): { href: string; text: string }[] =>
-  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
-    href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
-    text: textsOf(inner).join(" "),
-  }));
-
-const HEADING = "Cancel the Supper Club?";
-const JOIN_AGAIN = "You can join again any time while there are meals. If you only need a break, skip the weeks instead.";
-const CONFIRM = "Yes, cancel my Supper Club";
-const SKIP_INSTEAD = "Skip weeks instead";
 
 describe("AC11 (issue 139) — who reaches /account/cancel", () => {
   it("AC11: a signed-out visitor is sent to /sign-in", async () => {
@@ -139,79 +135,58 @@ describe("AC11 (issue 139) — who reaches /account/cancel", () => {
   });
 });
 
-describe("AC13 (issue 139) — the words and their order", () => {
-  it("AC13: with a paid week to come, the back link, the heading, the last pickup sentence, the join-again line, the confirm and Skip weeks instead", async () => {
+describe("AC13 (issue 139) — what the page holds, and its order", () => {
+  it("AC13: with a paid week to come, the back link, the heading, the last pickup's week, the confirm and Skip weeks instead", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
-    const { sentences } = await render();
-    const wanted = [
-      en["account.title"],
-      HEADING,
-      `Your last pickup is ${titleOf(FEB_7)}, which you already paid for. Nothing more is charged.`,
-      JOIN_AGAIN,
-      CONFIRM,
-      SKIP_INSTEAD,
-    ];
-    expect(sentences.filter((sentence) => wanted.includes(sentence))).toEqual(wanted);
+    const { html } = await render();
+    expect(inPageOrder(html, ['href="/account"', "<h1", titleOf(FEB_7), 'type="submit"', 'href="/account/weeks"'])).toBe(true);
   });
 
   it("AC13: the back link goes to /account and Skip weeks instead to Upcoming weeks", async () => {
     await subscribedAda();
-    const links = linksOf((await render()).html);
-    expect(links).toContainEqual({ href: "/account", text: en["account.title"] });
-    expect(links).toContainEqual({ href: "/account/weeks", text: SKIP_INSTEAD });
+    const hrefs = hrefsOf((await render()).html);
+    expect(hrefs).toContain("/account");
+    expect(hrefs).toContain("/account/weeks");
   });
 
-  it("AC13: with no paid week still to come, the sentence is Nothing more is charged. alone", async () => {
+  it("AC13: with no paid week still to come, no week is named", async () => {
     await subscribedAda();
-    const { sentences } = await render();
-    expect(sentences).toContain("Nothing more is charged.");
-    expect(sentences.some((sentence) => sentence.startsWith("Your last pickup"))).toBe(false);
+    const { html } = await render();
+    for (const weekOf of ["2027-01-03", FEB_7]) expect(html).not.toContain(titleOf(weekOf));
   });
 
   it("AC13: with no week credit there is no Notice", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
-    const { html, sentences } = await render();
-    expect(sentences).toContain(CONFIRM);
+    const { html } = await render();
+    expect(submitsOf(html)).toHaveLength(1);
     expect(alertTexts(html)).toEqual([]);
   });
 
-  it("AC4, AC13: with one unused week credit, a Notice says so and that the farm refunds it, before the confirm", async () => {
+  it("AC4, AC13: with one unused week credit, a Notice shows the one-credit line, before the confirm", async () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-24");
-    const { html, sentences } = await render();
-    expect(alertTexts(html)).toEqual(["You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm."]);
-    expect(sentences.indexOf("You have a week credit. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm.")).toBeLessThan(sentences.indexOf(CONFIRM));
+    const { html } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(t("account.cancel.creditOne"));
+    expect(inPageOrder(html, ['role="alert"', 'type="submit"'])).toBe(true);
   });
 
   it("AC4, AC13: with two, the Notice counts them", async () => {
     const subscriptionId = await subscribedAda();
     await weekCredit(subscriptionId, "2027-01-17");
     await weekCredit(subscriptionId, "2027-01-24");
-    expect(alertTexts((await render()).html)).toEqual(["You have 2 week credits. Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm."]);
-  });
-});
-
-// Issue 202 (issue 197): the refund sentence reads right with several credits. It is new copy, typed once in each
-// language; the lead is existing copy, read from the catalog.
-describe("AC5, AC6 (issue 202) — the refund sentence", () => {
-  const twoCredits = async (): Promise<void> => {
-    const subscriptionId = await subscribedAda();
-    await weekCredit(subscriptionId, "2027-01-17");
-    await weekCredit(subscriptionId, "2027-01-24");
-  };
-
-  it("AC5 (issue 202): in English, with two week credits, the Notice's body is Any outstanding credits will be refunded in Square after you cancel. and the rest", async () => {
-    await twoCredits();
-    expect(alertTexts((await render()).html)).toEqual([
-      `${t("account.cancel.creditMany", { n: 2 })} Any outstanding credits will be refunded in Square after you cancel. If you haven't heard about a refund within a week, contact the farm.`,
-    ]);
+    const alerts = alertTexts((await render()).html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain("2");
+    expect(alerts[0]).toContain(t("account.cancel.creditMany", { n: 2 }));
   });
 });
 
 describe("AC1 (issue 139) — the confirm", () => {
-  it("AC1: Yes, cancel my Supper Club is the submit of a form posting to cancelSubscription", async () => {
+  it("AC1: the one submit is in a form posting to cancelSubscription", async () => {
     await subscribedAda();
     const { html } = await render();
     const forms = [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)];
@@ -220,7 +195,7 @@ describe("AC1 (issue 139) — the confirm", () => {
     const buttons = attributesOf(inner, "button");
     const action = buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action;
     expect(action).toBe("cancelSubscription");
-    const submits = [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].filter(([, a = ""]) => attributesOf(`<button${a}>`, "button")[0]?.type === "submit");
-    expect(submits.map(([, , text = ""]) => textsOf(text).join(" "))).toEqual([CONFIRM]);
+    expect(submitsOf(inner)).toHaveLength(1);
+    expect(submitsOf(html)).toHaveLength(1);
   });
 });

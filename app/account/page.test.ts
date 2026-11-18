@@ -4,7 +4,8 @@
 // signed in is app/session.test.ts's (requireMember); which subscription is found is findSignupConfirmation's; which
 // week is next is nextPickup's (src/pickup-week.test.ts), so here one week of each kind is read through the page.
 // The header is faked, so what is read of it is the call the page makes; its buttons are app/site-header.test.ts's.
-// The name's parts are memberDisplayName's (src/members.test.ts). "Next pickup: {week}" is new copy, typed once.
+// The name's parts are memberDisplayName's (src/members.test.ts). The page is read by the values it shows, its badge's
+// kind, its links and Notices, and the key of a line shown in some states and not others (issue 211), never its words.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -18,9 +19,12 @@ import { pickupWeek, pickupWhereLine, weekTitle, type ChangedWeek } from "@core/
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Badge } from "../../components/ui/badge";
+import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
-import { alertTexts, attributesOf, inOrder, redirectOf, textsOf } from "../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, redirectOf, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
+import { SUBSCRIPTION_BADGES } from "../subscription-badges";
 import { addSupperClub } from "../admin/subscribers-fixture";
 import Account from "./page";
 
@@ -107,12 +111,17 @@ const change = (weekOf: string, over: Partial<ChangedWeek>) =>
   services.repo.savePickupWeek(product.id, { weekOf, closedAt: null, note: null, firstDay: null, lastDay: null, ...over });
 const close = (weekOf: string) => change(weekOf, { closedAt: new Date("2027-01-20T15:00:00.000Z") });
 
-/** The page's markup, its runs of text, and all of it as one line. */
-const render = async (): Promise<{ html: string; runs: string[]; text: string }> => {
-  const html = renderToStaticMarkup(await Account());
+/** The page's markup, its runs of text, all of it as one line, the meal card's badge kind and text, and how many Notices it shows. */
+const render = async (): Promise<{ html: string; runs: string[]; text: string; badge: unknown; badgeText: unknown; notices: number }> => {
+  const element = await Account();
+  const html = renderToStaticMarkup(element);
   const runs = textsOf(html);
-  return { html, runs, text: runs.join(" ") };
+  const badge = findAll(element, Badge)[0]?.props;
+  return { html, runs, text: runs.join(" "), badge: badge?.kind, badgeText: badge?.children, notices: findAll(element, Notice).length };
 };
+
+/** The page's text holds none of the listed weeks' titles: no next pickup is named. */
+const namesNoWeek = (text: string): boolean => [FEB_7, FEB_14].every((weekOf) => !text.includes(titleOf(weekOf)));
 
 /** The lines after the details card's heading, the last thing on the page: none when the heading is not shown. */
 const detailsLines = (runs: string[], language: Language = "en"): string[] => {
@@ -169,7 +178,9 @@ describe("AC3 (issue 136) — the subscription's picks and weekly price", () => 
     const member = await ada();
     await subscribed(member);
     signIn(member);
-    expect((await render()).text).toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
+    const { text } = await render();
+    expect(text).toContain(formatUsdWhole(4500));
+    expect(text).not.toContain(formatUsdWhole(5000));
   });
 });
 
@@ -186,18 +197,19 @@ describe("AC5 (issue 138) — after a switch", () => {
     await services.repo.switchPicks(confirmation?.subscriptionId ?? "no subscription", vegan, "2027-03-07", 8000);
     const { runs, text } = await render();
     expect(runs).toContain("3–4 people · Vegan");
-    expect(text).toContain(t("supperClub.next.charge", { price: formatUsdWhole(8000) }));
+    expect(text).toContain(formatUsdWhole(8000));
   });
 });
 
 describe("AC3b (issue 136) — the next pickup", () => {
-  it('AC3b: for a member whose first week is past, it is the first listed week: "Next pickup: February 7 and 8", then the where line', async () => {
+  // The where line is pickupWhereLine's (src/pickup-week.test.ts).
+  it("AC3b: for a member whose first week is past, the next pickup is the first listed week, February 7", async () => {
     const member = await ada();
     await subscribed(member);
     signIn(member);
-    const { html } = await render();
-    const where = en["supperClub.box.pickupWhere"];
-    expect(inOrder(html, ["Next pickup: February 7 and 8", where])).toEqual(["Next pickup: February 7 and 8", where]);
+    const { text } = await render();
+    expect(text).toContain(titleOf(FEB_7));
+    expect(text).not.toContain(titleOf(FEB_14));
   });
 
   it("AC3b: a member who joined after a cutoff sees their first week, February 14, not the listed week before it", async () => {
@@ -215,10 +227,9 @@ describe("AC3b (issue 136) — the next pickup", () => {
     const member = await ada();
     await subscribed(member);
     signIn(member);
-    const { text } = await render();
+    const { runs, text } = await render();
     expect(text).toContain(titleOf(FEB_7, moved));
-    expect(text).toContain(pickupWhereLine(t, pickupWeek(FEB_7, moved), "en"));
-    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
+    expect(runs).toContain(pickupWhereLine(t, pickupWeek(FEB_7, moved), "en"));
   });
 
   it("AC3b: on a closed week's own Monday pickup day the week is still seen as closed, and passed over to the week after", async () => {
@@ -237,25 +248,24 @@ describe("AC3b (issue 136) — the next pickup", () => {
 // Issue 202: which week is next, skips and the walk past any list included, is nextPickup's and weeksFrom's
 // (src/pickup-week.test.ts); here one skipped week goes through loadNextPickup and the page.
 describe("AC2 (issue 202) — the next pickup passes over a skipped week", () => {
-  it("AC2: with February 7 skipped, Next pickup and the where line name February 14", async () => {
+  it("AC2: with February 7 skipped, Next pickup names February 14", async () => {
     const member = await ada();
     const rows = await signup(member);
     await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
     await services.repo.skipWeek(rows.subscriptionId, FEB_7);
     signIn(member);
-    const { html, text } = await render();
-    const next = t("account.nextPickup", { week: titleOf(FEB_14) });
-    const where = en["supperClub.box.pickupWhere"];
-    expect(inOrder(html, [next, where])).toEqual([next, where]);
+    const { text } = await render();
+    expect(text).toContain(titleOf(FEB_14));
     expect(text).not.toContain(titleOf(FEB_7));
   });
 });
 
 // Issue 196: the next-pickup line while locked. Which week is next while locked is nextPickup's
 // (src/pickup-week.test.ts) and which week is declined findMemberSubscription's (src/adapters/charge-run-contract.ts);
-// here one locked and one unlocked case through the page. The no-pickup line is new copy, typed once here.
+// here one locked and one unlocked case through the page. The no-pickup line is shown only while locked: a choice,
+// checked by its key.
 describe("AC8 (issue 196) — the next pickup while locked", () => {
-  const NO_PICKUP = "No pickup until your card is updated.";
+  const NO_PICKUP = t("account.noPickupLocked");
 
   /** Ada, signed in, with an active subscription paid for January 3 and a declined row for `declinedOn`; its id. */
   const declinedAda = async (declinedOn: string): Promise<string> => {
@@ -269,31 +279,28 @@ describe("AC8 (issue 196) — the next pickup while locked", () => {
 
   it("AC8: once the declined week's pickup has passed, Next pickup and its where line are replaced by one line, not a Notice; the charge line stays", async () => {
     await declinedAda("2027-01-31");
-    const { html, text } = await render();
-    const charge = t("supperClub.next.charge", { price: formatUsdWhole(4500) });
-    expect(inOrder(html, ["2 people · Standard", NO_PICKUP, charge])).toEqual(["2 people · Standard", NO_PICKUP, charge]);
-    expect(text).not.toContain("Next pickup:");
-    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
-    // Issue 145: the declined Notice is the page's only alert, and the no-pickup line is in none.
-    const alerts = alertTexts(html);
-    expect(alerts).toEqual([expect.stringMatching(/^Your card was declined\. /)]);
-    expect(alerts.some((alert) => alert.includes(NO_PICKUP))).toBe(false);
+    const { html, runs, text, notices } = await render();
+    expect(namesNoWeek(text)).toBe(true);
+    expect(runs).toContain(NO_PICKUP);
+    expect(text).toContain(formatUsdWhole(4500));
+    // Issue 145: the declined Notice is the page's only one, and the no-pickup line is in none.
+    expect(notices).toBe(1);
+    expect(alertTexts(html).some((alert) => alert.includes(NO_PICKUP))).toBe(false);
   });
 
-  it("AC8: while the declined week's pickup is still to come, Next pickup names it, with its where line, and the no-pickup line is not shown", async () => {
+  it("AC8: while the declined week's pickup is still to come, Next pickup names it, and the no-pickup line is not shown", async () => {
     await declinedAda(FEB_7);
-    const { html, text } = await render();
-    const where = en["supperClub.box.pickupWhere"];
-    expect(inOrder(html, ["Next pickup: February 7 and 8", where])).toEqual(["Next pickup: February 7 and 8", where]);
-    expect(text).not.toContain(NO_PICKUP);
+    const { runs, text } = await render();
+    expect(text).toContain(titleOf(FEB_7));
+    expect(runs).not.toContain(NO_PICKUP);
   });
 
   it("AC8 [code]: a cancelled subscription holding a declined row shows the cancelled card as today, with no no-pickup line", async () => {
     const subscriptionId = await declinedAda("2027-01-31");
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    const { html, text } = await render();
+    const { html, runs } = await render();
     expect(alertTexts(html)).toHaveLength(1);
-    expect(text).not.toContain(NO_PICKUP);
+    expect(runs).not.toContain(NO_PICKUP);
   });
 });
 
@@ -340,12 +347,8 @@ describe("AC5 (issue 136) — the header on /account", () => {
 
 // Issue 139: account home after a cancel. Who is let in is requireSubscriber's (app/account/subscriber.test.ts) and
 // which week is the last pickup lastPickup's (src/account-weeks.test.ts); here each of the Notice's three pickup
-// sentences goes through the page once. The cancelled words are new copy, typed once here; "Cancel the Supper Club" too.
+// cases goes through the page once, by the week it names and, for is or was, the key of the line it picks.
 describe("issue 139 — account home, cancelled and not", () => {
-  const CANCEL_LINK = "Cancel the Supper Club";
-  const CANCELLED = "Your Supper Club is cancelled.";
-  const NOTHING_MORE = "Nothing more is charged. You can join again any time while there are meals.";
-
   /** Ada, signed in, with an active subscription paid for January 3; its id. */
   const subscribedAda = async (options?: Parameters<typeof signup>[1]): Promise<string> => {
     const member = await ada();
@@ -357,57 +360,63 @@ describe("issue 139 — account home, cancelled and not", () => {
 
   const cancel = (subscriptionId: string) => services.repo.cancelSubscription(subscriptionId, NOW);
 
-  /** Each link on the page: where it goes, and its text. */
-  const linksOf = (html: string): { href: string; text: string }[] =>
-    [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
-      href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
-      text: textsOf(inner).join(" "),
-    }));
+  /** Where each link on the page goes. */
+  const hrefsOf = (html: string): string[] => attributesOf(html, "a").map((link) => link.href ?? "");
 
-  it("AC5: with a paid week still to come, the Notice says it is cancelled, then Your last pickup is {week}., then nothing more is charged", async () => {
+  it("AC5: with a paid week still to come, the one Notice names that week as the last pickup, which is to come", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
     await cancel(subscriptionId);
-    expect(alertTexts((await render()).html)).toEqual([`${CANCELLED} Your last pickup is ${titleOf(FEB_7)}. ${NOTHING_MORE}`]);
+    const alerts = alertTexts((await render()).html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(titleOf(FEB_7));
+    expect(alerts[0]).toContain(t("account.lastPickupIs", { week: titleOf(FEB_7) }));
   });
 
-  it("AC5: once the last paid week has passed, the Notice says Your last pickup was {week}.", async () => {
+  it("AC5: once the last paid week has passed, the one Notice names it as the last pickup, which was", async () => {
     const subscriptionId = await subscribedAda();
     await cancel(subscriptionId);
-    expect(alertTexts((await render()).html)).toEqual([`${CANCELLED} Your last pickup was ${titleOf("2027-01-03")}. ${NOTHING_MORE}`]);
+    const alerts = alertTexts((await render()).html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(titleOf("2027-01-03"));
+    expect(alerts[0]).toContain(t("account.lastPickupWas", { week: titleOf("2027-01-03") }));
   });
 
-  it("AC5: with no paid week, the signup's week closed after it was paid, the Notice has no pickup sentence", async () => {
+  it("AC5: with no paid week, the signup's week closed after it was paid, the Notice names no week", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.closePickupWeek(product.id, "2027-01-03", null, new Date("2027-01-03T16:00:00.000Z"));
     await cancel(subscriptionId);
-    expect(alertTexts((await render()).html)).toEqual([`${CANCELLED} ${NOTHING_MORE}`]);
+    const alerts = alertTexts((await render()).html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).not.toContain(titleOf("2027-01-03"));
+    expect(namesNoWeek(alerts[0] ?? "")).toBe(true);
   });
 
-  it("AC5: the meal card shows the meal and a Cancelled badge, and no Next pickup, where line, charge line or Cancel link; the details card stays", async () => {
+  it("AC5: the meal card shows the meal and a Cancelled badge, and no Next pickup, charge line or Cancel link; the details card stays", async () => {
     const subscriptionId = await subscribedAda({ picks: ["2 people", "Vegan"] });
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
     await cancel(subscriptionId);
-    const { html, runs, text } = await render();
-    expect(inOrder(html, ["2 people · Vegan", "Cancelled", en["account.details"]])).toEqual(["2 people · Vegan", "Cancelled", en["account.details"]]);
-    expect(runs).not.toContain(en["account.active"]);
-    expect(text).not.toContain("Next pickup:");
-    expect(text).not.toContain(en["supperClub.box.pickupWhere"]);
-    expect(text).not.toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
-    expect(runs).not.toContain(CANCEL_LINK);
+    const { html, runs, badge, badgeText } = await render();
+    expect(runs).toContain("2 people · Vegan");
+    expect(badge).toBe(SUBSCRIPTION_BADGES.cancelled.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.cancelled.key));
+    // The Notice names February 7 as the last pickup; the meal card names no week and no price.
+    const mealCard = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => textsOf(match[1] ?? "").join(" "))[0] ?? "";
+    expect(namesNoWeek(mealCard)).toBe(true);
+    expect(mealCard).not.toContain(formatUsdWhole(4500));
+    expect(hrefsOf(html)).not.toContain("/account/cancel");
     expect(detailsLines(runs)).toEqual(["Ada Lovelace", "ada@example.com", "(216) 555-0134 · English"]);
   });
 
-  it("AC13: an active subscription's page ends, below the details card, with Cancel the Supper Club, a link to /account/cancel; no Notice", async () => {
+  it("AC13: an active subscription's page ends, below the details card, with a link to /account/cancel; no Notice", async () => {
     await subscribedAda();
-    const { html, runs } = await render();
-    expect(runs.at(-1)).toBe(CANCEL_LINK);
-    expect(inOrder(html, [en["account.details"], CANCEL_LINK])).toEqual([en["account.details"], CANCEL_LINK]);
-    expect(linksOf(html)).toContainEqual({ href: "/account/cancel", text: CANCEL_LINK });
+    const { html } = await render();
+    expect(hrefsOf(html).at(-1)).toBe("/account/cancel");
+    expect(html.lastIndexOf("</section>")).toBeLessThan(html.indexOf('href="/account/cancel"'));
     expect(alertTexts(html)).toEqual([]);
   });
 
-  it("AC7: after a cancel and a new signup, paid, the page shows the new subscription: its meal, Active, no Notice", async () => {
+  it("AC7: after a cancel and a new signup, paid, the page shows the new subscription: its meal, the Active badge, no Notice", async () => {
     const first = await subscribedAda();
     expect(await cancel(first)).toBe(true);
     vi.setSystemTime(new Date(NOW.getTime() + 60_000));
@@ -415,9 +424,10 @@ describe("issue 139 — account home, cancelled and not", () => {
     if (!member) throw new Error("Ada is gone");
     const again = await signup(member, { picks: ["2 people", "Vegan"] });
     await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW);
-    const { html, runs } = await render();
+    const { html, runs, badge, badgeText } = await render();
     expect(runs).toContain("2 people · Vegan");
-    expect(runs).toContain(en["account.active"]);
+    expect(badge).toBe(SUBSCRIPTION_BADGES.active.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.active.key));
     expect(alertTexts(html)).toEqual([]);
   });
 });
@@ -426,13 +436,9 @@ describe("issue 139 — account home, cancelled and not", () => {
 // repository's (src/adapters/charge-run-contract.ts), and which week is next while locked is nextPickup's; here the
 // page's own rule: the "is still made" sentence while the declined week's pickup is to come and its week is open. A
 // declined row is the fake's addLedgerRow seam, as a charge run's decline leaves it; with the lock (issue 196) there is
-// one. The Notice's words and "Update your card" are new copy, typed once here; "Card declined" is the admin's existing
-// word, read from the catalog.
+// one. Read by the Notice, the week it names, its link and the badge's kind.
 describe("issue 145 — AC1, AC13: account home with a declined card", () => {
   const JAN_31 = "2027-01-31";
-  const LEAD = "Your card was declined.";
-  const KEEP = "Update it to keep your meal.";
-  const UPDATE = "Update your card";
 
   /** Ada, signed in, with an active subscription paid for January 3; its id. */
   const subscribedAda = async (): Promise<string> => {
@@ -445,66 +451,53 @@ describe("issue 145 — AC1, AC13: account home with a declined card", () => {
 
   const declined = (subscriptionId: string, weekOf: string) => services.repo.addLedgerRow(subscriptionId, weekOf, "declined", 4500);
 
-  /** The Notices' words, the Update your card button's set aside, wherever the button sits under them. */
-  const noticeWords = (html: string): string[] => alertTexts(html).map((text) => text.replace(new RegExp(` ?${UPDATE}$`), ""));
+  /** Where each link on the page goes. */
+  const hrefsOf = (html: string): string[] => attributesOf(html, "a").map((link) => link.href ?? "");
 
-  /** Each link on the page: where it goes, and its text. */
-  const linksOf = (html: string): { href: string; text: string }[] =>
-    [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
-      href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
-      text: textsOf(inner).join(" "),
-    }));
-
-  it("AC1: an active subscription holding a declined row whose pickup is to come: the Notice says its meal is still made, Update your card goes to /account/card, and the badge reads Card declined, not Active", async () => {
+  it("AC1: an active subscription holding a declined row whose pickup is to come: the one Notice names that week, Update your card goes to /account/card, and the badge is Card declined's, not Active's", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, FEB_7);
-    const { html, runs } = await render();
-    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP} Your meal for ${titleOf(FEB_7)} is still made.`]);
-    expect(linksOf(html)).toContainEqual({ href: "/account/card", text: UPDATE });
-    expect(runs).toContain(en["admin.members.cardDeclined"]);
-    expect(runs).not.toContain(en["account.active"]);
+    const { html, badge, badgeText } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(titleOf(FEB_7));
+    expect(hrefsOf(html)).toContain("/account/card");
+    expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
-  it("AC1: once the declined week's pickup has passed, the Notice keeps its lead and Update it to keep your meal., with no is-still-made sentence; the button and badge stay", async () => {
+  it("AC1: once the declined week's pickup has passed, the one Notice names no week; the button and badge stay", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, JAN_31);
-    const { html, runs } = await render();
-    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP}`]);
-    expect(linksOf(html)).toContainEqual({ href: "/account/card", text: UPDATE });
-    expect(runs).toContain(en["admin.members.cardDeclined"]);
+    const { html, badge, badgeText } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).not.toContain(titleOf(JAN_31));
+    expect(hrefsOf(html)).toContain("/account/card");
+    expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
-  it("AC1: Update your card is its own catalog key, account.updateCard, not the card page's title: rewording the title leaves the button as it is", async () => {
-    const subscriptionId = await subscribedAda();
-    await declined(subscriptionId, FEB_7);
-    const catalog = en as unknown as Record<string, string>;
-    const title = catalog["account.card.title"];
-    catalog["account.card.title"] = "The card page's title, reworded";
-    try {
-      const { html } = await render();
-      expect(linksOf(html).filter((link) => link.href === "/account/card")).toEqual([{ href: "/account/card", text: UPDATE }]);
-    } finally {
-      if (title !== undefined) catalog["account.card.title"] = title;
-    }
-  });
-
-  it("AC13: when the declined row's week was closed, the Notice shows without the is-still-made sentence, though its pickup is to come; the badge still reads Card declined", async () => {
+  it("AC13: when the declined row's week was closed, the Notice names no week, though its pickup is to come; the badge is still Card declined's", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, FEB_7);
     await close(FEB_7);
-    const { html, runs } = await render();
-    expect(noticeWords(html)).toEqual([`${LEAD} ${KEEP}`]);
-    expect(runs).toContain(en["admin.members.cardDeclined"]);
+    const { html, badge, badgeText } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).not.toContain(titleOf(FEB_7));
+    expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.declined.key));
   });
 
   it("AC1: a cancelled subscription holding a declined row keeps the cancelled Notice and the Cancelled badge, and no declined Notice", async () => {
     const subscriptionId = await subscribedAda();
     await declined(subscriptionId, JAN_31);
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    const { html, runs } = await render();
-    expect(alertTexts(html)).toEqual([expect.stringMatching(/^Your Supper Club is cancelled\. /)]);
-    expect(runs).toContain(en["account.cancelled"]);
-    expect(runs).not.toContain(en["admin.members.cardDeclined"]);
-    expect(linksOf(html).map((link) => link.href)).not.toContain("/account/card");
+    const { html, badge, badgeText } = await render();
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(badge).toBe(SUBSCRIPTION_BADGES.cancelled.kind);
+    expect(badgeText).toBe(t(SUBSCRIPTION_BADGES.cancelled.key));
+    expect(hrefsOf(html)).not.toContain("/account/card");
   });
 });

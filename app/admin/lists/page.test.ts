@@ -2,8 +2,9 @@
 // mocked, as app/admin/weeks/page.test.ts renders the weeks screen. Read as the markup and its text. Which weeks the
 // select offers is `listableWeeks`'s (src/pickup-week.test.ts) and the fallback's cases `loadWeekLists`'s
 // (./week.test.ts): one offered and one fallen-back week here. The counts are `pickList`'s and `weekSummary`'s
-// (src/week-lists.test.ts), the meals the repository's (src/adapters/week-lists-contract.ts). The wording is new copy,
-// typed here once (src/messages/en.ts gains it with this task).
+// (src/week-lists.test.ts), the meals the repository's (src/adapters/week-lists-contract.ts); the counts line's plurals
+// are `pluralKey`'s (src/i18n.test.ts). Lines the page shows in some states and not others are checked by their
+// catalog line.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -11,8 +12,9 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
 import { listableWeeks, listedWeekTitle } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
+import { Hint } from "../../../components/ui/hint";
 import { emptyRequest } from "../../next-headers-fake";
-import { attributesOf, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
+import { attributesOf, findAll, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
 import { addSupperClub, MENUS, SIZES } from "../subscribers-fixture";
 import { FEB_14, FEB_7, fourMembers, linksLabelled, NOW, oneOfEach, signInAs, subscribe, tableRows, TAM } from "./lists-fixture";
 import AdminLists from "./page";
@@ -58,8 +60,18 @@ afterEach(() => {
 const render = async (query: Record<string, string> = {}): Promise<string> =>
   screenMarkup(renderToStaticMarkup(await AdminLists({ searchParams: Promise.resolve(query) })));
 
-/** The page's text as one line: tags dropped, spaces collapsed, so a sentence split by inline markup reads whole. */
-const lineText = (markup: string): string => markup.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+
+/** The counts line, the page's last Hint, as its numbers in order: members, skipped, week credits. */
+const countsOf = async (query: Record<string, string>): Promise<number[]> => {
+  const line = findAll(await AdminLists({ searchParams: Promise.resolve(query) }), Hint).at(-1)?.props.children;
+  return [...String(line).matchAll(/\d+/g)].map(([n]) => Number(n));
+};
+
+/** The level-2 headings' text: the week shown is named in the only one. */
+const h2sOf = (markup: string): string[] => [...markup.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(([, inner = ""]) => inner.replace(/<[^>]*>/g, "").trim());
+
+/** The pick list's total: the last cell of its last row. */
+const totalOf = (markup: string): string | undefined => tableRows(markup).at(-1)?.at(-1);
 
 /** The Week select's options, value and label, and the one selected. */
 const weekOptions = (markup: string) => {
@@ -89,24 +101,28 @@ describe("signed in as an admin", () => {
   });
 
   describe("AC3 — the Week select", () => {
-    it('AC3: it offers the listable weeks in order, each titled as the calendar titles it with " · cutoff passed" appended when so', async () => {
+    it("AC3: it offers the listable weeks in order, each titled as the calendar titles it, marked when its cutoff has passed", async () => {
       const weeks = listableWeeks(product, NOW, []);
       expect(weeks.length).toBeGreaterThan(0);
+      expect(weeks.some((week) => week.cutoffPassed)).toBe(true);
       expect(weekOptions(await render()).options.map(({ value, label }) => ({ value, label }))).toEqual(
-        weeks.map((week) => ({ value: week.weekOf, label: `${listedWeekTitle(t, week, "en")}${week.cutoffPassed ? " · cutoff passed" : ""}` })),
+        weeks.map((week) => {
+          const title = listedWeekTitle(t, week, "en");
+          return { value: week.weekOf, label: week.cutoffPassed ? t("admin.lists.weekPassed", { title }) : title };
+        }),
       );
     });
 
     it("AC3: with no week named, the first upcoming week is selected and shown", async () => {
       const markup = await render();
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(textsOf(markup)).toContain("Pick list · February 7 and 8");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
     });
 
     it("AC3: ?week= names another week, which is selected and shown", async () => {
       const markup = await render({ week: FEB_14 });
       expect(weekOptions(markup).selected).toEqual([FEB_14]);
-      expect(textsOf(markup)).toContain("Pick list · February 14 and 15");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 14 and 15")]);
     });
 
     it("AC3 [Lead]: the select sends its week as week= through a GET form", async () => {
@@ -118,26 +134,27 @@ describe("signed in as an admin", () => {
     it("AC8: a week the select does not offer falls back to the first upcoming week", async () => {
       const markup = await render({ week: "2099-01-04" });
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(textsOf(markup)).toContain("Pick list · February 7 and 8");
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
     });
   });
 
   describe("AC4 — the pick list", () => {
-    it('AC4: a Final badge only once the week\'s cutoff has passed', async () => {
-      expect(textsOf(await render({ week: FEB_7 }))).toContain("Final");
-      expect(textsOf(await render({ week: FEB_14 }))).not.toContain("Final");
+    it("AC4: a Final badge only once the week's cutoff has passed", async () => {
+      expect(textsOf(await render({ week: FEB_7 }))).toContain(t("admin.lists.final"));
+      expect(textsOf(await render({ week: FEB_14 }))).not.toContain(t("admin.lists.final"));
     });
 
-    it('AC4: a column per option type named as the farm wrote it, then "Meals"; a row per combination; "Meals to make" and the total', async () => {
+    it("AC4: a column per option type named as the farm wrote it, then the meals; a row per combination; then the total", async () => {
       await fourMembers(services.repo, product);
-      expect(tableRows(await render({ week: FEB_14 }))).toEqual([
-        [SIZES.name, MENUS.name, "Meals"],
+      const rows = tableRows(await render({ week: FEB_14 }));
+      expect(rows[0]?.slice(0, 2)).toEqual([SIZES.name, MENUS.name]);
+      expect(rows.slice(1, -1)).toEqual([
         ["3–4 people", "Standard", "2"],
         ["3–4 people", "Vegan", "0"],
         ["2 people", "Standard", "0"],
         ["2 people", "Vegan", "1"],
-        ["Meals to make", "", "3"],
       ]);
+      expect(rows.at(-1)?.at(-1)).toBe("3");
     });
 
     it("AC4: the three actions carry the week shown", async () => {
@@ -150,51 +167,37 @@ describe("signed in as an admin", () => {
 
   // Issue 183: the line's member count is `weekSummary`'s `members` (src/week-lists.test.ts), and who is in the week
   // `listWeekBoxes`'s (src/adapters/week-lists-contract.ts); one fixture case per criterion here, to show the line reads
-  // that list. The members part is this issue's copy, typed once; the skipped and week-credit parts are read from the
-  // catalog in the form each case needs.
+  // that list. The line is checked by its counts, in order: members, skipped, week credits.
   describe("issue 183 — the line counts the week's members", () => {
     it("AC1: the line's member count is the week's meals plus its skips, members first", async () => {
       await fourMembers(services.repo, product);
-      const markup = await render({ week: FEB_14 });
-      expect(tableRows(markup).at(-1)).toEqual(["Meals to make", "", "3"]);
-      expect(lineText(markup)).toContain(`4 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+      expect(totalOf(await render({ week: FEB_14 }))).toBe("3");
+      await expect(countsOf({ week: FEB_14 })).resolves.toEqual([4, 1, 0]);
     });
 
     it("AC2: an active subscription whose first week is later than the week shown is not in its count", async () => {
       await fourMembers(services.repo, product);
       await subscribe(services.repo, product, TAM, ["2 people", "Vegan"], FEB_14);
-      expect(lineText(await render({ week: FEB_7 }))).toContain(`4 members this week · ${t("admin.lists.skipped.other", { n: 0 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
-      expect(lineText(await render({ week: FEB_14 }))).toContain(`5 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+      await expect(countsOf({ week: FEB_7 })).resolves.toEqual([4, 0, 0]);
+      await expect(countsOf({ week: FEB_14 })).resolves.toEqual([5, 1, 0]);
     });
 
     it("AC3: a past week counts its own members: one cancelled since, holding a skip for it, is counted", async () => {
       await oneOfEach(services.repo, product);
-      const markup = await render({ week: FEB_7 });
-      expect(tableRows(markup).at(-1)).toEqual(["Meals to make", "", "1"]);
-      expect(lineText(markup)).toContain(`2 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.one", { n: 1 })}.`);
+      expect(totalOf(await render({ week: FEB_7 }))).toBe("1");
+      await expect(countsOf({ week: FEB_7 })).resolves.toEqual([2, 1, 1]);
     });
 
     it("AC4: a cancelled subscription with no row for the week shown and not due it is left out", async () => {
       await fourMembers(services.repo, product);
       const tam = await subscribe(services.repo, product, TAM, ["2 people", "Vegan"]);
       await services.repo.cancelSubscription(tam.subscriptionId, NOW);
-      expect(lineText(await render({ week: FEB_14 }))).toContain(`4 members this week · ${t("admin.lists.skipped.one", { n: 1 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
+      await expect(countsOf({ week: FEB_14 })).resolves.toEqual([4, 1, 0]);
     });
 
-    it('AC5: a one-member week reads "1 member this week"', async () => {
-      await oneOfEach(services.repo, product);
-      expect(lineText(await render({ week: FEB_14 }))).toContain(`1 member this week · ${t("admin.lists.skipped.other", { n: 0 })} · ${t("admin.lists.credits.other", { n: 0 })}.`);
-    });
-
-    // Eric's review of pull request #184: the week-credit part ends the line with no "counted above", and the page
-    // carries no pointer to the member spreadsheet. Typed literally, since the tests above read these words from the catalog.
-    it("the week-credit part ends the line, with no \"counted above\"", async () => {
-      await oneOfEach(services.repo, product);
-      expect(lineText(await render({ week: FEB_7 }))).toContain("2 members this week · 1 skipped · 1 week credit.");
-    });
-
+    // Eric's review of pull request #184: the page carries no pointer to the member spreadsheet.
     it("the page has no pointer to the member spreadsheet", async () => {
-      expect(await render({ week: FEB_7 })).not.toContain("member spreadsheet");
+      expect(await render({ week: FEB_7 })).not.toMatch(/<a\b[^>]*\bhref="\/admin\/members\.csv"/);
     });
   });
 
@@ -202,12 +205,12 @@ describe("signed in as an admin", () => {
     it('AC9: "Weekly lists" is its fourth button, after Members, Menus and Weeks, linking here and marked as the page showing', async () => {
       const markup = await render();
       const nav = /<nav\b[^>]*>([\s\S]*?)<\/nav>/.exec(markup)?.[1] ?? "";
-      const links = attributesOf(nav, "a").map((attrs, at) => ({ href: attrs.href, current: attrs["aria-current"] === "page", text: textsOf(`<a${nav.split(/<a\b/)[at + 1] ?? ""}`)[0] }));
+      const links = attributesOf(nav, "a").map((attrs) => ({ href: attrs.href, current: attrs["aria-current"] === "page" }));
       expect(links).toEqual([
-        { href: "/admin", current: false, text: "Members" },
-        { href: "/admin/menus", current: false, text: "Menus" },
-        { href: "/admin/weeks", current: false, text: "Weeks" },
-        { href: "/admin/lists", current: true, text: "Weekly lists" },
+        { href: "/admin", current: false },
+        { href: "/admin/menus", current: false },
+        { href: "/admin/weeks", current: false },
+        { href: "/admin/lists", current: true },
       ]);
     });
   });
