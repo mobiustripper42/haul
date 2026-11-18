@@ -26,13 +26,14 @@ runWeekCreditContract(
   (subscriptionId, pickupDate, status, amountCents) => weekRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
 );
 
-// Issue 134: the charge run's repository methods, through the same seams.
+// Issue 134: the charge run's repository methods, through the same seams; issue 194 marks a comp through markComped.
 let chargeRepo: InMemoryRepository;
 runChargeRunContract(
   "in-memory",
   async () => (chargeRepo = new InMemoryRepository()),
   async (input) => chargeRepo.addProduct(input),
   (subscriptionId, pickupDate, status, amountCents) => chargeRepo.addLedgerRow(subscriptionId, pickupDate, status, amountCents),
+  (subscriptionId) => chargeRepo.markComped(subscriptionId),
 );
 
 // Issue 142: a week's meals and skips, through the same seams.

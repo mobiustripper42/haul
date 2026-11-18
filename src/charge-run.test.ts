@@ -1174,3 +1174,29 @@ describe("issue 174 — one firing at a time", () => {
     expect(claim.mock.calls).toEqual([[CHARGE_RUN_LEASE, PAID_AT, new Date(PAID_AT.getTime() + CHARGE_RUN_LEASE_MS)]]);
   });
 });
+
+// Issue 194: a comped subscription's week is written paid at 0 cents by enrolWeek, whose rule is the repository's
+// (src/adapters/charge-run-contract.ts owns the comp's edges, a week credit before it included). Here the run's part: no
+// charge and no email for a comp, and a week credit's receipt still sent when the comp's week is paid by one. Each comp
+// has a card, so only the comp keeps its week from the charge.
+describe("issue 194 — a comped subscription", () => {
+  const TITLE = weekTitle(createTranslator("en"), pickupWeek(WEEK, null), "en");
+
+  it("AC2: a comped subscription's week is not charged and gets no email from the run; a subscription not comped is charged and gets its receipt", async () => {
+    const ada = await subscriber();
+    const grace = await subscriber();
+    repo.markComped(ada.signup.subscriptionId);
+    await run();
+    expect(payments.charges.map((charge) => charge.customerId)).toEqual([grace.customerId]);
+    expect(email.sent.map((message) => message.to)).toEqual([grace.member.email]);
+  });
+
+  it("AC4: a comped subscription holding an unspent week credit gets the week credit receipt for the week it pays, and is not charged", async () => {
+    const ada = await subscriber();
+    await close(FIRST);
+    repo.markComped(ada.signup.subscriptionId);
+    await run();
+    expect(payments.charges).toEqual([]);
+    expect(email.sent).toEqual([{ to: ada.member.email, ...renderEmail("weekCreditReceipt", ada.member.language, { week: TITLE }, SITE_URL) }]);
+  });
+});

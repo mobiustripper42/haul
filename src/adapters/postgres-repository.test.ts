@@ -112,8 +112,13 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
 
   runWeekCreditContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
 
-  // Issue 134: the charge run's repository methods, through the same seams.
-  runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
+  /** Issue 194: a comp is the column db:comp sets. */
+  const markComped = async (subscriptionId: string): Promise<void> => {
+    await pool.query("update subscriptions set comped = true where id = $1", [subscriptionId]);
+  };
+
+  // Issue 134: the charge run's repository methods, through the same seams; issue 194 marks a comp through markComped.
+  runChargeRunContract("postgres", async () => repo, addProduct, addLedgerRow, markComped, truncateAll);
 
   // Issue 142: a week's meals and skips, through the same seams.
   runWeekListsContract("postgres", async () => repo, addProduct, addLedgerRow, truncateAll);
@@ -212,6 +217,34 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
         [signup.subscriptionId, WEEK],
       );
       expect(rows).toEqual([{ status: "locked", amount_cents: 0, attempt: 1, square_payment_id: null, paid_at: null }]);
+    });
+  });
+
+  // Issue 194: Postgres only. The contract reads a comped week through enrolWeek's zeroCents and listMemberWeeks; its
+  // status, amount and paid_at are read here, from the table.
+  describe("issue 194 — a comped week, in its table", () => {
+    it("AC1: a comped subscription's row for the week is paid, 0 cents, with paid_at set", async () => {
+      await truncateAll();
+      const product = await addProduct(SWITCH_BOX);
+      const member = await repo.createMember({ email: "eric@example.com" });
+      const signup = await repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+        firstChargeCents: 5000,
+        weeklyCents: 5000,
+        pickupDate: "2027-01-17",
+        consentText: "I agree to a weekly charge of $50.",
+        consentAt: new Date("2027-01-05T15:00:00.000Z"),
+      });
+      expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, new Date("2027-01-05T15:00:05.000Z"))).toBe("confirmed");
+      await markComped(signup.subscriptionId);
+      await repo.enrolWeek(product.id, "2027-01-24", cutoffInstant(product, "2027-01-24"));
+      const { rows } = await pool.query<{ status: string; amount_cents: number; paid_at: Date | null }>(
+        "select status, amount_cents, paid_at from ledger where subscription_id = $1 and pickup_date = '2027-01-24'::date",
+        [signup.subscriptionId],
+      );
+      expect(rows).toEqual([{ status: "paid", amount_cents: 0, paid_at: expect.any(Date) }]);
     });
   });
 

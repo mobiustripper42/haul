@@ -72,7 +72,22 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
   };
 
   runProductContract("postgres", async () => repo, addProduct, truncateAll);
-  runSignupContract("postgres", async () => repo, addProduct, truncateAll);
+  // Issue 194: a comp is the column db:comp sets; a repository built with the cap's comp option is one more on this
+  // database, kept by option and closed with the rest.
+  const markComped = async (subscriptionId: string): Promise<void> => {
+    await pool.query("update subscriptions set comped = true where id = $1", [subscriptionId]);
+  };
+  const optioned = new Map<boolean, PostgresRepository>();
+  afterAll(async () => {
+    for (const built of optioned.values()) await built.close();
+  });
+  const makeWithOptions = async (options: { compsCountTowardCap: boolean }): Promise<Repository> => {
+    const built = optioned.get(options.compsCountTowardCap) ?? new PostgresRepository(asAppRole(url), options);
+    optioned.set(options.compsCountTowardCap, built);
+    return built;
+  };
+
+  runSignupContract("postgres", async () => repo, addProduct, markComped, makeWithOptions, truncateAll);
   runMenuContract("postgres", async () => repo, addProduct, truncateAll);
 
   // Issue 140: what only Postgres can show of the menu library: the audit trigger and who it names, and the one

@@ -64,6 +64,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-039 — A token signed under the session secret names its purpose
 - DEC-042 — A subscription is locked at one decline
 - DEC-045 — A locked subscription can neither skip nor switch
+- DEC-046 — A comp is a subscription column, written by db:comp
 
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class

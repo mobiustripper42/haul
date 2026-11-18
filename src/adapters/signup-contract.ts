@@ -19,6 +19,13 @@ export function runSignupContract(
   name: string,
   make: () => Promise<Repository>,
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
+  /** Issue 194: marks the subscription comped, as `db:comp` sets `subscriptions.comped`, on the repository last built. */
+  markComped: (subscriptionId: string) => void | Promise<void>,
+  /**
+   * Issue 194: a repository built with these options; `addProduct` and `markComped` then act on it. Only the cap's AC6
+   * cases (issue 194) use it.
+   */
+  makeWithOptions: (options: { compsCountTowardCap: boolean }) => Promise<Repository>,
   reset?: () => Promise<void>,
 ): void {
   describe(`Signup repository contract — ${name}`, () => {
@@ -653,6 +660,34 @@ export function runSignupContract(
 
           expect(await repo.countHeldSpots(club.id)).toBe(0);
           expect(await repo.saveSubscriptionCard(mine.subscriptionId, cardOf("ccof:card-1"))).toMatchObject({ amountCents: 5000, attempt: 1 });
+        });
+      });
+
+      // Issue 194: whether a comp holds a spot is the repository's construction, not each call's. Each case builds its
+      // own repository, then a product on it, an active comped subscription and an active one not comped.
+      describe("AC6 (issue 194) — a comped subscription and the cap", () => {
+        /** The product's held spots on a repository built with `compsCountTowardCap`, holding one comp and one subscription not comped. */
+        const heldWithAComp = async (compsCountTowardCap: boolean): Promise<number> => {
+          const built = await makeWithOptions({ compsCountTowardCap });
+          const club = await addProduct({ ...BOX, name: "Comped club" });
+          const active = async (email: string): Promise<PendingSignup> => {
+            const who = (await built.createMember({ email })).id;
+            const signup = await built.savePendingSignup(input({ memberId: who, productId: club.id, choices: choicesOf(club) }));
+            expect(await built.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, PAID_AT)).toBe("confirmed");
+            return signup;
+          };
+          const comp = await active("comped@example.com");
+          await active("paying@example.com");
+          await markComped(comp.subscriptionId);
+          return built.countHeldSpots(club.id);
+        };
+
+        it("AC6 (issue 194): built with comps not counting, a comped active subscription holds no spot; the active one not comped holds its own", async () => {
+          expect(await heldWithAComp(false)).toBe(1);
+        });
+
+        it("AC6 (issue 194): built with comps counting, a comped active subscription holds a spot like any other", async () => {
+          expect(await heldWithAComp(true)).toBe(2);
         });
       });
     });

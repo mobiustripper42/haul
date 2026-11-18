@@ -120,6 +120,18 @@ First delete every subscription, ledger row and Square-customer link made under 
 note), then switch the five Square variables to production and redeploy. The developer app must
 belong to the farm's Square account, or the money lands in someone else's (spec open question 18).
 
+## Comping a member
+
+A comped subscription is real and never charged (DEC-046). The member signs in once first, since the
+command never creates one. From a `production` checkout:
+
+```
+npm run -s db:comp -- <email> "$OWNER_URL" --production
+```
+
+It refuses a member already holding an active Supper Club subscription. `COMPS_COUNT_TOWARD_CAP=true`
+makes comps count toward the cap; unset, they do not.
+
 ## The January cutover
 
 When Phase 2 promotes `main` to `production` with `/promote-production`:

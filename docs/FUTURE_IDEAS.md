@@ -19,6 +19,7 @@ Not ranked yet. The market scan's own ranking of other farms' ideas is in
 ### HIGH — next up
 | Feature | One-liner | Detail |
 |---|---|---|
+| Admin gives a member a credit week | Goodwill for a mistake without charging then refunding in Square; reuses week credits | Parking lot, 2026-11-18 |
 | _(unranked)_ | | |
 
 ### MED — strong, not first
@@ -76,3 +77,5 @@ The chronological archive — the source of detail and provenance. New ideas app
 | 2026-11-12 | Hide a menu from the library; delete one that was never on a week | The library only grows (issue 140 builds no delete), and a duplicate made by mistake stays in the list and in the Weeks picker | A week holds a reference to its menu, not a copy, so deleting a menu that is on a week would leave that week with none; a hidden menu needs a way back | open |
 | 2026-11-12 | A help or FAQ page, starting with week credits | The close-week email (issue 151) says only "you have a week credit"; what one is, when it lands and that a cancelled member is refunded by hand is explained nowhere a member can read | Wanted (Eric, 2026-11-12), not yet scheduled. Each answer is catalog text in every language, and must stay true as the rules change (`docs/SPEC.md` §7.2) | open |
 | 2026-11-16 | CSA: a member names a friend to collect their share on a week they'll miss, in place of a skip | The farm's FAQ already tells members to send a friend, neighbour or colleague when they're out of town, and an uncollected share is donated through the Re:Source Pantry program. Recording the name lets check-in know who is coming | No CSA spec yet. The name needs a place on the week's pickup list and at check-in (Phase 5), and the CSA skip rule isn't settled; see "Skip → store credit", 2026-10-24 | open |
+| 2026-11-18 | Admin gives a member a credit week | Goodwill for a mistake without charging then refunding in Square; reuses week credits | `week_credits.granted_for` must point at a paid week today, so a goodwill credit needs it nullable and a change to how `enrolWeek` picks a credit | open |
+| 2026-11-18 | Calendar feed members subscribe to on iPhone and Android | Pickups in the member's own calendar | Muster has this code to port | open |

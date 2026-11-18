@@ -22,6 +22,8 @@ export function runChargeRunContract(
   make: () => Promise<Repository>,
   addProduct: (input: ProductInput) => Promise<ProductWithOptions>,
   addLedgerRow: (subscriptionId: string, pickupDate: string, status: LedgerStatus, amountCents: number) => Promise<string>,
+  /** Issue 194: marks the subscription comped, as `db:comp` sets `subscriptions.comped`. */
+  markComped: (subscriptionId: string) => void | Promise<void>,
   reset?: () => Promise<void>,
 ): void {
   // BOX's weeks: January 24's cutoff is the end of Monday the 18th in Cleveland, 2027-01-19T05:00Z. The repository
@@ -520,6 +522,51 @@ export function runChargeRunContract(
         await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
         expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
         expect(await repo.findMemberSubscription(ada.memberId, product.id)).toMatchObject({ declinedWeek: null });
+      });
+    });
+
+    // Issue 194: a comped subscription is a third reason enrolWeek writes a row paid at 0 cents, beside a week credit and
+    // a free pick; a week credit still comes first, and a skip still stands. The comp's edges are owned here; the run takes
+    // no charge and no email for it, and a week credit's receipt, through src/charge-run.test.ts. The row's paid_at is
+    // read by raw SQL, on Postgres alone (src/adapters/postgres-repository.test.ts). Its picks here cost 5000, so only the
+    // comp can make the row 0 cents.
+    describe("issue 194 — enrolWeek pays a comped subscription's week at 0 cents", () => {
+      const none = { pending: 0, zeroCents: 0, byWeekCredit: [], locked: [] };
+      const weeksOf = (who: Subscriber) => repo.listMemberWeeks(who.signup.subscriptionId);
+
+      /** A subscriber, its first week EARLIER paid at signup, its subscription then marked comped. */
+      const comped = async (): Promise<Subscriber> => {
+        const who = await subscriber();
+        await markComped(who.signup.subscriptionId);
+        return who;
+      };
+
+      it("AC1: a comped active subscription due the week gets its row paid at 0 cents, counted in zeroCents and not pending; a subscription not comped is charged at its picks", async () => {
+        const ada = await comped();
+        const grace = await subscriber();
+        expect(await enrol()).toEqual({ ...none, pending: 1, zeroCents: 1 });
+        expect(await rowsOf(ada)).toEqual([]);
+        expect((await rowsOf(grace)).map((row) => [row.pickupDate, row.amountCents])).toEqual([[WEEK, 5000]]);
+        expect((await weeksOf(ada)).paid.map((row) => [row.weekOf, row.amountCents, row.weekCredit]).sort()).toEqual([
+          [EARLIER, 5000, false],
+          [WEEK, 0, false],
+        ]);
+      });
+
+      it("AC3: a comped subscription that skipped the week keeps it skipped: nothing is written", async () => {
+        const ada = await comped();
+        expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(true);
+        expect(await enrol()).toEqual(none);
+        expect((await weeksOf(ada)).skipped).toEqual([WEEK]);
+        expect((await weeksOf(ada)).paid.map((row) => row.weekOf)).toEqual([EARLIER]);
+      });
+
+      it("AC4: a comped subscription holding an unspent week credit spends it on the week as any member would: counted in byWeekCredit, not zeroCents", async () => {
+        const ada = await comped();
+        await close(EARLIER);
+        expect(await enrol()).toEqual({ ...none, byWeekCredit: [{ ledgerId: expect.stringMatching(UUID), memberId: ada.memberId }] });
+        expect((await weeksOf(ada)).weekCredits).toEqual([]);
+        expect((await weeksOf(ada)).paid.find((row) => row.weekOf === WEEK)).toMatchObject({ amountCents: 0, weekCredit: true });
       });
     });
 
