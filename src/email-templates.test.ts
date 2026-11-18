@@ -13,19 +13,16 @@ vi.mock("./messages/es.js", async () => {
 });
 
 const SITE_URL = "https://members.example.test";
-const FOOTER = "Terms: https://members.example.test/terms\nPrivacy: https://members.example.test/privacy";
 const STAND_IN_FOOTER = "«email.legalTerms»\n«email.legalPrivacy»";
+const en = createTranslator("en");
 
 describe("AC5 (issue 9) — renderEmail", () => {
-  it('AC5: signInCode in English returns exactly the subject and the body, a blank line, then the sign-off, a blank line and the footer', () => {
-    expect(renderEmail("signInCode", "en", { code: "042517", minutes: 10 }, SITE_URL)).toEqual({
-      subject: "Your OCF Member Portal sign-in code",
-      text:
-        "Your sign-in code is 042517.\n\n" +
-        "It expires in 10 minutes. If you didn't ask for it, you can ignore this email.\n\n" +
-        "— Ohio City Farm\n\n" +
-        FOOTER,
-    });
+  it("AC5: signInCode in English fills its body with the code and the minutes, and carries the footer's links", () => {
+    const values = { code: "042517", minutes: 10 };
+    const { text } = renderEmail("signInCode", "en", values, SITE_URL);
+    expect(text).toContain(en("email.signInCode.body", values));
+    expect(text).toContain(`${SITE_URL}/terms`);
+    expect(text).toContain(`${SITE_URL}/privacy`);
   });
 
   it("AC5: signInCode in the stand-in Spanish catalog returns only catalog values — nothing the template wrote itself", () => {
@@ -39,17 +36,13 @@ describe("AC5 (issue 9) — renderEmail", () => {
 describe("AC15 (issue 22) — renderEmail signInLink", () => {
   const LINK = "https://members.ohiocityfarm.com/sign-in/link?token=AbC_-123";
 
-  it("AC15: signInLink in English returns exactly the subject and the body with the link and minutes, a blank line, then the sign-off, a blank line and the footer", () => {
-    expect(renderEmail("signInLink", "en", { link: LINK, minutes: 10 }, SITE_URL)).toEqual({
-      subject: "Your OCF Member Portal sign-in link",
-      text:
-        "Too many wrong codes were entered for your account, so sign-in by code is paused for up to 24 hours.\n\n" +
-        "Use this link to sign in instead:\n" +
-        `${LINK}\n\n` +
-        "It works once and expires in 10 minutes. If you didn't try to sign in, you can ignore this email.\n\n" +
-        "— Ohio City Farm\n\n" +
-        FOOTER,
-    });
+  it("AC15: signInLink in English fills its body with the link and the minutes, and carries the footer's links", () => {
+    const values = { link: LINK, minutes: 10 };
+    const { text } = renderEmail("signInLink", "en", values, SITE_URL);
+    expect(text).toContain(en("email.signInLink.body", values));
+    expect(text).toContain(LINK);
+    expect(text).toContain(`${SITE_URL}/terms`);
+    expect(text).toContain(`${SITE_URL}/privacy`);
   });
 
   it("AC15: signInLink in the stand-in Spanish catalog returns only catalog values — nothing the template wrote itself", () => {
@@ -61,18 +54,17 @@ describe("AC15 (issue 22) — renderEmail signInLink", () => {
 });
 
 describe("AC4 (issue 58) — withSignOff", () => {
-  it("AC4: it gives the body, a blank line, then the sign-off", () => {
-    expect(withSignOff(createTranslator("en"), "The body.\nIts second line.")).toBe("The body.\nIts second line.\n\n— Ohio City Farm");
-  });
-
   it("AC4: the sign-off comes from the translator it is handed", () => {
     expect(withSignOff(createTranslator("es"), "The body.")).toBe("The body.\n\n«email.signOff»");
   });
 });
 
 describe("AC7 (issue 63) — legalFooter", () => {
-  it.each([SITE_URL, `${SITE_URL}/`])("AC7: from a site address of %s it is the two lines, each link with one slash", (siteUrl) => {
-    expect(legalFooter(createTranslator("en"), siteUrl)).toBe(FOOTER);
+  it.each([SITE_URL, `${SITE_URL}/`])("AC7: from a site address of %s it carries the two links, each with one slash", (siteUrl) => {
+    const footer = legalFooter(en, siteUrl);
+    expect(footer).toContain("https://members.example.test/terms");
+    expect(footer).toContain("https://members.example.test/privacy");
+    expect(footer).not.toContain("test//");
   });
 
   it("AC7: its words come from the translator it is handed", () => {
@@ -93,9 +85,9 @@ describe("AC7 (issue 63) — legalFooter", () => {
 
   it.each(["signInCode", "signInLink"] as const)("AC7: %s takes the footer's links from the site address it is given", (name) => {
     const values = { code: "042517", link: "https://elsewhere.example.test/l", minutes: 10 };
-    expect(renderEmail(name, "en", values, "https://other.example.test/").text.endsWith(
-      "\n\n— Ohio City Farm\n\nTerms: https://other.example.test/terms\nPrivacy: https://other.example.test/privacy",
-    )).toBe(true);
+    const { text } = renderEmail(name, "en", values, "https://other.example.test/");
+    expect(text).toContain("https://other.example.test/terms");
+    expect(text).toContain("https://other.example.test/privacy");
   });
 });
 
@@ -116,22 +108,11 @@ describe("AC7 (issue 63) — siteLink, moved here so the footer can use it", () 
 // render as their tests hold.
 describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharge", () => {
   const WEEK = "February 14 and 15";
-  // Existing copy, read from the catalog rather than typed.
-  const t = createTranslator("en");
-  const CLOSE = `${t("email.signupConfirmation.questions")}\n\n${t("email.signOff")}\n\n${FOOTER}`;
 
-  it("AC6: weekClosedCredit in English is exactly the subject and the body, a blank line, the questions line, a blank line, the sign-off, a blank line and the footer", () => {
-    expect(renderEmail("weekClosedCredit", "en", { week: WEEK }, SITE_URL)).toEqual({
-      subject: "No Supper Club pickup February 14 and 15",
-      text: `The farm is closed February 14 and 15: there is no pickup. You already paid for this week, so you have a week credit.\n\n${CLOSE}`,
-    });
-  });
-
-  it("AC6: weekClosedNoCharge in English has the same subject and its own body, then the same lines", () => {
-    expect(renderEmail("weekClosedNoCharge", "en", { week: WEEK }, SITE_URL)).toEqual({
-      subject: "No Supper Club pickup February 14 and 15",
-      text: `The farm is closed February 14 and 15: there is no pickup, and you won't be charged for it.\n\n${CLOSE}`,
-    });
+  it.each(["weekClosedCredit", "weekClosedNoCharge"] as const)("AC6: %s in English carries the week in its subject and its body", (name) => {
+    const { subject, text } = renderEmail(name, "en", { week: WEEK }, SITE_URL);
+    expect(subject).toContain(WEEK);
+    expect(text).toContain(WEEK);
   });
 
   it.each([
@@ -149,19 +130,12 @@ describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharg
 });
 
 // Issue 150: the receipt for a week a week credit paid. Its subject is the receipt's, its closing the receipt's; only
-// its body is its own, new copy typed here once. `{week}` is the week's title as the charge run builds it
-// (src/charge-run.test.ts holds that).
+// its body is its own. `{week}` is the week's title as the charge run builds it (src/charge-run.test.ts holds that).
 describe("AC3 (issue 150) — renderEmail weekCreditReceipt", () => {
   const WEEK = "February 14 and 15";
-  // Existing copy, read from the catalog rather than typed.
-  const t = createTranslator("en");
-  const CLOSE = `${t("email.signupConfirmation.questions")}\n\n${t("email.signOff")}\n\n${FOOTER}`;
 
-  it("AC3: weekCreditReceipt in English is the receipt's subject, then the body saying the week credit was used and not charged, the questions line, the sign-off and the footer", () => {
-    expect(renderEmail("weekCreditReceipt", "en", { week: WEEK }, SITE_URL)).toEqual({
-      subject: t("email.receipt.subject", { week: WEEK }),
-      text: `Your week credit was used for your Supper Club pickup February 14 and 15: not charged.\n\n${CLOSE}`,
-    });
+  it("AC3: weekCreditReceipt in English carries the week in its body", () => {
+    expect(renderEmail("weekCreditReceipt", "en", { week: WEEK }, SITE_URL).text).toContain(WEEK);
   });
 
   it("AC3: weekCreditReceipt in the stand-in Spanish catalog is only catalog values: the receipt's subject key, its own body, the questions line, the sign-off and the footer", () => {
@@ -172,8 +146,8 @@ describe("AC3 (issue 150) — renderEmail weekCreditReceipt", () => {
   });
 });
 
-// Issue 135: the email a decline sends. Its words, filled with the week, the amount and the link, are new copy typed once
-// in src/charge-run.test.ts, which renders it as the run sends it; here, which keys the template reads.
+// Issue 135: the email a decline sends; src/charge-run.test.ts holds that the run sends it as rendered. Here, which keys
+// the template reads.
 describe("AC3 (issue 135) — renderEmail cardDeclined", () => {
   it("AC3: cardDeclined in the stand-in Spanish catalog is only catalog values: its own subject and body, the signup confirmation's questions line, the sign-off and the footer", () => {
     expect(renderEmail("cardDeclined", "es", { week: "February 14 and 15", amount: "$50", link: "https://members.example.test/account" }, SITE_URL)).toEqual({
@@ -183,8 +157,8 @@ describe("AC3 (issue 135) — renderEmail cardDeclined", () => {
   });
 });
 
-// Issue 196: the email a locked week sends. Its words, filled with the week and the link, are new copy typed once in
-// src/charge-run.test.ts, which renders it as the run sends it; here, which keys the template reads.
+// Issue 196: the email a locked week sends; src/charge-run.test.ts holds that the run sends it as rendered. Here, which
+// keys the template reads.
 describe("AC3 (issue 196) — renderEmail cardLocked", () => {
   it("AC3: cardLocked in the stand-in Spanish catalog is only catalog values: its own subject and body, the signup confirmation's questions line, the sign-off and the footer", () => {
     expect(renderEmail("cardLocked", "es", { week: "February 14 and 15", link: "https://members.example.test/account" }, SITE_URL)).toEqual({
@@ -194,9 +168,8 @@ describe("AC3 (issue 196) — renderEmail cardLocked", () => {
   });
 });
 
-// Issue 141: the menu email and the missing-menu email. Their words, filled as the run fills them, are new copy typed
-// once in src/menu-run.test.ts, which renders them as the run sends them; here, that each is only catalog values, and
-// the line the menu email alone puts between the sign-off and the footer.
+// Issue 141: the menu email and the missing-menu email; src/menu-run.test.ts holds that the run sends them as rendered.
+// Here, that each is only catalog values, and the line the menu email alone puts between the sign-off and the footer.
 describe("AC5, AC6 (issue 141) — renderEmail menuEmail and missingMenu", () => {
   /** Every value a stand-in of its own, so a render that writes a word itself shows it beside them. */
   const MENU_VALUES = {

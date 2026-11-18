@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { legalFooter, renderEmail } from "@core/email-templates.js";
+import { renderEmail } from "@core/email-templates.js";
 import { createTranslator, type Language } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
@@ -420,37 +420,19 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
     expect(email.sent).toEqual([emailFor(other.member.email, "weekClosedNoCharge", OPEN)]);
   });
 
-  describe("AC6 — the member's saved language, catalog wording", () => {
-    const es = createTranslator("es");
-    /** What follows a body: the questions line, the sign-off and the legal footer, existing copy read from the catalog. */
-    const SPANISH_CLOSE = `${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`;
-
+  describe("AC6 — the member's saved language", () => {
     it("AC6: a member whose saved language is Spanish gets the week-credit email in Spanish, the week's title in Spanish", async () => {
       const { member } = await subscribed(OPEN, "es");
       await close(OPEN, NOTE);
       await runScheduled();
-      const week = titleOf(OPEN, "es");
-      expect(email.sent).toEqual([
-        {
-          to: member.email,
-          subject: `Sin recogida del Supper Club el ${week}`,
-          text: `La granja está cerrada el ${week}: no hay recogida. Ya pagó esta semana, así que tiene un crédito de semana.\n\n${SPANISH_CLOSE}`,
-        },
-      ]);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, "es")]);
     });
 
     it("AC6: and the won't-be-charged email in Spanish", async () => {
       const { member } = await subscribed(PAST_CUTOFF, "es");
       await close(OPEN, NOTE);
       await runScheduled();
-      const week = titleOf(OPEN, "es");
-      expect(email.sent).toEqual([
-        {
-          to: member.email,
-          subject: `Sin recogida del Supper Club el ${week}`,
-          text: `La granja está cerrada el ${week}: no hay recogida, y no se le cobrará.\n\n${SPANISH_CLOSE}`,
-        },
-      ]);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN, "es")]);
     });
 
     it("AC6: neither email carries the admin's note", async () => {

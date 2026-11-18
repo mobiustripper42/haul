@@ -429,15 +429,16 @@ async function lockAda(): Promise<void> {
   }
 }
 
-describe("AC7 (issue 63) — every sign-in email ends with the footer, from the site's address", () => {
-  const FOOTER = `\n\nTerms: ${services.siteUrl}/terms\nPrivacy: ${services.siteUrl}/privacy`;
-  const lastEnding = () => email.last()?.text.slice(-FOOTER.length);
+describe("AC7 (issue 63) — every sign-in email carries the footer's links, from the site's address", () => {
+  const FOOTER_LINKS = [`${services.siteUrl}/terms`, `${services.siteUrl}/privacy`];
+  /** Of the terms and privacy links, those the last email's text carries. */
+  const lastLinks = () => FOOTER_LINKS.filter((link) => email.last()?.text.includes(link));
 
   it("AC7: requestCode's code email", async () => {
     const { requestCode } = await load();
     await redirectOf(requestCode(form({ email: "ada@example.com" })));
     await runScheduled();
-    expect(lastEnding()).toBe(FOOTER);
+    expect(lastLinks()).toEqual(FOOTER_LINKS);
   });
 
   it("AC7: requestCode's link email, to a locked member", async () => {
@@ -447,7 +448,7 @@ describe("AC7 (issue 63) — every sign-in email ends with the footer, from the 
     await redirectOf(requestCode(form({ email: "ada@example.com" })));
     await runScheduled();
     expect(tokenIn(email.last()?.text)).toBeDefined();
-    expect(lastEnding()).toBe(FOOTER);
+    expect(lastLinks()).toEqual(FOOTER_LINKS);
   });
 
   it("AC7: verifyCode's link email, after the guess that locks", async () => {
@@ -457,7 +458,7 @@ describe("AC7 (issue 63) — every sign-in email ends with the footer, from the 
     for (let g = 1; g <= 5; g++) await redirectOf(verifyCode(form({ code: WRONG_CODE })));
     await runScheduled();
     expect(tokenIn(email.last()?.text)).toBeDefined();
-    expect(lastEnding()).toBe(FOOTER);
+    expect(lastLinks()).toEqual(FOOTER_LINKS);
   });
 });
 

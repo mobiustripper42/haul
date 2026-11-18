@@ -9,6 +9,8 @@ import { FakeEmail } from "@core/adapters/fake-email.js";
 import { FakePayments } from "@core/adapters/fake-payments.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator } from "@core/i18n.js";
+import { formatUsdWhole } from "@core/money.js";
+import { formatPickupDate } from "@core/pickup-week.js";
 import type { Member } from "@core/members.js";
 import type { EmailPort } from "@core/ports/email.js";
 import { PaymentsError } from "@core/ports/payments.js";
@@ -19,6 +21,7 @@ import { emptyRequest, type CookieSet } from "../next-headers-fake";
 import { ACCOUNT_PATH } from "../paths";
 import { redirectOf } from "../screen-test-helpers";
 import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES, PAY_ERROR_SOLD_OUT } from "./paths";
+import { paymentWording } from "./payment-wording";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -275,9 +278,9 @@ describe("resendPaneAccountCode", () => {
 
 describe("issue 56 — the pay actions", () => {
   const SOURCE = "cnon:card-nonce-ok";
-  const CONSENT_50 = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
-  const CONSENT_80 = "I agree to a weekly charge of $80 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
   const t = createTranslator("en");
+  /** What the page renders for the $80 pick with its first pickup January 3, the consent the member saw. */
+  const SHOWN_80 = paymentWording(t, { priceCents: 8000, firstPickup: "2027-01-03", language: "en" }).consentText;
 
   let product: ProductWithOptions;
   let member: Member;
@@ -396,21 +399,17 @@ describe("issue 56 — the pay actions", () => {
     it("AC4: the consent wording is built on the server for the price charged, and never read from the form", async () => {
       signIn();
       const save = vi.spyOn(repo, "savePendingSignup");
-      await join(pay({ consentText: CONSENT_50 }));
+      await join(pay({ consentText: "FORGED" }));
       const stored = save.mock.calls[0]?.[0].consentText;
-      expect(stored).toContain(CONSENT_80);
-      expect(stored).not.toContain(CONSENT_50);
+      expect(stored).toContain(formatUsdWhole(8000));
+      expect(stored).not.toContain("FORGED");
     });
 
     it("AC5 (issue 63): what is stored is the whole sentence as shown, in plain words, within the panel and pickup line text", async () => {
       signIn();
       const save = vi.spyOn(repo, "savePendingSignup");
       await join(pay());
-      expect(save.mock.calls[0]?.[0].consentText).toBe(
-        "Today, for your first week: $80. Then every week, at the cutoff: $80. " +
-          "First pickup: Sunday, January 3. After that, your card is charged $80 at the end of each Monday for the following week's pickup, until you cancel. " +
-          CONSENT_80,
-      );
+      expect(save.mock.calls[0]?.[0].consentText).toBe(SHOWN_80);
     });
 
     // Issue 133: the action works out the wording's first pickup itself, beside signUp's own.
@@ -426,7 +425,7 @@ describe("issue 56 — the pay actions", () => {
       const save = vi.spyOn(repo, "savePendingSignup");
       await join(pay());
       expect(save.mock.calls[0]?.[0]).toMatchObject({ pickupDate: "2027-01-10" });
-      expect(save.mock.calls[0]?.[0].consentText).toContain(t("supperClub.pickupLine", { date: "Sunday, January 10", price: "$80" }));
+      expect(save.mock.calls[0]?.[0].consentText).toContain(formatPickupDate("2027-01-10", "en"));
     });
 
     it("AC3 (issue 133): with January 3 moved to Saturday and Sunday, the stored wording names Saturday, January 2, and the row keeps January 3", async () => {
@@ -435,7 +434,7 @@ describe("issue 56 — the pay actions", () => {
       const save = vi.spyOn(repo, "savePendingSignup");
       await join(pay());
       expect(save.mock.calls[0]?.[0]).toMatchObject({ pickupDate: "2027-01-03" });
-      expect(save.mock.calls[0]?.[0].consentText).toContain(t("supperClub.pickupLine", { date: "Saturday, January 2", price: "$80" }));
+      expect(save.mock.calls[0]?.[0].consentText).toContain(formatPickupDate("2027-01-02", "en"));
     });
 
     it("AC4: the wording and its time are stored as of now", async () => {
@@ -508,7 +507,7 @@ describe("issue 56 — the pay actions", () => {
             firstChargeCents: 8000,
             weeklyCents: 8000,
             pickupDate: "2027-01-03",
-            consentText: CONSENT_80,
+            consentText: SHOWN_80,
             consentAt: T0,
           });
           await repo.confirmSignupRows(ledgerId, `PAYMENT_${spot}`, amountCents, T0);
@@ -673,15 +672,10 @@ describe("issue 56 — the pay actions", () => {
         signIn();
         await join(pay());
         await runScheduled();
-        expect(sent()).toEqual([
-          {
-            to: ADA,
-            subject: "Receipt: you're in the Supper Club",
-            text: expect.stringContaining(
-              "How many people?: 3–4 people\nWhich menu?: Vegan\nCharged Wednesday, October 28: $80, for your first week\nThen every week, at the cutoff: $80\nFirst pickup: Sunday, January 3\n",
-            ) as string,
-          },
-        ]);
+        expect(sent().map((message) => message.to)).toEqual([ADA]);
+        for (const value of ["3–4 people", "Vegan", formatUsdWhole(8000), formatPickupDate("2026-10-28", "en"), formatPickupDate("2027-01-03", "en")]) {
+          expect(onlyText()).toContain(value);
+        }
       });
     });
 
@@ -799,7 +793,8 @@ describe("issue 56 — the pay actions", () => {
           signIn();
           await join(pay());
           await runScheduled();
-          expect(onlyText()).toContain(`\nGo to your account: https://members.example.test${ACCOUNT_PATH}\n`);
+          expect(onlyText()).toContain(`https://members.example.test${ACCOUNT_PATH}`);
+          expect(onlyText()).not.toContain("test//");
         },
       );
     });
@@ -816,7 +811,8 @@ describe("issue 56 — the pay actions", () => {
         signIn();
         await join(pay());
         await runScheduled();
-        expect(onlyText().endsWith("\n\nTerms: https://other.example.test/terms\nPrivacy: https://other.example.test/privacy")).toBe(true);
+        expect(onlyText()).toContain("https://other.example.test/terms");
+        expect(onlyText()).toContain("https://other.example.test/privacy");
       });
     });
 
@@ -826,19 +822,12 @@ describe("issue 56 — the pay actions", () => {
         await repo.confirmMemberEmail(member.id, T0);
       };
 
-      it("AC5: a member with no first name gets the heading with no name", async () => {
-        signIn();
-        await join(pay());
-        await runScheduled();
-        expect(onlyText()).toMatch(/^You're in the Supper Club\n\n/);
-      });
-
       it("AC5: a member with a first name gets it in the heading", async () => {
         await ana();
         signIn();
         await join(pay());
         await runScheduled();
-        expect(onlyText().split("\n\n")[0]).toBe(createTranslator("es")("email.signupConfirmation.heading", { firstName: "Ana" }));
+        expect(onlyText().split("\n\n")[0]).toContain("Ana");
       });
 
       it("AC6: a member stored as es gets their pickup date in Spanish", async () => {

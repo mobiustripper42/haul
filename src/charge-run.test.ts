@@ -11,7 +11,7 @@ import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { upcomingRows } from "./account-weeks.js";
 import { CHARGE_RUN_ACTOR, CHARGE_RUN_LEASE, CHARGE_RUN_LEASE_MS, runCharges, type ChargeRunReport } from "./charge-run.js";
-import { legalFooter, renderEmail } from "./email-templates.js";
+import { renderEmail } from "./email-templates.js";
 import { createTranslator, type Language } from "./i18n.js";
 import type { Member } from "./members.js";
 import { formatUsdWhole } from "./money.js";
@@ -494,18 +494,18 @@ describe("AC7 — the receipt", () => {
   const en = createTranslator("en");
   const es = createTranslator("es");
 
+  /** The receipt `who` gets, in their language, for `amount` charged on `date` for `week`. */
+  const receipt = (who: Subscriber, values: { amount: string; date: string; week: string }) => ({
+    to: who.member.email,
+    ...renderEmail("receipt", who.member.language, values, SITE_URL),
+  });
+
   it("AC7: one receipt to the member, in English: the amount, the date charged and the week's days, then the questions line, the sign-off and the footer", async () => {
     const ada = await subscriber({ choices: picks(1, 1) });
     await run();
     const week = weekTitle(en, pickupWeek(WEEK, null), "en");
     const date = formatPickupDate("2027-01-05", "en");
-    expect(email.sent).toEqual([
-      {
-        to: ada.member.email,
-        subject: `Receipt: Supper Club pickup ${week}`,
-        text: `Charged ${date}: ${formatUsdWhole(8500)}, for your Supper Club pickup ${week}.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
-      },
-    ]);
+    expect(email.sent).toEqual([receipt(ada, { amount: formatUsdWhole(8500), date, week })]);
   });
 
   it("AC7: a member whose language is Spanish gets the receipt in Spanish", async () => {
@@ -513,29 +513,23 @@ describe("AC7 — the receipt", () => {
     await run();
     const week = weekTitle(es, pickupWeek(WEEK, null), "es");
     const date = formatPickupDate("2027-01-05", "es");
-    expect(email.sent).toEqual([
-      {
-        to: ana.member.email,
-        subject: `Recibo: recogida del Supper Club el ${week}`,
-        text: `Cobrado el ${date}: ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
-      },
-    ]);
+    expect(email.sent).toEqual([receipt(ana, { amount: formatUsdWhole(5000), date, week })]);
   });
 
   it("AC7: a moved week is named by its moved days", async () => {
-    await subscriber();
+    const ada = await subscriber();
     await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-09", lastDay: "2027-01-10" });
     await run();
     const moved = weekTitle(en, { weekOf: WEEK, firstDay: "2027-01-09", lastDay: "2027-01-10" }, "en");
-    expect(email.sent.map((message) => message.subject)).toEqual([`Receipt: Supper Club pickup ${moved}`]);
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`for your Supper Club pickup ${moved}.`)]);
+    expect(email.sent).toEqual([receipt(ada, { amount: formatUsdWhole(5000), date: formatPickupDate("2027-01-05", "en"), week: moved })]);
   });
 
   it("AC7: the date charged is the clock's day in Cleveland once the answer is back, not the run's start nor UTC's day", async () => {
-    await subscriber();
+    const ada = await subscriber();
     // 03:30Z on January 7 is 22:30 on Wednesday January 6 in Cleveland.
     await run(RUN_AT, () => new Date("2027-01-07T03:30:00.000Z"));
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Charged ${formatPickupDate("2027-01-06", "en")}: `)]);
+    const week = weekTitle(en, pickupWeek(WEEK, null), "en");
+    expect(email.sent).toEqual([receipt(ada, { amount: formatUsdWhole(5000), date: formatPickupDate("2027-01-06", "en"), week })]);
   });
 
   it("AC7: a stranded signup the run confirms gets the signup confirmation, built from findSignupConfirmation with the caller's links, and no receipt", async () => {
@@ -849,25 +843,25 @@ describe("issue 150 — a week paid by a week credit", () => {
   });
 });
 
-// Issue 135: the email a decline sends its member, right after the decline is recorded. Its words are new copy, typed
-// here once (the template's keys are src/email-templates.test.ts's); the questions line, the sign-off and the footer are
-// existing copy, read from the catalog. What a decline records is AC8's, above.
+// Issue 135: the email a decline sends its member, right after the decline is recorded. Which email, its language and
+// its values are checked against renderEmail("cardDeclined", …); the template's keys are src/email-templates.test.ts's.
+// What a decline records is AC8's, above.
 describe("issue 135 — AC3: the decline email", () => {
   const en = createTranslator("en");
   const es = createTranslator("es");
   const TITLE = weekTitle(en, pickupWeek(WEEK, null), "en");
 
+  /** The decline email `who` gets, in their language, for `amount` and `week`, its link CARD_URL unless `link` is given. */
+  const declinedEmail = (who: Subscriber, values: { amount: string; week: string; link?: string }) => ({
+    to: who.member.email,
+    ...renderEmail("cardDeclined", who.member.language, { link: CARD_URL, ...values }, SITE_URL),
+  });
+
   it("AC3: the declined row's member gets one email in English: the subject naming the week, the body with the amount, the week, the meal still made and the account link, then the questions line, the sign-off and the footer", async () => {
     const ada = await subscriber({ choices: picks(1, 1) });
     payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
     expect(await run()).toEqual(report({ enrolled: 1, declined: 1 }));
-    expect(email.sent).toEqual([
-      {
-        to: ada.member.email,
-        subject: `Card declined: Supper Club pickup ${TITLE}`,
-        text: `Your card was declined for ${formatUsdWhole(8500)}, for your Supper Club pickup ${TITLE}. Your meal for ${TITLE} is still being made: come pick it up. Update your card at ${CARD_URL} to keep your meals coming.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
-      },
-    ]);
+    expect(email.sent).toEqual([declinedEmail(ada, { amount: formatUsdWhole(8500), week: TITLE })]);
   });
 
   it("AC3: a member whose language is Spanish gets it in Spanish", async () => {
@@ -875,13 +869,7 @@ describe("issue 135 — AC3: the decline email", () => {
     payments.declineCard(ana.cardId ?? "no card", "GENERIC_DECLINE");
     await run();
     const week = weekTitle(es, pickupWeek(WEEK, null), "es");
-    expect(email.sent).toEqual([
-      {
-        to: ana.member.email,
-        subject: `Tarjeta rechazada: recogida del Supper Club el ${week}`,
-        text: `Su tarjeta fue rechazada por ${formatUsdWhole(5000)}, por su recogida del Supper Club el ${week}. Su comida para el ${week} se prepara igual: venga a recogerla. Actualice su tarjeta en ${CARD_URL} para seguir recibiendo sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
-      },
-    ]);
+    expect(email.sent).toEqual([declinedEmail(ana, { amount: formatUsdWhole(5000), week })]);
   });
 
   it("AC3: the link is the account URL the run is given, not one the run builds from the site address", async () => {
@@ -890,7 +878,7 @@ describe("issue 135 — AC3: the decline email", () => {
     // Issue 145, AC9: the link is the card URL the run is given, not the account URL beside it.
     const cardUrl = "https://account.example.test/elsewhere";
     await runCharges({ repo, payments, email, now: RUN_AT, clock: () => PAID_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
-    expect(email.sent.map((message) => message.text)).toEqual([expect.stringContaining(`Update your card at ${cardUrl} to keep your meals coming.`)]);
+    expect(email.sent).toEqual([declinedEmail(ada, { amount: formatUsdWhole(5000), week: TITLE, link: cardUrl })]);
   });
 
   it("AC3: a moved week is named by its moved days", async () => {
@@ -899,7 +887,7 @@ describe("issue 135 — AC3: the decline email", () => {
     await repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: null, firstDay: "2027-01-09", lastDay: "2027-01-10" });
     await run();
     const moved = weekTitle(en, { weekOf: WEEK, firstDay: "2027-01-09", lastDay: "2027-01-10" }, "en");
-    expect(email.sent.map((message) => message.subject)).toEqual([`Card declined: Supper Club pickup ${moved}`]);
+    expect(email.sent).toEqual([declinedEmail(ada, { amount: formatUsdWhole(5000), week: moved })]);
   });
 
   it("AC3: a failed send is logged as an email step with its errorFields, never its message, and undoes nothing: the row stays declined, card_declined stands, and the next member gets their receipt", async () => {
@@ -925,7 +913,7 @@ describe("issue 135 — AC3: the decline email", () => {
     payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
     await run();
     expect(await run(new Date("2027-01-06T15:00:00.000Z"))).toEqual(report());
-    expect(email.sent.map((message) => [message.to, message.subject])).toEqual([[ada.member.email, `Card declined: Supper Club pickup ${TITLE}`]]);
+    expect(email.sent).toEqual([declinedEmail(ada, { amount: formatUsdWhole(5000), week: TITLE })]);
   });
 
   it("AC3 (review): a decline whose row someone else turned declined between the listing and the decline write sends no email", async () => {
@@ -946,8 +934,8 @@ describe("issue 135 — AC3: the decline email", () => {
 // Issue 196: a subscription holding a declined row for an earlier week is locked. Who is locked, and the row it gets,
 // are the repository's (src/adapters/charge-run-contract.ts owns the lock's edges, a closed week's included); here the
 // run's part: the report, that a locked week is never charged, and the email the firing that wrote the row sends,
-// after the commit, as the week credit receipt is. Its words are new copy, typed here once; the questions line, the
-// sign-off and the footer are existing copy, read from the catalog. The template's keys are src/email-templates.test.ts's.
+// after the commit, as the week credit receipt is, checked against renderEmail("cardLocked", …). The template's keys are
+// src/email-templates.test.ts's.
 describe("issue 196 — a locked week", () => {
   const en = createTranslator("en");
   const es = createTranslator("es");
@@ -966,11 +954,10 @@ describe("issue 196 — a locked week", () => {
   const runLocked = (cardUrl: string = CARD_URL): Promise<ChargeRunReport> =>
     runCharges({ repo, payments, email, now: LOCK_AT, clock: () => LOCK_ANSWERED_AT, siteUrl: SITE_URL, accountUrl: ACCOUNT_URL, cardUrl });
 
-  /** The locked email `who` gets in English for TITLE, its link `link`. */
-  const lockedEmail = (who: Subscriber, link: string = CARD_URL) => ({
+  /** The locked email `who` gets, in their language, for `week` (TITLE unless given), its link `link`. */
+  const lockedEmail = (who: Subscriber, link: string = CARD_URL, week: string = TITLE) => ({
     to: who.member.email,
-    subject: `No Supper Club meal ${TITLE}: card still declined`,
-    text: `Your card is still declined, so no meal is being made for you for ${TITLE}. Update your card at ${link} to get your meals again.\n\n${en("email.signupConfirmation.questions")}\n\n${en("email.signOff")}\n\n${legalFooter(en, SITE_URL)}`,
+    ...renderEmail("cardLocked", who.member.language, { week, link }, SITE_URL),
   });
 
   it("AC1: a locked week is counted in locked and in enrolled, and never charged; another member due the week is charged as before", async () => {
@@ -991,13 +978,7 @@ describe("issue 196 — a locked week", () => {
     const ana = await declined({ language: "es" });
     await runLocked();
     const week = weekTitle(es, pickupWeek(NEXT, null), "es");
-    expect(email.sent).toEqual([
-      {
-        to: ana.member.email,
-        subject: `Sin comida del Supper Club el ${week}: su tarjeta sigue rechazada`,
-        text: `Su tarjeta sigue rechazada, así que no se prepara ninguna comida para usted el ${week}. Actualice su tarjeta en ${CARD_URL} para volver a recibir sus comidas.\n\n${es("email.signupConfirmation.questions")}\n\n${es("email.signOff")}\n\n${legalFooter(es, SITE_URL)}`,
-      },
-    ]);
+    expect(email.sent).toEqual([lockedEmail(ana, CARD_URL, week)]);
   });
 
   it("AC3: the link is the card URL the run is given, as the declined email's is", async () => {

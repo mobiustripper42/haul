@@ -49,8 +49,8 @@ Every line in the sections below carries its source:
      and never quotes wording, `(by hand)` ones included; the words live in Wording. Its "then" is something a test can check
      without reading a sentence: a URL, a row, a returned value, a field or control that appears, a
      value (a date, an amount, a count) that reaches the page. Never "shows <a heading>". A branch
-     that changes only how the screen reads or looks names the function that picks the state. An
-     email is named by its recipient, its count and the values it carries, never its subject. -->
+     that changes only how the screen reads names the catalog key each state shows. An email is
+     named by its recipient, its count, its template and the values it carries, never its subject. -->
 - **AC1** — given …, when …, then …
 - **AC2** — …
 - **AC3** — (by hand) on the phone, …
