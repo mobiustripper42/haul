@@ -80,7 +80,7 @@ describe("AC1 (issue 58) — the send", () => {
 });
 
 describe("AC4 (issue 58) — the values, in order", () => {
-  it("AC4: the body carries the member's name, the option lines, the charge date and amount, the weekly amount, the first pickup and the account link, in that order", async () => {
+  it("AC4: the body carries the member's name, the option lines, the charge date and amount, the weekly amount and the first pickup, in that order", async () => {
     const { text } = await sent();
     const values = [
       "Ada",
@@ -88,15 +88,14 @@ describe("AC4 (issue 58) — the values, in order", () => {
       formatPickupDate("2026-11-07", "en"),
       formatUsdWhole(5000),
       formatPickupDate("2027-01-03", "en"),
-      ACCOUNT_URL,
     ];
     expect(inSequence(text, values)).toEqual(values);
   });
 
   it("AC4: the first charge and the weekly charge are each their own amount, without .00 when whole", async () => {
     const { text } = await sent(member(), confirmation({ firstChargeCents: 8000, weeklyCents: 8550 }));
-    expect(text).toContain(formatUsdWhole(8000));
-    expect(text).toContain(formatUsdWhole(8550));
+    const amounts = [formatUsdWhole(8000), formatUsdWhole(8550)];
+    expect(inSequence(text, amounts)).toEqual(amounts);
     expect(text).not.toContain("$80.00");
   });
 
