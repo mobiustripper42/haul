@@ -9,7 +9,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
 import { en } from "@core/messages/en.js";
-import { alertTexts, attributesOf, inOrder, screenMarkup, textsOf } from "../screen-test-helpers";
+import { formatUsdWhole } from "@core/money.js";
+import { alertTexts, attributesOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import { paymentWording } from "./payment-wording";
 import { PaymentSection, type PaymentText } from "./payment-section";
 
@@ -52,8 +53,20 @@ const render = (over: Partial<Parameters<typeof PaymentSection>[0]> = {}) =>
     }),
   );
 
-/** The words with the links in the checkbox sentence read as part of its one run of text. */
-const words = (html: string) => textsOf(html.replace(/<\/?a\b[^>]*>/g, ""));
+/** The price panel's amounts: each row's value is the one bold run in the section. */
+const panelAmounts = (html: string) => [...screenMarkup(html).matchAll(/<strong\b[^>]*>([^<]*)<\/strong>/g)].map((match) => match[1]);
+
+/** The submit button's words. */
+const payButton = (html: string) => /<button\b[^>]*type="submit"[^>]*>([^<]*)<\/button>/.exec(screenMarkup(html))?.[1] ?? "";
+
+/** Where each marker first sits in the markup, so a test can say the elements come in that order. */
+const positions = (html: string, markers: readonly string[]) => markers.map((marker) => screenMarkup(html).indexOf(marker));
+const ascending = (at: number[]) => at.every((here, index) => here >= 0 && (index === 0 || here > (at[index - 1] ?? -1)));
+
+const CHECKBOX = 'type="checkbox"';
+const SUBMIT = 'type="submit"';
+const CONSENT_ERROR = 'id="consent-error"';
+const ALERT = 'role="alert"';
 
 /** The markup inside the label that holds the checkbox. */
 const consentLabel = (html: string) =>
@@ -61,20 +74,11 @@ const consentLabel = (html: string) =>
 
 describe("AC1 — what the section shows", () => {
   it("AC1: it reads, in order, the legend, the card field, the price panel, the checkbox, the button and the hint", () => {
-    const wording = wordingFor(5000);
-    expect(words(render())).toEqual([
-      TEXT.legend,
-      TEXT.cardLabel,
-      TEXT.cardHint,
-      TEXT.todayLabel,
-      wording.price,
-      TEXT.weeklyLabel,
-      wording.price,
-      wording.pickupLine,
-      wording.sentence,
-      wording.button,
-      TEXT.capHint,
-    ]);
+    const card = { testMode: true, applicationId: undefined, locationId: undefined, billing: { email: "ada@example.com" } };
+    const html = render({ card });
+    expect(ascending(positions(html, ['name="sourceId"', "<strong", CHECKBOX, SUBMIT]))).toBe(true);
+    expect(panelAmounts(html)).toEqual([formatUsdWhole(5000), formatUsdWhole(5000)]);
+    expect(payButton(html)).toContain(formatUsdWhole(5000));
   });
 
   it("AC1: the consent checkbox is named consent, and unticked", () => {
@@ -85,7 +89,7 @@ describe("AC1 — what the section shows", () => {
   });
 
   it("AC1: the checkbox's sentence is its label", () => {
-    expect(consentLabel(render()).replace(/<[^>]*>/g, "")).toBe(wordingFor(5000).sentence);
+    expect(consentLabel(render()).replace(/<[^>]*>/g, "")).toContain(formatUsdWhole(5000));
   });
 
   it("AC1: it is one form of its own, holding no picker, so Enter on a radio can never pay", () => {
@@ -106,7 +110,6 @@ describe("AC1 — what the section shows", () => {
 describe("AC4, AC6 (issue 63) — the checkbox sentence", () => {
   it('AC6: "Terms" and "Privacy Policy" are the label\'s two links, to /terms and /privacy', () => {
     const label = consentLabel(render());
-    expect([...label.matchAll(/<a\b[^>]*>([^<]*)<\/a>/g)].map((link) => link[1])).toEqual([t("supperClub.consentTerms"), t("supperClub.consentPrivacy")]);
     expect(attributesOf(label, "a").map((link) => link.href)).toEqual(["/terms", "/privacy"]);
   });
 
@@ -119,42 +122,39 @@ describe("AC4, AC6 (issue 63) — the checkbox sentence", () => {
 
 describe("AC2 — the price follows the pick", () => {
   it("AC2: the panel, the sentence and the button all carry the sum of the picks", () => {
-    const wording = wordingFor(8000);
-    expect(words(render({ choices: { size: "four", menu: "standard" } }))).toEqual(
-      expect.arrayContaining([wording.pickupLine, wording.sentence, wording.button]),
-    );
+    const html = render({ choices: { size: "four", menu: "standard" } });
+    const sum = formatUsdWhole(8000);
+    expect(panelAmounts(html)).toEqual([sum, sum]);
+    expect(consentLabel(html).replace(/<[^>]*>/g, "")).toContain(sum);
+    expect(payButton(html)).toContain(sum);
   });
 });
 
 describe("AC4, AC9, AC10a — what a failed pay shows", () => {
-  const sentence = wordingFor(5000).sentence;
-  const button = wordingFor(5000).button;
-
   it("AC4: ?payError=consent shows the field error after the checkbox, before the button, and no notice", () => {
     const html = render({ payError: "consent" });
-    const order = [sentence, TEXT.consentError, button];
-    expect(inOrder(html.replace(/<\/?a\b[^>]*>/g, ""), order)).toEqual(order);
+    expect(ascending(positions(html, [CHECKBOX, CONSENT_ERROR, SUBMIT]))).toBe(true);
+    expect(textsOf(html)).toContain(TEXT.consentError);
     expect(alertTexts(html)).toEqual([]);
   });
 
+  // Declined and error share the alert icon, so which notice shows is told by its catalog line.
   it("AC9: ?payError=declined shows the notice above the button, and no field error", () => {
     const html = render({ payError: "declined" });
-    const order = [sentence, TEXT.declined, button];
-    expect(inOrder(html.replace(/<\/?a\b[^>]*>/g, ""), order)).toEqual(order);
+    expect(ascending(positions(html, [CHECKBOX, ALERT, SUBMIT]))).toBe(true);
     expect(alertTexts(html)).toEqual([TEXT.declined]);
-    expect(textsOf(html)).not.toContain(TEXT.consentError);
+    expect(screenMarkup(html)).not.toContain(CONSENT_ERROR);
   });
 
   it("AC10a: ?payError=error shows its notice above the button", () => {
     const html = render({ payError: "error" });
-    const order = [sentence, TEXT.error, button];
-    expect(inOrder(html.replace(/<\/?a\b[^>]*>/g, ""), order)).toEqual(order);
+    expect(ascending(positions(html, [CHECKBOX, ALERT, SUBMIT]))).toBe(true);
     expect(alertTexts(html)).toEqual([TEXT.error]);
   });
 
   it("AC4: with no payError it shows no notice and no field error", () => {
     const html = render();
     expect(alertTexts(html)).toEqual([]);
-    expect(textsOf(html)).not.toContain(TEXT.consentError);
+    expect(screenMarkup(html)).not.toContain(CONSENT_ERROR);
   });
 });

@@ -130,7 +130,8 @@ describe('AC6 — "Back to your choices"', () => {
     ["Create Account's", CREATE_CODE],
     ["sign-in's", SIGN_IN_CODE],
   ])("AC6: %s code step does not", async (_step, { Pane }) => {
-    expect(buttonLabelled((await render(Pane)).element, en["supperClub.backToChoices"])).toBeUndefined();
+    request.current.cookies[RETURN_TO] = PICKS;
+    expect(buttonsInCard((await render(Pane)).element).map((button) => button.props.href)).not.toContain(PICKS);
   });
 });
 

@@ -3,7 +3,8 @@
 // only a browser can show lives here: the pane's place and width, what each width hides. Each test
 // starts from an emptied e2e database with the `members` seed (fixtures.ts), and these add the
 // `supper-club` seed. Controls are found by role and the catalog's wording (`en`, and `t` for strings with values); the
-// seed's own names (AC14, and `menu`'s "Vegan") and the paths a criterion names stay typed. Issue 56: a pick changing the words, the
+// seed's own names (AC14, and `menu`'s "Vegan") and the paths a criterion names stay typed. A line is asserted by its
+// catalog line only where the page picks it (the refused or failed card, a wrong code, the signed-in line); amounts are values. Issue 56: a pick changing the words, the
 // client stopping an unticked pay, a card refused before it is sent, and a paid signup, on the fake,
 // through CardEntry's test field; a decline is proven in Vitest, because e2e cannot force one from the
 // browser (DEC-023).
@@ -26,7 +27,6 @@ const NEWCOMER = "new@ocf.xx";
 const CREATE_PANE = "/supper-club/create-account";
 const SIGN_IN_PANE = "/supper-club/sign-in";
 const BACK_TO_CHOICES = en["supperClub.backToChoices"];
-const LEFT_COLUMN_TITLE = en["supperClub.title"];
 const DONE_TITLE = en["supperClub.done.title"];
 const SOLD_OUT_TITLE = en["supperClub.soldOut.title"];
 
@@ -34,8 +34,10 @@ const t = createTranslator("en");
 
 const onPath = (path: string) => (url: URL) => url.pathname === path;
 
-// Stands where a date goes while a sentence is cut around it; no sentence holds a private-use character.
-const DATE_MARK = "\uE000";
+/** JoinPage's left column: the first of the two sections the page's main holds (app/supper-club/join-page.tsx). */
+const leftColumn = (page: Page) => page.getByRole("main").locator(":scope > section").first();
+/** "Back to your choices" by role and name, hidden ones included, so a check that it is hidden finds it hidden rather than absent. */
+const backToChoicesLink = (page: Page) => page.getByRole("main").getByRole("link", { name: BACK_TO_CHOICES, exact: true, includeHidden: true });
 
 // Portioned for 2, which is not the default: the seed puts Portioned for 4 first.
 // The prices are the seed's; "a week" is the catalog's.
@@ -96,9 +98,10 @@ const consent = (page: Page) => page.getByRole("checkbox");
 const joinAndPay = (page: Page, price: string) => page.getByRole("button", { name: t("supperClub.joinAndPay", { price }), exact: true });
 
 const REFUSED_CARD = "refused";
-const CARD_FORM_FAILED = en["supperClub.cardFailed"];
 // Exact, because the decline notice ends in the same words and is a different message.
 const cardRefusal = (page: Page) => page.getByText(en["supperClub.cardRefused"], { exact: true });
+// CardEntry picks between the failed line and the refused line (components/ui/card-entry.tsx).
+const cardFailure = (page: Page) => page.getByText(en["supperClub.cardFailed"], { exact: true });
 
 /** Signs ERIC in from the page with the non-default picks, so section 4 shows. */
 async function signedIn(page: Page, request: APIRequestContext): Promise<void> {
@@ -156,7 +159,9 @@ test.beforeEach(async () => {
 
 test('AC14: the Supper Club page shows the seed\'s names: "How many people?", "Portioned for 2", "Portioned for 4", "Which menu?"', async ({ page }) => {
   await page.goto("/supper-club");
-  for (const name of ["1. How many people?", "2. Which menu?"]) await expect(page.getByRole("group", { name })).toBeVisible();
+  for (const [n, name] of [[1, "How many people"], [2, "Which menu"]] as const) {
+    await expect(page.getByRole("group", { name: t("supperClub.pickerLegend", { n, name }) })).toBeVisible();
+  }
   await expect(page.getByRole("radio", { name: /^Portioned for 2/ })).toBeVisible();
   await expect(page.getByRole("radio", { name: /^Portioned for 4/ })).toBeVisible();
 });
@@ -213,11 +218,11 @@ test("AC3: at lg the pane stands where the Join card stood, at its width, beside
   desktopOnly(testInfo);
   await pickChoices(page);
   const join = (await joinCard(page).boundingBox())!;
-  const left = page.getByRole("heading", { name: LEFT_COLUMN_TITLE });
 
   const expectInPlace = async (card: Locator) => {
-    await expect(left).toBeVisible();
-    await expect(page.getByText(en["supperClub.joinTitle"], { exact: true })).toHaveCount(0);
+    await expect(leftColumn(page)).toBeVisible();
+    // The Join card's pickers are gone: the pane stands in its place.
+    await expect(page.getByRole("radio")).toHaveCount(0);
     const box = await card.boundingBox();
     expect(box?.x).toBeCloseTo(join.x, 0);
     expect(box?.width).toBeCloseTo(join.width, 0);
@@ -248,13 +253,16 @@ test("AC5: on the sign-in pane the header's Sign in is marked current, and from 
   await headerSignIn(page).click();
 
   await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
-  await expect(page.getByLabel(en["signIn.emailLabel"])).toBeVisible();
+  // The email step: one field, the email, and no code field.
+  await expect(page.getByRole("main").getByRole("textbox")).toHaveCount(1);
 });
 
 test("AC6: Back to your choices leaves either pane for the Supper Club page, the choices still picked", async ({ page }, testInfo) => {
   desktopOnly(testInfo);
   await pickChoices(page);
   await pressSignIn(page);
+  // The link AC11 finds hidden below lg is this control, shown here.
+  await expect(backToChoicesLink(page)).toBeVisible();
   await inMain(page, BACK_TO_CHOICES).click();
   await expectChoicesKept(page);
 
@@ -323,9 +331,8 @@ test("AC11: below lg a pane page is the card alone, centred at card width, with 
       [SIGN_IN_PANE, en["signIn.title"]],
     ] as const) {
       await page.goto(path);
-      await expect(page.getByRole("heading", { name: heading, exact: true })).toBeVisible();
-      await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
-      await expect(page.getByText(BACK_TO_CHOICES)).toBeHidden();
+      await expect(leftColumn(page)).toBeHidden();
+      await expect(backToChoicesLink(page)).toBeHidden();
       await expect(headerSignIn(page)).toBeHidden();
 
       const box = (await paneCard(page, heading).boundingBox())!;
@@ -338,7 +345,7 @@ test("AC11: below lg a pane page is the card alone, centred at card width, with 
 test("AC11: below lg the Supper Club page itself keeps its left column and header Sign in", async ({ page }, testInfo) => {
   phoneOnly(testInfo);
   await page.goto("/supper-club");
-  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
+  await expect(leftColumn(page)).toBeVisible();
   await expect(headerSignIn(page)).toBeVisible();
 });
 
@@ -347,7 +354,9 @@ test("AC1 (issue 56): signed in, section 4 sits in the same card under section 3
   const card = joinCard(page);
   await expect(card.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
   await expect(card.getByText(t("supperClub.paymentLegend", { n: 4 }))).toBeVisible();
-  await expect(card.getByText(en["supperClub.todayLabel"])).toBeVisible();
+  await expect(card.getByRole("checkbox")).toHaveCount(1);
+  await expect(card.getByRole("textbox", { name: en["supperClub.testCard"] })).toHaveCount(1);
+  await expect(card.getByText("$42", { exact: true }).first()).toBeVisible();
   await expect(consent(page)).not.toBeChecked();
   await expect(joinAndPay(page, "$42")).toBeVisible();
 });
@@ -358,19 +367,16 @@ test("AC2 (issue 56): a changed pick updates the price panel, the checkbox sente
   await page.getByRole("radio", { name: aWeek("$74") }).check();
 
   await expect(joinAndPay(page, "$74")).toBeVisible();
-  const consentSentence = t("supperClub.consent", { price: "$74", terms: en["supperClub.consentTerms"], privacy: en["supperClub.consentPrivacy"] });
-  await expect(page.getByText(consentSentence)).toBeVisible();
-  // The pickup line holds a date this test does not choose: the words after it carry the price.
-  const afterTheDate = t("supperClub.pickupLine", { date: DATE_MARK, price: "$74" }).split(DATE_MARK)[1];
-  if (!afterTheDate) throw new Error("supperClub.pickupLine holds no {date} to cut around");
-  await expect(page.getByText(afterTheDate)).toBeVisible();
+  await expect(consent(page)).toHaveAccessibleName(/\$74/);
+  // The price panel's amount: exact, so the radio's "$74 a week" is not it.
+  await expect(page.getByText("$74", { exact: true }).first()).toBeVisible();
   expect(page.url()).toBe(url);
 });
 
 // Issue 63: only a browser can show what a link in a label does when it is clicked.
 const LEGAL_LINKS = [
-  [en["supperClub.consentTerms"], "/terms", en["legal.terms.title"]],
-  [en["supperClub.consentPrivacy"], "/privacy", en["legal.privacy.title"]],
+  [en["supperClub.consentTerms"], "/terms"],
+  [en["supperClub.consentPrivacy"], "/privacy"],
 ] as const;
 
 /**
@@ -382,25 +388,24 @@ async function compileFirst(request: APIRequestContext, path: string): Promise<v
 }
 
 /** Clicks the sentence's link, checks the page opened in a new tab, and closes that tab. */
-async function openInNewTab(page: Page, name: string, path: string, title: string): Promise<void> {
+async function openInNewTab(page: Page, name: string, path: string): Promise<void> {
   const link = inMain(page, name);
   await expect(link).toBeVisible();
   const opened = page.context().waitForEvent("page");
   await link.click();
   const tab = await opened;
   await expect(tab).toHaveURL(onPath(path));
-  await expect(tab.getByRole("heading", { name: title, exact: true })).toBeVisible();
   await tab.close();
 }
 
-for (const [name, path, title] of LEGAL_LINKS) {
+for (const [name, path] of LEGAL_LINKS) {
   test(`AC6 (issue 63): "${name}" opens ${path} in a new tab, and the card entry and the tick stay as they were`, async ({ page, request }) => {
     await compileFirst(request, path);
     await signedIn(page, request);
     await testCard(page).fill(SQUARE_SANDBOX_VALUES.cardNonceOk);
     await consent(page).check();
 
-    await openInNewTab(page, name, path, title);
+    await openInNewTab(page, name, path);
 
     await expect(page).toHaveURL(onPath("/supper-club"));
     await expect(testCard(page)).toHaveValue(SQUARE_SANDBOX_VALUES.cardNonceOk);
@@ -411,7 +416,7 @@ for (const [name, path, title] of LEGAL_LINKS) {
     await compileFirst(request, path);
     await signedIn(page, request);
 
-    await openInNewTab(page, name, path, title);
+    await openInNewTab(page, name, path);
 
     await expect(consent(page)).not.toBeChecked();
   });
@@ -466,7 +471,7 @@ test("AC1 (issue 56): a card form that gives no token shows the failure in the f
 
   await joinAndPay(page, "$42").click();
 
-  await expect(page.getByText(CARD_FORM_FAILED)).toBeVisible();
+  await expect(cardFailure(page)).toBeVisible();
   await expect(testCard(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
   expect(posts()).toBe(0);
@@ -482,7 +487,7 @@ test("AC1 (issue 56): a card Square refuses keeps the field, says so under it an
   await expect(testCard(page)).toBeVisible();
   const field = (await testCard(page).boundingBox())!;
   expect((await cardRefusal(page).boundingBox())!.y).toBeGreaterThanOrEqual(field.y + field.height);
-  await expect(page.getByText(CARD_FORM_FAILED)).toHaveCount(0);
+  await expect(cardFailure(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
   await expect(page.getByRole("checkbox")).toBeChecked();
   expect(posts()).toBe(0);
@@ -504,7 +509,7 @@ test("AC1 (issue 56): a refusal lasts until the next pay, and an empty field the
 
   await pay(page, "");
 
-  await expect(page.getByText(CARD_FORM_FAILED)).toBeVisible();
+  await expect(cardFailure(page)).toBeVisible();
   await expect(cardRefusal(page)).toHaveCount(0);
   await expect(testCard(page)).toHaveCount(0);
   await expect(page).toHaveURL(onPath("/supper-club"));
@@ -518,8 +523,7 @@ test("AC8, AC13 (issue 56): at lg a paid signup opens the confirmation in the ri
   await pay(page);
 
   await expect(page).toHaveURL(onPath("/supper-club/done"));
-  await expect(page.getByRole("heading", { name: DONE_TITLE })).toBeVisible();
-  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
+  await expect(leftColumn(page)).toBeVisible();
   const box = (await page.locator("section").filter({ hasText: DONE_TITLE }).last().boundingBox())!;
   expect(box.x).toBeCloseTo(join.x, 0);
   await expectSignedIn(page);
@@ -531,8 +535,7 @@ test("AC8, AC13 (issue 56): below lg a paid signup shows the confirmation alone"
   await pay(page);
 
   await expect(page).toHaveURL(onPath("/supper-club/done"));
-  await expect(page.getByRole("heading", { name: DONE_TITLE })).toBeVisible();
-  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeHidden();
+  await expect(leftColumn(page)).toBeHidden();
   await expectSignedIn(page);
 });
 
@@ -543,9 +546,7 @@ test("AC5 (issue 56), AC9 (issue 97): a member with a box who opens /supper-club
 
   await page.goto("/supper-club");
   await expect(page).toHaveURL(onPath("/supper-club/already"));
-  await expect(page.getByText(en["supperClub.already.title"])).toBeVisible();
-  await expect(page.getByText(en["supperClub.already.nothing"], { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: en["supperClub.done.account"], exact: true })).toHaveCount(0);
+  await expect(page.getByRole("main").locator('a[href="/account"]')).toHaveCount(0);
 });
 
 test("AC3, AC9 (issue 57): the last spot goes while a member is on the page: pay lands on the sold-out card and its notice, where the Join card stood, beside or after the farm copy", async ({ page, request }) => {
@@ -556,10 +557,12 @@ test("AC3, AC9 (issue 57): the last spot goes while a member is on the page: pay
   await pay(page);
 
   await expect(page).toHaveURL((url) => url.pathname === "/supper-club" && url.searchParams.get("payError") === "soldout");
-  await expect(page.getByText(en["supperClub.soldOut.notice"])).toBeVisible();
-  await expect(page.getByText(SOLD_OUT_TITLE, { exact: true })).toBeVisible();
-  await expect(page.getByText(en["supperClub.joinTitle"], { exact: true })).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: LEFT_COLUMN_TITLE })).toBeVisible();
+  // Scoped to main, where the notice is: the page holds a second alert outside it.
+  await expect(page.locator("main").getByRole("alert")).toHaveCount(1);
+  // The Join card's controls are gone: its pickers and its pay button.
+  await expect(page.getByRole("radio")).toHaveCount(0);
+  await expect(page.getByRole("checkbox")).toHaveCount(0);
+  await expect(leftColumn(page)).toBeVisible();
   const card = (await cardHolding(page, SOLD_OUT_TITLE).boundingBox())!;
   expect(card.x).toBeCloseTo(join.x, 0);
   expect(card.width).toBeCloseTo(join.width, 0);

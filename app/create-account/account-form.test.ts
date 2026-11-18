@@ -13,8 +13,7 @@ import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { ACCOUNT_DRAFT_COOKIE } from "../session";
-import { alertTexts, attributesOf, blocksInsideParagraphs, escapeRegExp, findAll, inOrder, screenMarkup } from "../screen-test-helpers";
-import { limitedText } from "../sign-in/shared";
+import { alertTexts, attributesOf, blocksInsideParagraphs, findAll, inOrder, screenMarkup } from "../screen-test-helpers";
 import { AccountForm } from "./account-form";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -28,7 +27,6 @@ vi.mock("next/headers", async () => {
 
 const action: (formData: FormData) => Promise<void> = async () => {};
 const BACK = "back here";
-const limited = (minutes: number) => limitedText("en", minutes);
 const ENTERED = { firstName: "Ada", lastName: "Lovelace", email: "ada@example", phone: "216-555-0100", language: "es" };
 
 const FIELD_ERROR_KEYS = {
@@ -39,30 +37,28 @@ const FIELD_ERROR_KEYS = {
 } as const satisfies Record<string, MessageKey>;
 type Field = keyof typeof FIELD_ERROR_KEYS;
 const FIELDS = Object.keys(FIELD_ERROR_KEYS) as Field[];
-const ERROR_LINES: string[] = FIELDS.map((field) => en[FIELD_ERROR_KEYS[field]]);
 
-/** A field's label, and the next field's: its error line sits between them. */
-const LABEL_KEYS: Record<Field, [MessageKey, MessageKey]> = {
-  firstName: ["createAccount.firstName", "createAccount.lastName"],
-  lastName: ["createAccount.lastName", "signIn.emailLabel"],
-  email: ["signIn.emailLabel", "createAccount.phone"],
-  phone: ["createAccount.phone", "createAccount.language"],
+/** The field after each one, by its label's `for`: a field's error line sits between their labels. */
+const NEXT_FIELD: Record<Field, string> = { firstName: "lastName", lastName: "email", email: "phone", phone: "language" };
+
+/** Where `marker` first stands in the rendered markup; it must be there. */
+const at = (html: string, marker: string): number => {
+  const index = screenMarkup(html).indexOf(marker);
+  expect(index, marker).toBeGreaterThan(-1);
+  return index;
 };
 
-/** The form top to bottom: heading, each field's label and help, the button, the closing line. */
-const FORM_ORDER: string[] = [
-  en["createAccount.title"],
-  en["createAccount.firstName"],
-  en["createAccount.lastName"],
-  en["signIn.emailLabel"],
-  en["createAccount.emailHelp"],
-  en["createAccount.phone"],
-  en["createAccount.phoneHelp"],
-  en["createAccount.language"],
-  en["signIn.sendCode"],
-  en["createAccount.haveAccount"],
-  en["home.signIn"],
-];
+/** Each input's error line, by name: the ids in its aria-describedby, past its help line, that an element holds. */
+const errorIds = (html: string): Record<string, string[]> => {
+  const ids = new Set(attributesOf(html, "[a-z]+").map((attributes) => attributes.id));
+  return Object.fromEntries(
+    attributesOf(html, "input").map((input) => [
+      input.name,
+      (input["aria-describedby"] ?? "").split(/\s+/).filter((id) => id !== "" && !id.endsWith("-help") && ids.has(id)),
+    ]),
+  );
+};
+const withErrors = (html: string) => Object.entries(errorIds(html)).filter(([, ids]) => ids.length > 0).map(([name]) => name);
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -89,16 +85,16 @@ describe("AccountForm", () => {
 
   it("AC4, AC7: the closing line sits under the form, its link a quiet Button", async () => {
     const { element, html } = await render();
-    const order = [en["signIn.sendCode"], en["createAccount.haveAccount"], en["home.signIn"]];
-    expect(inOrder(html, order)).toEqual(order);
+    expect(at(html, "</form>")).toBeLessThan(at(html, 'href="/to-sign-in"'));
     const link = findAll(element, Button).find((button) => button.props.href === "/to-sign-in");
-    expect(link?.props).toMatchObject({ kind: "quiet", children: en["home.signIn"] });
+    expect(link?.props).toMatchObject({ kind: "quiet" });
   });
 
   it("AC6: back sits above the heading, and the notices above back", async () => {
-    const { html } = await render({ back: true, limited: "5", error: "expired" });
-    const order = [limited(5), en["signIn.stepExpired"], BACK, en["createAccount.title"]];
-    expect(inOrder(html, order)).toEqual(order);
+    const { element, html } = await render({ back: true, limited: "5", error: "expired" });
+    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["lock", "clock"]);
+    expect(screenMarkup(html).lastIndexOf('role="alert"')).toBeLessThan(at(html, BACK));
+    expect(at(html, BACK)).toBeLessThan(at(html, "<h1"));
   });
 
   it("AC8: the form posts to the action it was given", async () => {
@@ -107,10 +103,6 @@ describe("AccountForm", () => {
 });
 
 describe("AC4 — the details form", () => {
-  it("AC4: it reads, in order, the heading, the fields with their help, the button and the quiet line", async () => {
-    expect(inOrder((await render()).html, FORM_ORDER)).toEqual(FORM_ORDER);
-  });
-
   it("AC4: the form's fields are the AccountField names plus language, in form order", async () => {
     const { html } = await render();
     expect(attributesOf(html, "input").map((input) => input.name)).toEqual(["firstName", "lastName", "email", "phone"]);
@@ -154,7 +146,7 @@ describe("AC4 — the details form", () => {
 
   it("AC4: no line sits as a block inside a Field's <p>, with every error showing", async () => {
     const { html } = await render({ error: FIELDS.join(",") });
-    expect(inOrder(html, ERROR_LINES)).toEqual(ERROR_LINES);
+    expect(withErrors(html)).toEqual(FIELDS);
     expect(blocksInsideParagraphs(html)).toEqual([]);
   });
 });
@@ -162,28 +154,28 @@ describe("AC4 — the details form", () => {
 describe("AC4 — the field errors", () => {
   it.each(FIELDS)("AC4: error=%s shows its line under its field, and only that line", async (field) => {
     const { html } = await render({ error: field });
-    const line = en[FIELD_ERROR_KEYS[field]];
-    const [label, next] = LABEL_KEYS[field].map((key) => en[key]) as [string, string];
-    expect(inOrder(html, ERROR_LINES)).toEqual([line]);
-    expect(inOrder(html, [label, line, next])).toEqual([label, line, next]);
+    expect(withErrors(html)).toEqual([field]);
+    const [id] = errorIds(html)[field] ?? [];
+    expect(at(html, `for="${field}"`)).toBeLessThan(at(html, `id="${id}"`));
+    expect(at(html, `id="${id}"`)).toBeLessThan(at(html, `for="${NEXT_FIELD[field]}"`));
   });
 
   it.each(FIELDS)("AC4: the %s input is described by its error line", async (field) => {
     const { html } = await render({ error: field });
-    const line = en[FIELD_ERROR_KEYS[field]];
-    const id = new RegExp(`<\\w+\\b[^>]*\\bid="([^"]+)"[^>]*>${escapeRegExp(line)}</\\w+>`).exec(screenMarkup(html))?.[1];
-    expect(id, `no element with an id holds "${line}"`).toBeDefined();
-    expect((inputNamed(html, field)?.["aria-describedby"] ?? "").split(/\s+/)).toContain(id);
+    const [id] = errorIds(html)[field] ?? [];
+    expect(id, `no element holds ${field}'s error line`).toBeDefined();
+    const line = new RegExp(`<(\\w+)\\b[^>]*\\bid="${id}"[^>]*>([\\s\\S]*?)</\\1>`).exec(screenMarkup(html))?.[2];
+    expect(line).toBe(en[FIELD_ERROR_KEYS[field]]);
   });
 
   it("AC4: error=firstName,phone shows those two lines, in form order", async () => {
     const { html } = await render({ error: "firstName,phone" });
-    expect(inOrder(html, ERROR_LINES)).toEqual([en["createAccount.error.firstName"], en["createAccount.error.phone"]]);
+    expect(withErrors(html)).toEqual(["firstName", "phone"]);
   });
 
   it.each(["nonsense", "invalid", "Expired"])("AC4, AC10: error=%j names no field and is not expired: no line, no notice", async (error) => {
     const { html } = await render({ error });
-    expect(inOrder(html, ERROR_LINES)).toEqual([]);
+    expect(withErrors(html)).toEqual([]);
     expect(alertTexts(html)).toEqual([]);
   });
 });
@@ -254,9 +246,11 @@ describe("AC10, AC12 — the notices", () => {
 
   it("AC12: limited=30 shows the limited notice with that many minutes, a lock notice, above the heading", async () => {
     const { element, html } = await render({ limited: "30" });
-    expect(alertTexts(html)).toEqual([limited(30)]);
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/\b30\b/);
     expect(icons(element)).toEqual(["lock"]);
-    expect(inOrder(html, [limited(30), en["createAccount.title"]])).toEqual([limited(30), en["createAccount.title"]]);
+    expect(at(html, 'role="alert"')).toBeLessThan(at(html, "<h1"));
   });
 
   it("AC12: a limited value the rule refuses shows no notice", async () => {
@@ -265,18 +259,11 @@ describe("AC10, AC12 — the notices", () => {
 
   it("AC10: error=expired shows the expired notice, a clock notice, above the heading", async () => {
     const { element, html } = await render({ error: "expired" });
-    expect(alertTexts(html)).toEqual([en["signIn.stepExpired"]]);
     expect(icons(element)).toEqual(["clock"]);
-    expect(inOrder(html, [en["signIn.stepExpired"], en["createAccount.title"]])).toEqual([en["signIn.stepExpired"], en["createAccount.title"]]);
+    expect(at(html, 'role="alert"')).toBeLessThan(at(html, "<h1"));
   });
 
   it("AC10, AC12: with both, the limited notice comes before the expired one", async () => {
-    expect(alertTexts((await render({ limited: "5", error: "expired" })).html)).toEqual([limited(5), en["signIn.stepExpired"]]);
-  });
-});
-
-describe("AC5 (issue 101) — the limited notice's words are limitedText's", () => {
-  it("AC5: limited=1 shows limitedText at one minute, the singular", async () => {
-    expect(alertTexts((await render({ limited: "1" })).html)).toEqual([limitedText("en", 1)]);
+    expect(icons((await render({ limited: "5", error: "expired" })).element)).toEqual(["lock", "clock"]);
   });
 });

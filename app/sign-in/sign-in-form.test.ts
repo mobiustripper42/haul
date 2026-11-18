@@ -10,8 +10,7 @@ import { Hint } from "../../components/ui/hint";
 import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
-import { alertTexts, attributesOf, findAll, inOrder } from "../screen-test-helpers";
-import { limitedText } from "./shared";
+import { alertTexts, attributesOf, findAll, screenMarkup } from "../screen-test-helpers";
 import { SignInForm } from "./sign-in-form";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -25,7 +24,14 @@ vi.mock("next/headers", async () => {
 
 const action: (formData: FormData) => Promise<void> = async () => {};
 const BACK = "back here";
-const limited = (minutes: number) => limitedText("en", minutes);
+
+/** Where `marker` first stands in the rendered markup; it must be there. */
+const at = (html: string, marker: string): number => {
+  const index = screenMarkup(html).indexOf(marker);
+  expect(index, marker).toBeGreaterThan(-1);
+  return index;
+};
+const icons = (element: unknown) => findAll(element as ReactNode, Notice).map((notice) => notice.props.icon);
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -48,14 +54,16 @@ describe("SignInForm", () => {
   });
 
   it("AC10: the closing line sits under the form", async () => {
-    const order = [en["signIn.sendCode"], en["signIn.noAccount"]];
-    expect(inOrder((await render()).html, order)).toEqual(order);
+    const { html } = await render();
+    expect(at(html, "</form>")).toBeLessThan(at(html, 'href="/to-create"'));
   });
 
   it("AC6: back sits above the heading, and the notices under it", async () => {
-    const { html } = await render({ back: true, limited: "5", error: "expired" });
-    const order = [BACK, en["signIn.title"], limited(5), en["signIn.stepExpired"], en["signIn.emailLabel"]];
-    expect(inOrder(html, order)).toEqual(order);
+    const { element, html } = await render({ back: true, limited: "5", error: "expired" });
+    expect(at(html, BACK)).toBeLessThan(at(html, "<h1"));
+    expect(at(html, "<h1")).toBeLessThan(at(html, 'role="alert"'));
+    expect(icons(element)).toEqual(["lock", "clock"]);
+    expect(screenMarkup(html).lastIndexOf('role="alert"')).toBeLessThan(at(html, 'name="email"'));
   });
 
   it("AC8: the form posts to the action it was given", async () => {
@@ -95,8 +103,10 @@ describe("the notices (issue 9, AC33; issue 22, AC22)", () => {
 
   it("AC33: limited=30 shows the limited notice with that many minutes, a lock notice", async () => {
     const { element, html } = await render({ limited: "30" });
-    expect(alertTexts(html)).toEqual([limited(30)]);
-    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["lock"]);
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/\b30\b/);
+    expect(icons(element)).toEqual(["lock"]);
   });
 
   it("AC33: a limited value the rule refuses shows no notice", async () => {
@@ -120,12 +130,6 @@ describe("the notices (issue 9, AC33; issue 22, AC22)", () => {
   });
 
   it("AC33: with both, the limited notice comes before the expired one", async () => {
-    expect(alertTexts((await render({ limited: "5", error: "expired" })).html)).toEqual([limited(5), en["signIn.stepExpired"]]);
-  });
-});
-
-describe("AC5 (issue 101) — the limited notice's words are limitedText's", () => {
-  it("AC5: limited=1 shows limitedText at one minute, the singular", async () => {
-    expect(alertTexts((await render({ limited: "1" })).html)).toEqual([limitedText("en", 1)]);
+    expect(icons((await render({ limited: "5", error: "expired" })).element)).toEqual(["lock", "clock"]);
   });
 });

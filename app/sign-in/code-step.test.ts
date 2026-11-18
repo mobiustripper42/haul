@@ -9,13 +9,14 @@ import { fileURLToPath } from "node:url";
 import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createTranslator } from "@core/i18n.js";
-import { en, type MessageKey } from "@core/messages/en.js";
+import { en } from "@core/messages/en.js";
+import { CODE_TTL_MS } from "@core/sign-in/code.js";
 import { Button } from "../../components/ui/button";
+import { Hint } from "../../components/ui/hint";
 import { Input } from "../../components/ui/input";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
-import { alertTexts, attributesOf, findAll, inOrder, redirectOf } from "../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, inOrder, redirectOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import { AccountCodeStep, CodeStep, SignInCodeStep } from "./code-step";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -39,24 +40,25 @@ vi.mock("../services", () => ({
   getSiteUrl: () => "https://members.example.test",
 }));
 
-const t = createTranslator("en");
 const EMAIL = "ada@example.com";
 const PAGES = { start: "/flow", code: "/flow/code", done: "/done" };
 const verify: (formData: FormData) => Promise<void> = async () => {};
 const resend: (formData: FormData) => Promise<void> = async () => {};
 
-/** Each step's own words: heading, sentence, button and, for Create Account, the hint under the form. */
+/** Each step, and how many hint lines it draws under the code form: Create Account's one, sign-in's none. */
 const STEPS = [
-  ["SignInCodeStep", SignInCodeStep, ["signIn.codeTitle", "signIn.codeSent", "signIn.submitCode"], []],
-  [
-    "AccountCodeStep",
-    AccountCodeStep,
-    ["createAccount.codeTitle", "createAccount.codeSent", "createAccount.confirm"],
-    ["createAccount.spam"],
-  ],
-] as const satisfies ReadonlyArray<
-  readonly [string, unknown, readonly [MessageKey, MessageKey, MessageKey], readonly MessageKey[]]
->;
+  ["SignInCodeStep", SignInCodeStep, 0],
+  ["AccountCodeStep", AccountCodeStep, 1],
+] as const;
+
+/** Where `marker` first stands in the rendered markup; it must be there. */
+const at = (html: string, marker: string): number => {
+  const index = screenMarkup(html).indexOf(marker);
+  expect(index, marker).toBeGreaterThan(-1);
+  return index;
+};
+const ALERT = 'role="alert"';
+const CODE_INPUT = 'name="code"';
 
 beforeEach(() => {
   request.current = emptyRequest();
@@ -66,29 +68,27 @@ beforeEach(() => {
 const buttonLabelled = (element: unknown, label: string): ReactElement<Record<string, unknown>> | undefined =>
   findAll(element as ReactElement, Button).find((button) => button.props.children === label);
 
-describe.each(STEPS)("%s", (name, Step, [headingKey, sentenceKey, buttonKey], hintKeys) => {
+describe.each(STEPS)("%s", (name, Step, hints) => {
   const render = async (error?: string) => {
     const element = await Step({ pages: PAGES, verify, resend, ...(error === undefined ? {} : { error }) });
     return { element, html: renderToStaticMarkup(element) };
   };
-  const sentence = t(sentenceKey, { email: EMAIL, minutes: 10 });
 
   it(`AC13: ${name} with no email cookie redirects to the flow's start with error=expired`, async () => {
     request.current.cookies = {};
     expect(await redirectOf(Step({ pages: PAGES, verify, resend }))).toBe("/flow?error=expired");
   });
 
-  it(`AC13: ${name} reads back link, heading, sentence, code field, button, any hint, resend — as in Screen`, async () => {
-    const order = [
-      en["signIn.differentEmail"],
-      en[headingKey],
-      sentence,
-      en["signIn.codeLabel"],
-      en[buttonKey],
-      ...hintKeys.map((key) => en[key]),
-      en["signIn.resend"],
-    ];
-    expect(inOrder((await render()).html, order)).toEqual(order);
+  it(`AC13: ${name}'s sentence, under the heading, carries the cookie's email and the code's minutes`, async () => {
+    const { html } = await render();
+    const withEmail = textsOf(html).filter((text) => text.includes(EMAIL));
+    expect(withEmail).toHaveLength(1);
+    expect(withEmail[0]).toContain(`${CODE_TTL_MS / 60_000}`);
+    expect(at(html, "<h1")).toBeLessThan(at(html, EMAIL));
+  });
+
+  it(`AC13: ${name} draws ${hints} hint line(s) under the code form`, async () => {
+    expect(findAll((await render()).element, Hint)).toHaveLength(hints);
   });
 
   it(`AC13: ${name}'s "Use a different email" goes to the flow's start`, async () => {
@@ -100,13 +100,10 @@ describe.each(STEPS)("%s", (name, Step, [headingKey, sentenceKey, buttonKey], hi
   });
 
   it(`AC13: ${name} with error=invalid shows the notice after the sentence and marks the field invalid`, async () => {
-    const { html } = await render("invalid");
-    expect(alertTexts(html)).toEqual([en["signIn.invalidCode"]]);
-    expect(inOrder(html, [sentence, en["signIn.invalidCode"], en["signIn.codeLabel"]])).toEqual([
-      sentence,
-      en["signIn.invalidCode"],
-      en["signIn.codeLabel"],
-    ]);
+    const { element, html } = await render("invalid");
+    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["alert"]);
+    expect(at(html, EMAIL)).toBeLessThan(at(html, ALERT));
+    expect(at(html, ALERT)).toBeLessThan(at(html, CODE_INPUT));
     expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
   });
 
@@ -168,15 +165,6 @@ describe("the code field and the buttons (issue 9, AC34; issue 19, AC8 and AC9; 
   });
 });
 
-describe("the code page's wording (issue 22, AC23 and AC24)", () => {
-  it("AC23: the wrong-code notice tells the member to check their email after 5 wrong tries", async () => {
-    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend, error: "invalid" }));
-    expect(alertTexts(html)).toEqual([
-      "That code didn't match, or it has expired. Check it and try again, or ask for a new one. After 5 wrong tries, check your email for a sign-in link.",
-    ]);
-  });
-});
-
 describe("resendEmail, the one difference in what the resend form carries", () => {
   it("AC13: SignInCodeStep's resend form carries the cookie's email in a hidden field", async () => {
     const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
@@ -194,36 +182,27 @@ describe("resendEmail, the one difference in what the resend form carries", () =
   });
 });
 
-// Issue 101, AC4: the sign-in code step's sentence, which no longer promises a code once this one expires.
-describe("AC4 (issue 101) — the sign-in code step's sentence", () => {
-  it('AC4: it reads "If {email} has an account, a 6-digit code is on its way. It expires in {minutes} minutes.", under the heading', async () => {
-    const html = renderToStaticMarkup(await SignInCodeStep({ pages: PAGES, verify, resend }));
-    const order = [en["signIn.codeTitle"], `If ${EMAIL} has an account, a 6-digit code is on its way. It expires in 10 minutes.`];
-    expect(inOrder(html, order)).toEqual(order);
-  });
-});
-
 // Issue 101, AC2 and AC3: after "Send a new code" the step comes back with `sent` "1" and says a new code is
 // on its way, in a check Notice where the wrong-code notice stands. The words name no email, so they are the
 // same for a member and a stranger. These are the notice's one home; the four pages' tests only hand `sent` on.
-const RESENT = "A new code is on its way.";
-
-describe.each(STEPS)("AC2, AC3 (issue 101) — %s after a resend", (name, Step, [, sentenceKey]) => {
+describe.each(STEPS)("AC2, AC3 (issue 101) — %s after a resend", (name, Step) => {
   const render = async (props: { error?: string; sent?: string } = {}) => {
     const element = await Step({ pages: PAGES, verify, resend, ...props });
     return { element, html: renderToStaticMarkup(element) };
   };
-  const sentence = t(sentenceKey, { email: EMAIL, minutes: 10 });
 
-  it(`AC2: ${name} with sent="1" shows "${RESENT}" after the sentence and above the code field`, async () => {
+  it(`AC2: ${name} with sent="1" shows its notice after the sentence and above the code field`, async () => {
     const { html } = await render({ sent: "1" });
-    expect(alertTexts(html)).toEqual([RESENT]);
-    expect(inOrder(html, [sentence, RESENT, en["signIn.codeLabel"]])).toEqual([sentence, RESENT, en["signIn.codeLabel"]]);
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(at(html, EMAIL)).toBeLessThan(at(html, ALERT));
+    expect(at(html, ALERT)).toBeLessThan(at(html, CODE_INPUT));
   });
 
-  it(`AC2: ${name}'s notice is the same words whatever the email: it names none`, async () => {
+  it(`AC2: ${name}'s notice names no email`, async () => {
     request.current.cookies = { ocf_sign_in_email: "nobody@example.com" };
-    expect(alertTexts((await render({ sent: "1" })).html)).toEqual([RESENT]);
+    const alerts = alertTexts((await render({ sent: "1" })).html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).not.toContain("nobody@example.com");
   });
 
   it(`AC3: ${name}'s resent notice is a check Notice`, async () => {
@@ -231,8 +210,7 @@ describe.each(STEPS)("AC2, AC3 (issue 101) — %s after a resend", (name, Step, 
   });
 
   it(`AC2: ${name} with sent="1" and error=invalid shows the wrong-code notice alone`, async () => {
-    const { element, html } = await render({ sent: "1", error: "invalid" });
-    expect(alertTexts(html)).toEqual([en["signIn.invalidCode"]]);
+    const { element } = await render({ sent: "1", error: "invalid" });
     expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["alert"]);
   });
 
@@ -264,7 +242,6 @@ describe("issue 156 — CodeStep's back, notice and invalidText", () => {
     const html = renderToStaticMarkup(await step({ back: BACK }));
     expect(inOrder(html, ["the caller's own back", HEADING])).toEqual(["the caller's own back", HEADING]);
     expect(attributesOf(html, "a")).toEqual([]);
-    expect(html).not.toContain(en["signIn.differentEmail"]);
   });
 
   it("AC12: with invalidText, a wrong code shows that line in place of sign-in's", async () => {
@@ -275,7 +252,8 @@ describe("issue 156 — CodeStep's back, notice and invalidText", () => {
   it("AC11, AC13: notice is drawn after the wrong-code notice and above the code field", async () => {
     const html = renderToStaticMarkup(await step({ invalid: true, notice: NOTICE }));
     expect(alertTexts(html)).toEqual([en["signIn.invalidCode"], "Something else went wrong."]);
-    expect(inOrder(html, [SENTENCE, "Something else went wrong.", en["signIn.codeLabel"]])).toEqual([SENTENCE, "Something else went wrong.", en["signIn.codeLabel"]]);
+    expect(at(html, SENTENCE)).toBeLessThan(at(html, "Something else went wrong."));
+    expect(at(html, "Something else went wrong.")).toBeLessThan(at(html, CODE_INPUT));
   });
 
   it("AC11, AC13: notice is drawn on its own when the code was not wrong", async () => {

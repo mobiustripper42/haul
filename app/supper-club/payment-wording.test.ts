@@ -4,18 +4,24 @@
 // the translator it is handed, and the rest of the sentence falls back to English.
 import { describe, expect, it, vi } from "vitest";
 import { createTranslator } from "@core/i18n.js";
-import { en } from "@core/messages/en.js";
+import { formatUsdWhole } from "@core/money.js";
+import { formatPickupDate } from "@core/pickup-week.js";
 import { paymentWording } from "./payment-wording";
 
 vi.mock("@core/messages/es.js", () => ({
   es: { "supperClub.consentTerms": "«terms»", "supperClub.consentPrivacy": "«privacy»" },
 }));
 
-// AC4's criterion is the sentence itself, so its words are typed here, once; AC5 and AC6 build on it.
-const SENTENCE ="I agree to a weekly charge of $85.50 until I cancel, and to the Terms and Privacy Policy. To cancel, sign in to your account before the end of Monday.";
+const PRICE = formatUsdWhole(8550);
 
 const wording = (language: "en" | "es" = "en") =>
   paymentWording(createTranslator(language), { priceCents: 8550, firstPickup: "2027-01-03", language });
+
+// Ruling 9 (issue 211): paymentWording composes text, so its sentence and consent text are asserted whole,
+// built from the catalog: a rewording passes, a dropped, swapped or wrongly filled piece fails.
+const t = createTranslator("en");
+const SENTENCE = t("supperClub.consent", { price: PRICE, terms: t("supperClub.consentTerms"), privacy: t("supperClub.consentPrivacy") });
+const PICKUP_LINE = t("supperClub.pickupLine", { date: formatPickupDate("2027-01-03", "en"), price: PRICE });
 
 describe("AC4 — the checkbox sentence", () => {
   it("AC4: it reads, in full, with the price in it", () => {
@@ -25,14 +31,8 @@ describe("AC4 — the checkbox sentence", () => {
 
 describe("AC5 — what subscriptions.consent_text stores", () => {
   it("AC5: it stores the two price lines, the pickup line and the sentence, joined by spaces", () => {
-    const t = createTranslator("en");
     expect(wording().consentText).toBe(
-      [
-        `${en["supperClub.todayLabel"]}: $85.50.`,
-        `${en["supperClub.weeklyLabel"]}: $85.50.`,
-        t("supperClub.pickupLine", { date: "Sunday, January 3", price: "$85.50" }),
-        SENTENCE,
-      ].join(" "),
+      [`${t("supperClub.todayLabel")}: ${PRICE}.`, `${t("supperClub.weeklyLabel")}: ${PRICE}.`, PICKUP_LINE, SENTENCE].join(" "),
     );
   });
 });
@@ -41,10 +41,7 @@ describe("AC6 — the sentence in pieces", () => {
   it("AC6: sentenceParts reads as the sentence, with Terms and Privacy Policy as links to their pages", () => {
     const { sentence, sentenceParts } = wording();
     expect(sentenceParts.map((part) => (typeof part === "string" ? part : part.text)).join("")).toBe(sentence);
-    expect(sentenceParts.filter((part) => typeof part !== "string")).toEqual([
-      { href: "/terms", text: en["supperClub.consentTerms"] },
-      { href: "/privacy", text: en["supperClub.consentPrivacy"] },
-    ]);
+    expect(sentenceParts.flatMap((part) => (typeof part === "string" ? [] : [part.href]))).toEqual(["/terms", "/privacy"]);
   });
 
   it("AC6: the links' words come from the catalog of the language it is handed", () => {

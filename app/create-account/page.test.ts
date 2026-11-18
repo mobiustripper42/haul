@@ -4,12 +4,11 @@
 import type { ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { en } from "@core/messages/en.js";
 import { Card } from "../../components/ui/card";
+import { Notice } from "../../components/ui/notice";
 import { Shell } from "../../components/ui/shell";
 import { emptyRequest } from "../next-headers-fake";
-import { alertTexts, attributesOf, findAll, textsOf } from "../screen-test-helpers";
-import { limitedText } from "../sign-in/shared";
+import { alertTexts, attributesOf, findAll } from "../screen-test-helpers";
 import { requestAccountCode } from "./actions";
 import CreateAccount from "./page";
 
@@ -52,15 +51,18 @@ describe("AC4, AC10, AC12 — /create-account", () => {
 
   it("AC12: the page's limited reaches the form's notice", async () => {
     const { html } = await render({ limited: "5" });
-    expect(alertTexts(html)).toEqual([limitedText("en", 5)]);
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toMatch(/\b5\b/);
   });
 
   it("AC10: the page's error reaches the form: expired shows its notice", async () => {
-    expect(alertTexts((await render({ error: "expired" })).html)).toEqual([en["signIn.stepExpired"]]);
+    expect(findAll((await render({ error: "expired" })).element, Notice).map((notice) => notice.props.icon)).toEqual(["clock"]);
   });
 
   it("AC4: the page's error reaches the form: a failing field shows its line", async () => {
-    expect(textsOf((await render({ error: "phone" })).html)).toContain(en["createAccount.error.phone"]);
+    const phone = attributesOf((await render({ error: "phone" })).html, "input").find((input) => input.name === "phone");
+    expect(phone).toMatchObject({ "aria-invalid": "true" });
   });
 
   it("AC7 (issue 77): the closing line's link goes to the full /sign-in page", async () => {

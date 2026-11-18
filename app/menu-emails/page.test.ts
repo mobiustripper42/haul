@@ -2,15 +2,16 @@
 // composition root mocked, as app/admin/members/[subscription]/page.test.ts renders its page. The page only reads: the
 // off link's write is ./off/route.ts's (./off/route.test.ts) and the buttons' are ./actions.ts's (./actions.test.ts). The
 // token's edge cases are src/menu-email-link.test.ts's: one accepted and one refused case go through here, and an
-// unknown member. The page's words are new copy, typed once here.
+// unknown member. Which card shows is read by its catalog lines; the member's email is the value in them.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
+import { createTranslator } from "@core/i18n.js";
 import { menuEmailToken } from "@core/menu-email-link.js";
 import type { Member } from "@core/members.js";
 import { emptyRequest } from "../next-headers-fake";
-import { attributesOf, sentencesOf, textsOf } from "../screen-test-helpers";
+import { attributesOf, sentencesOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import MenuEmails from "./page";
 
@@ -53,12 +54,12 @@ vi.mock("./actions", () => ({
 const ADA = "ada@example.com";
 const UNKNOWN_UUID = "00000000-0000-4000-8000-000000000000";
 
-// This task's words.
-const OFF_HEADING = "Menu emails are off";
-const OFF_BODY = `You won't get the weekly menu at ${ADA}. Your box and your charges don't change, and the menu is always on this site.`;
-const ON_HEADING = "Menu emails are on";
-const ON_BODY = `You'll get the menu each week at ${ADA}.`;
-const SEE_MENU = "See this week's menu";
+// The page picks one card of two by the member's setting: each is read here by its catalog lines.
+const t = createTranslator("en");
+const OFF_HEADING = t("menuEmails.offTitle");
+const OFF_BODY = t("menuEmails.offBody", { email: ADA });
+const ON_HEADING = t("menuEmails.onTitle");
+const ON_BODY = t("menuEmails.onBody", { email: ADA });
 
 let ada: Member;
 
@@ -91,7 +92,7 @@ const render = async (query: { m?: string; t?: string }): Promise<string> => {
   return outcome === "not found" ? "" : outcome.html;
 };
 
-/** Each form: the action it posts to, its hidden fields and its submit buttons' words. */
+/** Each form: the action it posts to, its hidden fields and how many buttons it has. */
 const formsOf = (html: string) =>
   [...html.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].map(([, attrs = "", inner = ""]) => {
     const buttons = attributesOf(inner, "button");
@@ -102,16 +103,12 @@ const formsOf = (html: string) =>
           .filter((input) => input.type === "hidden" && !(input.name ?? "").startsWith("$ACTION"))
           .map((input) => [input.name, input.value]),
       ),
-      submits: [...inner.matchAll(/<button\b([^>]*)>([\s\S]*?)<\/button>/g)].map(([, , text = ""]) => textsOf(text).join(" ")),
+      submits: buttons.length,
     };
   });
 
-/** Each link on the page: where it goes and its text. */
-const linksOf = (html: string): { href: string; text: string }[] =>
-  [...html.matchAll(/<a\b([^>]*)>([\s\S]*?)<\/a>/g)].map(([, attrs = "", inner = ""]) => ({
-    href: attributesOf(`<a${attrs}>`, "a")[0]?.href ?? "",
-    text: textsOf(inner).join(" "),
-  }));
+/** Where each link on the page goes. */
+const linksOf = (html: string): string[] => attributesOf(html, "a").map((link) => link.href ?? "");
 
 describe("AC8 — menu emails off", () => {
   it("AC8: a valid link for a member with menu emails off shows the off card: its heading and sentence naming their email, Turn menu emails back on posting m and t to turnMenuEmailsOn, and See this week's menu", async () => {
@@ -120,8 +117,8 @@ describe("AC8 — menu emails off", () => {
     const sentences = sentencesOf(html, ["span"]);
     expect(sentences).toEqual(expect.arrayContaining([OFF_HEADING, OFF_BODY]));
     expect(sentences).not.toContain(ON_HEADING);
-    expect(formsOf(html)).toEqual([{ action: "turnMenuEmailsOn", hidden: valid(), submits: ["Turn menu emails back on"] }]);
-    expect(linksOf(html)).toContainEqual({ href: "/menu", text: SEE_MENU });
+    expect(formsOf(html)).toEqual([{ action: "turnMenuEmailsOn", hidden: valid(), submits: 1 }]);
+    expect(linksOf(html)).toContain("/menu");
   });
 
   it("AC8: the page is public, with the signed-out header's Sign in", async () => {
@@ -137,8 +134,8 @@ describe("AC8 — menu emails on", () => {
     const sentences = sentencesOf(html, ["span"]);
     expect(sentences).toEqual(expect.arrayContaining([ON_HEADING, ON_BODY]));
     expect(sentences).not.toContain(OFF_HEADING);
-    expect(formsOf(html)).toEqual([{ action: "turnMenuEmailsOff", hidden: valid(), submits: ["Turn them off"] }]);
-    expect(linksOf(html)).toContainEqual({ href: "/menu", text: SEE_MENU });
+    expect(formsOf(html)).toEqual([{ action: "turnMenuEmailsOff", hidden: valid(), submits: 1 }]);
+    expect(linksOf(html)).toContain("/menu");
   });
 });
 

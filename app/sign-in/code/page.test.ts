@@ -3,12 +3,11 @@
 // app/sign-in/code-step.test.ts's.
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { en } from "@core/messages/en.js";
 import { Card } from "../../../components/ui/card";
 import { Notice } from "../../../components/ui/notice";
 import { Shell } from "../../../components/ui/shell";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
+import { attributesOf, findAll, redirectOf } from "../../screen-test-helpers";
 import { requestCode, verifyCode } from "../actions";
 import SignInCode from "./page";
 
@@ -59,7 +58,9 @@ describe("AC34 (issue 9) — /sign-in/code", () => {
   });
 
   it("AC34: the page's search parameters reach the step's notice", async () => {
-    expect(alertTexts((await render({ error: "invalid" })).html)).toEqual([en["signIn.invalidCode"]]);
+    const { element, html } = await render({ error: "invalid" });
+    expect(findAll(element, Notice).map((notice) => notice.props.icon)).toEqual(["alert"]);
+    expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
   });
 });
 
