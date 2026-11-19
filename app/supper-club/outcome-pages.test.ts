@@ -17,11 +17,11 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
 import { emptyRequest } from "../next-headers-fake";
-import { ACCOUNT_PATH } from "../paths";
+import { ACCOUNT_PATH, ACCOUNT_WEEKS_PATH } from "../paths";
 import { findAll, inOrder, redirectOf, screenMarkup, textsOf } from "../screen-test-helpers";
 import SupperClubAlready from "./already/page";
 import SupperClubDone from "./done/page";
-import { FARM_SITE_URL, SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_DONE_PATH, SUPPER_CLUB_PATH } from "./paths";
+import { FARM_SITE_URL, SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_DONE_PATH, SUPPER_CLUB_FROM_PAY, SUPPER_CLUB_PATH } from "./paths";
 import { SignupBox } from "./signup-box";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -122,7 +122,7 @@ describe("the paths", () => {
 
 describe.each([
   ["/supper-club/done", SupperClubDone],
-  ["/supper-club/already", SupperClubAlready],
+  ["/supper-club/already", () => SupperClubAlready({ searchParams: Promise.resolve({}) })],
 ] as const)("who reaches %s", (path, Page) => {
   it(`AC13: a signed-out visitor on ${path} goes to /supper-club`, async () => {
     expect(await redirectOf(Page())).toBe(SUPPER_CLUB_PATH);
@@ -257,10 +257,36 @@ describe("AC13 — the confirmation", () => {
 });
 
 describe("AC5 — the already-a-member page", () => {
-  const render = async () => {
-    const element = await SupperClubAlready();
+  const render = async (query: { from?: string | string[] } = {}) => {
+    const element = await SupperClubAlready({ searchParams: Promise.resolve(query) });
     return { element, html: renderToStaticMarkup(element) };
   };
+
+  /** The page's pane: JoinPage's last section (join-page.tsx), without the header or the left column. */
+  const paneOf = (element: ReactNode) => findAll(element, "section").at(-1) ?? null;
+
+  // Issue 221, AC6: "Nothing was charged" is for a refused Pay or Try again, which land with the Pay mark
+  // (./actions.test.ts); a plain visit to /supper-club redirects here with none (./page.test.ts), as `{}` below.
+  it("AC6 (issue 221): with the Pay mark, the page says nothing was charged", async () => {
+    await subscribe(await signIn());
+    const { element } = await render({ from: SUPPER_CLUB_FROM_PAY });
+    expect(textsOf(renderToStaticMarkup(paneOf(element)))).toContain(t("supperClub.already.nothing"));
+  });
+
+  it("AC6 (issue 221): without the mark, as a plain visit to /supper-club lands, it does not", async () => {
+    await subscribe(await signIn());
+    const { element } = await render();
+    expect(textsOf(renderToStaticMarkup(paneOf(element)))).not.toContain(t("supperClub.already.nothing"));
+  });
+
+  it.each([
+    ["with the Pay mark", { from: SUPPER_CLUB_FROM_PAY }],
+    ["without it", {}],
+  ])("AC7 (issue 221): %s, the page links to the account's Upcoming weeks page", async (_case, query) => {
+    await subscribe(await signIn());
+    const { element } = await render(query);
+    expect(findAll(paneOf(element), Button).filter((button) => button.props.href === ACCOUNT_WEEKS_PATH)).toHaveLength(1);
+  });
 
   // Issue 97, AC9: with / redirecting, "Go to your account" would only reload this page; it comes back
   // with the account pages in task 2.4. The confirmation keeps its button (above).

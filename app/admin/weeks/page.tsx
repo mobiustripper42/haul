@@ -43,8 +43,8 @@ const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
 
-/** Closing an open week: who it gives week credits to, before or after the cutoff, and a note for admins. */
-function CloseDialog({ week, wording }: { week: AdminWeek; wording: Wording }) {
+/** Closing an open week: who it gives week credits to, before or after the cutoff, how many members are emailed, and a note for admins. */
+function CloseDialog({ week, wording, emailed }: { week: AdminWeek; wording: Wording; emailed: number }) {
   const { t, language, counts } = wording;
   const paid = counts.get(week.weekOf)?.paid ?? 0;
   const cutoff = cutoffWords(wording, week);
@@ -53,15 +53,13 @@ function CloseDialog({ week, wording }: { week: AdminWeek; wording: Wording }) {
     : paid === 0
       ? t("admin.weeks.closeNobody", { cutoff })
       : t(pluralKey(language, "admin.weeks.closeBefore", paid), { n: paid, cutoff });
-  const confirm = week.cutoffPassed
-    ? t("admin.weeks.closeConfirmAfter")
-    : paid === 0
-      ? t("admin.weeks.closeConfirm")
-      : t(pluralKey(language, "admin.weeks.closeConfirmBefore", paid), { n: paid });
+  const emailText = emailed === 0 ? t("admin.weeks.closeEmailsNone") : t(pluralKey(language, "admin.weeks.closeEmails", emailed), { n: emailed });
   return (
     <Card width="fill">
       <Heading level={2}>{t("admin.weeks.closeHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
-      <p>{text}</p>
+      <p>
+        {text} {emailText}
+      </p>
       <form action={closeWeek} className="flex flex-col gap-5">
         <input type="hidden" name="week" value={week.weekOf} />
         <Field label={t("admin.weeks.closeNote")} htmlFor="close-note" help={t("admin.weeks.closeNoteHelp")}>
@@ -69,7 +67,7 @@ function CloseDialog({ week, wording }: { week: AdminWeek; wording: Wording }) {
         </Field>
         <ButtonRow>
           <Button kind="primary" type="submit">
-            {confirm}
+            {t("admin.weeks.closeConfirm")}
           </Button>
           <Button kind="quiet" href={ADMIN_WEEKS_PATH}>
             {t("admin.weeks.keepOpen")}
@@ -345,6 +343,8 @@ export default async function AdminWeeks({ searchParams }: { searchParams: Promi
   const wording: Wording = { t, language, product, counts, menus, weekMenus };
   const closing = weeks.find((week) => week.weekOf === one(query.close) && week.closedAt === null);
   const reopening = weeks.find((week) => week.weekOf === one(query.reopen) && week.canReopen);
+  // The close action emails whoever listWeekDue gives, so the dialog counts the same query, only for the week it is open on.
+  const emailed = closing ? (await repo.listWeekDue(product.id, closing.weekOf, closing.cutoff)).length : 0;
 
   return (
     <>
@@ -355,7 +355,7 @@ export default async function AdminWeeks({ searchParams }: { searchParams: Promi
             <Heading>{t("admin.weeks.title")}</Heading>
             <Hint>{t("admin.weeks.hint")}</Hint>
           </div>
-          {closing && <CloseDialog week={closing} wording={wording} />}
+          {closing && <CloseDialog week={closing} wording={wording} emailed={emailed} />}
           {reopening && <ReopenDialog week={reopening} wording={wording} />}
           <Card width="fill">
             <ul aria-label={t("admin.weeks.upcoming")} className="flex flex-col">
