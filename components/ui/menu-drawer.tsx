@@ -28,8 +28,8 @@ export function MenuDrawer({
         <span className="menu-label-shut sr-only">{label}</span>
         <span className="menu-label-open sr-only">{closeLabel}</span>
       </summary>
-      <div data-menu-drawer-panel role="dialog" aria-modal="true" aria-label={label} className="menu-drawer-panel">
-        <p className="mb-2 flex min-h-touch items-center px-3">{heading}</p>
+      <div data-menu-drawer-panel aria-label={label} className="menu-drawer-panel">
+        <div className="mb-2 flex min-h-touch items-center px-3">{heading}</div>
         <div className="flex flex-col gap-1 overflow-y-auto">{children}</div>
         <div className="mt-auto flex flex-col gap-1 border-t border-divider pt-2">{foot}</div>
       </div>

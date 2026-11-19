@@ -36,6 +36,8 @@ export function MenuScript() {
     };
     const sync = () => {
       for (const el of inerted.splice(0)) el.inert = false;
+      // `inert` stops focus and clicks, not scrolling: the page behind stays put while the drawer is open.
+      document.documentElement.style.overflow = drawer?.open ? "hidden" : "";
       if (!drawer?.open) return;
       for (const el of behind()) {
         if (el.inert) continue;
@@ -89,6 +91,7 @@ export function MenuScript() {
       document.removeEventListener("click", onClick);
       wide.removeEventListener("change", onWide);
       for (const el of inerted.splice(0)) el.inert = false;
+      document.documentElement.style.overflow = "";
     };
   }, []);
 

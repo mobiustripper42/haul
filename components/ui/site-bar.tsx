@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 
-const INNER = "mx-auto flex max-w-page flex-wrap items-center justify-between gap-3 px-4";
+const row = (width: "max-w-page" | "max-w-bar") => `mx-auto flex ${width} flex-wrap items-center justify-between gap-3 px-4`;
+const INNER = row("max-w-page");
 
 /**
  * The bar the header and the footer share (issue 97): a `<header>` or `<footer>` on `surface` with a
@@ -18,7 +19,7 @@ export function SiteBar({ as, wide, children }: { as: "header" | "footer"; wide?
   }
   return (
     <header className="border-b border-divider bg-surface">
-      <div className={`${wide ? INNER.replace("max-w-page", "max-w-bar") : INNER} py-3`}>{children}</div>
+      <div className={`${wide ? row("max-w-bar") : INNER} py-3`}>{children}</div>
     </header>
   );
 }

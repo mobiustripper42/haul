@@ -65,15 +65,15 @@ export async function waitForSignInCode(
 }
 
 /**
- * The header's Sign out button: what shows a page is signed in (issue 97). Issue 155 draws it twice, in the row at
- * 720px and wider and in the Menu's panel below it; this is the one a width shows, so strict mode never sees two.
+ * The header's Sign out button: what shows a page is signed in (issue 97). It is drawn twice, in the bar at
+ * 1024px and wider and at the drawer's foot below it (issue 159); this is the one a width shows, so strict mode never sees two.
  */
 export const headerSignOut = (page: Page) =>
   page.getByRole("banner").getByRole("button", { name: en["home.signOut"], exact: true }).filter({ visible: true });
 
 /**
- * The signed-in header's Menu button, below 720px (issue 155): a `<summary>`, which has no role to find it by. Its
- * word is new copy in issue 155, typed here and in app/site-header.test.ts.
+ * The signed-in header's hamburger, below 1024px (issue 159): the drawer's `<summary>`, which has no role to find it by.
+ * Its name is visually hidden text, so `hasText` still finds it; "Menu" is typed here and in app/site-header.test.ts.
  */
 const headerMenu = (page: Page) => page.getByRole("banner").locator("summary").filter({ hasText: "Menu" }).filter({ visible: true });
 
