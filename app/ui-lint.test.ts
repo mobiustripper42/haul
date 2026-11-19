@@ -546,8 +546,8 @@ describe("AC17 — every .tsx file in the repo passes lint", () => {
     expect(errors).toEqual([]);
   });
 
-  // Issue 97: the sign-out button moved from the home page to the header, where it is quiet.
-  it("AC4 (issue 97): the header's sign-out button carries btn-quiet", async () => {
+  // Issue 97: the sign-out button moved from the home page to the header; issue 159 made it a menu entry.
+  it("AC4 (issue 97): the header's sign-out button carries btn-menu", async () => {
     const member = await services.repo.createMember({ email: "ada@example.com" });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
     request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);
@@ -555,6 +555,6 @@ describe("AC17 — every .tsx file in the repo passes lint", () => {
     const opening = new RegExp(`(<button\\b[^>]*>)${escapeRegExp("Sign out")}</button>`).exec(screenMarkup(html))?.[1];
     expect(opening, "no Sign out button").toBeDefined();
     const classes = (attributesOf(opening ?? "", "button")[0]?.class ?? "").split(/\s+/);
-    expect(classes).toContain("btn-quiet");
+    expect(classes).toContain("btn-menu");
   });
 });

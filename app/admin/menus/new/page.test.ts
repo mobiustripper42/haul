@@ -11,6 +11,7 @@ import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../../../next-headers-fake";
 import { attributesOf, findAll, screenMarkup, textsOf } from "../../../screen-test-helpers";
+import { SiteHeader } from "../../../site-header";
 import { addSupperClub, MENUS, SIZES } from "../../subscribers-fixture";
 import { createMenu } from "../actions";
 import { MenuForm } from "../menu-form";
@@ -92,11 +93,20 @@ const autumn = (): Promise<Menu> =>
   services.repo.createMenu({ name: "Autumn harvest", texts: { [idOf("Standard")]: "Squash soup\n\nRye bread", [idOf("Vegan")]: "Lentil soup" } });
 
 describe("AC4 — New menu", () => {
-  it("AC4: Menus is the page showing, and All menus goes back to the library", async () => {
+  it("AC4: All menus goes back to the library", async () => {
     setUp();
     const links = linksOf(await render());
-    // The admin nav's Menus, marked as the page showing, and the back link, which is not.
-    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current).sort()).toEqual([false, true]);
+    // The back link, which is not marked as the page showing; the header (faked) holds the admin links (issue 159).
+    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current)).toEqual([false]);
+  });
+
+  // Issue 159: the admin links moved into the header (faked here); the page names itself to it and draws no nav of its own.
+  it('AC5 (issue 159): the page asks for the header with current "admin-menus", and no link on it is marked as the page showing', async () => {
+    setUp();
+    vi.mocked(SiteHeader).mockClear();
+    const links = linksOf(await render());
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-menus" }));
+    expect(links.filter((link) => link.current)).toEqual([]);
   });
 
   it("AC4: an empty name, then a text field per menu option, in option order, each labelled with its option", async () => {

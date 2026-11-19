@@ -11,6 +11,7 @@ import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../../../next-headers-fake";
 import { attributesOf, findAll, redirectOf, screenMarkup, textsOf } from "../../../screen-test-helpers";
+import { SiteHeader } from "../../../site-header";
 import { addSupperClub, MENUS, SIZES } from "../../subscribers-fixture";
 import { MenuForm } from "../menu-form";
 import { MENU_NAME_FIELD, menuTextField, type MenuFormState } from "../shared";
@@ -109,12 +110,22 @@ describe("Interfaces — a menu the library does not hold is not found", () => {
   });
 });
 
+// Issue 159: the admin links moved into the header (faked here); the page names itself to it and draws no nav of its own.
+describe("AC5 (issue 159) — the header names Menus", () => {
+  it('AC5 (issue 159): the page asks for the header with current "admin-menus", and no link on it is marked as the page showing', async () => {
+    vi.mocked(SiteHeader).mockClear();
+    const links = linksOf(await render(menu.id));
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-menus" }));
+    expect(links.filter((link) => link.current)).toEqual([]);
+  });
+});
+
 describe("AC5 — Edit menu", () => {
-  it("AC5: Menus is the page showing, All menus goes back to the library, and the fields hold the menu's name and texts", async () => {
+  it("AC5: All menus goes back to the library, and the fields hold the menu's name and texts", async () => {
     const html = await render(menu.id);
     const links = linksOf(html);
-    // The admin nav's Menus, marked as the page showing, and the back link, which is not.
-    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current).sort()).toEqual([false, true]);
+    // The back link, which is not marked as the page showing; the header (faked) holds the admin links (issue 159).
+    expect(links.filter((link) => link.href === "/admin/menus").map((link) => link.current)).toEqual([false]);
     expect(attributesOf(html, "input").find((input) => input.name === MENU_NAME_FIELD)?.value).toBe("Autumn harvest");
     expect(textareaValues(html)).toEqual(["Squash soup\n\nRye bread", "Lentil soup"]);
     expect(labelOf(html, `menu-text-${standard}`)).toContain("Standard");

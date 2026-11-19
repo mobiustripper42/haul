@@ -14,7 +14,8 @@ import { listableWeeks, listedWeekTitle } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { Hint } from "../../../components/ui/hint";
 import { emptyRequest } from "../../next-headers-fake";
-import { attributesOf, findAll, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
+import { findAll, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
+import { SiteHeader } from "../../site-header";
 import { addSupperClub, MENUS, SIZES } from "../subscribers-fixture";
 import { FEB_14, FEB_7, fourMembers, linksLabelled, NOW, oneOfEach, signInAs, subscribe, tableRows, TAM } from "./lists-fixture";
 import AdminLists from "./page";
@@ -201,17 +202,16 @@ describe("signed in as an admin", () => {
     });
   });
 
-  describe("AC9 — the admin nav", () => {
-    it('AC9: "Weekly lists" is its fourth button, after Members, Menus and Weeks, linking here and marked as the page showing', async () => {
+  // Issue 159: the admin links moved into the header (faked here); the page names itself to it and draws no nav of its own.
+  describe("AC5 (issue 159) — the header names Weekly lists", () => {
+    beforeEach(() => {
+      vi.mocked(SiteHeader).mockClear();
+    });
+
+    it('AC5: the page asks for the header with current "admin-lists", and no link on it is marked as the page showing', async () => {
       const markup = await render();
-      const nav = /<nav\b[^>]*>([\s\S]*?)<\/nav>/.exec(markup)?.[1] ?? "";
-      const links = attributesOf(nav, "a").map((attrs) => ({ href: attrs.href, current: attrs["aria-current"] === "page" }));
-      expect(links).toEqual([
-        { href: "/admin", current: false },
-        { href: "/admin/menus", current: false },
-        { href: "/admin/weeks", current: false },
-        { href: "/admin/lists", current: true },
-      ]);
+      expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-lists" }));
+      expect(markup).not.toMatch(/\baria-current="page"/);
     });
   });
 });

@@ -11,7 +11,6 @@ import { ADMIN_MENU_NEW_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
 import { SiteHeader } from "../../site-header";
-import { AdminNav } from "../admin-nav";
 import { loadCalendar } from "../weeks/calendar";
 import { assignedLine } from "./assigned";
 import { MenusList } from "./menus-list";
@@ -36,10 +35,9 @@ export default async function AdminMenus({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-menus" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "menus" })}
           <div className="flex flex-col gap-1">
             <Heading>{t("admin.menus.title")}</Heading>
             <Hint>{t("admin.menus.hint")}</Hint>

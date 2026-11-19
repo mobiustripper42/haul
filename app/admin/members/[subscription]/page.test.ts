@@ -17,9 +17,9 @@ import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../../../components/ui/button";
 import { Heading } from "../../../../components/ui/heading";
 import { SUBSCRIPTION_BADGES, SubscriptionStatus } from "../../../subscription-badges";
-import { AdminNav } from "../../admin-nav";
 import { emptyRequest } from "../../../next-headers-fake";
 import { attributesOf, findAll, redirectOf, sentencesOf, textsOf } from "../../../screen-test-helpers";
+import { SiteHeader } from "../../../site-header";
 import { addSupperClub, pendingSignup } from "../../subscribers-fixture";
 import AdminMember from "./page";
 
@@ -52,7 +52,6 @@ vi.mock("../../../services", () => ({
   getSessionSecret: () => services.secret,
 }));
 vi.mock("../../../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
-vi.mock("../../admin-nav", () => ({ AdminNav: vi.fn(async () => createElement("nav", null, "the admin nav")) }));
 // The confirm's action, standing in for a server reference: React writes what `$$FORM_ACTION` gives as the form's
 // `action`, so the markup names the action the button posts to.
 vi.mock("./actions", () => ({
@@ -74,7 +73,7 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   request.current = emptyRequest();
   services.repo = new InMemoryRepository();
-  vi.mocked(AdminNav).mockClear();
+  vi.mocked(SiteHeader).mockClear();
   product = addSupperClub(services.repo);
 });
 
@@ -191,27 +190,30 @@ describe("Interfaces 11 (issue 139) — a subscription the members list does not
 });
 
 describe("AC13 (issue 139) — the page, as it opens", () => {
-  it('AC13: the admin nav with Members current, then All members back to /admin, the heading "Bennett, Rosa" and Active', async () => {
+  it('AC13: the header with Members current, then All members back to /admin, the heading "Bennett, Rosa" and Active', async () => {
     await signInAs("admin");
     const subscriptionId = await rosa();
     const element = await pageOf(subscriptionId);
-    expect(AdminNav).toHaveBeenCalledWith({ current: "members" });
-    // The nav is the faked AdminNav's <nav>, which the page awaits in place.
+    // Issue 159: the admin links are the header's, so the page names itself to it and draws no nav of its own.
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-members" }));
+    // The header is the faked SiteHeader's <header>, which the page awaits in place.
     expect(
       elementsOf(element)
         .map((node) =>
-          node.type === "nav"
-            ? "nav"
-            : node.type === Button && node.props.href === "/admin"
-              ? "back"
-              : node.type === Heading
-                ? `heading ${String(node.props.children)}`
-                : node.type === SubscriptionStatus
-                  ? "status"
-                  : null,
+          node.type === "header"
+            ? "header"
+            : node.type === "nav"
+              ? "nav"
+              : node.type === Button && node.props.href === "/admin"
+                ? "back"
+                : node.type === Heading
+                  ? `heading ${String(node.props.children)}`
+                  : node.type === SubscriptionStatus
+                    ? "status"
+                    : null,
         )
         .filter((name) => name !== null),
-    ).toEqual(["nav", "back", "heading Bennett, Rosa", "status"]);
+    ).toEqual(["header", "back", "heading Bennett, Rosa", "status"]);
     expect(await statusOf(subscriptionId)).toMatchObject({ status: "active", ...wordsFor("active") });
   });
 

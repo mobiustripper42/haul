@@ -9,7 +9,6 @@ import { getLanguage, getTranslator } from "../language";
 import { getRepository } from "../services";
 import { requireAdmin } from "../session";
 import { SiteHeader } from "../site-header";
-import { AdminNav } from "./admin-nav";
 import { MembersList } from "./members-list";
 import { titled } from "../page-title";
 
@@ -29,10 +28,9 @@ export default async function Admin() {
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-members" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "members" })}
           <div className="flex flex-wrap items-end justify-between gap-4">
             <div className="flex flex-col gap-1">
               <Heading>{t("admin.members.title")}</Heading>

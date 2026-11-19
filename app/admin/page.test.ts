@@ -219,10 +219,18 @@ describe("issue 59 — /admin, signed in as an admin", () => {
 
   // Issue 97: the header reads the session; on /admin the admin's Admin button is the page showing.
   describe("AC5 (issue 97) — the header on /admin", () => {
-    it('AC5: the page asks for the header with account "none" and current "admin"', async () => {
+    it('AC5: the page asks for the header with account "none" and current "admin-members"', async () => {
       addSupperClub(services.repo);
       await Admin();
-      expect(SiteHeader).toHaveBeenCalledWith({ account: "none", current: "admin" });
+      expect(SiteHeader).toHaveBeenCalledWith({ account: "none", current: "admin-members" });
+    });
+  });
+
+  // Issue 159: the admin links moved into the header (faked here), so the page draws no nav of its own.
+  describe("AC5 (issue 159) — no admin nav under the header", () => {
+    it("AC5: /admin draws no admin nav of its own: no link on it is marked as the page showing", async () => {
+      addSupperClub(services.repo);
+      expect(renderToStaticMarkup(await Admin())).not.toMatch(/\baria-current="page"/);
     });
   });
 

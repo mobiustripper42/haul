@@ -222,19 +222,14 @@ describe("AC1 — the weeks", () => {
 });
 
 describe("AC14 — the screen in order", () => {
-  it('AC14: the header is asked for with current "admin"', async () => {
+  it('AC14: the header is asked for with current "admin-weeks"', async () => {
     await render();
-    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin" }));
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-weeks" }));
   });
 
-  it("AC14: Members links to /admin and Weeks to /admin/weeks, marked as the page showing", async () => {
-    const markup = screenMarkup((await render()).html);
-    const links = [...markup.matchAll(/<a\b([^>]*)>/g)].map(([, attrs = ""]) => ({
-      href: /\bhref="([^"]*)"/.exec(attrs)?.[1],
-      current: /\baria-current="page"/.test(attrs),
-    }));
-    expect(links).toContainEqual({ href: "/admin", current: false });
-    expect(links).toContainEqual({ href: "/admin/weeks", current: true });
+  // Issue 159: the admin links moved into the header (faked here), so the page draws no nav of its own.
+  it("AC5 (issue 159): /admin/weeks draws no admin nav of its own: no link on it is marked as the page showing", async () => {
+    expect(screenMarkup((await render()).html)).not.toMatch(/\baria-current="page"/);
   });
 
   it("AC14: the page has one level-1 heading, and the weeks are a labelled list", async () => {
@@ -500,12 +495,6 @@ describe("AC1, AC5, AC8–AC12 (issue 140) — a week's menu", () => {
       })),
     };
   };
-
-  it("AC1: the admin nav links Members, Menus and Weeks in that order, Menus to /admin/menus", async () => {
-    const { html } = await render();
-    const hrefs = [...screenMarkup(html).matchAll(/<a\b[^>]*\bhref="([^"]*)"/g)].map(([, href]) => href);
-    expect(hrefs.filter((href) => href === "/admin" || href === "/admin/menus" || href === "/admin/weeks")).toEqual(["/admin", "/admin/menus", "/admin/weeks"]);
-  });
 
   it("AC8: an open week with a menu names it, under the cutoff line, and offers Change menu", async () => {
     const autumn = await menu("Autumn harvest");

@@ -13,6 +13,7 @@ export const en = {
   "header.weeks": "Upcoming weeks",
   "header.history": "History",
   "header.menu": "Menu",
+  "header.closeMenu": "Close menu",
   "header.account": "Account",
   "header.details": "Your details",
   "account.title": "Your Supper Club",
