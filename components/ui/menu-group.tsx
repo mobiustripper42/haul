@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 /**
  * The signed-in header's Admin ▾ group at 1024px and wider (issue 159): a `<details>` whose `<summary>` is
  * `label` and whose panel holds `children`. `active` marks the summary (`data-active`) when the page showing is one
- * of its links. `MenuScript` closes it on an outside click or Escape; the panel is `MenuButton`'s, which this
+ * of its links. `MenuScript` closes it on an outside click, focus moving outside it, or Escape; the panel is `MenuButton`'s, which this
  * replaced.
  */
 export function MenuGroup({ label, active, children }: { label: string; active: boolean; children: ReactNode }) {
