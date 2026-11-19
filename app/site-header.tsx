@@ -32,7 +32,7 @@ const MEMBER_LINKS: readonly NavLink[] = [
   { current: "details", href: ACCOUNT_DETAILS_PATH, label: "header.details" },
 ];
 
-/** The admin links in order, for admins only: in the bar's Admin group, and openly in the drawer under an Admin heading. */
+/** The admin links in order, for admins only: in the bar's Admin group, and openly at the top of the drawer under an Admin heading, set off from the member links by a rule. */
 const ADMIN_LINKS: readonly NavLink[] = [
   { current: "admin-members", href: ADMIN_PATH, label: "admin.nav.members" },
   { current: "admin-menus", href: ADMIN_MENUS_PATH, label: "admin.nav.menus" },
@@ -113,15 +113,15 @@ export async function SiteHeader({
             foot={<SignOutButton label={t("home.signOut")} />}
           >
             <nav aria-label={t("header.account")} className="flex flex-col gap-1">
-              {links(MEMBER_LINKS, true)}
               {admin ? (
-                <>
-                  <div className="px-3 pt-3">
+                <div className="mb-1 flex flex-col gap-1 border-b border-divider pb-2">
+                  <div className="px-3">
                     <Eyebrow tone="muted">{t("header.admin")}</Eyebrow>
                   </div>
                   {links(ADMIN_LINKS, true)}
-                </>
+                </div>
               ) : null}
+              {links(MEMBER_LINKS, true)}
             </nav>
           </MenuDrawer>
         </div>

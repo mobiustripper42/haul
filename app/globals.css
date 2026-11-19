@@ -195,9 +195,16 @@
     @apply flex items-center gap-1;
   }
 
-  /* The Admin group: its summary is a menu row, with a chevron after the label in place of the disclosure triangle. */
+  /*
+   * The Admin group: its summary is a menu row, with a chevron after the label in place of the disclosure triangle.
+   * A short divider rule before it sets the admin's menu off from the member links (Eric, on pull request #223).
+   */
   .menu-group {
-    @apply relative;
+    @apply relative ml-2 pl-2;
+  }
+  .menu-group::before {
+    content: "";
+    @apply absolute top-1/2 left-0 h-6 w-px -translate-y-1/2 bg-divider;
   }
   .menu-group-summary {
     list-style: none;

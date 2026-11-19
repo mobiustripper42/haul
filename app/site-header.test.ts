@@ -294,8 +294,8 @@ describe("AC9 (issue 155) — the account nav", () => {
 
   it.each([
     ["member", [...LINKS]],
-    ["admin", [...LINKS, ...ADMIN_LINKS]],
-  ] as const)("AC9: signed in as %s, the header has one drawer holding the same links, then Sign out at its foot", async (role, expected) => {
+    ["admin", [...ADMIN_LINKS, ...LINKS]],
+  ] as const)("AC9: signed in as %s, the header has one drawer holding the same links, an admin's admin links first, then Sign out at its foot", async (role, expected) => {
     session.member = { role };
     const { drawers, drawer } = await header("none");
     expect(drawers).toHaveLength(1);
@@ -304,10 +304,14 @@ describe("AC9 (issue 155) — the account nav", () => {
     expect(drawer.foot.forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
-  it("AC9: the drawer's links are the bar's: the same kind and destination", async () => {
+  it("AC9: the drawer's links are the bar's: the same kind and destination, in the drawer's own order", async () => {
     session.member = { role: "admin" };
     const { buttons, drawer } = await header("none");
-    const links = (found: Buttons) => found.filter((button) => button.props.href !== undefined).map(({ props }) => [props.kind, props.href]);
+    const links = (found: Buttons) =>
+      found
+        .filter((button) => button.props.href !== undefined)
+        .map(({ props }) => [props.kind, props.href])
+        .sort(([, a], [, b]) => String(a).localeCompare(String(b)));
     expect(links(drawer.buttons)).toEqual(links(buttons));
     expect(links(drawer.buttons)).toHaveLength(8);
   });
@@ -457,8 +461,8 @@ describe("AC3 (issue 159) — the page showing is marked", () => {
 describe("AC4 (issue 159) — the drawer", () => {
   it.each([
     ["member", [...LINKS]],
-    ["admin", [...LINKS, "heading", ...ADMIN_LINKS]],
-  ] as const)("AC4: signed in as %s, the drawer lists the member links, then for an admin an Admin heading and the admin links, openly, with no form among them", async (role, expected) => {
+    ["admin", ["heading", ...ADMIN_LINKS, ...LINKS]],
+  ] as const)("AC4: signed in as %s, the drawer lists, for an admin, an Admin heading and the admin links first, openly, then the member links, with no form among them", async (role, expected) => {
     session.member = { role };
     const { drawers, drawer } = await header("none");
     expect(drawers).toHaveLength(1);
