@@ -11,7 +11,7 @@ import { useEffect } from "react";
  *   `::before`, so the tap lands on the details itself), and the rest of the page is made `inert` while it is open,
  *   since the backdrop blocks the pointer and not the keyboard. Inerting is per sibling along the path from the
  *   drawer up, because `inert` cannot be lifted from a subtree once an ancestor sets it.
- * - The Admin group: an outside click or Escape closes it.
+ * - The Admin group: an outside click, focus moving outside it, or Escape closes it.
  * - A drawer left open when the window grows to 1024px, where it is not drawn, is closed: the page would stay inert.
  *
  * Renders nothing.
@@ -73,6 +73,8 @@ export function MenuScript() {
       if (drawer?.open && e.target === drawer) closeDrawer(true);
       closeGroups(e.target as Node | null);
     };
+    // Tabbing out of an open group (Weekly lists on to Sign out) closes it, or its panel hangs over the page.
+    const onFocusIn = (e: FocusEvent) => closeGroups(e.target as Node | null);
     const wide = window.matchMedia("(min-width: 64rem)");
     const onWide = () => {
       if (wide.matches) closeDrawer(false);
@@ -81,12 +83,14 @@ export function MenuScript() {
     drawer?.addEventListener("toggle", onToggle);
     document.addEventListener("keydown", onKey);
     document.addEventListener("click", onClick);
+    document.addEventListener("focusin", onFocusIn);
     wide.addEventListener("change", onWide);
     sync();
     return () => {
       drawer?.removeEventListener("toggle", onToggle);
       document.removeEventListener("keydown", onKey);
       document.removeEventListener("click", onClick);
+      document.removeEventListener("focusin", onFocusIn);
       wide.removeEventListener("change", onWide);
       for (const el of inerted.splice(0)) el.inert = false;
     };
