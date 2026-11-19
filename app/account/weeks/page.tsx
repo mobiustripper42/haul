@@ -33,13 +33,13 @@ type Query = { error?: string; switch?: string };
 /** Upcoming weeks with the meal card's pickers open. */
 const OPEN_SWITCH_PATH = `${ACCOUNT_WEEKS_PATH}?switch=${ACCOUNT_WEEKS_SWITCH_OPEN}`;
 
-/** The one muted line under an Upcoming week's title. */
-function lineOf(row: UpcomingRow, t: Translator, language: Language): string {
+/** The one muted line under an Upcoming week's title. A Locked week reads by whether the subscription is still locked (`locked`, from `lockedWeek`). */
+function lineOf(row: UpcomingRow, t: Translator, language: Language, locked: string | null): string {
   if (row.marker === "coming" && row.chargeDate !== null) return t("account.weeks.charged", { date: formatPickupDate(row.chargeDate, language) });
   if (row.marker === "closed") return t(row.closedPaid ? "account.weeks.closedPaid" : "account.weeks.closedNoCharge");
   if (row.marker === "weekCredit") return t("account.weeks.weekCredit");
   if (row.marker === "skipped") return t("account.weeks.skipped");
-  if (row.marker === "locked") return t("account.noPickupLocked");
+  if (row.marker === "locked") return t(locked === null ? "account.weeks.lockedAfterUpdate" : "account.noPickupLocked");
   if (row.marker === "declined") return t("account.weeks.declined");
   return t("account.marker.paid");
 }
@@ -87,7 +87,7 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
   const rows = upcoming.map((row) => ({
     id: row.week.weekOf,
     title: listedWeekTitle(t, row.week, language),
-    lines: [lineOf(row, t, language)],
+    lines: [lineOf(row, t, language, locked)],
     badge: row.marker === "coming" ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
     action: actionOf(row, t, language),
   }));
