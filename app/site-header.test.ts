@@ -304,7 +304,7 @@ describe("AC9 (issue 155) — the account nav", () => {
     expect(drawer.foot.forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
-  it("AC9: the drawer's links are the bar's: the same kind and destination, in the drawer's own order", async () => {
+  it("AC9: the drawer's links are the bar's: the same kind and destination, order aside", async () => {
     session.member = { role: "admin" };
     const { buttons, drawer } = await header("none");
     const links = (found: Buttons) =>

@@ -197,7 +197,7 @@
 
   /*
    * The Admin group: its summary is a menu row, with a chevron after the label in place of the disclosure triangle.
-   * A short divider rule before it sets the admin's menu off from the member links (Eric, on pull request #223).
+   * A short divider rule before it sets the admin's menu off from the member links.
    */
   .menu-group {
     @apply relative ml-2 pl-2;
