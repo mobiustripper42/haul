@@ -30,7 +30,8 @@ export function MenuDrawer({
       </summary>
       <div data-menu-drawer-panel aria-label={label} className="menu-drawer-panel">
         <div className="mb-2 flex min-h-touch items-center px-3">{heading}</div>
-        <div className="flex flex-col gap-1 overflow-y-auto">{children}</div>
+        {/* `-m-1 p-1`: a scrolling box clips what is drawn past its edge, and a row's focus ring sits outside the row. */}
+        <div className="-m-1 flex flex-col gap-1 overflow-y-auto p-1">{children}</div>
         <div className="mt-auto flex flex-col gap-1 border-t border-divider pt-2">{foot}</div>
       </div>
     </details>

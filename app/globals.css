@@ -128,9 +128,12 @@
       font-size: 93.75%;
     }
   }
-  /* The scrollbar's space is kept when a page is too short to scroll, so filtering a list moves nothing sideways (issue 84). */
+  /*
+   * The scrollbar is always drawn, so filtering a list moves nothing sideways (issue 84). A drawn track, not an empty
+   * reserved gutter: the header's bar runs to it, and the drawer opens beside it without the page shifting (issue 159).
+   */
   html {
-    scrollbar-gutter: stable;
+    overflow-y: scroll;
   }
   /* 2px teal, a 2px gap: set once for every control. */
   :focus-visible {
@@ -200,7 +203,7 @@
    * A short divider rule before it sets the admin's menu off from the member links.
    */
   .menu-group {
-    @apply relative ml-2 pl-2;
+    @apply relative ml-1 pl-2;
   }
   .menu-group::before {
     content: "";
