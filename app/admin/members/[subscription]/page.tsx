@@ -16,7 +16,6 @@ import { getRepository } from "../../../services";
 import { requireAdmin } from "../../../session";
 import { SiteHeader } from "../../../site-header";
 import { SUBSCRIPTION_BADGES, SubscriptionStatus } from "../../../subscription-badges";
-import { AdminNav } from "../../admin-nav";
 import { cancelForMember } from "./actions";
 
 export const generateMetadata = titled("admin.members.title");
@@ -51,10 +50,9 @@ export default async function AdminMember({
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-members" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "members" })}
           <div className="flex">
             <Button kind="quiet" href={ADMIN_PATH} back flush>
               {t("admin.member.back")}

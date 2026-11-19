@@ -17,7 +17,6 @@ import { ADMIN_LISTS_PATH, WEEK_PARAM, adminPickListCsvPath, adminPickupPrintPat
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
 import { SiteHeader } from "../../site-header";
-import { AdminNav } from "../admin-nav";
 import { loadWeekLists } from "./week";
 
 export const generateMetadata = titled("admin.lists.title");
@@ -48,10 +47,9 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-lists" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "lists" })}
           <div className="flex flex-col gap-1">
             <Heading>{t("admin.lists.title")}</Heading>
             <Hint>{t("admin.lists.hint")}</Hint>

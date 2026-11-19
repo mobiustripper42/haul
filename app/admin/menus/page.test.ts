@@ -14,6 +14,7 @@ import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { emptyRequest } from "../../next-headers-fake";
 import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
+import { SiteHeader } from "../../site-header";
 import { addSupperClub, MENUS, SIZES } from "../subscribers-fixture";
 import { MenusList } from "./menus-list";
 import AdminMenus from "./page";
@@ -118,15 +119,12 @@ describe("AC1 — the library", () => {
     await signInAs("admin");
   });
 
-  it("AC1: the admin nav links Members, Menus and Weeks in that order, Menus marked as the page showing", async () => {
-    const nav = linksOf(await render())
-      .filter((link) => ["/admin", "/admin/menus", "/admin/weeks"].includes(link.path))
-      .map(({ path, current }) => ({ path, current }));
-    expect(nav).toEqual([
-      { path: "/admin", current: false },
-      { path: "/admin/menus", current: true },
-      { path: "/admin/weeks", current: false },
-    ]);
+  // Issue 159: the admin links moved into the header (faked here); the page names itself to it and draws no nav of its own.
+  it('AC5 (issue 159): the page asks for the header with current "admin-menus", and no link on it is marked as the page showing', async () => {
+    vi.mocked(SiteHeader).mockClear();
+    const html = await render();
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "admin-menus" }));
+    expect(linksOf(html).filter((link) => link.current)).toEqual([]);
   });
 
   it("AC1: every menu, most recently saved first, each with its name, its first option's text on one line, the weeks it is on, Edit and Duplicate", async () => {

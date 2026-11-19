@@ -19,6 +19,13 @@ describe("SiteBar", () => {
     );
   });
 
+  // Issue 159, Interfaces 8: only the signed-in header passes `wide`; the row above stays the signed-out frame (AC6).
+  it("AC6 (issue 159): as a wide header, the row is max-w-bar in place of max-w-page, and the frame is otherwise the one above", () => {
+    expect(renderToStaticMarkup(createElement(SiteBar, { as: "header", wide: true, children: createElement("p", null, "child") }))).toBe(
+      `<header class="border-b border-divider bg-surface"><div class="${INNER_HEADER.replace("max-w-page", "max-w-bar")}"><p>child</p></div></header>`,
+    );
+  });
+
   it("AC7: as footer it is a <footer> pushed to the bottom, its divider on top, the inner row with py-5, around its children", () => {
     expect(render("footer")).toBe(
       `<footer class="mt-auto border-t border-divider bg-surface"><div class="${INNER_FOOTER}"><p>child</p></div></footer>`,

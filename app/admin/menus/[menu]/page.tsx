@@ -9,7 +9,6 @@ import { ADMIN_MENUS_PATH } from "../../../paths";
 import { getRepository } from "../../../services";
 import { requireAdmin } from "../../../session";
 import { SiteHeader } from "../../../site-header";
-import { AdminNav } from "../../admin-nav";
 import { loadCalendar } from "../../weeks/calendar";
 import { saveMenu } from "../actions";
 import { assignedLine } from "../assigned";
@@ -32,10 +31,9 @@ export default async function EditMenu({ params }: { params: Promise<{ menu: str
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-menus" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "menus" })}
           <div className="flex">
             <Button kind="quiet" href={ADMIN_MENUS_PATH} back flush>
               {t("admin.menu.back")}

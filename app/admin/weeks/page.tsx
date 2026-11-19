@@ -21,7 +21,6 @@ import { ADMIN_MENU_NEW_PATH, ADMIN_WEEKS_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
 import { SiteHeader } from "../../site-header";
-import { AdminNav } from "../admin-nav";
 import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 import { loadCalendar } from "./calendar";
 
@@ -349,10 +348,9 @@ export default async function AdminWeeks({ searchParams }: { searchParams: Promi
 
   return (
     <>
-      {await SiteHeader({ account: "none", current: "admin" })}
+      {await SiteHeader({ account: "none", current: "admin-weeks" })}
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
-          {await AdminNav({ current: "weeks" })}
           <div className="flex flex-col gap-1">
             <Heading>{t("admin.weeks.title")}</Heading>
             <Hint>{t("admin.weeks.hint")}</Hint>

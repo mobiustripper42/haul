@@ -116,6 +116,7 @@
   --spacing-touch: 2.75rem;
   --container-card: 23.5rem;
   --container-page: 60rem;
+  --container-bar: 72rem;
   --container-reading: 40rem;
 }
 
@@ -127,9 +128,12 @@
       font-size: 93.75%;
     }
   }
-  /* The scrollbar's space is kept when a page is too short to scroll, so filtering a list moves nothing sideways (issue 84). */
+  /*
+   * The scrollbar is always drawn, so filtering a list moves nothing sideways (issue 84). A drawn track, not an empty
+   * reserved gutter: the header's bar runs to it, and the drawer opens beside it without the page shifting (issue 159).
+   */
   html {
-    scrollbar-gutter: stable;
+    overflow-y: scroll;
   }
   /* 2px teal, a 2px gap: set once for every control. */
   :focus-visible {
@@ -170,6 +174,96 @@
   /* A link to the page that is showing: the header's Sign in on the sign-in pane. */
   .btn-secondary[aria-current="page"] {
     @apply bg-sage-soft hover:bg-sage-soft;
+  }
+
+  /*
+   * A menu entry (issue 159): a row of the signed-in header's bar or drawer, a text row in ink on no fill with no
+   * border, 44px tall. The page showing is bold teal on the page's tint. Sign out is the one that is a <button>, and
+   * reads muted. The Admin group's summary is the same row.
+   */
+  .btn-menu,
+  .menu-group-summary {
+    @apply inline-flex min-h-touch items-center justify-start gap-1 rounded-md px-3 text-left text-body text-ink hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-menu[aria-current="page"],
+  .menu-group-summary[data-active] {
+    @apply bg-surface-alt text-body-strong text-teal;
+  }
+  button.btn-menu {
+    @apply text-ink-muted;
+  }
+
+  /* The signed-in header's bar: shown at 1024px and wider (see the media query after the layers). */
+  .menu-bar {
+    @apply flex items-center gap-1;
+  }
+
+  /*
+   * The Admin group: its summary is a menu row, with a chevron after the label in place of the disclosure triangle.
+   * A short divider rule before it sets the admin's menu off from the member links.
+   */
+  .menu-group {
+    @apply relative ml-1 pl-2;
+  }
+  .menu-group::before {
+    content: "";
+    @apply absolute top-1/2 left-0 h-6 w-px -translate-y-1/2 bg-divider;
+  }
+  .menu-group-summary {
+    list-style: none;
+  }
+  .menu-group-summary::-webkit-details-marker {
+    display: none;
+  }
+  .menu-group-summary::after {
+    content: "";
+    @apply size-4 flex-none bg-current;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+
+  /*
+   * The drawer (MenuDrawer): the hamburger shut, a panel from the right over a dimmed page open. The tiers: the
+   * backdrop at 100, the panel at 110, the ✕ above the panel at 120. The ✕ is the <summary> itself, pinned to the
+   * window's corner where the panel is, so it is the one control that closes a <details> with no script.
+   * The icons are masks, the hamburger and the ✕ swapped on [open]; the summary's name is two visually hidden
+   * labels, one shown for each state.
+   */
+  .menu-drawer {
+    @apply relative size-touch;
+  }
+  .menu-drawer-toggle {
+    @apply flex size-touch list-none items-center justify-center rounded-md;
+  }
+  .menu-drawer-toggle::-webkit-details-marker {
+    display: none;
+  }
+  .menu-drawer-toggle::before {
+    content: "";
+    @apply size-6 bg-teal;
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'%3E%3Cpath d='M4 7h16M4 12h16M4 17h16'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .menu-drawer[open] > .menu-drawer-toggle::before {
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round'%3E%3Cpath d='M7 7l10 10M17 7L7 17'/%3E%3C/svg%3E") center / contain no-repeat;
+  }
+  .menu-drawer[open] > .menu-drawer-toggle {
+    @apply fixed top-3 right-4;
+    z-index: 120;
+  }
+  .menu-drawer[open]::before {
+    content: "";
+    @apply fixed inset-0 bg-ink/40;
+    z-index: 100;
+  }
+  .menu-drawer[open] .menu-label-shut,
+  .menu-drawer:not([open]) .menu-label-open {
+    display: none;
+  }
+  .menu-drawer-panel {
+    @apply fixed top-0 right-0 flex h-dvh w-72 flex-col gap-1 border-l border-divider bg-surface px-4 pt-3 pb-4 shadow-modal;
+    max-width: 80vw;
+    z-index: 110;
+    /* Scrolling the drawer's list past its end does not scroll the page behind. */
+    overscroll-behavior: contain;
   }
 
   /* The page a focused screen sits on: its card centred, a 16px gutter, 40px above and below. */
@@ -277,8 +371,8 @@
     @apply hidden;
   }
 
-  /* The signed-in header's Menu button: shown below 720px only, where the account row is not (see the media query after the layers). */
-  .account-menu {
+  /* The signed-in header's drawer slot: shown below 1024px only, where the bar is not (see the media query after the layers). */
+  .menu-drawer-slot {
     @apply hidden;
   }
 
@@ -352,22 +446,22 @@
   .wide-only {
     display: none;
   }
+  /* The signed-in header: the bar folds into the drawer (issue 159, which moved the fold from 720px). */
+  .menu-bar {
+    display: none;
+  }
+  .menu-drawer-slot {
+    display: block;
+  }
 }
 
-/* The members list: a table from 720px (45rem) up, stacked rows below it; the signed-in header the same. Unlayered, for the reason above. */
+/* The members list: a table from 720px (45rem) up, stacked rows below it. Unlayered, for the reason above. */
 @media (width < 45rem) {
   .data-table {
     display: none;
   }
   .row-list {
     display: flex;
-  }
-  /* The signed-in header: the account links fold into the Menu button (issue 155). */
-  .account-row {
-    display: none;
-  }
-  .account-menu {
-    display: block;
   }
 }
 

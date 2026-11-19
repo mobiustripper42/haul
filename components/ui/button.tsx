@@ -1,6 +1,6 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonKind = "primary" | "secondary" | "quiet";
+export type ButtonKind = "primary" | "secondary" | "quiet" | "menu";
 
 /** `true` lines the text up with the left edge; `"end"` with the right; `"end-narrow"` with the right below `lg` only. */
 export type ButtonFlush = boolean | "end" | "end-narrow";
