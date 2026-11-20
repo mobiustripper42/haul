@@ -89,6 +89,7 @@ async function paymentSection({
         testCard: t("supperClub.testCard"),
         cardFailed: t("supperClub.cardFailed"),
         cardRefused: t("supperClub.cardRefused"),
+        cardLoading: t("supperClub.cardLoading"),
         todayLabel: t("supperClub.todayLabel"),
         weeklyLabel: t("supperClub.weeklyLabel"),
         consentError: t("supperClub.consentError"),

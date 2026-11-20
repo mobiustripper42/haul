@@ -5,7 +5,7 @@ import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { issueAccountCode, validateAccountDetails, type AccountDetails } from "./create-account.js";
 import { hashCode, MAX_FAILURES_PER_WINDOW, verifySignInCode } from "./sign-in/code.js";
 
-const VALID = { firstName: "Ada", lastName: "Lovelace", email: "ada@example.com", phone: "216-555-0100", language: "en" };
+const VALID = { firstName: "Ada", lastName: "Lovelace", email: "ada@example.com", phone: "2165550100", language: "en" };
 
 describe("AC4 — validateAccountDetails", () => {
   it("AC4: valid details are ok, every value as given", () => {
@@ -58,14 +58,13 @@ describe("AC4 — validateAccountDetails", () => {
   });
 
   /** A well-formed value of exactly `length` characters, so only its length can fail it. */
-  const ofLength = (field: "firstName" | "lastName" | "email" | "phone", length: number) =>
+  const ofLength = (field: "firstName" | "lastName" | "email", length: number) =>
     field === "email" ? `${"a".repeat(length - "@example.com".length)}@example.com` : "1".repeat(length);
 
   it.each([
     ["firstName", 100],
     ["lastName", 100],
     ["email", 254],
-    ["phone", 40],
   ] as const)("AC4: %s passes at %i characters after trimming, and fails one past", (field, limit) => {
     const atLimit = ofLength(field, limit);
     expect(validateAccountDetails({ ...VALID, [field]: `  ${atLimit}  ` })).toEqual({ ok: true, details: { ...VALID, [field]: atLimit } });
@@ -73,7 +72,7 @@ describe("AC4 — validateAccountDetails", () => {
   });
 
   it("AC4: a value too long takes its place in form order, among missing and invalid ones", () => {
-    const entered = { firstName: "", lastName: ofLength("lastName", 101), email: "nope", phone: ofLength("phone", 41), language: "en" };
+    const entered = { firstName: "", lastName: ofLength("lastName", 101), email: "nope", phone: "555-0100", language: "en" };
     expect(validateAccountDetails(entered)).toEqual({ ok: false, errors: ["firstName", "lastName", "email", "phone"] });
   });
 
@@ -83,18 +82,26 @@ describe("AC4 — validateAccountDetails", () => {
     it.each([
       ["firstName", "Ana\nMaría", "Ana María"],
       ["lastName", "Ruiz\tde la Peña", "Ruiz de la Peña"],
-      ["phone", "216\r555-0100", "216 555-0100"],
     ] as const)("AC7: a %s holding a tab, LF or CR is stored with a space in its place", (field, typed, stored) => {
       expect(validateAccountDetails({ ...VALID, [field]: typed })).toEqual({ ok: true, details: { ...VALID, [field]: stored } });
+    });
+
+    // Issue 222: a phone is stored as its ten digits, so a cleaned CR is dropped with the other non-digits.
+    it("AC7: a phone holding a tab, LF or CR is stored as its ten digits", () => {
+      expect(validateAccountDetails({ ...VALID, phone: "216\r555-0100" })).toEqual({ ok: true, details: { ...VALID, phone: "2165550100" } });
     });
 
     it.each([
       ["firstName", "Ana María"],
       ["lastName", "Ruiz de la Peña"],
-      ["phone", "+1 (216) 555-0100"],
       ["email", "ana.maria@example.com"],
     ] as const)("AC7: with nothing to clean, %s is stored as typed", (field, typed) => {
       expect(validateAccountDetails({ ...VALID, [field]: typed })).toEqual({ ok: true, details: { ...VALID, [field]: typed } });
+    });
+
+    // Issue 222, AC2: +1 (216) 555-0100 has eleven digits starting with 1, so it is stored as the other ten.
+    it("AC7: with nothing to clean, a phone typed +1 (216) 555-0100 is stored as its ten digits", () => {
+      expect(validateAccountDetails({ ...VALID, phone: "+1 (216) 555-0100" })).toEqual({ ok: true, details: { ...VALID, phone: "2165550100" } });
     });
 
     it("AC7: an email holding a control character has it removed, and is valid", () => {
@@ -116,12 +123,22 @@ describe("AC4 — validateAccountDetails", () => {
       ["firstName", 100],
       ["lastName", 100],
       ["email", 254],
-      ["phone", 40],
     ] as const)("AC9: %s's limit of %i is measured on the cleaned value", (field, limit) => {
       const atLimit = ofLength(field, limit);
       expect(validateAccountDetails({ ...VALID, [field]: dirtied(atLimit) })).toEqual({ ok: true, details: { ...VALID, [field]: atLimit } });
       expect(validateAccountDetails({ ...VALID, [field]: dirtied(ofLength(field, limit + 1)) })).toEqual({ ok: false, errors: [field] });
     });
+  });
+});
+
+// Issue 222: the phone's rule is phoneDigits' (src/phone.test.ts); one accepted and one refused case go through here.
+describe("issue 222 — validateAccountDetails stores the phone's ten digits", () => {
+  it("AC1: a phone typed (216) 555-1234 is ok, stored as 2165551234", () => {
+    expect(validateAccountDetails({ ...VALID, phone: "(216) 555-1234" })).toEqual({ ok: true, details: { ...VALID, phone: "2165551234" } });
+  });
+
+  it("AC3: a phone of seven digits is the phone error", () => {
+    expect(validateAccountDetails({ ...VALID, phone: "555-1234" })).toEqual({ ok: false, errors: ["phone"] });
   });
 });
 

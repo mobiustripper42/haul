@@ -152,6 +152,15 @@ describe("AC10 — a formula", () => {
     },
   );
 
+  // Issue 222: memberCells writes the Phone cell through formatPhone (src/phone.test.ts holds its cases).
+  it("AC5 (issue 222): a stored 2165551234 is written (216) 555-1234, with no apostrophe", () => {
+    expect(cells({ phone: "2165551234" }).Phone).toBe("(216) 555-1234");
+  });
+
+  it("AC5 (issue 222): a stored 216-555-0187, saved before ten digits were kept, is written unchanged", () => {
+    expect(cells({ phone: "216-555-0187" }).Phone).toBe("216-555-0187");
+  });
+
   it("AC10: the phone exception is the Phone column's only: +1 216 is neutralised anywhere else", () => {
     const typed = "+1 216";
     const out = cells({ firstName: typed, lastName: typed, email: typed, options: [{ typeName: "Which menu?", optionName: typed }] });

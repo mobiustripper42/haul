@@ -320,6 +320,21 @@ describe("AC4 (issue 136) — the details card", () => {
     expect(detailsCardLines((await render()).html).at(-1)).toBe("216.555.0134 · English");
   });
 
+  // Issue 222: the display rule is formatPhone's (src/phone.test.ts); the line shows the phone through it.
+  it("AC5 (issue 222): a stored 2165551234 is shown as (216) 555-1234", async () => {
+    const member = await ada({ phone: "2165551234" });
+    await subscribed(member);
+    signIn(member);
+    expect(detailsCardLines((await render()).html).at(-1)).toBe("(216) 555-1234 · English");
+  });
+
+  it("AC5 (issue 222): a stored 216-555-0187, saved before ten digits were kept, is shown unchanged", async () => {
+    const member = await ada({ phone: "216-555-0187" });
+    await subscribed(member);
+    signIn(member);
+    expect(detailsCardLines((await render()).html).at(-1)).toBe("216-555-0187 · English");
+  });
+
   it("AC4: the language is named in itself: a Spanish-speaking member's line ends Español", async () => {
     const member = await ada({ language: "es" });
     await subscribed(member);

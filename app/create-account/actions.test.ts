@@ -249,7 +249,7 @@ describe("AC5 — an email no member has", () => {
     expect(await repo.findMemberByEmail(ADA)).toMatchObject({
       firstName: "Ada",
       lastName: "Lovelace",
-      phone: "216-555-0100",
+      phone: "2165550100",
       language: "es",
       role: "member",
       emailConfirmedAt: null,
@@ -280,6 +280,23 @@ describe("AC5 — an email no member has", () => {
   });
 });
 
+// Issue 222: the phone's rule is phoneDigits' (src/phone.test.ts); one accepted and one refused case go through here.
+describe("issue 222 — the phone Create Account saves", () => {
+  it("AC1: a phone typed (216) 555-1234 is saved as 2165551234", async () => {
+    const { requestAccountCode } = await load();
+    expect(await redirectOf(requestAccountCode(details({ phone: "(216) 555-1234" })))).toBe(CODE_PAGE);
+    await runScheduled();
+    expect((await repo.findMemberByEmail(ADA))?.phone).toBe("2165551234");
+  });
+
+  it("AC3: a phone of seven digits redirects to /create-account?error=phone, and no member is saved", async () => {
+    const { requestAccountCode } = await load();
+    expect(await redirectOf(requestAccountCode(details({ phone: "555-1234" })))).toBe("/create-account?error=phone");
+    await runScheduled();
+    expect(await repo.findMemberByEmail(ADA)).toBeNull();
+  });
+});
+
 describe("AC6 — an email whose member is unconfirmed", () => {
   it("AC6: the member's first name, last name, phone and language are replaced, and a code is emailed", async () => {
     const before = await repo.createMember({ email: ADA });
@@ -290,7 +307,7 @@ describe("AC6 — an email whose member is unconfirmed", () => {
       id: before.id,
       firstName: "Augusta",
       lastName: "King",
-      phone: "216-555-0199",
+      phone: "2165550199",
       language: "es",
       emailConfirmedAt: null,
     });
@@ -304,7 +321,7 @@ describe("AC6 — an email whose member is unconfirmed", () => {
     vi.setSystemTime(new Date(T0.getTime() + 30_000));
     expect(await redirectOf(requestAccountCode(details({ phone: "216-555-0199" })))).toBe(CODE_PAGE);
     await runScheduled();
-    expect((await repo.findMemberByEmail(ADA))?.phone).toBe("216-555-0199");
+    expect((await repo.findMemberByEmail(ADA))?.phone).toBe("2165550199");
     expect(email.sent).toHaveLength(1);
   });
 

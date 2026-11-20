@@ -188,7 +188,7 @@ describe("AC4 — the fields refill from the draft cookie only when error is pre
   it("AC4: with error present every input refills, and the failing one too", async () => {
     const { html } = await render({ error: "email" });
     const refilled = Object.fromEntries(attributesOf(html, "input").map((input) => [input.name, input.value]));
-    expect(refilled).toEqual({ firstName: "Ada", lastName: "Lovelace", email: "ada@example", phone: "216-555-0100" });
+    expect(refilled).toEqual({ firstName: "Ada", lastName: "Lovelace", email: "ada@example", phone: "(216) 555-0100" });
   });
 
   it("AC4: with error present the language select refills", async () => {

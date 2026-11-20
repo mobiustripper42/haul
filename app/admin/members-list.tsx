@@ -4,6 +4,7 @@ import { useState } from "react";
 import { filterSubscribers, mealLabel, nextSort, OPENING_SORT, SORT_CHOICES, sortSubscribers, subscriberName, type Sort, type SortKey } from "@core/member-list.js";
 import type { Language } from "@core/i18n.js";
 import { formatShortDate } from "@core/pickup-week.js";
+import { formatPhone } from "@core/phone.js";
 import type { Subscriber } from "@core/ports/repository.js";
 import { DataTable, type DataTableColumn } from "../../components/ui/data-table";
 import { Field } from "../../components/ui/field";
@@ -85,7 +86,7 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
           cells: [
             nameOf(row),
             row.email,
-            row.phone ?? "",
+            formatPhone(row.phone),
             mealLabel(row.options),
             formatShortDate(row.joinedDate, language),
             statusOf(row),
@@ -112,7 +113,7 @@ export function MembersList({ rows, text, language }: { rows: Subscriber[]; text
           title: nameOf(row),
           badge: statusOf(row),
           detail: fill(text.joinedLine, { meal: mealLabel(row.options), date: formatShortDate(row.joinedDate, language) }),
-          note: [row.email, row.phone].filter(Boolean).join(" · "),
+          note: [row.email, formatPhone(row.phone)].filter(Boolean).join(" · "),
         }))}
       />
       {shown.length === 0 && <Hint>{fill(text.noMatch, { q: query })}</Hint>}

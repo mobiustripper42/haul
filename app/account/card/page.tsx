@@ -113,6 +113,7 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
                   testCard: t("supperClub.testCard"),
                   cardFailed: t("supperClub.cardFailed"),
                   cardRefused: t("supperClub.cardRefused"),
+                  cardLoading: t("supperClub.cardLoading"),
                   save: t("account.card.save"),
                 }}
               />

@@ -171,7 +171,7 @@ describe("AC4 (issue 156) — a save that broke a rule", () => {
     request.current.cookies[DRAFT] = JSON.stringify({ firstName: "", lastName: "Byron", email: OLD, phone: "216-555-0199", language: "en" });
     const { html } = await render({ error: "firstName" });
     expect(attributesOf(html, "input").find((input) => input.name === "firstName")).toMatchObject({ "aria-invalid": "true" });
-    expect(valuesOf(html)).toMatchObject({ firstName: "", lastName: "Byron", phone: "216-555-0199" });
+    expect(valuesOf(html)).toMatchObject({ firstName: "", lastName: "Byron", phone: "(216) 555-0199" });
   });
 
   // Review of commit f65a2b3: the draft cookie lives ten minutes, so a member can come back to an error with none.
@@ -180,6 +180,15 @@ describe("AC4 (issue 156) — a save that broke a rule", () => {
     const { html } = await render({ error: "firstName" });
     expect(valuesOf(html)).toMatchObject({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "(216) 555-0134" });
     expect(selectedLanguages(html)).toEqual(["es"]);
+  });
+});
+
+// Issue 222: the box's rule is formatPhoneTyping's (src/phone.test.ts); the draft goes through it in AC4 above.
+describe("AC6 (issue 222) — the phone box starts formatted", () => {
+  it("AC6: a stored phone of 216-555-0100 starts the box as (216) 555-0100", async () => {
+    const member = await ada();
+    await services.repo.saveMemberDetails(member.id, { firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en", menuEmails: true });
+    expect(valuesOf((await render()).html).phone).toBe("(216) 555-0100");
   });
 });
 

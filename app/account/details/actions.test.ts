@@ -177,7 +177,7 @@ describe("AC3 (issue 156) — a save with the email unchanged", () => {
     const member = await ada();
     const saved = details({ firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" });
     expect(await redirectOf(saveDetails(saved))).toBe(`${PAGE}?saved=1`);
-    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" });
+    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", lastName: "Byron", phone: "2165550199", language: "es" });
   });
 
   it("AC3: no email is sent, before or after the response", async () => {
@@ -215,6 +215,21 @@ describe("AC4 (issue 156) — a save that breaks a Create Account rule", () => {
       phone: "216-555-0199",
       language: "es",
     });
+  });
+});
+
+// Issue 222: the phone's rule is phoneDigits' (src/phone.test.ts); one accepted and one refused case go through here.
+describe("issue 222 — the phone Your details saves", () => {
+  it("AC1: a phone typed (216) 555-1234 is stored as 2165551234", async () => {
+    const member = await ada();
+    expect(await redirectOf(saveDetails(details({ phone: "(216) 555-1234" })))).toBe(`${PAGE}?saved=1`);
+    expect((await reload(member)).phone).toBe("2165551234");
+  });
+
+  it("AC3: a phone of seven digits stores nothing and lands on /account/details?error=phone", async () => {
+    const member = await ada();
+    expect(await redirectOf(saveDetails(details({ firstName: "Adaline", phone: "555-1234" })))).toBe(`${PAGE}?error=phone`);
+    expect(await reload(member)).toEqual(member);
   });
 });
 
@@ -267,7 +282,7 @@ describe("AC8 (issue 156) — the rest of a save with a new email", () => {
   it("AC8: name, phone and language are stored straight away, before the code is confirmed", async () => {
     const member = await ada();
     expect(await redirectOf(saveDetails(details({ firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es", email: NEW })))).toBe(PAGE);
-    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" });
+    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", lastName: "Byron", phone: "2165550199", language: "es" });
   });
 });
 
@@ -364,7 +379,7 @@ describe("AC13 (issue 156) — Send a new code, and the request limit", () => {
     const member = await ada();
     await useUpTheLimit();
     expect(await redirectOf(saveDetails(details({ firstName: "Adaline", phone: "216-555-0199", language: "es", email: NEW })))).toBe(`${PAGE}?limited=35`);
-    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", phone: "216-555-0199", language: "es" });
+    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", phone: "2165550199", language: "es" });
     expect(await repo.findEmailChange(member.id)).toBeNull();
     await runScheduled();
     expect(email.sent).toEqual([]);
@@ -449,7 +464,7 @@ describe("AC9 (issue 141) — the menu email checkbox", () => {
   it("AC9: a save with the box unticked stores menu emails off, with the rest of the details", async () => {
     const member = await ada();
     expect(await redirectOf(saveDetails(unticked({ firstName: "Adaline" })))).toBe(`${PAGE}?saved=1`);
-    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", menuEmails: false });
+    expect(await reload(member)).toEqual({ ...member, firstName: "Adaline", phone: "2165550100", menuEmails: false });
   });
 
   it("AC9: a save with the box ticked stores menu emails on again", async () => {

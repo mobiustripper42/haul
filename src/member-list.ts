@@ -1,3 +1,4 @@
+import { digitsOf } from "./phone.js";
 import type { Subscriber } from "./ports/repository.js";
 
 export type SortKey = "name" | "meal" | "joined" | "status";
@@ -37,8 +38,6 @@ export const SEPARATOR = " · ";
 export function mealLabel(options: Subscriber["options"]): string {
   return options.map((option) => option.optionName).join(SEPARATOR);
 }
-
-const digitsOf = (text: string): string => text.replace(/\D/g, "");
 
 /**
  * The rows matching `query` on name, email or phone, in the order given. A name matches as the first name, the
