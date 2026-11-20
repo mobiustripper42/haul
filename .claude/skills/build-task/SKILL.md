@@ -276,3 +276,7 @@ compared against. `settled` is the operator's audit of the calls made without th
 request body and not the printed receipt because in Haul the block ran long and hand-backs
 summarised it, and a summary of a call made without the operator is not an audit of it. The
 hand-back links to that section instead of restating it.
+
+`/kill-this` printed the sample block last, before this receipt. The hand-back prints the receipt
+first, and then repeats the `**Sample:**` block, unsummarised, with its two questions and "Answer
+with `/sample`", so it is the last thing the operator reads.

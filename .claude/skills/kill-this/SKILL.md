@@ -65,7 +65,7 @@ Build the PR title from the issue the PR closes, never from a commit: `SUBJECT=$
 
 ## Step 3 — Code review, in the background
 
-**Every branch diff in this skill is against `origin/main`, fetched first** — `git fetch origin main`, once, here, and three-dot, so it starts at the branch point. Local `main` can sit behind it, and a diff against a stale `main` carries other people's merged work into the checks without saying so (observed in Haul). Where a project's trunk is not `main` (Step 4), read that name for `main` throughout.
+**Every branch diff in this skill is against `origin/main`, fetched first** — `git fetch origin main`, once, here, and three-dot, so it starts at the branch point. Local `main` can sit behind it, and a diff against a stale `main` carries other people's merged work into the checks without saying so (observed in Haul). Where a project's trunk is not `main` (Step 4), read that name for `main` throughout. **The one exception is Step 5's sample,** which compares against the base named there.
 
 Do Step 3.4's screen check and Step 3.5's trigger check **first**: each is a property of the diff and needs no review to answer. Then start every review this PR gets **in one message, each as a background agent** (`run_in_background: true`):
 
@@ -225,6 +225,14 @@ Capture `PR_NUMBER` and `PR_URL`.
 
 The session file lives on the orphan `sessions` branch at `.sessions-worktree/sessions/<file>.md`. Read it first.
 
+**Resolve the sample's base once:** on a stacked branch (Step 4.2 wrote the `Stacked on PR` line), `origin/<the parent's branch>`, after `git fetch origin <the parent's branch>`; on any other task branch, `origin/main`; on `main`, `HEAD~1`. Then run the picker, after Step 2's commit and any review fix, and keep its output as `SAMPLE`:
+
+```
+node .claude/skills/sample/sample.mjs pick --base <base>
+```
+
+It picks 2 tests and 1 function from the lines this branch changed, and prints the `**Sample:**` block alone. It never fails the ship: a base it cannot resolve prints a `**Sample:** none — …` line, and that goes in the block as it is.
+
 Compose the task block:
 
 ```
@@ -239,6 +247,7 @@ Compose the task block:
 **Blocked:** <only if blocked>
 **Branch:** <BRANCH>
 **Opened at:** <ISO 8601 timestamp>
+<SAMPLE, exactly as the script printed it>
 ```
 
 Use the **Edit** tool on `$SESSION_FILE` (the worktree path) to:
@@ -270,6 +279,18 @@ Next: keep working in this session (cut another branch + `/kill-this` again), or
 ```
 
 If `EXISTING_PR_STATE` was `OPEN` and Step 4.2 was skipped, surface the existing PR URL and note that the task block now references the pre-existing PR.
+
+**Then print `SAMPLE` verbatim, and last.** Nothing after it, whichever skill called `/kill-this`: a caller that adds a receipt or a hand-back prints it before this block, or repeats the block unsummarised after. Under it, print the two questions once, not on each line, and how to answer:
+
+```
+<SAMPLE>
+
+A test: If this test fails, what's broken for a member?
+A function: What is this handling that I never asked for?
+Answering is optional. Answer with `/sample 1 real, 2 can't tell, 3 waste`.
+```
+
+The lines are `path:line`, for the operator to paste into an editor. A `**Sample:** none` block prints as it is, without the questions.
 
 ## Notes
 
