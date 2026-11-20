@@ -81,7 +81,7 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
         <div className="flex w-full max-w-page flex-col gap-5">
           <div className="flex">
             <Button kind="quiet" href={ACCOUNT_PATH} back flush>
-              {t("header.yourMeal")}
+              {t("header.yourAccount")}
             </Button>
           </div>
           <Heading>{t("account.card.title")}</Heading>

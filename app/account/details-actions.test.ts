@@ -1,5 +1,5 @@
-// Issue 156: Your details' four actions, through an InMemoryRepository, a FakeEmail and FakePayments, with
-// `next/headers` faked, `redirect` throwing as the real one does and `after` collecting its callback for the test to
+// Issue 156: Your details' four actions, moved from app/account/details/ by issue 219 and landing on /account, through
+// an InMemoryRepository, a FakeEmail and FakePayments, with `next/headers` faked, `redirect` throwing as the real one does and `after` collecting its callback for the test to
 // run, as app/create-account/actions.test.ts drives Create Account. The code rules are requestEmailChange's and
 // verifyEmailChange's (src/email-change.test.ts), the request limit's rules takeRateLimit's, and which details are
 // valid validateAccountDetails's; each goes through here accepted once and refused once. What is held here is what
@@ -14,14 +14,14 @@ import type { Member } from "@core/members.js";
 import { PaymentsError } from "@core/ports/payments.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession, verifySession } from "@core/sign-in/session.js";
-import { addSupperClub } from "../../admin/subscribers-fixture";
-import { AUDIT_ENTRY_POINTS } from "../../audit-entry-points";
-import { emptyRequest } from "../../next-headers-fake";
-import { redirectOf } from "../../screen-test-helpers";
-import { requestCode } from "../../sign-in/actions";
-import { confirmEmailChange, keepOldEmail, resendEmailChange, saveDetails } from "./actions";
+import { addSupperClub } from "../admin/subscribers-fixture";
+import { AUDIT_ENTRY_POINTS } from "../audit-entry-points";
+import { emptyRequest } from "../next-headers-fake";
+import { redirectOf } from "../screen-test-helpers";
+import { requestCode } from "../sign-in/actions";
+import { confirmEmailChange, keepOldEmail, resendEmailChange, saveDetails } from "./details-actions";
 
-const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
+const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
   repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository,
   email: undefined as unknown as import("@core/adapters/fake-email.js").FakeEmail,
@@ -32,19 +32,19 @@ const services = vi.hoisted(() => ({
 const scheduled = vi.hoisted(() => ({ tasks: [] as unknown[] }));
 
 vi.mock("next/headers", async () => {
-  const { fakeNextHeaders } = await import("../../next-headers-fake");
+  const { fakeNextHeaders } = await import("../next-headers-fake");
   return {
     cookies: () => fakeNextHeaders(request.current).cookies(),
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
-vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect }));
+vi.mock("next/navigation", async () => ({ redirect: (await import("../screen-test-helpers")).throwingRedirect }));
 vi.mock("next/server", () => ({
   after: (task: unknown) => {
     scheduled.tasks.push(task);
   },
 }));
-vi.mock("../../services", () => ({
+vi.mock("../services", () => ({
   getRepository: () => services.repo,
   getEmail: () => services.email,
   getPayments: () => services.payments,
@@ -59,7 +59,7 @@ const DAY = 24 * 60 * MINUTE;
 const ADDRESS = "203.0.113.7";
 const OLD = "ada@example.com";
 const NEW = "ada.new@example.com";
-const PAGE = "/account/details";
+const PAGE = "/account";
 const SESSION = "ocf_session";
 const DRAFT = "ocf_account_draft";
 const STRANGER = "nobody@example.com";
@@ -173,7 +173,7 @@ describe("AC1 (issue 156) — signed out", () => {
 });
 
 describe("AC3 (issue 156) — a save with the email unchanged", () => {
-  it("AC3: it stores first name, last name, phone and language, and lands on /account/details?saved=1", async () => {
+  it("AC3: it stores first name, last name, phone and language, and lands on /account?saved=1", async () => {
     const member = await ada();
     const saved = details({ firstName: "Adaline", lastName: "Byron", phone: "216-555-0199", language: "es" });
     expect(await redirectOf(saveDetails(saved))).toBe(`${PAGE}?saved=1`);
@@ -196,7 +196,7 @@ describe("AC3 (issue 156) — a save with the email unchanged", () => {
 });
 
 describe("AC4 (issue 156) — a save that breaks a Create Account rule", () => {
-  it("AC4: a bad email stores nothing, the name typed beside it included, starts no change, and lands on /account/details?error=email", async () => {
+  it("AC4: a bad email stores nothing, the name typed beside it included, starts no change, and lands on /account?error=email", async () => {
     const member = await ada();
     expect(await redirectOf(saveDetails(details({ firstName: "Adaline", email: "ada.new@" })))).toBe(`${PAGE}?error=email`);
     expect(await reload(member)).toEqual(member);
@@ -226,7 +226,7 @@ describe("issue 222 — the phone Your details saves", () => {
     expect((await reload(member)).phone).toBe("2165551234");
   });
 
-  it("AC3: a phone of seven digits stores nothing and lands on /account/details?error=phone", async () => {
+  it("AC3: a phone of seven digits stores nothing and lands on /account?error=phone", async () => {
     const member = await ada();
     expect(await redirectOf(saveDetails(details({ firstName: "Adaline", phone: "555-1234" })))).toBe(`${PAGE}?error=phone`);
     expect(await reload(member)).toEqual(member);
@@ -254,7 +254,7 @@ describe("AC6 (issue 156) — an email that differs only by case or spaces", () 
 });
 
 describe("AC7 (issue 156) — a save with a new email", () => {
-  it("AC7: it lands on /account/details with a change to the new address pending, and the member's email unchanged", async () => {
+  it("AC7: it lands on /account with a change to the new address pending, and the member's email unchanged", async () => {
     const member = await ada();
     expect(await redirectOf(saveDetails(details({ email: NEW })))).toBe(PAGE);
     expect((await repo.findEmailChange(member.id))?.newEmail).toBe(NEW);
@@ -287,7 +287,7 @@ describe("AC8 (issue 156) — the rest of a save with a new email", () => {
 });
 
 describe("AC10 (issue 156) — the right code", () => {
-  it("AC10: it makes the new address the member's email and lands on /account/details?saved=1", async () => {
+  it("AC10: it makes the new address the member's email and lands on /account?saved=1", async () => {
     const member = await ada();
     const code = await pendingChange();
     expect(await redirectOf(confirmEmailChange(form({ code })))).toBe(`${PAGE}?saved=1`);
@@ -332,7 +332,7 @@ describe("AC11 (issue 156) — Square refuses", () => {
 });
 
 describe("AC12 (issue 156) — a wrong code", () => {
-  it("AC12: it changes nothing and lands on /account/details?error=invalid", async () => {
+  it("AC12: it changes nothing and lands on /account?error=invalid", async () => {
     const member = await ada();
     const code = await pendingChange();
     const wrong = code === "000000" ? "111111" : "000000";
@@ -353,7 +353,7 @@ describe("AC12 (issue 156) — a wrong code", () => {
 });
 
 describe("AC13 (issue 156) — Send a new code, and the request limit", () => {
-  it("AC13: Send a new code sends a code to the pending address, which confirms it, and lands on /account/details?sent=1", async () => {
+  it("AC13: Send a new code sends a code to the pending address, which confirms it, and lands on /account?sent=1", async () => {
     const member = await ada();
     await pendingChange();
     expect(await redirectOf(resendEmailChange(form({ resend: "1" })))).toBe(`${PAGE}?sent=1`);
@@ -413,7 +413,7 @@ describe("AC13 (issue 156) — Send a new code, and the request limit", () => {
 });
 
 describe("AC14 (issue 156) — Keep the old email", () => {
-  it("AC14: it drops the pending change, keeps the old address, records nothing, and lands on /account/details", async () => {
+  it("AC14: it drops the pending change, keeps the old address, records nothing, and lands on /account", async () => {
     const member = await ada();
     await pendingChange();
     expect(await redirectOf(keepOldEmail(form({})))).toBe(PAGE);
@@ -443,7 +443,7 @@ describe("AC17 (issue 156) — the audit trail", () => {
   });
 
   it("AC17: the four actions are declared: confirmEmailChange records email_changed, saveDetails and resendEmailChange rate_limit_refusal, keepOldEmail none", () => {
-    const entry = (name: string) => AUDIT_ENTRY_POINTS[`app/account/details/actions.ts#${name}`];
+    const entry = (name: string) => AUDIT_ENTRY_POINTS[`app/account/details-actions.ts#${name}`];
     expect(entry("confirmEmailChange")).toEqual({ records: ["email_changed"] });
     expect(entry("saveDetails")).toEqual({ records: ["rate_limit_refusal"] });
     expect(entry("resendEmailChange")).toEqual({ records: ["rate_limit_refusal"] });

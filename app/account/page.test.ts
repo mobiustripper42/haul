@@ -4,29 +4,38 @@
 // signed in is app/session.test.ts's (requireMember); which subscription is found is findSignupConfirmation's; which
 // week is next is nextPickup's (src/pickup-week.test.ts), so here one week of each kind is read through the page.
 // The header is faked, so what is read of it is the call the page makes; its buttons are app/site-header.test.ts's.
-// The name's parts are memberDisplayName's (src/members.test.ts). The page is read by the values it shows, its badge's
-// kind, its links and Notices, and the key of a line shown in some states and not others (issue 211), never its words.
-import { createElement } from "react";
+// The page is read by the values it shows, its badge's kind, its links, forms and Notices, and the key of a line shown
+// in some states and not others (issue 211), never its words.
+//
+// Issue 219: /account is one page, Your account: the Supper Club card (the first Card, a `<section>`), with Switch from
+// Upcoming weeks (issue 138's tests moved here), and below it Your details, the form and code step from /account/details
+// (issue 156's page tests moved here). Each form's action stands in for a server reference: React writes what
+// `$$FORM_ACTION` gives as the form's `action`, so the markup names the action a form posts to. What the actions do is
+// ./details-actions.test.ts's and ./weeks/actions.test.ts's; the code step's own parts app/sign-in/code-step.test.ts's.
+import { existsSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { createElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { createTranslator, type Language } from "@core/i18n.js";
+import { createTranslator, pluralKey, type Language, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { en } from "@core/messages/en.js";
-import { es } from "@core/messages/es.js";
 import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, pickupWhereLine, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
+import { hashCode } from "@core/sign-in/code.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Badge } from "../../components/ui/badge";
+import { Button } from "../../components/ui/button";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
-import { alertTexts, attributesOf, findAll, redirectOf, textsOf } from "../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, sentencesOf, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
 import { addSupperClub } from "../admin/subscribers-fixture";
 import { payDeclinedWeek } from "./declined-fixture";
+import { keepOldEmail } from "./details-actions";
 import Account from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -49,16 +58,36 @@ vi.mock("../services", () => ({
   getEmail: () => {
     throw new Error("/account has no reason to send email");
   },
+  getPayments: () => {
+    throw new Error("/account has no reason to reach Square");
+  },
   getSessionSecret: () => services.secret,
 }));
 vi.mock("../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
+vi.mock("./details-actions", () => {
+  const action = (name: string) => Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: `$ACTION_ID_${name}`, action: name }) });
+  return {
+    saveDetails: action("saveDetails"),
+    confirmEmailChange: action("confirmEmailChange"),
+    resendEmailChange: action("resendEmailChange"),
+    keepOldEmail: action("keepOldEmail"),
+  };
+});
+vi.mock("./weeks/actions", () => {
+  const action = (name: string) => Object.assign(async () => {}, { $$FORM_ACTION: () => ({ name: `$ACTION_ID_${name}`, action: name }) });
+  return { skipWeek: action("skipWeek"), unskipWeek: action("unskipWeek"), switchMeal: action("switchMeal") };
+});
 
 // Wednesday, February 3, noon in Cleveland. The calendar lists from the week of February 7 (its cutoff, the end of
 // Monday, February 1, passed; its pickup to come), then February 14, and on: 12 weeks, to April 25.
 const NOW = new Date("2027-02-03T17:00:00.000Z");
 const FEB_7 = "2027-02-07";
 const FEB_14 = "2027-02-14";
-const DAY = 24 * 60 * 60_000;
+const MAR_7 = "2027-03-07";
+const MINUTE = 60_000;
+const DAY = 24 * 60 * MINUTE;
+const sundaysFrom = (first: string, count: number): string[] =>
+  Array.from({ length: count }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * 7 * DAY).toISOString().slice(0, 10));
 
 const t = createTranslator("en");
 
@@ -108,40 +137,67 @@ const subscribed = async (member: Member, options?: Parameters<typeof signup>[1]
   await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
 };
 
+/** Ada, signed in, with an active subscription paid for January 3; her member and its id. */
+const activeAda = async (options?: Parameters<typeof signup>[1]): Promise<{ member: Member; subscriptionId: string }> => {
+  const member = await ada();
+  const rows = await signup(member, options);
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  signIn(member);
+  return { member, subscriptionId: rows.subscriptionId };
+};
+
+/** Each option type's id → the id of its option named in `names`. */
+const choiceOf = (names: string[]): Record<string, string> =>
+  Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => names.includes(option.name))?.id ?? "no such option"]));
+
 const change = (weekOf: string, over: Partial<ChangedWeek>) =>
   services.repo.savePickupWeek(product.id, { weekOf, closedAt: null, note: null, firstDay: null, lastDay: null, ...over });
 const close = (weekOf: string) => change(weekOf, { closedAt: new Date("2027-01-20T15:00:00.000Z") });
 
-/** The page's markup, its runs of text, all of it as one line, the meal card's badge kind and text, and how many Notices it shows. */
-const render = async (): Promise<{ html: string; runs: string[]; text: string; badge: unknown; badgeText: unknown; notices: number }> => {
-  const element = await Account();
+/** The page's query (issue 219): Switch's and Your details'. */
+type Query = { switch?: string; switchError?: string; saved?: string; error?: string; sent?: string; limited?: string };
+
+/** The markup of each Card (a `<section>`), in order: the Supper Club card first, then Your details or the code step. */
+const sectionsOf = (html: string): string[] => [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "");
+
+/**
+ * The page drawn with `query`, or called with no props when none is given: its tree, markup, runs of text, all of it
+ * as one line, the meal card's badge kind and text, how many Notices it shows, and its Cards' markup.
+ */
+const render = async (query?: Query) => {
+  const element = (query === undefined ? await Account() : await Account({ searchParams: Promise.resolve(query) })) as ReactElement;
   const html = renderToStaticMarkup(element);
   const runs = textsOf(html);
   const badge = findAll(element, Badge)[0]?.props;
-  return { html, runs, text: runs.join(" "), badge: badge?.kind, badgeText: badge?.children, notices: findAll(element, Notice).length };
+  return { element, html, runs, text: runs.join(" "), badge: badge?.kind, badgeText: badge?.children, notices: findAll(element, Notice).length, sections: sectionsOf(html) };
 };
 
 /** The page's text holds none of the listed weeks' titles: no next pickup is named. */
 const namesNoWeek = (text: string): boolean => [FEB_7, FEB_14].every((weekOf) => !text.includes(titleOf(weekOf)));
 
-/** The lines after the details card's heading, the last thing on the page: none when the heading is not shown. */
-const detailsLines = (runs: string[], language: Language = "en"): string[] => {
-  const heading = runs.indexOf((language === "en" ? en : es)["account.details"]);
-  return heading === -1 ? [] : runs.slice(heading + 1);
-};
-
-/**
- * Issue 139: the details card's own lines after its heading, read from the card (a Card is a `<section>`) and not
- * from the page after it, which ends with the Cancel link on an active subscription. None when no card shows it.
- */
-const detailsCardLines = (html: string, language: Language = "en"): string[] => {
-  const heading = (language === "en" ? en : es)["account.details"];
-  const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => textsOf(match[1] ?? "")).find((runs) => runs.includes(heading));
-  return card === undefined ? [] : card.slice(card.indexOf(heading) + 1);
-};
-
 /** The title of the week of `weekOf` as the page's language writes it, with its row's days. */
 const titleOf = (weekOf: string, changed: ChangedWeek | null = null): string => weekTitle(t, pickupWeek(weekOf, changed), "en");
+
+/** Where each link in `markup` goes, as a path and query. */
+const linksOf = (markup: string): string[] =>
+  attributesOf(markup, "a").map((link) => {
+    const url = new URL(link.href ?? "", "http://haul.test/account");
+    return `${url.pathname}${url.search}`;
+  });
+
+/** Each form in `markup`, in order: the action it posts to, and its inner markup. */
+const formsOf = (markup: string): { action: string; inner: string }[] =>
+  [...markup.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].map(([, attrs = "", inner = ""]) => {
+    const buttons = attributesOf(inner, "button");
+    const action = buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action ?? "";
+    return { action, inner };
+  });
+
+/** The action each form in `markup` posts to, in order. */
+const actionsOf = (markup: string): string[] => formsOf(markup).map((form) => form.action);
+
+/** Issue 219: the pending-switch line for the newer set `meal` starting the week of `weekOf`, by its catalog line. */
+const pendingLine = (meal: string, weekOf: string): string => t("account.pendingSwitch", { meal, week: titleOf(weekOf) });
 
 describe("AC1 (issue 136) — /account, signed out", () => {
   it("AC1: a signed-out visitor is redirected to /sign-in", async () => {
@@ -185,9 +241,10 @@ describe("AC3 (issue 136) — the subscription's picks and weekly price", () => 
   });
 });
 
-// Issue 138: the newest set is findSignupConfirmation's (src/adapters/signup-contract.ts); here the page shows it once.
+// Issue 138: the newest set is findSignupConfirmation's (src/adapters/signup-contract.ts), and issue 219 the set in effect
+// for a week findOptionsForWeek's (src/adapters/week-credit-contract.ts); here the page shows them once.
 describe("AC5 (issue 138) — after a switch", () => {
-  it("AC5: the page shows the newest picks and the new weekly price, though they start at a week to come", async () => {
+  it("AC5: the page shows the picks in effect for the next pickup (issue 219, AC4) and the new weekly price, though the new picks start at a week to come", async () => {
     const member = await ada();
     await subscribed(member);
     signIn(member);
@@ -197,7 +254,7 @@ describe("AC5 (issue 138) — after a switch", () => {
     );
     await services.repo.switchPicks(confirmation?.subscriptionId ?? "no subscription", vegan, "2027-03-07", 8000);
     const { runs, text } = await render();
-    expect(runs).toContain("3–4 people · Vegan");
+    expect(runs).toContain("2 people · Standard");
     expect(text).toContain(formatUsdWhole(8000));
   });
 });
@@ -305,52 +362,6 @@ describe("AC8 (issue 196) — the next pickup while locked", () => {
   });
 });
 
-describe("AC4 (issue 136) — the details card", () => {
-  it("AC4: it shows the name, then the email, then phone · language", async () => {
-    const member = await ada();
-    await subscribed(member);
-    signIn(member);
-    expect(detailsCardLines((await render()).html)).toEqual(["Ada Lovelace", "ada@example.com", "(216) 555-0134 · English"]);
-  });
-
-  it("AC4: the phone is shown exactly as stored, never reformatted", async () => {
-    const member = await ada({ phone: "216.555.0134" });
-    await subscribed(member);
-    signIn(member);
-    expect(detailsCardLines((await render()).html).at(-1)).toBe("216.555.0134 · English");
-  });
-
-  // Issue 222: the display rule is formatPhone's (src/phone.test.ts); the line shows the phone through it.
-  it("AC5 (issue 222): a stored 2165551234 is shown as (216) 555-1234", async () => {
-    const member = await ada({ phone: "2165551234" });
-    await subscribed(member);
-    signIn(member);
-    expect(detailsCardLines((await render()).html).at(-1)).toBe("(216) 555-1234 · English");
-  });
-
-  it("AC5 (issue 222): a stored 216-555-0187, saved before ten digits were kept, is shown unchanged", async () => {
-    const member = await ada({ phone: "216-555-0187" });
-    await subscribed(member);
-    signIn(member);
-    expect(detailsCardLines((await render()).html).at(-1)).toBe("216-555-0187 · English");
-  });
-
-  it("AC4: the language is named in itself: a Spanish-speaking member's line ends Español", async () => {
-    const member = await ada({ language: "es" });
-    await subscribed(member);
-    signIn(member);
-    // The page follows the cookie, then the browser, never the member (issue 130), so it renders in English here.
-    expect(detailsCardLines((await render()).html).at(-1)).toBe("(216) 555-0134 · Español");
-  });
-
-  it("AC4: with no name and no phone, the name line is not shown and the last line is the language alone", async () => {
-    const member = await services.repo.createMember({ email: "ada@example.com" });
-    await subscribed(member);
-    signIn(member);
-    expect(detailsCardLines((await render()).html)).toEqual(["ada@example.com", "English"]);
-  });
-});
-
 describe("AC5 (issue 136) — the header on /account", () => {
   it('AC5: the page opens with the site header, Your account marked current: current "account"', async () => {
     const member = await ada();
@@ -408,7 +419,7 @@ describe("issue 139 — account home, cancelled and not", () => {
     expect(namesNoWeek(alerts[0] ?? "")).toBe(true);
   });
 
-  it("AC5: the meal card shows the meal and a Cancelled badge, and no Next pickup, charge line or Cancel link; the details card stays", async () => {
+  it("AC5: the meal card shows the meal and a Cancelled badge, and no Next pickup, charge line or Cancel link; the details form is shown", async () => {
     const subscriptionId = await subscribedAda({ picks: ["2 people", "Vegan"] });
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
     await cancel(subscriptionId);
@@ -421,15 +432,7 @@ describe("issue 139 — account home, cancelled and not", () => {
     expect(namesNoWeek(mealCard)).toBe(true);
     expect(mealCard).not.toContain(formatUsdWhole(4500));
     expect(hrefsOf(html)).not.toContain("/account/cancel");
-    expect(detailsLines(runs)).toEqual(["Ada Lovelace", "ada@example.com", "(216) 555-0134 · English"]);
-  });
-
-  it("AC13: an active subscription's page ends, below the details card, with a link to /account/cancel; no Notice", async () => {
-    await subscribedAda();
-    const { html } = await render();
-    expect(hrefsOf(html).at(-1)).toBe("/account/cancel");
-    expect(html.lastIndexOf("</section>")).toBeLessThan(html.indexOf('href="/account/cancel"'));
-    expect(alertTexts(html)).toEqual([]);
+    expect(actionsOf(html)).toContain("saveDetails");
   });
 
   it("AC7: after a cancel and a new signup, paid, the page shows the new subscription: its meal, the Active badge, no Notice", async () => {
@@ -546,5 +549,487 @@ describe("AC15 (issue 198) — the charge line while locked", () => {
     const { memberId, subscriptionId } = await lockedAda();
     await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
     expect((await render()).runs).toContain(CHARGE_LINE);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 138, moved from Upcoming weeks (issue 219): the meal card's Switch. Which week a switch starts from is
+// switchWeek's (src/switch-meal.test.ts) and what a save does ./weeks/actions.test.ts's; here each of the card's states
+// goes through the page once. Ada signs up for 3–4 people and Standard at a stored $45 a week; her switch week is
+// February 14, the first listed week whose cutoff has not passed. The card is read by its picks, price, week and links.
+describe("issue 138 — the meal card's Switch, on /account", () => {
+  const weeksAda = () => activeAda({ picks: ["3–4 people", "Standard"] });
+
+  /** The card's visible text, as one string. */
+  const textOf = (card: string): string => textsOf(card).join(" ");
+
+  /** The page drawn with `query`, and the meal card's markup: the first Card. */
+  const renderCard = async (query: { switch?: string } = {}): Promise<{ html: string; card: string }> => {
+    const { html, sections } = await render(query);
+    return { html, card: sections[0] ?? "" };
+  };
+
+  it("AC5: closed, the card shows the meal and its weekly price, and Switch size or menu, a link to ?switch=1", async () => {
+    await weeksAda();
+    const { card } = await renderCard();
+    expect(textOf(card)).toContain("3–4 people · Standard");
+    expect(textOf(card)).toContain(formatUsdWhole(4500));
+    expect(linksOf(card)).toContain("/account?switch=1");
+  });
+
+  it("AC5: after a switch whose picks have not started, the card shows the new meal and price, and the week they start from", async () => {
+    const { subscriptionId } = await weeksAda();
+    await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), MAR_7, 5000);
+    const { card } = await renderCard();
+    for (const value of ["2 people · Vegan", formatUsdWhole(5000), titleOf(MAR_7)]) expect(textOf(card)).toContain(value);
+  });
+
+  it("AC5: picks that start with the next pickup have no pending line: they are the meal now; guards issue 219's AC4", async () => {
+    const { subscriptionId } = await weeksAda();
+    await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), FEB_7, 5000);
+    const { card } = await renderCard();
+    for (const value of ["2 people · Vegan", formatUsdWhole(5000)]) expect(textOf(card)).toContain(value);
+    expect(sentencesOf(card)).not.toContain(pendingLine("2 people · Vegan", FEB_7));
+    expect(textOf(card)).not.toContain(titleOf(MAR_7));
+  });
+
+  it("AC3: open at ?switch=1, the card is a form posting the switch week to switchMeal, with the newest picks selected, the week it applies from, one submit and Cancel back to the page", async () => {
+    const { subscriptionId } = await weeksAda();
+    const newest = choiceOf(["2 people", "Vegan"]);
+    await services.repo.switchPicks(subscriptionId, newest, MAR_7, 5000);
+    const { card } = await renderCard({ switch: "1" });
+
+    const forms = formsOf(card);
+    expect(forms.map((form) => form.action)).toEqual(["switchMeal"]);
+    const inner = forms[0]?.inner ?? "";
+    const inputs = attributesOf(inner, "input");
+    const buttons = attributesOf(inner, "button");
+    expect(inputs.find((input) => input.name === "week")).toMatchObject({ type: "hidden", value: FEB_14 });
+    const checked = Object.fromEntries(inputs.filter((input) => input.type === "radio" && "checked" in input).map((input) => [input.name, input.value]));
+    expect(checked).toEqual(newest);
+
+    expect(textOf(inner)).toContain(titleOf(FEB_14));
+    expect(buttons.filter((button) => button.type === "submit")).toHaveLength(1);
+    expect(linksOf(inner)).toEqual(["/account"]);
+  });
+
+  it("AC5: with no switch week listed, the card stays closed with no Switch size or menu, even at ?switch=1", async () => {
+    // Every listed week paid: none is coming, skipped, or closed with no charge.
+    const { subscriptionId } = await weeksAda();
+    for (const weekOf of sundaysFrom(FEB_7, 12)) await services.repo.addLedgerRow(subscriptionId, weekOf, "paid", 4500);
+    for (const query of [{}, { switch: "1" }]) {
+      const { card } = await renderCard(query);
+      expect(textOf(card)).toContain("3–4 people · Standard");
+      expect(textOf(card)).toContain(formatUsdWhole(4500));
+      expect(linksOf(card)).not.toContain("/account?switch=1");
+      expect(card).not.toContain("<form");
+    }
+  });
+});
+
+// Issue 198, moved from Upcoming weeks (issue 219): Switch while locked. That there is no switch week while locked is
+// switchWeek's (src/switch-meal.test.ts); here one locked case and the card update that ends it go through the page.
+describe("issue 198 — the meal card's Switch while locked, on /account", () => {
+  /** Ada, signed in, subscribed from January 3 at 3–4 people and Standard, with March 7 skipped, then a declined row for `declinedOn`; her ids. */
+  const lockedAda = async (declinedOn = FEB_7): Promise<{ memberId: string; subscriptionId: string }> => {
+    const { member, subscriptionId } = await activeAda({ picks: ["3–4 people", "Standard"] });
+    await services.repo.skipWeek(subscriptionId, MAR_7);
+    await services.repo.addLedgerRow(subscriptionId, declinedOn, "declined", 4500);
+    return { memberId: member.id, subscriptionId };
+  };
+
+  it("AC2: the meal card has no Switch size or menu, and ?switch=1 opens no pickers", async () => {
+    await lockedAda();
+    for (const query of [{}, { switch: "1" }]) {
+      const card = (await render(query)).sections[0] ?? "";
+      expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
+      expect(linksOf(card)).not.toContain("/account?switch=1");
+      expect(card).not.toContain("<form");
+    }
+  });
+
+  it("AC14: once a card update pays the declined week, Switch size or menu is back; guards AC2", async () => {
+    // January 31 declined; the run at February 7's cutoff wrote February 7 a locked row; then, now, a card update paid January 31.
+    const { memberId, subscriptionId } = await lockedAda("2027-01-31");
+    await services.repo.addLedgerRow(subscriptionId, FEB_7, "locked", 0);
+    await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
+    expect(linksOf((await render()).sections[0] ?? "")).toContain("/account?switch=1");
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 219: one account page. The set in effect for a week is findOptionsForWeek's (src/adapters/week-credit-contract.ts),
+// the switch week switchWeek's, and where each action lands its own test's; here the page's own rules.
+describe("AC1 (issue 219) — the Supper Club card's controls", () => {
+  it("AC1: an active member's one Supper Club card holds Switch size or menu to /account?switch=1, Cancel to /account/cancel, and Update your card to /account/card", async () => {
+    await activeAda();
+    const { html, sections } = await render();
+    expect(linksOf(sections[0] ?? "").sort()).toEqual(["/account/cancel", "/account/card", "/account?switch=1"].sort());
+    expect(linksOf(html).filter((link) => link === "/account/cancel")).toHaveLength(1);
+  });
+});
+
+describe("AC2 (issue 219) — the pickers open in the card", () => {
+  it("AC2: open, the Switch and Cancel row gives way to the pickers' form, and Update your card stays", async () => {
+    await activeAda();
+    const card = (await render({ switch: "1" })).sections[0] ?? "";
+    expect(actionsOf(card)).toEqual(["switchMeal"]);
+    expect(linksOf(card).sort()).toEqual(["/account", "/account/card"]);
+  });
+
+  it("AC2: at ?switch=1 with no switch week, the card shows the closed row: Cancel and Update your card, with no Switch and no form", async () => {
+    const { subscriptionId } = await activeAda();
+    for (const weekOf of sundaysFrom(FEB_7, 12)) await services.repo.addLedgerRow(subscriptionId, weekOf, "paid", 4500);
+    const card = (await render({ switch: "1" })).sections[0] ?? "";
+    expect(linksOf(card).sort()).toEqual(["/account/cancel", "/account/card"]);
+    expect(actionsOf(card)).toEqual([]);
+  });
+});
+
+// The cutoff Notice is shown on one value of switchError and not otherwise: a choice, checked by its catalog line.
+describe("AC3 (issue 219) — the cutoff Notice on /account", () => {
+  it("AC3: sent back with ?switchError=cutoff, the page shows the cutoff Notice, and no other", async () => {
+    await activeAda();
+    expect(alertTexts((await render({ switchError: "cutoff" })).html)).toEqual([t("account.weeks.cutoffPassed")]);
+  });
+
+  it("AC3: with no switchError, or another one, there is no Notice; guards the case above", async () => {
+    await activeAda();
+    for (const query of [{}, { switchError: "nope" }]) expect(alertTexts((await render(query)).html)).toEqual([]);
+  });
+});
+
+// The pending line is shown in some states and not others: a choice, checked by its catalog line, with its values.
+describe("AC4 (issue 219) — the meal for the next pickup, and a pending switch", () => {
+  /** Ada at 2 people and Standard, with 3–4 people and Vegan from `fromWeek` on; her ids. */
+  const switchedAda = async (fromWeek: string): Promise<{ member: Member; subscriptionId: string }> => {
+    const found = await activeAda();
+    await services.repo.switchPicks(found.subscriptionId, choiceOf(["3–4 people", "Vegan"]), fromWeek, 8000);
+    return found;
+  };
+
+  it("AC4: a newer set starting after the next pickup, March 7, shows the pending line in the card, naming its meal and its start week", async () => {
+    await switchedAda(MAR_7);
+    const card = (await render()).sections[0] ?? "";
+    expect(sentencesOf(card)).toContain(pendingLine("3–4 people · Vegan", MAR_7));
+  });
+
+  it("AC4: a newer set starting after every listed week shows no pending line, and the meal is the set in effect for the next pickup", async () => {
+    const JUN_6 = "2027-06-06";
+    await switchedAda(JUN_6);
+    const { html, runs } = await render();
+    expect(runs).toContain("2 people · Standard");
+    expect(sentencesOf(html)).not.toContain(pendingLine("3–4 people · Vegan", JUN_6));
+  });
+
+  it.each([
+    [
+      "cancelled",
+      async (subscriptionId: string) => {
+        await services.repo.cancelSubscription(subscriptionId, NOW);
+      },
+    ],
+    [
+      "locked past the declined week",
+      async (subscriptionId: string) => {
+        await services.repo.addLedgerRow(subscriptionId, "2027-01-31", "declined", 4500);
+      },
+    ],
+  ])("AC4: with no next pickup (%s), the meal stays the newest set and no pending line shows; guards the cases above", async (_what, arrange) => {
+    const { subscriptionId } = await switchedAda(MAR_7);
+    await arrange(subscriptionId);
+    const { html, runs } = await render();
+    expect(runs).toContain("3–4 people · Vegan");
+    expect(sentencesOf(html)).not.toContain(pendingLine("3–4 people · Vegan", MAR_7));
+  });
+});
+
+// The cancelled Notice is checked by its catalog line, the line it picks for a cancelled subscription.
+describe("AC5 (issue 219) — a cancelled member's card", () => {
+  it("AC5: the cancelled Notice shows, and the card has no Switch, Cancel or Update your card, even at ?switch=1; guards AC1", async () => {
+    const { subscriptionId } = await activeAda();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    for (const query of [{}, { switch: "1" }]) {
+      const { html } = await render(query);
+      const alerts = alertTexts(html);
+      expect(alerts).toHaveLength(1);
+      expect(alerts[0]).toContain(t("account.cancelledNotice"));
+      for (const link of ["/account?switch=1", "/account/cancel", "/account/card"]) expect(linksOf(html)).not.toContain(link);
+      expect(actionsOf(html)).not.toContain("switchMeal");
+    }
+  });
+});
+
+describe("AC6 (issue 219) — Your details on /account", () => {
+  it("AC6: below the Supper Club card, the details card holds the form posting to saveDetails", async () => {
+    await activeAda();
+    const { sections } = await render();
+    expect(sections).toHaveLength(2);
+    expect(textsOf(sections[0] ?? "")).toContain("2 people · Standard");
+    expect(actionsOf(sections[0] ?? "")).toEqual([]);
+    expect(actionsOf(sections[1] ?? "")).toEqual(["saveDetails"]);
+  });
+
+  it("AC6: while an email change is pending, the code step takes the details card's place, and the Supper Club card stays with its meal and Switch", async () => {
+    const { member } = await activeAda();
+    await services.repo.startEmailChange({ memberId: member.id, newEmail: "ada.new@example.com", codeHash: hashCode("123456"), now: new Date(NOW.getTime() - MINUTE) });
+    const { sections } = await render();
+    expect(sections).toHaveLength(2);
+    expect(textsOf(sections[0] ?? "")).toContain("2 people · Standard");
+    expect(linksOf(sections[0] ?? "")).toContain("/account?switch=1");
+    expect(actionsOf(sections[1] ?? "")).toContain("confirmEmailChange");
+    expect(actionsOf(sections[1] ?? "")).not.toContain("saveDetails");
+  });
+
+  it("AC6: with the code step showing, the page keeps one h1: the step's heading is level 2", async () => {
+    const { member } = await activeAda();
+    await services.repo.startEmailChange({ memberId: member.id, newEmail: "ada.new@example.com", codeHash: hashCode("123456"), now: new Date(NOW.getTime() - MINUTE) });
+    const { html, sections } = await render();
+    expect(actionsOf(sections[1] ?? "")).toContain("confirmEmailChange");
+    expect(html.match(/<h1\b/g)).toHaveLength(1);
+    expect(sections[1]).toMatch(/<h2\b/);
+  });
+});
+
+describe("AC8 (issue 219) — /account/details is gone", () => {
+  it("AC8: app/account/details/ holds no page", () => {
+    expect(existsSync(fileURLToPath(new URL("./details/page.tsx", import.meta.url)))).toBe(false);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 156, moved from /account/details (issue 219): Your details. The form and the code step share the page: the code
+// step shows while the member has a pending change that has not expired. Who is let in is requireSubscriber's; what the
+// forms do is ./details-actions.test.ts's; the code step's own parts are app/sign-in/code-step.test.ts's. Here each of
+// the branches goes through once, by the forms, fields, notices and values it shows, a notice it picks by its catalog
+// line, never its words (issue 211). The page's language is getLanguage's, app/language.test.ts's.
+describe("issue 156 — Your details, on /account", () => {
+  const OLD = "ada@example.com";
+  const NEW = "ada.new@example.com";
+  const DRAFT = "ocf_account_draft";
+  /** Sign-in's wait line for 5 minutes: the page shows it only when sent back with limited=5. */
+  const WAIT_5 = t(pluralKey("en", "signIn.limited", 5) as MessageKey, { minutes: 5 });
+
+  /** Ada, through Create Account, confirmed, with an active Supper Club subscription and signed in; her email language is `language`. */
+  const detailsAda = async (language: Language = "en"): Promise<Member> => {
+    const member = await ada({ language });
+    await services.repo.confirmMemberEmail(member.id, new Date("2026-12-01T17:00:00.000Z"));
+    await subscribed(member);
+    signIn(member);
+    return member;
+  };
+
+  /** A change to `NEW` pending for the member, requested `ago` ms before now. */
+  const pending = (member: Member, ago = MINUTE) =>
+    services.repo.startEmailChange({ memberId: member.id, newEmail: NEW, codeHash: hashCode("123456"), now: new Date(NOW.getTime() - ago) });
+
+  /** Each input's value, by name. */
+  const valuesOf = (html: string): Record<string, string | undefined> =>
+    Object.fromEntries(attributesOf(html, "input").map((input) => [input.name ?? "", input.value]));
+  const selectedLanguages = (html: string) => attributesOf(html, "option").filter((option) => "selected" in option).map((option) => option.value);
+  const noticeIcons = (element: ReactElement) => findAll(element, Notice).map((notice) => notice.props.icon);
+  /** Where each of `marks` first appears in the markup, so a test can say one element comes before another. */
+  const positions = (html: string, marks: readonly string[]) => marks.map((mark) => html.indexOf(mark));
+  const ascending = (numbers: number[]) => numbers.every((n, i) => n >= 0 && (i === 0 || n > (numbers[i - 1] ?? -1)));
+  /** The code step is showing: its code form is on the page. */
+  const codeStepShows = (html: string) => actionsOf(html).includes("confirmEmailChange");
+
+  describe("AC2 (issue 156) — the form opens filled", () => {
+    it("AC2: first name, last name, email and phone hold the member's, and language for emails is theirs", async () => {
+      await detailsAda("es");
+      const { html } = await render({});
+      expect(valuesOf(html)).toMatchObject({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "(216) 555-0134" });
+      expect(selectedLanguages(html)).toEqual(["es"]);
+    });
+
+    it("AC2, AC3: the form posts to saveDetails", async () => {
+      await detailsAda();
+      expect(actionsOf((await render({})).html)).toEqual(["saveDetails"]);
+    });
+  });
+
+  describe("AC3 (issue 156) — the Saved notice", () => {
+    it("AC3: with saved=1 the page shows a check Notice at the top, above the Supper Club card and the form", async () => {
+      await detailsAda();
+      const { element, html } = await render({ saved: "1" });
+      expect(noticeIcons(element)).toEqual(["check"]);
+      expect(ascending(positions(html, ["<h1", 'role="alert"', "<section", "<form"]))).toBe(true);
+    });
+
+    it("AC3: without saved there is no notice, which guards the one above", async () => {
+      await detailsAda();
+      const { html } = await render({});
+      expect(alertTexts(html)).toEqual([]);
+    });
+  });
+
+  describe("AC4 (issue 156) — a save that broke a rule", () => {
+    it("AC4: with error=firstName the field is marked invalid, and the form holds what was typed", async () => {
+      await detailsAda();
+      request.current.cookies[DRAFT] = JSON.stringify({ firstName: "", lastName: "Byron", email: OLD, phone: "216-555-0199", language: "en" });
+      const { html } = await render({ error: "firstName" });
+      expect(attributesOf(html, "input").find((input) => input.name === "firstName")).toMatchObject({ "aria-invalid": "true" });
+      expect(valuesOf(html)).toMatchObject({ firstName: "", lastName: "Byron", phone: "(216) 555-0199" });
+    });
+
+    // Review of commit f65a2b3: the draft cookie lives ten minutes, so a member can come back to an error with none.
+    it("AC4: with error=firstName and no draft cookie (expired), the form holds the member's stored details, not blank fields", async () => {
+      await detailsAda("es");
+      const { html } = await render({ error: "firstName" });
+      expect(valuesOf(html)).toMatchObject({ firstName: "Ada", lastName: "Lovelace", email: OLD, phone: "(216) 555-0134" });
+      expect(selectedLanguages(html)).toEqual(["es"]);
+    });
+  });
+
+  // Issue 222: the box's rule is formatPhoneTyping's (src/phone.test.ts); the draft goes through it in AC4 above.
+  describe("AC6 (issue 222) — the phone box starts formatted", () => {
+    it("AC6: a stored phone of 216-555-0100 starts the box as (216) 555-0100", async () => {
+      const member = await detailsAda();
+      await services.repo.saveMemberDetails(member.id, { firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en", menuEmails: true });
+      expect(valuesOf((await render({})).html).phone).toBe("(216) 555-0100");
+    });
+  });
+
+  describe("AC7 (issue 156) — the code step", () => {
+    it("AC7: with a change pending, the step has Keep the old email's form, the new address, the code field in the confirm form, and the resend form, in that order", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { html } = await render({});
+      expect(actionsOf(html)).toEqual(["keepOldEmail", "confirmEmailChange", "resendEmailChange"]);
+      expect(screenMarkup(html)).toContain(NEW);
+      expect(attributesOf(html, "input").filter((input) => input.name === "code")).toHaveLength(1);
+    });
+
+    it("AC7: the code step stands in place of the form: no field holds the member's details", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { html } = await render({});
+      expect(codeStepShows(html)).toBe(true);
+      expect(Object.keys(valuesOf(html)).filter((name) => ["firstName", "lastName", "email", "phone"].includes(name))).toEqual([]);
+    });
+  });
+
+  describe("AC10 (issue 156) — confirming", () => {
+    it("AC10: the code form posts to confirmEmailChange", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      expect(actionsOf((await render({})).html)).toContain("confirmEmailChange");
+    });
+  });
+
+  describe("AC11 (issue 156) — Square refused", () => {
+    it("AC11: with error=square the code step shows an alert Notice", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { element, html } = await render({ error: "square" });
+      expect(noticeIcons(element)).toEqual(["alert"]);
+      expect(alertTexts(html)).toEqual([t("details.squareFailed")]);
+      expect(codeStepShows(html)).toBe(true);
+    });
+  });
+
+  describe("AC12 (issue 156) — a wrong or expired code", () => {
+    it("AC12: with error=invalid the code field is marked invalid, with one alert", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { html } = await render({ error: "invalid" });
+      expect(attributesOf(html, "input").find((input) => input.name === "code")).toMatchObject({ "aria-invalid": "true" });
+      expect(alertTexts(html)).toEqual([t("details.invalidCode")]);
+    });
+  });
+
+  describe("AC13 (issue 156) — Send a new code and the wait notice", () => {
+    it("AC13: Send a new code posts to resendEmailChange", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      expect(actionsOf((await render({})).html)).toContain("resendEmailChange");
+    });
+
+    it("AC13: with sent=1 the code step says a new code is on its way", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      expect(noticeIcons((await render({ sent: "1" })).element)).toEqual(["check"]);
+    });
+
+    it("AC13: with limited=5 and a change pending, sign-in's wait notice shows once, in a lock Notice at the top, above the cards", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { element, html } = await render({ limited: "5" });
+      expect(noticeIcons(element)).toEqual(["lock"]);
+      expect(alertTexts(html)).toEqual([WAIT_5]);
+      expect(ascending(positions(html, ['role="alert"', "<section"]))).toBe(true);
+      expect(codeStepShows(html)).toBe(true);
+    });
+
+    it("AC13: with limited=5 and no change pending, sign-in's wait notice shows in a lock Notice at the top, above the form", async () => {
+      await detailsAda();
+      const { element, html } = await render({ limited: "5" });
+      expect(noticeIcons(element)).toEqual(["lock"]);
+      expect(alertTexts(html)).toEqual([WAIT_5]);
+      expect(ascending(positions(html, ['role="alert"', "<section", "<form"]))).toBe(true);
+      expect(valuesOf(html)).toMatchObject({ email: OLD });
+    });
+  });
+
+  describe("AC14 (issue 156) — Keep the old email", () => {
+    it("AC14: in the code step's own card, it is a quiet submit Button with the back arrow, alone in a form posting to keepOldEmail, before the step's heading, and the card has no link", async () => {
+      const member = await detailsAda();
+      await pending(member);
+      const { element, sections } = await render({});
+      const keep = findAll(element, "form").find((form) => form.props.action === keepOldEmail);
+      expect(findAll(keep, Button).map((button) => button.props)).toEqual([expect.objectContaining({ kind: "quiet", back: true, type: "submit" })]);
+      const step = sections.find((section) => actionsOf(section).includes("confirmEmailChange")) ?? "";
+      expect(actionsOf(step)[0]).toBe("keepOldEmail");
+      const heading = step.search(/<h[1-6]\b/);
+      expect(heading).toBeGreaterThan(-1);
+      expect(step.indexOf("<form")).toBeLessThan(heading);
+      expect(attributesOf(step, "a")).toEqual([]);
+    });
+  });
+
+  // Issue 141: the menu email checkbox, placed by its field, not its words. What Save stores is ./details-actions.test.ts's.
+  describe("AC9 (issue 141) — Email me the weekly menu", () => {
+    /** The form's menuEmails field: whether it is there, a checkbox, and ticked. */
+    const menuBox = (html: string) => {
+      const input = attributesOf(html, "input").find((candidate) => candidate.name === "menuEmails");
+      return { present: input !== undefined, type: input?.type, checked: input !== undefined && "checked" in input };
+    };
+
+    it("AC9: after the Language field and before Save, the form has the checkbox, ticked for a member whose menu emails are on", async () => {
+      await detailsAda();
+      const { html } = await render({});
+      expect(ascending(positions(html, ['name="language"', 'name="menuEmails"', 'type="submit"']))).toBe(true);
+      expect(menuBox(html)).toEqual({ present: true, type: "checkbox", checked: true });
+    });
+
+    it("AC9: for a member whose menu emails are off it is not ticked", async () => {
+      const member = await detailsAda();
+      await services.repo.setMenuEmails(member.id, false);
+      expect(menuBox((await render({})).html)).toEqual({ present: true, type: "checkbox", checked: false });
+    });
+
+    it("AC9: the checkbox is in the form that posts to saveDetails", async () => {
+      await detailsAda();
+      const save = formsOf((await render({})).html).find((form) => form.action === "saveDetails");
+      expect(menuBox(save?.inner ?? "").present).toBe(true);
+    });
+  });
+
+  describe("AC20 (issue 156) — a pending change is stored", () => {
+    it("AC20: a member who comes back nine minutes after asking sees the code step again", async () => {
+      const member = await detailsAda();
+      await pending(member, 9 * MINUTE);
+      const { html } = await render({});
+      expect(codeStepShows(html)).toBe(true);
+      expect(screenMarkup(html)).toContain(NEW);
+    });
+
+    it("AC20: after the code has expired they see the form with the old address", async () => {
+      const member = await detailsAda();
+      await pending(member, 11 * MINUTE);
+      const { html } = await render({});
+      expect(codeStepShows(html)).toBe(false);
+      expect(valuesOf(html)).toMatchObject({ email: OLD });
+    });
   });
 });

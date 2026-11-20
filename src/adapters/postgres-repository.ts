@@ -1353,6 +1353,20 @@ export class PostgresRepository implements Repository {
     return rowCount === 1;
   }
 
+  async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
+    if (!UUID_SHAPE.test(subscriptionId)) return [];
+    const { rows } = await this.db.query<{ type_name: string; option_name: string }>(
+      `select t.name as type_name, o.name as option_name
+         from subscription_options so
+         join option_types t on t.id = so.option_type_id
+         join options o on o.id = so.option_id
+        where so.subscription_id = $1 and ${inEffectFor("$2::date")}
+        order by t.position, t.name`,
+      [subscriptionId, weekOf],
+    );
+    return rows.map((row) => ({ typeName: row.type_name, optionName: row.option_name }));
+  }
+
   /**
    * One transaction under the subscription row's lock: every set from `fromWeek` on is deleted and the new one
    * inserted at it, unless it equals the set in effect for the week before (then it only deletes), and `weekly_cents`

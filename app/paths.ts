@@ -17,14 +17,13 @@ export const ACCOUNT_WEEKS_PATH = "/account/weeks";
 
 /** The `error` a refused Skip or Unskip sends Upcoming weeks when the week's cutoff has passed (issue 137). */
 export const ACCOUNT_WEEKS_CUTOFF_ERROR = "cutoff";
-/** The value of Upcoming weeks' `switch` query that opens the meal card's pickers (issue 138). */
-export const ACCOUNT_WEEKS_SWITCH_OPEN = "1";
+/** The value of the account page's `switch` query that opens the Supper Club card's pickers (issue 138, moved by issue 219). */
+export const ACCOUNT_SWITCH_OPEN = "1";
+/** The account page's query naming why a switch was refused (issue 219); its value is `ACCOUNT_WEEKS_CUTOFF_ERROR`. */
+export const ACCOUNT_SWITCH_ERROR_PARAM = "switchError";
 
 /** A member's History. */
 export const ACCOUNT_HISTORY_PATH = "/account/history";
-
-/** A member's Your details. */
-export const ACCOUNT_DETAILS_PATH = "/account/details";
 
 /** The admin's page, the header's Admin button. */
 export const ADMIN_PATH = "/admin";

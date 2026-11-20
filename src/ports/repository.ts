@@ -385,6 +385,11 @@ export interface Repository extends SignInStore, RateLimitStore {
    * one transaction. "unchanged", writing nothing, when the stored sets would end as they were. It checks no cutoff.
    */
   switchPicks(subscriptionId: string, choices: Record<string, string>, fromWeek: string, weeklyCents: number): Promise<"switched" | "unchanged">;
+  /**
+   * Issue 219: the subscription's set of picks in effect for `weekOf` (DEC-033), in option-type position order; `[]` when
+   * no set starts on or before the week.
+   */
+  findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]>;
   /** Issue 142: the week's meals and skips, as of `cutoff`, the week's cutoff instant. */
   listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes>;
   /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */

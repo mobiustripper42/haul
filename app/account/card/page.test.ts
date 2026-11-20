@@ -22,6 +22,7 @@ import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { Notice } from "../../../components/ui/notice";
 import { alertTexts, attributesOf, findAll, redirectOf, sentencesOf } from "../../screen-test-helpers";
+import { SiteHeader } from "../../site-header";
 import { CardForm } from "./card-form";
 import UpdateCard from "./page";
 
@@ -152,6 +153,17 @@ const submitsTo = (html: string, action: string): string[] =>
 
 /** The On file now line's words before the card, read from the catalog: the line is shown in some states, not others. */
 const ON_FILE_OPENS = en["account.card.onFile"].split("{card}")[0] ?? "no such line";
+
+// Issue 219, AC8: the card page is reached from Your account, so the header marks it; which link that is, is
+// app/site-header.test.ts's.
+describe("AC8 (issue 219) — the header on /account/card", () => {
+  it('AC8: the page opens with the site header, Your account marked current: current "account"', async () => {
+    await subscribedAda();
+    vi.mocked(SiteHeader).mockClear();
+    await render();
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "account" }));
+  });
+});
 
 describe("AC2 — who reaches /account/card, and what it shows", () => {
   it("AC2: a member whose subscription is cancelled is sent to /account", async () => {

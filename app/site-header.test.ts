@@ -53,10 +53,8 @@ beforeEach(() => {
 const SIGN_IN_PATH = "/supper-club/sign-in";
 const WEEKS_PATH = "/account/weeks";
 const HISTORY_PATH = "/account/history";
-// Issue 156, AC1: Your details after History.
-const DETAILS_PATH = "/account/details";
-/** The account links' destinations, in order: the bar's and the drawer's. */
-const LINKS = [ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH];
+/** The account links' destinations, in order: the bar's and the drawer's. Issue 219: Your details went into Your account. */
+const LINKS = [ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH];
 /** Issue 159, AC2: the admin links' destinations, in order: Members, Menus, Weeks, Weekly lists. */
 const ADMIN_LINKS = [ADMIN_PATH, ADMIN_MENUS_PATH, ADMIN_WEEKS_PATH, ADMIN_LISTS_PATH];
 /** Sign out, in a sequence of buttons: the one with no destination, a submit. */
@@ -64,7 +62,7 @@ const SIGN_OUT = "submit";
 const LANGUAGE_NAMES: string[] = Object.values(LANGUAGES).map((language) => language.name);
 
 type Account = "none" | "sign-in" | "sign-in-current";
-type Current = "account" | "weeks" | "history" | "details" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
+type Current = "account" | "weeks" | "history" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
 
 /**
  * Components read as themselves; every other function component is called through, so what it draws is read too.
@@ -246,10 +244,10 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
 });
 
 // Issue 136, AC5: a Your account button. Issue 155 replaces it with the Your meal link, the first of the account
-// links; these read it in the bar. Signed out it is not shown: the signed-out word lists above (AC18, AC17, AC5 of
+// links, and issue 219 names it Your account again; these read it in the bar. Signed out it is not shown: the signed-out word lists above (AC18, AC17, AC5 of
 // issue 77) hold every word the header has.
-describe("AC5 (issue 136) — the Your meal link", () => {
-  it('AC5: signed in as a member, the header shows a menu "Your meal" link to ACCOUNT_PATH, then Sign out', async () => {
+describe("AC5 (issue 136) — the Your account link", () => {
+  it('AC5: signed in as a member, the header shows a menu "Your account" link to ACCOUNT_PATH, then Sign out', async () => {
     session.member = { role: "member" };
     const { buttons } = await header("none");
     expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
@@ -257,18 +255,18 @@ describe("AC5 (issue 136) — the Your meal link", () => {
     expect(linkTo(buttons, ACCOUNT_PATH)?.props.current).toBeFalsy();
   });
 
-  it("AC5: signed in as an admin, the buttons are Your meal, Upcoming weeks, History, Your details, Members, Menus, Weeks, Weekly lists, Sign out, in that order", async () => {
+  it("AC5: signed in as an admin, the buttons are Your account, Upcoming weeks, History, Members, Menus, Weeks, Weekly lists, Sign out, in that order", async () => {
     session.member = { role: "admin" };
     const { buttons } = await header("none");
-    expect(sequence(buttons)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, DETAILS_PATH, ADMIN_PATH, ADMIN_MENUS_PATH, ADMIN_WEEKS_PATH, ADMIN_LISTS_PATH, SIGN_OUT]);
+    expect(sequence(buttons)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, ADMIN_PATH, ADMIN_MENUS_PATH, ADMIN_WEEKS_PATH, ADMIN_LISTS_PATH, SIGN_OUT]);
   });
 
-  it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your meal is marked as the page showing', async (role) => {
+  it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your account is marked as the page showing', async (role) => {
     session.member = { role };
     expect(linkTo((await header("none", "account")).buttons, ACCOUNT_PATH)?.props).toMatchObject({ href: ACCOUNT_PATH, current: true });
   });
 
-  it('AC5: with current "account", no admin link is marked and the Admin group is not active; with current "admin-members", Your meal is not marked', async () => {
+  it('AC5: with current "account", no admin link is marked and the Admin group is not active; with current "admin-members", Your account is not marked', async () => {
     session.member = { role: "admin" };
     const onAccount = await header("none", "account");
     expect(onAccount.groups).toHaveLength(1);
@@ -281,14 +279,13 @@ describe("AC5 (issue 136) — the Your meal link", () => {
 });
 
 describe("AC9 (issue 155) — the account nav", () => {
-  it("AC9: signed in, the bar's account links are menu links: Your meal to /account, Upcoming weeks to /account/weeks, History to /account/history", async () => {
+  it("AC9: signed in, the bar's account links are menu links: Your account to /account, Upcoming weeks to /account/weeks, History to /account/history", async () => {
     session.member = { role: "member" };
     const { buttons } = await header("none");
     expect(buttons.filter((button) => button.props.href !== undefined).map((button) => button.props)).toEqual([
       expect.objectContaining({ kind: "menu", href: ACCOUNT_PATH }),
       expect.objectContaining({ kind: "menu", href: WEEKS_PATH }),
       expect.objectContaining({ kind: "menu", href: HISTORY_PATH }),
-      expect.objectContaining({ kind: "menu", href: DETAILS_PATH }),
     ]);
   });
 
@@ -313,7 +310,7 @@ describe("AC9 (issue 155) — the account nav", () => {
         .map(({ props }) => [props.kind, props.href])
         .sort(([, a], [, b]) => String(a).localeCompare(String(b)));
     expect(links(drawer.buttons)).toEqual(links(buttons));
-    expect(links(drawer.buttons)).toHaveLength(8);
+    expect(links(drawer.buttons)).toHaveLength(7);
   });
 
   it.each([
@@ -330,24 +327,14 @@ describe("AC9 (issue 155) — the account nav", () => {
   });
 });
 
-// Issue 156, AC1: Your details joins the account nav after History; the page passes current "details" (its own test).
-describe("AC1 (issue 156) — the Your details link", () => {
-  it.each(["member", "admin"] as const)('AC1: signed in as %s, "Your details" is a menu link to /account/details straight after History, in the bar and in the drawer', async (role) => {
+// Issue 219, AC8: Your details went into Your account, so the menu has three member links; the account, card and cancel
+// pages pass current "account" (their own tests).
+describe("AC8 (issue 219) — three member links", () => {
+  it.each(["member", "admin"] as const)("AC8: signed in as %s, the member links are /account, /account/weeks and /account/history, in that order, in the bar and in the drawer", async (role) => {
     session.member = { role };
     const { buttons, drawer } = await header("none");
-    for (const found of [buttons, drawer.buttons]) {
-      const hrefs = found.filter((button) => button.props.href !== undefined).map((button) => button.props.href);
-      expect(hrefs[hrefs.indexOf(HISTORY_PATH) + 1]).toBe(DETAILS_PATH);
-      expect(linkTo(found, DETAILS_PATH)?.props).toMatchObject({ kind: "menu", href: DETAILS_PATH });
-    }
-  });
-
-  it('AC1: with current "details", Your details alone is marked as the page showing, in the bar and in the drawer', async () => {
-    session.member = { role: "member" };
-    const { buttons, drawer } = await header("none", "details");
-    for (const found of [buttons, drawer.buttons]) {
-      expect(found.filter((button) => button.props.current).map((button) => button.props.href)).toEqual([DETAILS_PATH]);
-    }
+    const memberLinks = (found: Buttons) => found.map((button) => button.props.href).filter((href) => typeof href === "string" && !String(href).startsWith("/admin"));
+    for (const found of [buttons, drawer.buttons]) expect(memberLinks(found)).toEqual(LINKS);
   });
 });
 
@@ -397,8 +384,8 @@ describe("AC1 (issue 159) — a member's header", () => {
     session.member = { role: "member" };
   });
 
-  it.each([undefined, "account", "weeks", "history", "details"] as const)(
-    "AC1: with current %s, the bar holds Your meal, Upcoming weeks, History, Your details in that order, then the Sign out form, and no Admin group",
+  it.each([undefined, "account", "weeks", "history"] as const)(
+    "AC1: with current %s, the bar holds Your account, Upcoming weeks, History in that order, then the Sign out form, and no Admin group",
     async (current) => {
       const { buttons, forms, groups } = await header("none", current);
       expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
@@ -413,7 +400,7 @@ describe("AC2 (issue 159) — an admin's header", () => {
     session.member = { role: "admin" };
   });
 
-  it.each([undefined, "account", "details", "admin-members", "admin-lists"] as const)(
+  it.each([undefined, "account", "admin-members", "admin-lists"] as const)(
     "AC2: with current %s, the bar holds the account links, then one Admin group of Members, Menus, Weeks, Weekly lists in that order, then the Sign out form",
     async (current) => {
       const { buttons, forms, groups } = await header("none", current);
@@ -430,7 +417,7 @@ describe("AC3 (issue 159) — the page showing is marked", () => {
     session.member = { role: "admin" };
   });
 
-  // Each member page, and Members, is AC9 (issue 155) and AC1 (issue 156) above.
+  // Each member page, and Members, is AC9 (issue 155) above.
   it.each([
     ["admin-menus", ADMIN_MENUS_PATH],
     ["admin-weeks", ADMIN_WEEKS_PATH],
@@ -447,7 +434,6 @@ describe("AC3 (issue 159) — the page showing is marked", () => {
     ["account", false],
     ["weeks", false],
     ["history", false],
-    ["details", false],
     ["admin-members", true],
     ["admin-menus", true],
     ["admin-weeks", true],

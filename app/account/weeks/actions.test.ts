@@ -43,6 +43,8 @@ const NOW = new Date("2027-02-03T17:00:00.000Z");
 const PAST_CUTOFF = "2027-02-07";
 const OPEN = "2027-02-14";
 const WEEKS_PATH = "/account/weeks";
+/** Issue 219: where a switch lands, on the account page that holds the meal card. */
+const ACCOUNT_PATH = "/account";
 const DAY = 24 * 60 * 60_000;
 
 let product: ProductWithOptions;
@@ -104,6 +106,8 @@ const landing = (url: string) => {
 };
 
 const CUTOFF_NOTICE = { path: WEEKS_PATH, query: { error: "cutoff" } };
+/** Issue 219: a switch past its cutoff goes back to the account page with its own parameter. */
+const SWITCH_CUTOFF_NOTICE = { path: ACCOUNT_PATH, query: { switchError: "cutoff" } };
 
 describe("AC1 (issue 137) — skipWeek", () => {
   it("AC1: a Coming week before its cutoff is skipped: its skipped row is stored, and the member goes back to Upcoming weeks", async () => {
@@ -259,10 +263,10 @@ describe("issue 138 — switchMeal", () => {
     return found && { options: found.options, optionsFromWeek: found.optionsFromWeek, weeklyCents: found.weeklyCents };
   };
 
-  it("AC1: a save on the switch week stores the picks from that week on, priced as signup prices them, as the member, and goes back to Upcoming weeks", async () => {
+  it("AC1: a save on the switch week stores the picks from that week on, priced as signup prices them, as the member, and goes back to the account page", async () => {
     const { memberId } = await ada();
     const withActor = vi.spyOn(services.repo, "withActor");
-    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe(WEEKS_PATH);
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe(ACCOUNT_PATH);
     expect(await mealOf(memberId)).toEqual({
       options: [
         { typeName: "How many people", optionName: "2 people" },
@@ -277,14 +281,14 @@ describe("issue 138 — switchMeal", () => {
   it("AC3: a save posting a week whose cutoff has passed goes back with the cutoff Notice, and stores nothing", async () => {
     const { memberId } = await ada();
     const before = await mealOf(memberId);
-    await expect(redirectOf(switchMeal(switchForm(PAST_CUTOFF, choiceOf(["2 people", "Vegan"])))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
+    await expect(redirectOf(switchMeal(switchForm(PAST_CUTOFF, choiceOf(["2 people", "Vegan"])))).then(landing)).resolves.toEqual(SWITCH_CUTOFF_NOTICE);
     expect(await mealOf(memberId)).toEqual(before);
   });
 
   it("AC3: a save posting a listed week before its cutoff that is not the switch week goes back with no Notice, and stores nothing", async () => {
     const { memberId } = await ada();
     const before = await mealOf(memberId);
-    await expect(redirectOf(switchMeal(switchForm("2027-02-21", choiceOf(["2 people", "Vegan"]))))).resolves.toBe(WEEKS_PATH);
+    await expect(redirectOf(switchMeal(switchForm("2027-02-21", choiceOf(["2 people", "Vegan"]))))).resolves.toBe(ACCOUNT_PATH);
     expect(await mealOf(memberId)).toEqual(before);
   });
 
@@ -293,7 +297,7 @@ describe("issue 138 — switchMeal", () => {
     const before = await mealOf(memberId);
     const [size] = product.optionTypes;
     const only = { [size?.id ?? "no size type"]: size?.options[1]?.id ?? "no such option" };
-    await expect(redirectOf(switchMeal(switchForm(OPEN, only)))).resolves.toBe(WEEKS_PATH);
+    await expect(redirectOf(switchMeal(switchForm(OPEN, only)))).resolves.toBe(ACCOUNT_PATH);
     expect(await mealOf(memberId)).toEqual(before);
   });
 
@@ -307,7 +311,7 @@ describe("issue 138 — switchMeal", () => {
     const { memberId } = await ada();
     const before = await mealOf(memberId);
     expect(before?.weeklyCents).toBe(4500);
-    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["3–4 people", "Standard"]))))).resolves.toBe(WEEKS_PATH);
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["3–4 people", "Standard"]))))).resolves.toBe(ACCOUNT_PATH);
     expect(await mealOf(memberId)).toEqual(before);
   });
 });
@@ -348,7 +352,20 @@ describe("issue 198 — the actions while locked", () => {
   it.each([OPEN, MAR_7])("AC4: a switch with valid picks, posted for %s, goes back with no Notice, and the picks are unchanged", async (week) => {
     const { memberId } = await lockedAda();
     const before = await services.repo.findSignupConfirmation(memberId, product.id);
-    await expect(redirectOf(switchMeal(form({ week, ...choiceOf(["2 people", "Vegan"]) })))).resolves.toBe(WEEKS_PATH);
+    await expect(redirectOf(switchMeal(form({ week, ...choiceOf(["2 people", "Vegan"]) })))).resolves.toBe(ACCOUNT_PATH);
     expect(await services.repo.findSignupConfirmation(memberId, product.id)).toEqual(before);
+  });
+});
+
+// Issue 219: Switch moved to the account page, so a switch past its cutoff goes back there, while Skip and Unskip stay
+// on Upcoming weeks. The cutoff itself is issue 137's and 138's tests' above; here the one rule, the two landings.
+describe("AC3 (issue 219) — where a refusal at the cutoff lands", () => {
+  it("AC3: past the cutoff, a switch lands on /account?switchError=cutoff, and a skip and an unskip on /account/weeks?error=cutoff", async () => {
+    const { subscriptionId } = await ada();
+    const choices = Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[1]?.id ?? "no such option"]));
+    await expect(redirectOf(switchMeal(form({ week: PAST_CUTOFF, ...choices }))).then(landing)).resolves.toEqual(SWITCH_CUTOFF_NOTICE);
+    await expect(redirectOf(skipWeek(form({ week: PAST_CUTOFF }))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
+    await services.repo.skipWeek(subscriptionId, PAST_CUTOFF);
+    await expect(redirectOf(unskipWeek(form({ week: PAST_CUTOFF }))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
   });
 });

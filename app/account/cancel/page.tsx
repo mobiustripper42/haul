@@ -43,7 +43,7 @@ export default async function CancelSupperClub() {
         <div className="flex w-full max-w-page flex-col gap-5">
           <div className="flex">
             <Button kind="quiet" href={ACCOUNT_PATH} back flush>
-              {t("account.title")}
+              {t("header.yourAccount")}
             </Button>
           </div>
           <Heading>{t("account.cancel.title")}</Heading>

@@ -1,6 +1,8 @@
+import { redirect } from "next/navigation";
 import { Card } from "../../components/ui/card";
 import { Shell } from "../../components/ui/shell";
-import { CREATE_ACCOUNT_PAGES } from "../paths";
+import { ACCOUNT_PATH, CREATE_ACCOUNT_PAGES } from "../paths";
+import { getSignedInMember } from "../session";
 import { requestCode } from "./actions";
 import { SignInForm } from "./sign-in-form";
 import { titled } from "../page-title";
@@ -12,6 +14,8 @@ export default async function SignIn({
 }: {
   searchParams: Promise<{ limited?: string; error?: string }>;
 }) {
+  // Issue 219: a member already signed in has no use for the form; requireSubscriber sends one with no subscription on.
+  if (await getSignedInMember()) redirect(ACCOUNT_PATH);
   const { limited, error } = await searchParams;
   return (
     <Shell>

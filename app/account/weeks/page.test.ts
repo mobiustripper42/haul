@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { formatUsdWhole } from "@core/money.js";
 import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -270,99 +269,10 @@ describe("AC8 (issue 137) — the intro line", () => {
   });
 });
 
-// Issue 138: the meal card, between the Notice and the weeks card. Which week a switch starts from is switchWeek's
-// (src/switch-meal.test.ts) and what a save does ./actions.test.ts's; here each of the card's states goes through the
-// page once. Ada signs up for 3–4 people and Standard at a stored $45 a week; her switch week is February 14, the
-// first listed week whose cutoff has not passed. The card is read by its picks, price, week and links.
-describe("issue 138 — the meal card", () => {
-  const FEB_7 = "2027-02-07";
-  const FEB_14 = "2027-02-14";
-
-  /** Each option type's id → the id of its option named in `names`. */
-  const choiceOf = (names: string[]): Record<string, string> =>
-    Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => names.includes(option.name))?.id ?? "no such option"]));
-
-  /** The meal card's visible text, as one string. */
-  const textOf = (card: string): string => textsOf(card).join(" ");
-
-  /** The page drawn with `query`, and the meal card's markup: the first Card, which is a <section>. */
-  const renderCard = async (query: { switch?: string } = {}): Promise<{ html: string; card: string }> => {
-    const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
-    const sections = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "");
-    // The meal card is the one before the weeks card, which holds the list.
-    return { html, card: sections.find((section) => !section.includes("<li")) ?? "" };
-  };
-
-  /** Where each link in `html` goes, as a path and query. */
-  const linksOf = (html: string): string[] =>
-    attributesOf(html, "a").map((link) => {
-      const url = new URL(link.href ?? "", "http://haul.test/account/weeks");
-      return `${url.pathname}${url.search}`;
-    });
-
-  it("AC5: closed, the card shows the meal and its weekly price, and Switch size or menu, a link to ?switch=1", async () => {
-    await subscribedAda();
-    const { card } = await renderCard();
-    expect(textOf(card)).toContain("3–4 people · Standard");
-    expect(textOf(card)).toContain(formatUsdWhole(4500));
-    expect(linksOf(card)).toEqual(["/account/weeks?switch=1"]);
-  });
-
-  it("AC5: after a switch whose picks have not started, the card shows the new meal and price, and the week they start from", async () => {
-    const subscriptionId = await subscribedAda();
-    await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), MAR_7, 5000);
-    const { card } = await renderCard();
-    for (const value of ["2 people · Vegan", formatUsdWhole(5000), titleOf(MAR_7)]) expect(textOf(card)).toContain(value);
-  });
-
-  it("AC5: picks that started with the first listed week have no From line: they are the meal now", async () => {
-    const subscriptionId = await subscribedAda();
-    await services.repo.switchPicks(subscriptionId, choiceOf(["2 people", "Vegan"]), FEB_7, 5000);
-    const { card } = await renderCard();
-    for (const value of ["2 people · Vegan", formatUsdWhole(5000)]) expect(textOf(card)).toContain(value);
-    for (const weekOf of [FEB_7, MAR_7]) expect(textOf(card)).not.toContain(titleOf(weekOf));
-  });
-
-  it("AC3: open at ?switch=1, the card is a form posting the switch week to switchMeal, with the newest picks selected, the week it applies from, one submit and Cancel back to the page", async () => {
-    const subscriptionId = await subscribedAda();
-    const newest = choiceOf(["2 people", "Vegan"]);
-    await services.repo.switchPicks(subscriptionId, newest, MAR_7, 5000);
-    const { card } = await renderCard({ switch: "1" });
-
-    const forms = [...card.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)];
-    expect(forms).toHaveLength(1);
-    const [, attrs = "", inner = ""] = forms[0] ?? [];
-    const inputs = attributesOf(inner, "input");
-    const buttons = attributesOf(inner, "button");
-    const action = buttons.find((button) => button.formaction !== undefined)?.formaction ?? attributesOf(`<form${attrs}>`, "form")[0]?.action;
-    expect(action).toBe("switchMeal");
-    expect(inputs.find((input) => input.name === "week")).toMatchObject({ type: "hidden", value: FEB_14 });
-    const checked = Object.fromEntries(inputs.filter((input) => input.type === "radio" && "checked" in input).map((input) => [input.name, input.value]));
-    expect(checked).toEqual(newest);
-
-    expect(textOf(inner)).toContain(titleOf(FEB_14));
-    expect(buttons.filter((button) => button.type === "submit")).toHaveLength(1);
-    expect(linksOf(card)).toEqual(["/account/weeks"]);
-  });
-
-  it("AC5: with no switch week listed, the card stays closed with no Switch size or menu, even at ?switch=1", async () => {
-    // Every listed week paid: none is coming, skipped, or closed with no charge.
-    const subscriptionId = await subscribedAda();
-    for (const weekOf of sundaysFrom(FEB_7, 12)) await services.repo.addLedgerRow(subscriptionId, weekOf, "paid", 4500);
-    for (const query of [{}, { switch: "1" }]) {
-      const { card } = await renderCard(query);
-      expect(textOf(card)).toContain("3–4 people · Standard");
-      expect(textOf(card)).toContain(formatUsdWhole(4500));
-      expect(linksOf(card)).toEqual([]);
-      expect(card).not.toContain("<form");
-    }
-  });
-});
-
 // Issue 139: a cancelled subscription's Upcoming weeks. That only paid rows stay, with no button, is upcomingRows'
 // (src/account-weeks.test.ts); here one case goes through the page.
 describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
-  it("AC5: only the paid weeks to come are listed, with no Skip or Unskip, and the meal card has no Switch size or menu, even at ?switch=1", async () => {
+  it("AC5: only the paid weeks to come are listed, with no Skip or Unskip, and no Switch size or menu, even at ?switch=1", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-02-07", "paid", 4500);
     await services.repo.addLedgerRow(subscriptionId, "2027-03-07", "paid", 4500);
@@ -379,8 +289,8 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
     }
   });
 
-  // Review route (@ui-reviewer): nothing more is charged, so neither the intro line, which says when a week is
-  // charged, nor the meal card's weekly price is shown.
+  // Review route (@ui-reviewer): nothing more is charged, so the intro line, which says when a week is charged, is not
+  // shown.
 
   /** Ada's subscription with February 7 paid, cancelled now; the page's markup. */
   const renderCancelled = async (): Promise<string> => {
@@ -393,19 +303,26 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
   it("AC5: the intro line, which says when a week is charged, is not shown", async () => {
     expect(textsOf(await renderCancelled())).not.toContain(t("account.weeks.intro"));
   });
+});
 
-  it("AC5: the meal card shows the meal without its weekly price", async () => {
-    const html = await renderCancelled();
-    // The meal card is the Card (a <section>) before the weeks card, which holds the list.
-    const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
-    expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
-    expect(textsOf(card).join(" ")).not.toContain(formatUsdWhole(4500));
+// Issue 219: the meal card and its Switch moved to the account page (app/account/page.test.ts). The intro, the Notices
+// and the week list stay, and are the tests above and below.
+describe("AC7 (issue 219) — Upcoming weeks has no meal card", () => {
+  it("AC7: the meal is not shown, and there is no Switch size or menu and no switch form, even at ?switch=1 with a switch week listed", async () => {
+    await subscribedAda();
+    for (const query of [{}, { switch: "1" }]) {
+      const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
+      expect(textsOf(html).join(" ")).not.toContain("3–4 people · Standard");
+      expect(attributesOf(html, "a").map((link) => link.href ?? "").filter((href) => href.includes("switch="))).toEqual([]);
+      // The mocked switchMeal names itself in the markup of any form posting to it.
+      expect(html).not.toContain("switchMeal");
+    }
   });
 });
 
 // Issue 198: a locked subscription's Upcoming weeks. Which week is Locked or Card declined, and that no week has a button
-// and there is no switch week while locked, is upcomingRows' and switchWeek's (src/account-weeks.test.ts,
-// src/switch-meal.test.ts); when the declined Notice names its week is account home's (app/account/page.test.ts). Here
+// while locked, is upcomingRows' (src/account-weeks.test.ts); Switch while locked, with the meal card, and when the
+// declined Notice names its week are account home's (app/account/page.test.ts, issue 219). Here
 // one locked case of each goes through the page, the unlocked ones being the tests above. A row's line and badge are read
 // by their catalog lines and the badge's kind by what Badge draws for it; the Notice by its week, its button and where
 // it sits.
@@ -434,12 +351,11 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
   };
 
-  /** The page drawn with `query`: its markup, each row's runs, and the meal card's markup, the Card before the weeks card. */
-  const renderLocked = async (query: { switch?: string } = {}): Promise<{ html: string; rows: string[][]; card: string }> => {
+  /** The page drawn with `query`: its markup and each row's runs. */
+  const renderLocked = async (query: { switch?: string } = {}): Promise<{ html: string; rows: string[][] }> => {
     const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
     const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
-    const card = [...html.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => match[1] ?? "").find((section) => !section.includes("<li")) ?? "";
-    return { html, rows, card };
+    return { html, rows };
   };
 
   /** The markup of the row titled `title`. */
@@ -449,30 +365,13 @@ describe("issue 198 — Upcoming weeks while locked", () => {
   /** What Badge draws for `kind` with the catalog line `key`. */
   const badgeOf = (kind: BadgeKind, key: MessageKey): string => renderToStaticMarkup(createElement(Badge, { kind, children: t(key) }));
 
-  /** Where each link in `markup` goes, as a path and query. */
-  const linksOf = (markup: string): string[] =>
-    attributesOf(markup, "a").map((link) => {
-      const url = new URL(link.href ?? "", "http://haul.test/account/weeks");
-      return `${url.pathname}${url.search}`;
-    });
-
   it("AC1: no listed week has a Skip or Unskip: the page has no form, though a Coming and a Skipped week are before their cutoffs", async () => {
     await lockedAda();
     const { html } = await renderLocked();
     expect(html).not.toContain("<form");
   });
 
-  it("AC2: the meal card has no Switch size or menu, and ?switch=1 opens no pickers", async () => {
-    await lockedAda();
-    for (const query of [{}, { switch: "1" }]) {
-      const { card } = await renderLocked(query);
-      expect(textsOf(card).join(" ")).toContain("3–4 people · Standard");
-      expect(linksOf(card)).not.toContain("/account/weeks?switch=1");
-      expect(card).not.toContain("<form");
-    }
-  });
-
-  it("AC5: the one Notice sits above the meal card, names the declined week whose pickup is to come, and ends with a primary Update your card to /account/card; the intro line is left out", async () => {
+  it("AC5: the one Notice sits above the weeks card, names the declined week whose pickup is to come, and ends with a primary Update your card to /account/card; the intro line is left out", async () => {
     await lockedAda();
     const { html } = await renderLocked();
     const alerts = alertTexts(html);
@@ -538,11 +437,11 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.marker.paid"), t("account.marker.paid")]);
   });
 
-  it("AC14: once a card update pays the declined week, a week with no locked row has Skip again, Switch size or menu is back, and there is no Notice; guards AC1, AC2 and AC5", async () => {
+  // Issue 219: its Switch clause moved to app/account/page.test.ts with the meal card.
+  it("AC14: once a card update pays the declined week, a week with no locked row has Skip again, and there is no Notice; guards AC1 and AC5", async () => {
     await updatedAda();
-    const { html, card } = await renderLocked();
+    const { html } = await renderLocked();
     expect(formsIn(html, titleOf(FEB_14))).toEqual([{ action: "skipWeek", week: FEB_14 }]);
-    expect(linksOf(card)).toEqual(["/account/weeks?switch=1"]);
     expect(alertTexts(html)).toEqual([]);
   });
 });

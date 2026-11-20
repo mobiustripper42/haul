@@ -7,7 +7,6 @@ import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
 import { getTranslator } from "./language";
 import {
-  ACCOUNT_DETAILS_PATH,
   ACCOUNT_HISTORY_PATH,
   ACCOUNT_PATH,
   ACCOUNT_WEEKS_PATH,
@@ -20,16 +19,15 @@ import { getSignedInMember } from "./session";
 import { signOut } from "./sign-in/actions";
 import { PANE_SIGN_IN_PAGES } from "./supper-club/paths";
 
-type Current = "account" | "weeks" | "history" | "details" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
+type Current = "account" | "weeks" | "history" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
 
 type NavLink = { current: Current; href: string; label: MessageKey };
 
 /** The member links in order, drawn twice from here: in the bar, and in the drawer. */
 const MEMBER_LINKS: readonly NavLink[] = [
-  { current: "account", href: ACCOUNT_PATH, label: "header.yourMeal" },
+  { current: "account", href: ACCOUNT_PATH, label: "header.yourAccount" },
   { current: "weeks", href: ACCOUNT_WEEKS_PATH, label: "header.weeks" },
   { current: "history", href: ACCOUNT_HISTORY_PATH, label: "header.history" },
-  { current: "details", href: ACCOUNT_DETAILS_PATH, label: "header.details" },
 ];
 
 /** The admin links in order, for admins only: in the bar's Admin group, and openly at the top of the drawer under an Admin heading, set off from the member links by a rule. */
@@ -53,8 +51,8 @@ function SignOutButton({ label, inBar }: { label: string; inBar?: true }) {
 
 /**
  * The header every public page opens with: the farm's name. Signed in, the header reads the session
- * itself and is one bar (issue 159): at 1024px and wider the member links (Your meal, Upcoming weeks, History,
- * Your details), for an admin an Admin group (Members, Menus, Weeks, Weekly lists), and Sign out; below it all of
+ * itself and is one bar (issue 159): at 1024px and wider the member links (Your account, Upcoming weeks,
+ * History), for an admin an Admin group (Members, Menus, Weeks, Weekly lists), and Sign out; below it all of
  * it is in a drawer from the right, with Sign out at its foot. `current` names the page showing: its link is marked
  * in both, and on an admin page so is the Admin group. Signed out, `account` adds
  * a link after the name: "sign-in" a secondary Sign in to the Supper Club's sign-in pane,
