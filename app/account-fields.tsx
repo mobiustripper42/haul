@@ -9,6 +9,7 @@ import { FieldError } from "../components/ui/field-error";
 import { Input } from "../components/ui/input";
 import { Select } from "../components/ui/select";
 import { getEmailLanguageDefault, getTranslator } from "./language";
+import { PhoneInput } from "./phone-input";
 
 const ERROR_KEYS = {
   firstName: "createAccount.error.firstName",
@@ -103,7 +104,7 @@ export async function AccountFields({
         {fieldError("email")}
       </Field>
       <Field label={t("createAccount.phone")} htmlFor="phone" help={t("createAccount.phoneHelp")}>
-        <Input
+        <PhoneInput
           id="phone"
           name="phone"
           maxLength={ACCOUNT_LIMITS.phone}

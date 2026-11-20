@@ -9,7 +9,7 @@ import type { ProductWithOptions } from "@core/products.js";
 import { emptyRequest } from "../../../next-headers-fake";
 import { redirectOf } from "../../../screen-test-helpers";
 import { addSupperClub, MENUS, SIZES } from "../../subscribers-fixture";
-import { CHIDI, FEB_14, FEB_7, fourMembers, NOW, signInAs } from "../lists-fixture";
+import { CHIDI, FEB_14, FEB_7, fourMembers, NOW, signInAs, subscribe } from "../lists-fixture";
 import { GET } from "./route";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../../next-headers-fake").RequestState }));
@@ -77,6 +77,14 @@ describe("AC6 — the skips CSV", () => {
     const response = await get(`?week=${FEB_14}`);
     expect(filenameOf(response)).toBe("supper-club-skips-2027-02-14.csv");
     expect(parseCsv(await response.text())).toEqual([HEADER, ["Nguyen", "Lan", "lan@example.com", "216-555-0101", "2 people", "Standard"]]);
+  });
+
+  // Issue 222: the Phone cell is memberCells' (src/member-export.test.ts); one formatted case through the route.
+  it("AC5 (issue 222): a skip whose stored phone is 2165551234 has (216) 555-1234 in its Phone cell", async () => {
+    const tam = await subscribe(services.repo, product, { email: "tam@example.com", firstName: "Tam", lastName: "Okafor", phone: "2165551234" }, ["2 people", "Standard"]);
+    expect(await services.repo.skipWeek(tam.subscriptionId, FEB_14)).toBe(true);
+    const rows = parseCsv(await (await get(`?week=${FEB_14}`)).text());
+    expect(rows.find((record) => record[2] === "tam@example.com")?.[3]).toBe("(216) 555-1234");
   });
 
   it("AC8: a week the select does not offer falls back to the first upcoming week's", async () => {

@@ -12,7 +12,7 @@ export const dynamic = "force-dynamic";
 export default async function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang={await getLanguage()} className={fontVariables}>
-      <body className="flex min-h-dvh flex-col bg-surface-alt font-sans text-body text-ink">
+      <body className="flex min-h-svh flex-col bg-surface-alt font-sans text-body text-ink">
         {children}
         {await SiteFooter()}
       </body>

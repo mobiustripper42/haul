@@ -178,6 +178,11 @@ describe("AC6 — skipsCsv", () => {
     expect(row?.[3]).toBe("+1 (216) 555-0142");
   });
 
+  it("AC5 (issue 222): the Phone cell is memberCells': a stored 2165551234 is written (216) 555-1234", () => {
+    const [, row] = parseCsv(skipsCsv(TYPES, [member({ phone: "2165551234" })]));
+    expect(row?.[3]).toBe("(216) 555-1234");
+  });
+
   it("AC6: with no skips the file is the header row", () => {
     expect(parseCsv(skipsCsv(TYPES, []))).toEqual([HEADER]);
   });

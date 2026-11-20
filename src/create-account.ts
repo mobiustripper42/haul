@@ -2,13 +2,14 @@ import { DEFAULT_LANGUAGE, isLanguage, type Language } from "./i18n.js";
 import type { Member } from "./members.js";
 import type { Repository } from "./ports/repository.js";
 import { issueSignInCode, type IssueOutcome } from "./sign-in/code.js";
+import { phoneDigits } from "./phone.js";
 import { cleanTypedText } from "./typed-text.js";
 
 export type AccountField = "firstName" | "lastName" | "email" | "phone";
 
 export type AccountDetails = { email: string; firstName: string; lastName: string; phone: string; language: Language };
 
-/** The longest each value may be, after trimming: the email index's, and sane for the rest. The page's `maxLength`s and the draft cookie use these too. */
+/** The longest each value may be, after trimming: the email index's, and sane for the rest. The page's `maxLength`s and the draft cookie use these too; the phone's is only the box's and the cookie's, the server asking `phoneDigits` for ten digits. */
 export const ACCOUNT_LIMITS = { firstName: 100, lastName: 100, email: 254, phone: 40 } as const satisfies Record<AccountField, number>;
 
 /**
@@ -35,15 +36,15 @@ export function validateAccountDetails(input: {
   const firstName = cleanTypedText(input.firstName);
   const lastName = cleanTypedText(input.lastName);
   const email = cleanTypedText(input.email);
-  const phone = cleanTypedText(input.phone);
+  const phone = phoneDigits(cleanTypedText(input.phone));
   const language = input.language.trim();
 
   const errors: AccountField[] = [];
   if (firstName === "" || firstName.length > ACCOUNT_LIMITS.firstName) errors.push("firstName");
   if (lastName === "" || lastName.length > ACCOUNT_LIMITS.lastName) errors.push("lastName");
   if (!isValidEmail(email) || email.length > ACCOUNT_LIMITS.email) errors.push("email");
-  if (phone === "" || phone.length > ACCOUNT_LIMITS.phone) errors.push("phone");
-  if (errors.length > 0) return { ok: false, errors };
+  if (phone === null) errors.push("phone");
+  if (errors.length > 0 || phone === null) return { ok: false, errors };
 
   return {
     ok: true,

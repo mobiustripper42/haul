@@ -21,6 +21,7 @@ export type PaymentText = {
   testCard: string;
   cardFailed: string;
   cardRefused: string;
+  cardLoading: string;
   todayLabel: string;
   weeklyLabel: string;
   consentError: string;
@@ -128,6 +129,7 @@ export function PaymentSection({
         testLabel={text.testCard}
         failedText={text.cardFailed}
         refusedText={text.cardRefused}
+        loadingText={text.cardLoading}
         testMode={card.testMode}
         applicationId={card.applicationId}
         locationId={card.locationId}

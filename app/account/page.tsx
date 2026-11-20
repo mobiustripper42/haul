@@ -2,6 +2,7 @@ import { lockedWeek } from "@core/account-weeks.js";
 import { LANGUAGES } from "@core/i18n.js";
 import { mealLabel, SEPARATOR } from "@core/member-list.js";
 import { memberDisplayName } from "@core/members.js";
+import { formatPhone } from "@core/phone.js";
 import { formatUsdWhole } from "@core/money.js";
 import { listedWeekTitle, pickupWhereLine, weekTitle } from "@core/pickup-week.js";
 import { Badge } from "../../components/ui/badge";
@@ -44,7 +45,7 @@ export default async function Account() {
   const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
   const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
   const name = memberDisplayName(member);
-  const phoneAndLanguage = [member.phone, LANGUAGES[member.language].name].filter(Boolean).join(SEPARATOR);
+  const phoneAndLanguage = [formatPhone(member.phone), LANGUAGES[member.language].name].filter(Boolean).join(SEPARATOR);
 
   return (
     <>

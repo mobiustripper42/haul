@@ -7,7 +7,7 @@ import { PayButton } from "../../supper-club/payment-section";
 import { saveCard } from "./actions";
 
 /** Issue 145: the words the card page has translated for the form, which a client component cannot get for itself. */
-export type CardFormText = { cardLabel: string; cardHint: string; testCard: string; cardFailed: string; cardRefused: string; save: string };
+export type CardFormText = { cardLabel: string; cardHint: string; testCard: string; cardFailed: string; cardRefused: string; cardLoading: string; save: string };
 
 /**
  * Issue 145: the new card's entry and Save card. Save is the form's action: it asks `CardEntry` for a token, adds it to
@@ -33,6 +33,7 @@ export function CardForm({ amountCents, card, text }: { amountCents: number; car
         testLabel={text.testCard}
         failedText={text.cardFailed}
         refusedText={text.cardRefused}
+        loadingText={text.cardLoading}
         testMode={card.testMode}
         applicationId={card.applicationId}
         locationId={card.locationId}

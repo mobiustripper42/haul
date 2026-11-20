@@ -112,6 +112,26 @@ describe("AC6 — the headers as the list opens", () => {
   });
 });
 
+// Issue 222: the display rule is formatPhone's (src/phone.test.ts); the table's phone cell and the stacked rows'
+// email · phone note show the phone through it.
+describe("AC5 (issue 222) — the phone, in the table and on the stacked rows", () => {
+  /** Each stacked row's last line: its email · phone note. */
+  const notesOf = (html: string): (string | undefined)[] =>
+    [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map(([, inner = ""]) => textsOf(inner).at(-1));
+
+  it("AC5: a stored 2165551234 reads (216) 555-1234 in the phone cell and in the note", () => {
+    const html = render([subscriber({ phone: "2165551234" })]);
+    expect(tableRows(html).map((row) => row[2])).toEqual(["(216) 555-1234"]);
+    expect(notesOf(html)).toEqual(["rosa@example.com · (216) 555-1234"]);
+  });
+
+  it("AC5: a stored 216-555-0187, saved before ten digits were kept, reads unchanged in the phone cell and in the note", () => {
+    const html = render([subscriber({ phone: "216-555-0187" })]);
+    expect(tableRows(html).map((row) => row[2])).toEqual(["216-555-0187"]);
+    expect(notesOf(html)).toEqual(["rosa@example.com · 216-555-0187"]);
+  });
+});
+
 // Issue 139: each row reads its own status, a cancelled row with a refund owed says so beside its badge, and each
 // name links to the row's member page, in the table and on the stacked rows below 720px. Which rows are cancelled
 // and owe a refund is listSubscribers' (src/adapters/signup-contract.ts); the words are the page's (app/admin/page.test.ts).

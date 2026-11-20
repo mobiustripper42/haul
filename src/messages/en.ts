@@ -310,6 +310,7 @@ export const en = {
   "supperClub.consentPrivacy": "Privacy Policy",
   "supperClub.cardFailed": "The card form didn't load. Refresh the page and try again.",
   "supperClub.cardRefused": "Check the card details or try another card.",
+  "supperClub.cardLoading": "Loading the card form…",
   "supperClub.consentError": "Check the box to agree to the weekly charge.",
   "supperClub.joinAndPay": "Join and pay {price}",
   "supperClub.capHint": "Limited supply of subscriptions. No sales tax.",
@@ -353,7 +354,7 @@ export const en = {
   "createAccount.error.firstName": "Enter your first name.",
   "createAccount.error.lastName": "Enter your last name.",
   "createAccount.error.email": "Enter a full email address, like name@example.com.",
-  "createAccount.error.phone": "Enter your phone number.",
+  "createAccount.error.phone": "Enter a 10-digit phone number.",
   "createAccount.codeTitle": "Check your email",
   "createAccount.codeSent":
     "We sent a 6-digit code to {email}. Enter it to confirm your email. It expires in {minutes} minutes.",

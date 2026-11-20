@@ -1,4 +1,5 @@
 import { compareNames } from "./member-list.js";
+import { formatPhone } from "./phone.js";
 import type { Subscriber } from "./ports/repository.js";
 
 /** A phone number as typed: digits, spaces and `+ - ( ) .` only. The Phone column's one exception to the formula rule. */
@@ -25,7 +26,7 @@ export function memberCells(
     cell(member.lastName ?? ""),
     cell(member.firstName ?? ""),
     cell(member.email),
-    cell(member.phone ?? "", { asTyped: PHONE_AS_TYPED.test(member.phone ?? "") }),
+    cell(formatPhone(member.phone), { asTyped: PHONE_AS_TYPED.test(formatPhone(member.phone)) }),
     ...optionTypeNames.map((typeName) => cell(member.options.find((option) => option.typeName === typeName)?.optionName ?? "")),
   ];
 }
