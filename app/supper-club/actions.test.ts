@@ -20,7 +20,7 @@ import { signSession, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
 import { ACCOUNT_PATH } from "../paths";
 import { redirectOf } from "../screen-test-helpers";
-import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES, PAY_ERROR_SOLD_OUT } from "./paths";
+import { PANE_CREATE_PAGES, PANE_SIGN_IN_PAGES, PAY_ERROR_SOLD_OUT, SUPPER_CLUB_ALREADY_PATH, SUPPER_CLUB_FROM_PAY } from "./paths";
 import { paymentWording } from "./payment-wording";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -475,7 +475,7 @@ describe("issue 56 — the pay actions", () => {
     it("AC5: a member who already has a box, from a second tab, lands on /supper-club/already, with one already_subscribed event", async () => {
       signIn();
       await join(pay());
-      expect(await join(pay({ sourceId: "cnon:second-tab" }))).toBe("/supper-club/already");
+      expect(landed(await join(pay({ sourceId: "cnon:second-tab" }))).path).toBe(SUPPER_CLUB_ALREADY_PATH);
       expect(repo.events().map((event) => event.kind)).toEqual(["already_subscribed"]);
       expect(services.payments.charges).toHaveLength(1);
     });
@@ -553,6 +553,22 @@ describe("issue 56 — the pay actions", () => {
       await stranded();
       vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
       expect(landed(await retry())).toMatchObject({ path: "/supper-club", query: { payError: "unknown" } });
+    });
+  });
+
+  // Issue 221: both refusals of a member who already has a subscription charged nothing, so both land on the already
+  // page with the Pay mark, the `from` value the page reads. Whether the page then says so is ./outcome-pages.test.ts's.
+  describe("AC5 (issue 221) — the Pay mark", () => {
+    it("AC5 (issue 221): Pay from a member who already has a subscription lands on /supper-club/already with the Pay mark", async () => {
+      signIn();
+      await join(pay());
+      expect(landed(await join(pay({ sourceId: "cnon:second-tab" })))).toEqual({ path: SUPPER_CLUB_ALREADY_PATH, query: { from: SUPPER_CLUB_FROM_PAY } });
+    });
+
+    it("AC5 (issue 221): Try again from a member who already has a subscription lands on /supper-club/already with the Pay mark", async () => {
+      signIn();
+      await join(pay());
+      expect(landed(await retry())).toEqual({ path: SUPPER_CLUB_ALREADY_PATH, query: { from: SUPPER_CLUB_FROM_PAY } });
     });
   });
 
@@ -716,7 +732,7 @@ describe("issue 56 — the pay actions", () => {
       it("AC3: a second tab after the first has paid is already subscribed, and the member has one email", async () => {
         signIn();
         await join(pay());
-        expect(await join(pay({ sourceId: "cnon:second-tab" }))).toBe("/supper-club/already");
+        expect(landed(await join(pay({ sourceId: "cnon:second-tab" }))).path).toBe(SUPPER_CLUB_ALREADY_PATH);
         await runScheduled();
         expect(sent()).toHaveLength(1);
       });
@@ -724,7 +740,7 @@ describe("issue 56 — the pay actions", () => {
       it("AC3: Try again from a member who has paid is already subscribed, and the member has one email", async () => {
         signIn();
         await join(pay());
-        expect(await retry()).toBe("/supper-club/already");
+        expect(landed(await retry()).path).toBe(SUPPER_CLUB_ALREADY_PATH);
         await runScheduled();
         expect(sent()).toHaveLength(1);
       });
@@ -883,7 +899,7 @@ describe("issue 56 — the pay actions", () => {
         await join(pay());
         await runScheduled();
 
-        expect(await retry()).toBe("/supper-club/already");
+        expect(landed(await retry()).path).toBe(SUPPER_CLUB_ALREADY_PATH);
         await runScheduled();
         expect(send).toHaveBeenCalledTimes(1);
       });

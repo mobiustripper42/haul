@@ -21,7 +21,7 @@ import {
   PANE_CREATE_PAGES,
   PANE_SIGN_IN_PAGES,
   PAY_ERROR_SOLD_OUT,
-  SUPPER_CLUB_ALREADY_PATH,
+  SUPPER_CLUB_ALREADY_FROM_PAY_PATH,
   SUPPER_CLUB_DONE_PATH,
   SUPPER_CLUB_PATH,
 } from "./paths";
@@ -56,7 +56,7 @@ function landing(result: SignupResult, choices: Record<string, string> | null): 
     case "paid":
       return SUPPER_CLUB_DONE_PATH;
     case "already_subscribed":
-      return SUPPER_CLUB_ALREADY_PATH;
+      return SUPPER_CLUB_ALREADY_FROM_PAY_PATH;
     case "sold_out":
       return backToPage(PAY_ERROR_SOLD_OUT, choices);
     default:

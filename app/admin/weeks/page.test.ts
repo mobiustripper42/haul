@@ -10,7 +10,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, pluralKey, type MessageKey } from "@core/i18n.js";
-import type { ChangedWeek } from "@core/pickup-week.js";
+import { cutoffInstant, type ChangedWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Hint } from "../../../components/ui/hint";
@@ -262,19 +262,93 @@ describe("AC2, AC3, AC14 — the close dialog", () => {
     expect(controls(html)).toContainEqual(expect.objectContaining({ tag: "textarea", name: "note" }));
   });
 
-  it("AC3, AC14: before the cutoff with 3 paid at signup: who paid, and the button gives 3 week credits", async () => {
+  it("AC3, AC14: before the cutoff with 3 paid at signup: who paid", async () => {
     await paidFor(OPEN, 3);
     const { text } = await render({ close: OPEN });
     expect(text).toContain(tn("admin.weeks.closeBefore", 3, { cutoff: FEB_8_CUTOFF }));
-    expect(text).toContain(tn("admin.weeks.closeConfirmBefore", 3));
     expect(text).not.toContain(t("admin.weeks.closeNobody", { cutoff: FEB_8_CUTOFF }));
   });
 
-  it("AC3, AC14: after the cutoff: who was charged and when, and the button gives week credits", async () => {
+  it("AC3, AC14: after the cutoff: who was charged and when", async () => {
     await paidFor(PAST_CUTOFF, 2);
     const { text } = await render({ close: PAST_CUTOFF });
     expect(text).toContain(tn("admin.weeks.closeAfter", 2, { cutoff: FEB_1_CUTOFF }));
-    expect(text).toContain(t("admin.weeks.closeConfirmAfter"));
+  });
+});
+
+// Issue 221: the close dialog says how many members get an email. Who is due a week, and so emailed, is listWeekDue's
+// contract (src/adapters/week-credit-contract.ts); what closeWeek sends is ./actions.test.ts's. These hold that the
+// dialog shows listWeekDue's count for the week, with one member due and one not, and the line for nobody due.
+describe("AC1, AC2 (issue 221) — the close dialog's emails", () => {
+  /** A week before the list's first, so its subscribers are due every listed week until they skip one. */
+  const EARLIER = "2027-01-31";
+
+  /** A subscriber since EARLIER who skipped `week`: not due it. */
+  const skipped = async (week: string): Promise<void> => {
+    const member = await services.repo.createMember({ email: `member-${++members}@example.com` });
+    const signup = await services.repo.savePendingSignup({
+      memberId: member.id,
+      productId: product.id,
+      choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+      firstChargeCents: 8000,
+      weeklyCents: 8000,
+      pickupDate: EARLIER,
+      consentText: "I agree to a weekly charge of $80.",
+      consentAt: new Date("2027-01-20T15:00:00.000Z"),
+    });
+    await services.repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, new Date("2027-01-20T15:00:05.000Z"));
+    const subscription = await services.repo.findActiveSubscription(member.id, product.id);
+    await services.repo.skipWeek(subscription?.id ?? "no subscription", week);
+  };
+
+  /** How many members listWeekDue gives for `week`: the members the close emails. */
+  const dueFor = async (week: string): Promise<number> => (await services.repo.listWeekDue(product.id, week, cutoffInstant(product, week))).length;
+
+  /** The close dialog: from its heading to the list of weeks. */
+  const dialogOf = (screen: Screen): Screen => {
+    const markup = screenMarkup(screen.html);
+    return screenOf(markup.slice(markup.indexOf("<h2"), markup.indexOf("<ul")));
+  };
+
+  /** The words of a line this task adds, refused while the catalog has none, so a check that it shows is never vacuous. */
+  const lineOf = (key: MessageKey): string => {
+    const line = t(key);
+    expect(line, `${key} has no words in the catalog`).not.toBe("");
+    return line;
+  };
+
+  it("AC1 (issue 221): before the cutoff, the dialog shows listWeekDue's count: those paid for the week and those due it, not one who skipped it", async () => {
+    await paidFor(OPEN, 2);
+    await paidFor(EARLIER, 4);
+    await skipped(OPEN);
+    const due = await dueFor(OPEN);
+    // The fixture: 2 + 4 due, the one who skipped not; a count no other number in the dialog shares.
+    expect(due).toBe(6);
+    const dialog = dialogOf(await render({ close: OPEN }));
+    expect(dialog.text).toMatch(new RegExp(`\\b${due}\\b`));
+    expect(dialog.text).toContain(tn("admin.weeks.closeEmails", due));
+    expect(dialog.text).not.toContain(lineOf("admin.weeks.closeEmailsNone"));
+  });
+
+  it("AC1 (issue 221): after the cutoff, the dialog shows listWeekDue's count: those charged and those due, not one whose first week is later", async () => {
+    await paidFor(PAST_CUTOFF, 2);
+    await paidFor(EARLIER, 3);
+    await paidFor(OPEN, 1);
+    const due = await dueFor(PAST_CUTOFF);
+    // The fixture: 2 + 3 due, the one starting February 14 not; a count no other number in the dialog shares.
+    expect(due).toBe(5);
+    const dialog = dialogOf(await render({ close: PAST_CUTOFF }));
+    expect(dialog.text).toMatch(new RegExp(`\\b${due}\\b`));
+    expect(dialog.text).toContain(tn("admin.weeks.closeEmails", due));
+    expect(dialog.text).not.toContain(lineOf("admin.weeks.closeEmailsNone"));
+  });
+
+  it("AC2 (issue 221): an open week nobody is due: the dialog shows the line for nobody emailed, and no count", async () => {
+    await paidFor("2027-02-21", 1);
+    expect(await dueFor(OPEN)).toBe(0);
+    const dialog = dialogOf(await render({ close: OPEN }));
+    expect(dialog.text).toContain(lineOf("admin.weeks.closeEmailsNone"));
+    expect(dialog.text).not.toContain(tn("admin.weeks.closeEmails", 0));
   });
 });
 
