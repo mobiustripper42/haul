@@ -492,11 +492,27 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(rowMarkup(html, titleOf(FEB_14))).toContain(badgeOf("locked", "account.marker.locked"));
   });
 
-  it("AC7: after the card update, a week holding a locked row whose cutoff has passed and whose pickup is to come is still Locked", async () => {
-    await updatedAda();
-    const { html, rows } = await renderLocked();
-    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.noPickupLocked"), t("account.marker.locked")]);
-    expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("locked", "account.marker.locked"));
+  // Issue 217: a Locked week's line is picked by the lock. While locked it is the no-pickup line; once a card update has
+  // paid the declined week, a week still holding a locked row (DEC-042) says why it has no meal. Which weeks are Locked
+  // is upcomingRows' and unchanged; a week after the declined week, while locked, is issue 198's AC6 above.
+  describe("issue 217 — a Locked week's line", () => {
+    it("AC1: still locked, a week holding a locked row is Locked: the no-pickup line, the Locked badge of the locked kind, and no button", async () => {
+      // January 31 declined, February 7 a locked row, and no card update: the subscription is still locked.
+      const { subscriptionId } = await lockedAda("2027-01-31");
+      await services.repo.addLedgerRow(subscriptionId, FEB_7, "locked", 0);
+      const { html, rows } = await renderLocked();
+      expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.noPickupLocked"), t("account.marker.locked")]);
+      expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("locked", "account.marker.locked"));
+      expect(formsIn(html, titleOf(FEB_7))).toEqual([]);
+    });
+
+    it("AC2: once a card update has paid the declined week, a week holding a locked row is Locked with the after-update line, the Locked badge of the locked kind, and no button", async () => {
+      await updatedAda();
+      const { html, rows } = await renderLocked();
+      expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.weeks.lockedAfterUpdate"), t("account.marker.locked")]);
+      expect(rowMarkup(html, titleOf(FEB_7))).toContain(badgeOf("locked", "account.marker.locked"));
+      expect(formsIn(html, titleOf(FEB_7))).toEqual([]);
+    });
   });
 
   it("AC11: the declined week is Card declined, as account home's badge: its line, no charge day and no button", async () => {
