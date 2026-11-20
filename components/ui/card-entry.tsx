@@ -211,10 +211,11 @@ export function CardEntry({
       const square = await loadSquare(applicationId);
       const card = await (await square.payments(applicationId, locationId)).card();
       if (gone) return;
-      await card.attach(target);
       made = card;
+      await card.attach(target);
+      if (gone) return;
       attachment.attach(card);
-      if (!gone) setAttached(true);
+      setAttached(true);
     })().catch(() => {
       if (gone) return;
       attachment.fail();

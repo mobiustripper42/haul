@@ -22,11 +22,12 @@ export function memberCells(
   optionTypeNames: string[],
   member: Pick<Subscriber, "firstName" | "lastName" | "email" | "phone" | "options">,
 ): string[] {
+  const phone = formatPhone(member.phone);
   return [
     cell(member.lastName ?? ""),
     cell(member.firstName ?? ""),
     cell(member.email),
-    cell(formatPhone(member.phone), { asTyped: PHONE_AS_TYPED.test(formatPhone(member.phone)) }),
+    cell(phone, { asTyped: PHONE_AS_TYPED.test(phone) }),
     ...optionTypeNames.map((typeName) => cell(member.options.find((option) => option.typeName === typeName)?.optionName ?? "")),
   ];
 }
