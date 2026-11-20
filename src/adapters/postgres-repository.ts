@@ -135,7 +135,7 @@ const clevelandDay = (column: string): string => `to_char(${column} at time zone
 /**
  * A `where` condition on `subscription_options so`: the row belongs to the set in effect for the week `weekExpr` gives
  * (DEC-033), the set with the latest `from_week` on or before it. The one home of the rule, used by `listMemberWeeks`,
- * `grantWeekCredits` and `switchPicks`. `weekExpr` is only ever an expression written in this file.
+ * `grantWeekCredits`, `switchPicks` and `findOptionsForWeek`. `weekExpr` is only ever an expression written in this file.
  */
 const inEffectFor = (weekExpr: string): string =>
   `so.from_week = (select max(latest.from_week) from subscription_options latest

@@ -71,7 +71,8 @@ export default async function Account({ searchParams }: { searchParams?: Promise
     searchParams,
     cookies(),
     repo.findEmailChange(member.id),
-    loadUpcomingRows(subscribed, now),
+    // A cancelled subscription has no switch week and no pending line, so its weeks are not read.
+    cancelled ? [] : loadUpcomingRows(subscribed, now),
   ]);
   const { switch: switchQuery, switchError, saved, error, sent, limited } = query ?? {};
   const next = cancelled ? null : await loadNextPickup(subscribed, now);
