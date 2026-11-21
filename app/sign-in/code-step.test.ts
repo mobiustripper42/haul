@@ -261,6 +261,19 @@ describe("issue 156 — CodeStep's back, notice and invalidText", () => {
   });
 });
 
+// Issue 219: on /account the code step sits below the page's own heading, so it draws its heading at level 2; every
+// other caller gives no level and keeps level 1, which the AC13 sentence tests above read.
+describe("AC6 (issue 219) — CodeStep's headingLevel", () => {
+  const step = (extra: Record<string, unknown> = {}) =>
+    CodeStep({ heading: "Check it", sentence: "We sent it.", buttonLabel: "Confirm", verify, resend, backHref: "/flow", invalid: false, sent: false, ...extra } as Parameters<typeof CodeStep>[0]);
+
+  it("AC6: with headingLevel 2 the heading is an h2, and no h1 is drawn", async () => {
+    const html = renderToStaticMarkup(await step({ headingLevel: 2 }));
+    expect(html.match(/<h2\b[^>]*>([\s\S]*?)<\/h2>/)?.[1]).toBe("Check it");
+    expect(html).not.toMatch(/<h1\b/);
+  });
+});
+
 describe("AC13 — one code step", () => {
   const APP = fileURLToPath(new URL("..", import.meta.url));
 

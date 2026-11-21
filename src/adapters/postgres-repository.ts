@@ -135,7 +135,7 @@ const clevelandDay = (column: string): string => `to_char(${column} at time zone
 /**
  * A `where` condition on `subscription_options so`: the row belongs to the set in effect for the week `weekExpr` gives
  * (DEC-033), the set with the latest `from_week` on or before it. The one home of the rule, used by `listMemberWeeks`,
- * `grantWeekCredits` and `switchPicks`. `weekExpr` is only ever an expression written in this file.
+ * `grantWeekCredits`, `switchPicks` and `findOptionsForWeek`. `weekExpr` is only ever an expression written in this file.
  */
 const inEffectFor = (weekExpr: string): string =>
   `so.from_week = (select max(latest.from_week) from subscription_options latest
@@ -1351,6 +1351,20 @@ export class PostgresRepository implements Repository {
       [subscriptionId, weekOf],
     );
     return rowCount === 1;
+  }
+
+  async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
+    if (!UUID_SHAPE.test(subscriptionId)) return [];
+    const { rows } = await this.db.query<{ type_name: string; option_name: string }>(
+      `select t.name as type_name, o.name as option_name
+         from subscription_options so
+         join option_types t on t.id = so.option_type_id
+         join options o on o.id = so.option_id
+        where so.subscription_id = $1 and ${inEffectFor("$2::date")}
+        order by t.position, t.name`,
+      [subscriptionId, weekOf],
+    );
+    return rows.map((row) => ({ typeName: row.type_name, optionName: row.option_name }));
   }
 
   /**

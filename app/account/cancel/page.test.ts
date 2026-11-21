@@ -16,6 +16,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { alertTexts, attributesOf, redirectOf, screenMarkup } from "../../screen-test-helpers";
+import { SiteHeader } from "../../site-header";
 import CancelSupperClub from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -117,6 +118,17 @@ const inPageOrder = (html: string, marks: readonly string[]): boolean => {
   const at = marks.map((mark) => html.indexOf(mark));
   return at.every((n, i) => n >= 0 && (i === 0 || n > (at[i - 1] ?? -1)));
 };
+
+// Issue 219, AC8: the cancel confirm is reached from Your account, so the header marks it; which link that is, is
+// app/site-header.test.ts's.
+describe("AC8 (issue 219) — the header on /account/cancel", () => {
+  it('AC8: the page opens with the site header, Your account marked current: current "account"', async () => {
+    await subscribedAda();
+    vi.mocked(SiteHeader).mockClear();
+    await render();
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "account" }));
+  });
+});
 
 describe("AC11 (issue 139) — who reaches /account/cancel", () => {
   it("AC11: a signed-out visitor is sent to /sign-in", async () => {

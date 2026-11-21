@@ -84,11 +84,11 @@ describe("AC13 — the list is exactly these forty entries, and issue 56's two",
         "app/account/card/actions.ts#saveCard": { records: ["card_declined", "charge_outcome_unknown"] },
         "app/account/card/actions.ts#retryCard": { records: ["card_declined", "charge_outcome_unknown"] },
         // Issue 156: Your details. A save and a resend count in sign-in's request limit; a confirm records the change;
-        // Keep the old email records nothing (its reason is the entry's own).
-        "app/account/details/actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
-        "app/account/details/actions.ts#confirmEmailChange": { records: ["email_changed"] },
-        "app/account/details/actions.ts#resendEmailChange": { records: ["rate_limit_refusal"] },
-        "app/account/details/actions.ts#keepOldEmail": AUDIT_ENTRY_POINTS["app/account/details/actions.ts#keepOldEmail"] ?? { none: "an entry for keepOldEmail" },
+        // Keep the old email records nothing (its reason is the entry's own). Issue 219 moved them to app/account/details-actions.ts.
+        "app/account/details-actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
+        "app/account/details-actions.ts#confirmEmailChange": { records: ["email_changed"] },
+        "app/account/details-actions.ts#resendEmailChange": { records: ["rate_limit_refusal"] },
+        "app/account/details-actions.ts#keepOldEmail": AUDIT_ENTRY_POINTS["app/account/details-actions.ts#keepOldEmail"] ?? { none: "an entry for keepOldEmail" },
         // Issue 140: the menu library's actions and a week's menu write rows the audit trigger records, and record no event.
         "app/admin/menus/actions.ts#createMenu": { none: "writes menus and menu_texts; audited by trigger" },
         "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },

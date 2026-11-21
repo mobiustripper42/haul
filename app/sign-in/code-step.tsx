@@ -38,6 +38,7 @@ export async function CodeStep({
   sent,
   hint,
   resendEmail,
+  headingLevel,
 }: {
   heading: string;
   sentence: string;
@@ -55,6 +56,8 @@ export async function CodeStep({
   sent: boolean;
   hint?: string;
   resendEmail?: string;
+  /** The heading's level: 1, unless the caller's page already holds its own h1 (issue 219). */
+  headingLevel?: 1 | 2;
 }) {
   const t = await getTranslator();
   return (
@@ -66,7 +69,7 @@ export async function CodeStep({
           </Button>
         </p>
       )}
-      <Heading>{heading}</Heading>
+      {headingLevel === 2 ? <Heading level={2}>{heading}</Heading> : <Heading>{heading}</Heading>}
       <p className="text-ink-muted">{sentence}</p>
       {sent && !invalid && <Notice icon="check">{t("signIn.resent")}</Notice>}
       {invalid && <Notice icon="alert">{invalidText ?? t("signIn.invalidCode")}</Notice>}

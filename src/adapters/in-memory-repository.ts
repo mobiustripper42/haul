@@ -818,6 +818,11 @@ export class InMemoryRepository implements Repository {
     return "switched";
   }
 
+  async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
+    const set = this.setInEffect(subscriptionId, weekOf);
+    return set ? this.optionsNamed(this.subscriptions.get(subscriptionId), set.optionIds) : [];
+  }
+
   /** Issue 194: a test seam on the fake only, not on `Repository`: marks the subscription comped, as `db:comp` sets the column. */
   markComped(subscriptionId: string): void {
     const subscription = this.subscriptions.get(subscriptionId);

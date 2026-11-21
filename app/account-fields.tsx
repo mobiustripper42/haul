@@ -1,4 +1,4 @@
-// The five fields Create Account and Your details both render (issue 156): first and last name, email, phone and
+// The five fields Create Account and Your details both render (issue 156): first and last name, stacked (issue 219), email, phone and
 // language for emails, with their limits and their error lines. Called inline with `await`, as `CodeStep` is,
 // because `findAll` does not enter a component (app/screen-test-helpers.ts). A form wraps them and adds its button.
 import type { ReactNode } from "react";
@@ -60,36 +60,30 @@ export async function AccountFields({
 
   return (
     <>
-      <div className="flex flex-wrap gap-x-4 gap-y-6">
-        <div className="min-w-0 flex-1 basis-36">
-          <Field label={t("createAccount.firstName")} htmlFor="firstName">
-            <Input
-              id="firstName"
-              name="firstName"
-              maxLength={ACCOUNT_LIMITS.firstName}
-              autoComplete="given-name"
-              defaultValue={values.firstName ?? ""}
-              aria-invalid={invalid("firstName")}
-              aria-describedby={described("firstName")}
-            />
-            {fieldError("firstName")}
-          </Field>
-        </div>
-        <div className="min-w-0 flex-1 basis-36">
-          <Field label={t("createAccount.lastName")} htmlFor="lastName">
-            <Input
-              id="lastName"
-              name="lastName"
-              maxLength={ACCOUNT_LIMITS.lastName}
-              autoComplete="family-name"
-              defaultValue={values.lastName ?? ""}
-              aria-invalid={invalid("lastName")}
-              aria-describedby={described("lastName")}
-            />
-            {fieldError("lastName")}
-          </Field>
-        </div>
-      </div>
+      <Field label={t("createAccount.firstName")} htmlFor="firstName">
+        <Input
+          id="firstName"
+          name="firstName"
+          maxLength={ACCOUNT_LIMITS.firstName}
+          autoComplete="given-name"
+          defaultValue={values.firstName ?? ""}
+          aria-invalid={invalid("firstName")}
+          aria-describedby={described("firstName")}
+        />
+        {fieldError("firstName")}
+      </Field>
+      <Field label={t("createAccount.lastName")} htmlFor="lastName">
+        <Input
+          id="lastName"
+          name="lastName"
+          maxLength={ACCOUNT_LIMITS.lastName}
+          autoComplete="family-name"
+          defaultValue={values.lastName ?? ""}
+          aria-invalid={invalid("lastName")}
+          aria-describedby={described("lastName")}
+        />
+        {fieldError("lastName")}
+      </Field>
       <Field label={t("signIn.emailLabel")} htmlFor="email" help={t(emailHelp)}>
         <Input
           id="email"

@@ -1,6 +1,7 @@
 "use server";
 
-// Your details' four actions (issue 156). Each acts on the member `requireSubscriber` gives, never on an id the form
+// Your details' four actions (issue 156), moved here from app/account/details/ by issue 219: each lands on the account
+// page. Each acts on the member `requireSubscriber` gives, never on an id the form
 // posts. The code rules are `requestEmailChange`'s and `verifyEmailChange`'s; what lives here is what is stored, what
 // is emailed after the response and to whom, what is recorded, what is counted in sign-in's request limit, and where
 // the member lands.
@@ -12,12 +13,12 @@ import { normalizeEmail } from "@core/members.js";
 import { recordEventAs } from "@core/record-event.js";
 import { randomCode } from "@core/sign-in/code.js";
 import { deliverEmailChangeCode, deliverEmailChangedNotice } from "@core/sign-in-email.js";
-import { entered, keepDraft } from "../../create-account/shared";
-import { ACCOUNT_DETAILS_PATH } from "../../paths";
-import { getEmail, getPayments, getRepository, getSiteUrl } from "../../services";
-import { ACCOUNT_DRAFT_COOKIE } from "../../session";
-import { sendAfterResponse, takeRequestLimit, textField } from "../../sign-in/shared";
-import { requireSubscriber } from "../subscriber";
+import { entered, keepDraft } from "../create-account/shared";
+import { ACCOUNT_PATH } from "../paths";
+import { getEmail, getPayments, getRepository, getSiteUrl } from "../services";
+import { ACCOUNT_DRAFT_COOKIE } from "../session";
+import { sendAfterResponse, takeRequestLimit, textField } from "../sign-in/shared";
+import { requireSubscriber } from "./subscriber";
 
 /**
  * Saves the form. Name, phone, language and the menu email checkbox are stored at once, with the email changed or not (AC8); an email that
@@ -36,7 +37,7 @@ export async function saveDetails(formData: FormData): Promise<void> {
   const checked = validateAccountDetails(draft);
   if (!checked.ok) {
     await keepDraft(draft);
-    redirect(`${ACCOUNT_DETAILS_PATH}?error=${checked.errors.join(",")}`);
+    redirect(`${ACCOUNT_PATH}?error=${checked.errors.join(",")}`);
   }
   (await cookies()).delete(ACCOUNT_DRAFT_COOKIE);
 
@@ -54,11 +55,11 @@ export async function saveDetails(formData: FormData): Promise<void> {
       menuEmails: formData.get("menuEmails") === "on",
     }),
   );
-  if (normalizeEmail(details.email) === member.email) redirect(`${ACCOUNT_DETAILS_PATH}?saved=1`);
+  if (normalizeEmail(details.email) === member.email) redirect(`${ACCOUNT_PATH}?saved=1`);
 
   const now = new Date();
   const minutes = await takeRequestLimit(repo, now);
-  if (minutes !== null) redirect(`${ACCOUNT_DETAILS_PATH}?limited=${minutes}`);
+  if (minutes !== null) redirect(`${ACCOUNT_PATH}?limited=${minutes}`);
 
   const code = randomCode();
   const change = await requestEmailChange(repo, saved, details.email, { now, mintCode: () => code });
@@ -72,7 +73,7 @@ export async function saveDetails(formData: FormData): Promise<void> {
       "email change code not delivered",
     );
   }
-  redirect(ACCOUNT_DETAILS_PATH);
+  redirect(ACCOUNT_PATH);
 }
 
 /**
@@ -91,7 +92,7 @@ export async function confirmEmailChange(formData: FormData): Promise<void> {
     now,
     scope: (run) => repo.withActor({ member: member.id }, run),
   });
-  if (!result.ok) redirect(`${ACCOUNT_DETAILS_PATH}?error=${result.reason}`);
+  if (!result.ok) redirect(`${ACCOUNT_PATH}?error=${result.reason}`);
 
   await recordEventAs(repo, { member: member.id }, { kind: "email_changed", memberId: member.id, detail: { from: result.from, to: result.to } });
   // To the old address, in the member's email language; a failure to send is logged and the change stands.
@@ -103,7 +104,7 @@ export async function confirmEmailChange(formData: FormData): Promise<void> {
     },
     "email changed notice not delivered",
   );
-  redirect(`${ACCOUNT_DETAILS_PATH}?saved=1`);
+  redirect(`${ACCOUNT_PATH}?saved=1`);
 }
 
 /** "Send a new code": a new code for the address already pending, counted in sign-in's request limit. */
@@ -113,11 +114,11 @@ export async function resendEmailChange(_formData: FormData): Promise<void> {
   const siteUrl = getSiteUrl();
   const repo = getRepository();
   const pending = await repo.findEmailChange(member.id);
-  if (!pending) redirect(ACCOUNT_DETAILS_PATH);
+  if (!pending) redirect(ACCOUNT_PATH);
 
   const now = new Date();
   const minutes = await takeRequestLimit(repo, now);
-  if (minutes !== null) redirect(`${ACCOUNT_DETAILS_PATH}?limited=${minutes}`);
+  if (minutes !== null) redirect(`${ACCOUNT_PATH}?limited=${minutes}`);
 
   const code = randomCode();
   const change = await requestEmailChange(repo, member, pending.newEmail, { now, mintCode: () => code });
@@ -131,7 +132,7 @@ export async function resendEmailChange(_formData: FormData): Promise<void> {
       "email change code not delivered",
     );
   }
-  redirect(`${ACCOUNT_DETAILS_PATH}?sent=1`);
+  redirect(`${ACCOUNT_PATH}?sent=1`);
 }
 
 /** "Keep the old email": drops the pending change, so its code no longer works. */
@@ -139,5 +140,5 @@ export async function resendEmailChange(_formData: FormData): Promise<void> {
 export async function keepOldEmail(_formData: FormData): Promise<void> {
   const { member } = await requireSubscriber();
   await getRepository().dropEmailChange(member.id);
-  redirect(ACCOUNT_DETAILS_PATH);
+  redirect(ACCOUNT_PATH);
 }

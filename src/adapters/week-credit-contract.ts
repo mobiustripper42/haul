@@ -601,6 +601,32 @@ export function runWeekCreditContract(
           expect(await newest(memberId)).toEqual({ options: meal(0, 0), optionsFromWeek: EARLIER, weeklyCents: 5000 });
         });
       });
+
+      // Issue 219: the set in effect for a week, read for a week with no ledger row, as account home names the next
+      // pickup's meal, which can be unpaid. The rule is the one listMemberWeeks reads for a paid week (AC4 above).
+      describe("issue 219 — findOptionsForWeek", () => {
+        it("AC4 (issue 219): before the switch week the signup's set, on it and after it the new one, each in option-type position order; another subscription's is its own", async () => {
+          const ada = await subscribed();
+          const grace = await subscribed();
+          await switchTo(ada.subscriptionId, 1, 1, FEB_7, 8000);
+          expect(await repo.findOptionsForWeek(ada.subscriptionId, WEEK)).toEqual(meal(0, 0));
+          expect(await repo.findOptionsForWeek(ada.subscriptionId, FEB_7)).toEqual(meal(1, 1));
+          expect(await repo.findOptionsForWeek(ada.subscriptionId, "2027-03-07")).toEqual(meal(1, 1));
+          expect(await repo.findOptionsForWeek(grace.subscriptionId, FEB_7)).toEqual(meal(0, 0));
+        });
+
+        it("AC4 (issue 219): a week between two sets reads the earlier of them, not the newest", async () => {
+          const { subscriptionId } = await subscribed();
+          await switchTo(subscriptionId, 1, 0, WEEK, 8000);
+          await switchTo(subscriptionId, 1, 1, FEB_7, 8000);
+          expect(await repo.findOptionsForWeek(subscriptionId, NEXT)).toEqual(meal(1, 0));
+        });
+
+        it("AC4 (issue 219): a week before any set starts reads none; guards the cases above", async () => {
+          const { subscriptionId } = await subscribed();
+          expect(await repo.findOptionsForWeek(subscriptionId, "2027-01-10")).toEqual([]);
+        });
+      });
     });
 
     // Issue 139: a cancel touches no ledger row, so a week charged before it is still made; and a refund is owed only
