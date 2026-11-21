@@ -10,6 +10,10 @@ import type { Repository } from "./ports/repository.js";
 export const MISSING_MENU_DAYS_KEY = "missing_menu_days";
 export const MISSING_NOTE_DAYS_KEY = "missing_note_days";
 
+/** The days each reminder looks ahead when its row is absent or malformed; the Supper Club seed writes the same values. */
+export const MISSING_MENU_DAYS_DEFAULT = 14;
+export const MISSING_NOTE_DAYS_DEFAULT = 3;
+
 export async function wholeNumberSetting(repo: Repository, key: string, fallback: number): Promise<number> {
   const raw = await repo.readSetting(key);
   if (raw === null) return fallback;

@@ -8,7 +8,7 @@
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
 import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
-import { MISSING_MENU_DAYS_KEY, MISSING_NOTE_DAYS_KEY } from "../../src/settings.js";
+import { MISSING_MENU_DAYS_DEFAULT, MISSING_MENU_DAYS_KEY, MISSING_NOTE_DAYS_DEFAULT, MISSING_NOTE_DAYS_KEY } from "../../src/settings.js";
 
 const PRODUCT = {
   name: SUPPER_CLUB_PRODUCT_NAME,
@@ -21,7 +21,10 @@ const PRODUCT = {
 };
 
 /** Issue 231: the settings rows, by key. Production's are a hand-run insert (docs/RUNBOOK.md), since its seed runs once. */
-const SETTINGS: Readonly<Record<string, string>> = { [MISSING_MENU_DAYS_KEY]: "14", [MISSING_NOTE_DAYS_KEY]: "3" };
+const SETTINGS: Readonly<Record<string, string>> = {
+  [MISSING_MENU_DAYS_KEY]: String(MISSING_MENU_DAYS_DEFAULT),
+  [MISSING_NOTE_DAYS_KEY]: String(MISSING_NOTE_DAYS_DEFAULT),
+};
 
 const OPTION_TYPES: ReadonlyArray<{
   name: string;

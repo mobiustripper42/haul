@@ -21,7 +21,7 @@ import type { EmailPort } from "./ports/email.js";
 import type { Actor, Repository, WeekMade } from "./ports/repository.js";
 import { requireSupperClub, type ProductWithOptions } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
-import { MISSING_MENU_DAYS_KEY, MISSING_NOTE_DAYS_KEY, wholeNumberSetting } from "./settings.js";
+import { MISSING_MENU_DAYS_DEFAULT, MISSING_MENU_DAYS_KEY, MISSING_NOTE_DAYS_DEFAULT, MISSING_NOTE_DAYS_KEY, wholeNumberSetting } from "./settings.js";
 
 /**
  * The menu run (issue 141, DEC-036; DEC-003). Each firing does two jobs, each logging its own failures and never
@@ -56,10 +56,6 @@ export type MenuRunReport = {
 };
 
 export const MENU_RUN_ACTOR: Actor = { system: "menu-run" };
-
-/** The days a reminder looks ahead when its `settings` row is absent or malformed (issue 231). */
-const MISSING_MENU_DAYS_FALLBACK = 14;
-const MISSING_NOTE_DAYS_FALLBACK = 3;
 
 /** A Sunday, from which a weekday number is a date to name it by. */
 const A_SUNDAY = "2023-01-01";
@@ -240,7 +236,7 @@ async function remindAdmins<N extends "missingMenu" | "missingNote">(
 
 /** The reminder that an open week within `missing_menu_days` has no menu. */
 async function sendMissingMenuReminder(deps: MenuRunDeps, product: ProductWithOptions, report: MenuRunReport["reminder"]): Promise<void> {
-  const days = await wholeNumberSetting(deps.repo, MISSING_MENU_DAYS_KEY, MISSING_MENU_DAYS_FALLBACK);
+  const days = await wholeNumberSetting(deps.repo, MISSING_MENU_DAYS_KEY, MISSING_MENU_DAYS_DEFAULT);
   const weeks = await reminderWeeks(deps, product, days, async (week) => (await deps.repo.findWeekMenu(product.id, week.weekOf)) === null);
   report.weeks = weeks.map((week) => week.weekOf);
   report.sent = await remindAdmins(deps, {
@@ -257,7 +253,7 @@ async function sendMissingMenuReminder(deps: MenuRunDeps, product: ProductWithOp
 
 /** The reminder that an open week within `missing_note_days` has no note (issue 231). */
 async function sendMissingNoteReminder(deps: MenuRunDeps, product: ProductWithOptions, report: MenuRunReport["noteReminder"]): Promise<void> {
-  const days = await wholeNumberSetting(deps.repo, MISSING_NOTE_DAYS_KEY, MISSING_NOTE_DAYS_FALLBACK);
+  const days = await wholeNumberSetting(deps.repo, MISSING_NOTE_DAYS_KEY, MISSING_NOTE_DAYS_DEFAULT);
   const weeks = await reminderWeeks(deps, product, days, async (week) => week.note === null);
   report.weeks = weeks.map((week) => week.weekOf);
   report.sent = await remindAdmins(deps, {
