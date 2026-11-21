@@ -11,7 +11,7 @@ import { useEffect } from "react";
  *   `::before`, so the tap lands on the details itself), and the rest of the page is made `inert` while it is open,
  *   since the backdrop blocks the pointer and not the keyboard. Inerting is per sibling along the path from the
  *   drawer up, because `inert` cannot be lifted from a subtree once an ancestor sets it.
- * - The Admin group: an outside click, focus moving outside it, or Escape closes it.
+ * - The Admin group, and a row's More (issue 220): an outside click, focus moving outside it, or Escape closes it.
  * - A drawer left open when the window grows to 1024px, where it is not drawn, is closed: the page would stay inert.
  *
  * Renders nothing.
@@ -19,7 +19,6 @@ import { useEffect } from "react";
 export function MenuScript() {
   useEffect(() => {
     const drawer = document.querySelector<HTMLDetailsElement>("details[data-menu-drawer]");
-    const groups = Array.from(document.querySelectorAll<HTMLDetailsElement>("details[data-menu-group]"));
     const panel = drawer?.querySelector<HTMLElement>("[data-menu-drawer-panel]");
     const summary = drawer?.querySelector<HTMLElement>("summary");
     const inerted: HTMLElement[] = [];
@@ -50,8 +49,10 @@ export function MenuScript() {
       // Collapsing the panel destroys the link the keyboard was on, so focus would fall to <body>.
       if (returnFocus) summary?.focus();
     };
+    // Looked up at each event: a row's More is drawn anew whenever the calendar navigates, and the header mounts this once (issue 220).
+    const groupsNow = () => Array.from(document.querySelectorAll<HTMLDetailsElement>("details[data-menu-group]"));
     const closeGroups = (except?: Node | null, returnFocus = false) => {
-      for (const group of groups) {
+      for (const group of groupsNow()) {
         if (!group.open || (except && group.contains(except))) continue;
         group.open = false;
         if (returnFocus) group.querySelector<HTMLElement>("summary")?.focus();

@@ -1,5 +1,4 @@
 import { pluralKey, type Language, type Translator } from "@core/i18n.js";
-import { collator } from "@core/member-list.js";
 import type { Menu } from "@core/menus.js";
 import { cutoffDate, formatPickupDate, isDate, listedWeekTitle, nextCutoffDate, pickupWeek, weekTitle, type AdminWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -12,17 +11,18 @@ import { FieldError } from "../../../components/ui/field-error";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
 import { Input } from "../../../components/ui/input";
-import { Select } from "../../../components/ui/select";
+import { RowActions, type RowAction } from "../../../components/ui/row-actions";
 import { Shell } from "../../../components/ui/shell";
 import { Textarea } from "../../../components/ui/textarea";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
-import { ADMIN_MENU_NEW_PATH, ADMIN_WEEKS_PATH } from "../../paths";
+import { ADMIN_WEEKS_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { requireAdmin } from "../../session";
 import { SiteHeader } from "../../site-header";
-import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
+import { closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 import { loadCalendar } from "./calendar";
+import { MenuPanel } from "./menu-panel";
 
 export const generateMetadata = titled("admin.weeks.title");
 
@@ -166,7 +166,7 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
       <input type="hidden" name="week" value={week.weekOf} />
       <Heading level={2}>{t("admin.weeks.moveHeading")}</Heading>
       <div className="flex flex-wrap gap-x-6 gap-y-4">
-        <div className="max-w-xs flex-1 basis-48">
+        <div className="max-w-card flex-1 basis-48">
           <Field label={t("admin.weeks.firstDay")} htmlFor={firstId}>
             <Input
               id={firstId}
@@ -180,7 +180,7 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
             {firstBad && <FieldError id={`${firstId}-error`}>{faultText}</FieldError>}
           </Field>
         </div>
-        <div className="max-w-xs flex-1 basis-48">
+        <div className="max-w-card flex-1 basis-48">
           <Field label={t("admin.weeks.lastDay")} htmlFor={lastId} help={t("admin.weeks.lastDayHelp")}>
             <Input
               id={lastId}
@@ -208,50 +208,6 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
   );
 }
 
-/** An open week's menu, in its row: the library's menus in name order and No menu first, or when there are none a way to make one. */
-function MenuPanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
-  const { t, language, menus, weekMenus } = wording;
-  const id = `menu-${week.weekOf}`;
-  const named = [...menus].sort((a, b) => collator.compare(a.name, b.name));
-  return (
-    <form action={assignMenu} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
-      <input type="hidden" name="week" value={week.weekOf} />
-      <Heading level={2}>{t("admin.weeks.menuHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
-      {named.length === 0 ? (
-        <>
-          <Hint>{t("admin.weeks.noMenusYet")}</Hint>
-          <div className="flex">
-            <Button kind="secondary" href={ADMIN_MENU_NEW_PATH}>
-              {t("admin.weeks.newMenu")}
-            </Button>
-          </div>
-        </>
-      ) : (
-        <>
-          <div className="max-w-card">
-            <Field label={t("admin.weeks.menuLabel")} htmlFor={id}>
-              <Select
-                id={id}
-                name="menu"
-                defaultValue={weekMenus.get(week.weekOf) ?? ""}
-                options={[{ value: "", label: t("admin.weeks.noMenu") }, ...named.map((menu) => ({ value: menu.id, label: menu.name }))]}
-              />
-            </Field>
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-2">
-            <Button kind="primary" type="submit">
-              {t("admin.weeks.saveMenu")}
-            </Button>
-            <Button kind="quiet" href={ADMIN_WEEKS_PATH}>
-              {t("admin.weeks.cancel")}
-            </Button>
-          </div>
-        </>
-      )}
-    </form>
-  );
-}
-
 /** One week: its days, badges, cutoff and what closing gave, then its actions and whichever panel the URL opened. */
 function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; query: Query }) {
   const { t, language, counts, menus, weekMenus } = wording;
@@ -271,6 +227,17 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       ? t(pluralKey(language, "admin.weeks.creditsGiven", weekCredits), { n: weekCredits })
       : null;
   const showMove = week.moved && !closed;
+  const menuAction: RowAction = { label: menuName === null ? t("admin.weeks.assignMenu") : t("admin.weeks.changeMenu"), href: panelHref("menu", week.weekOf) };
+  const moveAction: RowAction = { label: t("admin.weeks.moveDays"), href: panelHref("move", week.weekOf) };
+  const putBackAction: RowAction = { label: t("admin.weeks.putBack"), action: moveWeek, fields: { week: week.weekOf, putBack: "1" } };
+  const closeAction: RowAction = { label: t("admin.weeks.closeWeek"), href: panelHref("close", week.weekOf) };
+  const reopenAction: RowAction = { label: t("admin.weeks.reopen"), href: panelHref("reopen", week.weekOf) };
+  const noteAction: RowAction = { label: week.note === null ? t("admin.weeks.addNote") : t("admin.weeks.editNote"), href: panelHref("note", week.weekOf) };
+  const { main, others }: { main: RowAction; others: RowAction[] } = !closed
+    ? { main: menuAction, others: [moveAction, ...(showMove ? [putBackAction] : []), closeAction] }
+    : week.canReopen
+      ? { main: reopenAction, others: [noteAction] }
+      : { main: noteAction, others: [] };
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
@@ -286,44 +253,11 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
         {closedLine !== null && <Hint>{closedLine}</Hint>}
         {week.note !== null && <p className="mt-1 max-w-xl rounded-sm bg-surface-alt px-3 py-2">{t("admin.weeks.noteLine", { note: week.note })}</p>}
       </div>
-      <div className="ml-auto flex flex-wrap items-center justify-end gap-x-2 gap-y-1">
-        {!closed && (
-          <Button kind="quiet" href={panelHref("menu", week.weekOf)}>
-            {menuName === null ? t("admin.weeks.assignMenu") : t("admin.weeks.changeMenu")}
-          </Button>
-        )}
-        {!closed && (
-          <Button kind="quiet" href={panelHref("move", week.weekOf)}>
-            {t("admin.weeks.moveDays")}
-          </Button>
-        )}
-        {showMove && (
-          <form action={moveWeek}>
-            <input type="hidden" name="week" value={week.weekOf} />
-            <input type="hidden" name="putBack" value="1" />
-            <Button kind="quiet" type="submit">
-              {t("admin.weeks.putBack")}
-            </Button>
-          </form>
-        )}
-        {closed && (
-          <Button kind="quiet" href={panelHref("note", week.weekOf)}>
-            {week.note === null ? t("admin.weeks.addNote") : t("admin.weeks.editNote")}
-          </Button>
-        )}
-        {!closed && (
-          <Button kind="secondary" href={panelHref("close", week.weekOf)}>
-            {t("admin.weeks.closeWeek")}
-          </Button>
-        )}
-        {week.canReopen && (
-          <Button kind="secondary" href={panelHref("reopen", week.weekOf)}>
-            {t("admin.weeks.reopen")}
-          </Button>
-        )}
+      <div className="ml-auto flex justify-end">
+        <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: listedWeekTitle(t, week, language) })} />
       </div>
       {closed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
-      {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} wording={wording} />}
+      {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
       {!closed && one(query.move) === week.weekOf && <MovePanel week={week} wording={wording} query={query} />}
     </li>
   );

@@ -14,10 +14,13 @@ import { cutoffInstant, type ChangedWeek } from "@core/pickup-week.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Hint } from "../../../components/ui/hint";
+import { RowActions, type RowAction } from "../../../components/ui/row-actions";
 import { emptyRequest } from "../../next-headers-fake";
+import { ADMIN_WEEKS_PATH } from "../../paths";
 import { attributesOf, escapeRegExp, screenMarkup } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import { addSupperClub } from "../subscribers-fixture";
+import { moveWeek } from "./actions";
 import AdminWeeks from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -47,6 +50,12 @@ vi.mock("../../site-header", () => ({ SiteHeader: vi.fn(async () => createElemen
 vi.mock("../../../components/ui/hint", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../../../components/ui/hint")>();
   return { Hint: vi.fn(actual.Hint) };
+});
+// Issue 220: the real RowActions, wrapped so a test can read the actions each row passes it; how it draws them is
+// components/ui/row-actions.test.ts's.
+vi.mock("../../../components/ui/row-actions", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("../../../components/ui/row-actions")>();
+  return { RowActions: vi.fn(actual.RowActions) };
 });
 
 // Wednesday, February 3, noon in Cleveland. The list starts at the week of February 7, past its cutoff (the end
@@ -667,5 +676,111 @@ describe("AC1, AC5, AC8–AC12 (issue 140) — a week's menu", () => {
     expect(rowOf(screen, TITLE_FEB_14, TITLE_FEB_21).runs).toContain(t("admin.weeks.noMenusYet"));
     expect(screenMarkup(screen.html)).toMatch(/<a\b[^>]*href="\/admin\/menus\/new"/);
     expect(selectOf(screen.html).name).toBeUndefined();
+  });
+});
+
+// Issue 220: every row's actions go through RowActions, read as the props each row passes it through the mock above:
+// which action is main, and which others in which order. Each action is read as what it asks for — a link's path and
+// query, a form's action and fields — not its words: which line a menu or note action shows is checked above (issue
+// 140's AC8, AC6). The More's screen-reader name is read for the row's title only; its words are checked by hand.
+describe("AC1–AC5 (issue 220) — what each row passes RowActions", () => {
+  beforeEach(() => {
+    vi.mocked(RowActions).mockClear();
+  });
+
+  type Passed = { main: RowAction; others: RowAction[]; moreLabel: string; moreName: string };
+
+  /** An action as what it asks for: a link as its path and query, a form as its action and fields. */
+  const asked = (action: RowAction) => {
+    if (!("href" in action)) return { action: action.action, fields: action.fields };
+    const url = new URL(action.href, "http://haul.test");
+    return { path: url.pathname, query: Object.fromEntries(url.searchParams) };
+  };
+
+  /** A link back to the calendar with one panel asked for. */
+  const panel = (name: string, weekOf: string) => ({ path: ADMIN_WEEKS_PATH, query: { [name]: weekOf } });
+
+  /** Whether `action` is about `weekOf`: a link whose query names it, or a form posting it. */
+  const about = (action: RowAction, weekOf: string): boolean =>
+    "href" in action ? Object.values(asked(action).query ?? {}).includes(weekOf) : action.fields.week === weekOf;
+
+  /** The props the row for `weekOf` passed RowActions, refused unless exactly one row's actions are about it. */
+  const passedFor = (weekOf: string): Passed => {
+    const found = vi
+      .mocked(RowActions)
+      .mock.calls.map(([props]) => props as Passed)
+      .filter(({ main, others }) => [main, ...others].some((action) => about(action, weekOf)));
+    expect(found, `RowActions calls for ${weekOf}`).toHaveLength(1);
+    return found[0] as Passed;
+  };
+
+  it("AC1 (issue 220): an open week with no menu: main is its ?menu= link; the others, in order, its ?move= and ?close= links, and no Put back", async () => {
+    await render();
+    const { main, others } = passedFor(OPEN);
+    expect(asked(main)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN)]);
+  });
+
+  it("AC1 (issue 220): each open row's More is named for a screen reader with that row's title", async () => {
+    await render();
+    expect(passedFor(OPEN).moreName).toContain(TITLE_FEB_14);
+    expect(passedFor("2027-02-21").moreName).toContain(TITLE_FEB_21);
+  });
+
+  it("AC2 (issue 220): an open week with a menu: main is still its ?menu= link, the others as with no menu", async () => {
+    const autumn = await services.repo.createMenu({ name: "Autumn harvest", texts: {} });
+    await services.repo.assignWeekMenu(product.id, OPEN, autumn.id);
+    await render();
+    const { main, others } = passedFor(OPEN);
+    expect(asked(main)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN)]);
+  });
+
+  it("AC3 (issue 220): an open, moved week: the others are its ?move= link, Put back posting moveWeek with putBack=1, then its ?close= link", async () => {
+    await save(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" });
+    await render();
+    const { main, others } = passedFor(OPEN);
+    expect(asked(main)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), { action: moveWeek, fields: { week: OPEN, putBack: "1" } }, panel("close", OPEN)]);
+  });
+
+  it("AC4 (issue 220): a closed week that can reopen: main is its ?reopen= link, its one other its ?note= link", async () => {
+    await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
+    await render();
+    const { main, others } = passedFor(OPEN);
+    expect(asked(main)).toEqual(panel("reopen", OPEN));
+    expect(others.map(asked)).toEqual([panel("note", OPEN)]);
+  });
+
+  it("AC5 (issue 220): a closed week that can't reopen: main is its ?note= link, and no others", async () => {
+    await paidFor(PAST_CUTOFF, 1);
+    await services.repo.closePickupWeek(product.id, PAST_CUTOFF, null, NOW);
+    await render();
+    const { main, others } = passedFor(PAST_CUTOFF);
+    expect(asked(main)).toEqual(panel("note", PAST_CUTOFF));
+    expect(others).toEqual([]);
+  });
+});
+
+// Issue 220, AC7: the ?menu= panel's Cancel, a link back to the calendar with nothing asked for. The page's only such
+// link is the panel's: every row action asks for a panel, and the header is faked.
+describe("AC7 (issue 220) — the menu panel's Cancel", () => {
+  /** The links in the open panel, from its heading to the end of its row, that go back to the calendar as it opens. */
+  const cancelsIn = (html: string): Array<Record<string, string>> => {
+    const markup = screenMarkup(html);
+    const from = markup.indexOf("<h2");
+    const panelMarkup = from === -1 ? "" : markup.slice(from, markup.indexOf("</li>", from));
+    return attributesOf(panelMarkup, "a").filter((link) => link.href === ADMIN_WEEKS_PATH);
+  };
+
+  it("AC7 (issue 220): with an empty menu library, the ?menu= panel has a link back to the calendar", async () => {
+    const { html } = await render({ menu: OPEN });
+    expect(cancelsIn(html)).toHaveLength(1);
+  });
+
+  it("AC7 (issue 220): with menus in the library, the ?menu= panel has one too", async () => {
+    await services.repo.createMenu({ name: "Autumn harvest", texts: {} });
+    const { html } = await render({ menu: OPEN });
+    expect(cancelsIn(html)).toHaveLength(1);
   });
 });

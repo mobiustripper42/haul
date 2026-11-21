@@ -189,7 +189,8 @@
   .menu-group-summary[data-active] {
     @apply bg-surface-alt text-body-strong text-teal;
   }
-  button.btn-menu {
+  /* Sign out reads muted; a form row inside a row's More (issue 220) is drawn like the link rows beside it. */
+  button.btn-menu:not([data-menu-group] *) {
     @apply text-ink-muted;
   }
 
@@ -209,13 +210,20 @@
     content: "";
     @apply absolute top-1/2 left-0 h-6 w-px -translate-y-1/2 bg-divider;
   }
-  .menu-group-summary {
+  /* The chevron is shared with a row's More (issue 220), a secondary button that carries .menu-chevron beside .btn-secondary. */
+  .menu-group-summary,
+  .menu-chevron {
     list-style: none;
   }
-  .menu-group-summary::-webkit-details-marker {
+  .menu-chevron {
+    @apply gap-1;
+  }
+  .menu-group-summary::-webkit-details-marker,
+  .menu-chevron::-webkit-details-marker {
     display: none;
   }
-  .menu-group-summary::after {
+  .menu-group-summary::after,
+  .menu-chevron::after {
     content: "";
     @apply size-4 flex-none bg-current;
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;

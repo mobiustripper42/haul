@@ -245,6 +245,8 @@ export const en = {
   "admin.weeks.saveMenu": "Save menu",
   "admin.weeks.noMenusYet": "No menus yet.",
   "admin.weeks.newMenu": "New menu",
+  "rowActions.more": "More",
+  "rowActions.moreFor": "More actions for {week}",
   "signIn.title": "Sign in",
   "signIn.limited.one": "Too many sign-in requests from this network. Try again in 1 minute.",
   "signIn.limited.other": "Too many sign-in requests from this network. Try again in {minutes} minutes.",
