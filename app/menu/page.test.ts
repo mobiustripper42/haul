@@ -14,7 +14,7 @@ import { pickupWeek, pickupWhereLine, weekTitle, type PickupWeek } from "@core/p
 import type { ProductWithOptions } from "@core/products.js";
 import { MENUS, SIZES } from "../admin/subscribers-fixture";
 import { emptyRequest } from "../next-headers-fake";
-import { attributesOf, inOrder, textsOf } from "../screen-test-helpers";
+import { attributesOf, escapeRegExp, inOrder, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import MenuPage from "./page";
 
@@ -146,6 +146,43 @@ describe("AC7 — the menu, once its email has gone out", () => {
     await services.repo.closePickupWeek(product.id, WEEK, null, new Date("2027-01-12T15:00:00.000Z"));
     await sent(NEXT);
     expect(textsOf(await render())).toContain(heading(pickupWeek(NEXT, null)));
+  });
+});
+
+// Issue 231, AC6: the current week's note, shown with its menu. The note is a value, so it is read as the page's text;
+// with none, the page is the same page less the note's element: nothing stands in its place.
+describe("AC6 (issue 231) — the week's note on the menu page", () => {
+  const NOTE = "Bring a cooler bag this week";
+  const noteOn = (week: string) => services.repo.savePickupWeek(product.id, { weekOf: week, closedAt: null, note: NOTE, firstDay: null, lastDay: null });
+
+  /** The one element whose whole text is the note, as markup; undefined when there is none. */
+  const noteElementOf = (html: string): string | undefined => new RegExp(`<(\\w+)\\b[^>]*>\\s*${escapeRegExp(NOTE)}\\s*</\\1>`).exec(html)?.[0];
+
+  it("AC6 (issue 231): the current week's note shows with its menu, as the note line", async () => {
+    await noteOn(WEEK);
+    await sent();
+    const html = await render();
+    expect(textsOf(html)).toContain(heading(pickupWeek(WEEK, null)));
+    expect(textsOf(html)).toContain(t("menu.note", { note: NOTE }));
+    expect(carries(html, NOTE)).toBe(true);
+  });
+
+  it("AC6 (issue 231): with no note, the page renders no note element: it is the noted page with the note's element taken out", async () => {
+    await sent();
+    const withoutNote = await render();
+    await noteOn(WEEK);
+    const withNote = await render();
+    const element = noteElementOf(withNote);
+    expect(element, "the noted page has an element whose whole text is the note").toBeDefined();
+    expect(withNote.replace(element ?? "", "")).toBe(withoutNote);
+  });
+
+  it("AC6 (issue 231): the note shows only where the menu does: a noted week whose email has not gone out is on the way, with no note", async () => {
+    await noteOn(WEEK);
+    await services.repo.assignWeekMenu(product.id, WEEK, autumn.id);
+    const html = await render();
+    expect(textsOf(html)).toContain(ON_THE_WAY);
+    expect(carries(html, NOTE)).toBe(false);
   });
 });
 

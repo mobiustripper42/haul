@@ -28,16 +28,20 @@ function Drawn({ action, kind, full }: { action: RowAction; kind: ButtonKind; fu
 /**
  * A list row's actions (issue 220, DEC-048): `main` alone, beside one other as a quiet button, or with two or more
  * others as menu rows under More, a `MenuGroup` in its button look. `moreName` is More's name for a screen reader.
+ * Issue 231: with no `main`, the first other is drawn as the main action, and with no action at all nothing is drawn, so
+ * a screen passes what it has and checks nothing itself.
  */
-export function RowActions({ main, others, moreLabel, moreName }: { main: RowAction; others: RowAction[]; moreLabel: string; moreName: string }) {
-  const [only] = others;
+export function RowActions({ main, others, moreLabel, moreName }: { main?: RowAction; others: RowAction[]; moreLabel: string; moreName: string }) {
+  const [drawnMain, ...rest] = main ? [main, ...others] : others;
+  if (!drawnMain) return null;
+  const [only] = rest;
   return (
     <div className="flex items-center gap-x-2">
-      <Drawn action={main} kind="secondary" />
-      {others.length === 1 && only && <Drawn action={only} kind="quiet" />}
-      {others.length >= 2 && (
+      <Drawn action={drawnMain} kind="secondary" />
+      {rest.length === 1 && only && <Drawn action={only} kind="quiet" />}
+      {rest.length >= 2 && (
         <MenuGroup label={moreLabel} name={moreName} look="button" active={false}>
-          {others.map((action) => (
+          {rest.map((action) => (
             <Drawn key={action.label} action={action} kind="menu" full />
           ))}
         </MenuGroup>

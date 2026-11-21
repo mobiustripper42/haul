@@ -14,6 +14,9 @@ runRepositoryContract(
   "in-memory",
   async () => (contractRepo = new InMemoryRepository()),
   async () => contractRepo.events().map((event) => event.actor),
+  undefined,
+  // Issue 231: a settings row through the fake's test seam.
+  async (_repo, key, value) => contractRepo.setSetting(key, value),
 );
 
 // Issue 149: closing and reopening weeks, and the week credits, through the fake's test seams; issue 150 spends a

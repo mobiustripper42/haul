@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { renderEmail } from "@core/email-templates.js";
+import { noteBlock, renderEmail } from "@core/email-templates.js";
 import { createTranslator, type Language } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
@@ -193,13 +193,48 @@ describe("AC6 — saveWeekNote", () => {
     expect(await rowOf(OPEN)).toEqual(changed(OPEN, { closedAt: CLOSED_AT, note: null }));
   });
 
-  it("AC6: an open week takes no note: back to the weeks, nothing written, with no row or with a note already", async () => {
+  // Issue 231 retargets this test to the cutoff rule: an open week before its cutoff now takes a note (AC1 below).
+  it("AC6: a week past its cutoff takes no note: back to the weeks, nothing written, with a note already", async () => {
     const noted = changed(PAST_CUTOFF, { note: "Heads up" });
     await save(noted);
-    await expect(redirectOf(saveWeekNote(form({ week: OPEN, note: "Generator fixed" })))).resolves.toBe(WEEKS_PATH);
     await expect(redirectOf(saveWeekNote(form({ week: PAST_CUTOFF, note: "Generator fixed" })))).resolves.toBe(WEEKS_PATH);
-    expect(await rowOf(OPEN)).toBeNull();
     expect(await rowOf(PAST_CUTOFF)).toEqual(noted);
+  });
+});
+
+// Issue 231: a note to members on any listed week until its cutoff passes. Where the cutoff falls is
+// AdminWeek.cutoffPassed's (src/pickup-week-calendar.test.ts), and that a row left with nothing on it is deleted is
+// savePickupWeek's (DEC-030; the repository contract): here one week each side of the cutoff, and one blank save each way.
+describe("AC1–AC3 (issue 231) — saveWeekNote before the cutoff", () => {
+  it("AC1 (issue 231): an open week before its cutoff with no row takes the note: a row with it, open, its days ordinary", async () => {
+    await expect(redirectOf(saveWeekNote(form({ week: OPEN, note: "  Bring a cooler bag  " })))).resolves.toBe(WEEKS_PATH);
+    expect(await rowOf(OPEN)).toEqual(changed(OPEN, { note: "Bring a cooler bag" }));
+  });
+
+  it("AC1 (issue 231): an open, moved week before its cutoff takes the note, and keeps its days and stays open", async () => {
+    const moved = changed(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" });
+    await save(moved);
+    await redirectOf(saveWeekNote(form({ week: OPEN, note: "Bring a cooler bag" })));
+    expect(await rowOf(OPEN)).toEqual({ ...moved, note: "Bring a cooler bag" });
+  });
+
+  it("AC2 (issue 231): a closed week past its cutoff takes no note: back to the weeks, the week as it was", async () => {
+    const closed = changed(PAST_CUTOFF, { closedAt: new Date("2027-01-30T15:00:00.000Z"), note: "Kitchen flooded" });
+    await save(closed);
+    await expect(redirectOf(saveWeekNote(form({ week: PAST_CUTOFF, note: "Generator fixed" })))).resolves.toBe(WEEKS_PATH);
+    expect(await rowOf(PAST_CUTOFF)).toEqual(closed);
+  });
+
+  it("AC3 (issue 231): a note saved blank on an open week whose row holds only the note leaves no row", async () => {
+    await save(changed(OPEN, { note: "Heads up" }));
+    await redirectOf(saveWeekNote(form({ week: OPEN, note: "" })));
+    expect(await rowOf(OPEN)).toBeNull();
+  });
+
+  it("AC3 (issue 231): a note saved blank on an open, moved week clears the note and keeps the move", async () => {
+    await save(changed(OPEN, { note: "Heads up", firstDay: "2027-02-13", lastDay: "2027-02-14" }));
+    await redirectOf(saveWeekNote(form({ week: OPEN, note: "   " })));
+    expect(await rowOf(OPEN)).toEqual(changed(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" }));
   });
 });
 
@@ -388,10 +423,18 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
   /** The week's title as the account pages show a closed week: its ordinary days, whatever its move. */
   const titleOf = (week: string, language: Language): string => weekTitle(createTranslator(language), pickupWeek(week, null), language);
 
-  /** The email `to` gets: the template rendered for `week` in `language`, read from the catalog rather than typed. */
-  const emailFor = (to: string, name: "weekClosedCredit" | "weekClosedNoCharge", week: string, language: Language = "en"): EmailMessage => ({
+  /**
+   * The email `to` gets: the template rendered for `week` in `language`, read from the catalog rather than typed; with
+   * `note`, the note block below the body (issue 231), and with none, no block.
+   */
+  const emailFor = (to: string, name: "weekClosedCredit" | "weekClosedNoCharge", week: string, note: string | null, language: Language = "en"): EmailMessage => ({
     to,
-    ...renderEmail(name, language, { week: titleOf(week, language) }, SITE_URL),
+    ...renderEmail(
+      name,
+      language,
+      { week: titleOf(week, language), note: noteBlock(note === null ? null : createTranslator(language)("email.weekClosed.note", { note }), "below") },
+      SITE_URL,
+    ),
   });
 
   it("AC1: closing a week sends the week-credit email to a subscription that paid for it, after the response, and lands on the weeks", async () => {
@@ -400,14 +443,14 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
     expect(email.sent).toEqual([]);
     expect(scheduled.tasks).toHaveLength(1);
     await runScheduled();
-    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, NOTE)]);
   });
 
   it("AC2: a subscription from an earlier week with nothing for this one gets the won't-be-charged email", async () => {
     const { member } = await subscribed(PAST_CUTOFF);
     await close(OPEN, NOTE);
     await runScheduled();
-    expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN)]);
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN, NOTE)]);
   });
 
   it("AC3: a subscription that skipped the week gets nothing, while another that did not still does", async () => {
@@ -417,7 +460,7 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
     await close(OPEN);
     expect(scheduled.tasks).toHaveLength(1);
     await runScheduled();
-    expect(email.sent).toEqual([emailFor(other.member.email, "weekClosedNoCharge", OPEN)]);
+    expect(email.sent).toEqual([emailFor(other.member.email, "weekClosedNoCharge", OPEN, null)]);
   });
 
   describe("AC6 — the member's saved language", () => {
@@ -425,23 +468,14 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
       const { member } = await subscribed(OPEN, "es");
       await close(OPEN, NOTE);
       await runScheduled();
-      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, "es")]);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, NOTE, "es")]);
     });
 
     it("AC6: and the won't-be-charged email in Spanish", async () => {
       const { member } = await subscribed(PAST_CUTOFF, "es");
       await close(OPEN, NOTE);
       await runScheduled();
-      expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN, "es")]);
-    });
-
-    it("AC6: neither email carries the admin's note", async () => {
-      await subscribed(OPEN);
-      await subscribed(PAST_CUTOFF);
-      await close(OPEN, NOTE);
-      await runScheduled();
-      expect(email.sent).toHaveLength(2);
-      for (const message of email.sent) expect(`${message.subject}\n${message.text}`).not.toContain(NOTE);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedNoCharge", OPEN, NOTE, "es")]);
     });
 
     it("AC6: {week} is the week's ordinary days even when the week was moved", async () => {
@@ -452,7 +486,36 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
       const { member } = await subscribed(OPEN);
       await close(OPEN);
       await runScheduled();
-      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, null)]);
+    });
+  });
+
+  // Issue 231, AC4: the close's note goes to the members in both emails, in its note block (noteBlock's words and
+  // placement are src/email-templates.test.ts's); it is checked on English members.
+  describe("AC4 (issue 231) — the note in the week-closed emails", () => {
+    it("AC4 (issue 231): closed with a note, each week-credit and won't-be-charged email carries it, and the week keeps it", async () => {
+      const paid = await subscribed(OPEN);
+      const due = await subscribed(PAST_CUTOFF);
+      await close(OPEN, NOTE);
+      await runScheduled();
+      expect([...email.sent].sort((a, b) => a.to.localeCompare(b.to))).toEqual(
+        [emailFor(paid.member.email, "weekClosedCredit", OPEN, NOTE), emailFor(due.member.email, "weekClosedNoCharge", OPEN, NOTE)].sort((a, b) => a.to.localeCompare(b.to)),
+      );
+      for (const message of email.sent) expect(message.text).toContain(NOTE);
+      expect((await rowOf(OPEN))?.note).toBe(NOTE);
+    });
+
+    it("AC4 (issue 231): closed with the field empty on a week that had a note, neither email carries a note, and the week's note is null", async () => {
+      await save(changed(OPEN, { note: "Heads up" }));
+      const paid = await subscribed(OPEN);
+      const due = await subscribed(PAST_CUTOFF);
+      await close(OPEN, "");
+      await runScheduled();
+      expect([...email.sent].sort((a, b) => a.to.localeCompare(b.to))).toEqual(
+        [emailFor(paid.member.email, "weekClosedCredit", OPEN, null), emailFor(due.member.email, "weekClosedNoCharge", OPEN, null)].sort((a, b) => a.to.localeCompare(b.to)),
+      );
+      for (const message of email.sent) expect(message.text).not.toContain("Heads up");
+      expect((await rowOf(OPEN))?.note).toBeNull();
     });
   });
 
@@ -471,7 +534,7 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
       const { member } = await subscribed(OPEN);
       await close(OPEN, NOTE);
       await runScheduled();
-      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN)]);
+      expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, NOTE)]);
     });
   });
 
@@ -482,7 +545,7 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
     await expect(redirectOf(reopenWeek(form({ week: OPEN })))).resolves.toBe(WEEKS_PATH);
     await close(OPEN, NOTE);
     await runScheduled();
-    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN), emailFor(member.email, "weekClosedCredit", OPEN)]);
+    expect(email.sent).toEqual([emailFor(member.email, "weekClosedCredit", OPEN, NOTE), emailFor(member.email, "weekClosedCredit", OPEN, NOTE)]);
   });
 
   it("AC9: a send that fails is logged with that member's id; every other email still goes, each from its own `after`, and the week stays closed", async () => {
@@ -499,7 +562,7 @@ describe("AC1–AC9 (issue 151) — closeWeek's emails", () => {
       await expect(close(OPEN, NOTE)).resolves.toBe(WEEKS_PATH);
       expect(scheduled.tasks).toHaveLength(2);
       await expect(runScheduled()).resolves.toBeUndefined();
-      expect(email.sent).toEqual([emailFor(grace.member.email, "weekClosedCredit", OPEN)]);
+      expect(email.sent).toEqual([emailFor(grace.member.email, "weekClosedCredit", OPEN, NOTE)]);
       expect(errors.mock.calls.map(([, fields]) => fields)).toEqual([expect.objectContaining({ memberId: ada.member.id })]);
       expect((await rowOf(OPEN))?.closedAt).toEqual(NOW);
     } finally {

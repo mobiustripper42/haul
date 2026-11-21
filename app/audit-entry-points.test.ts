@@ -100,7 +100,8 @@ describe("AC13 — the list is exactly these forty entries, and issue 56's two",
         "app/admin/lists/skips.csv/route.ts#GET": { none: "reads" },
         // Issue 141: the menu run's cron route records the missing-menu reminder; the off link and the menu emails page's
         // two buttons write the member's preference, which the trigger records (their reasons are the entries' own).
-        "app/api/menu-run/route.ts#GET": { records: ["menu_reminder_sent"] },
+        // Issue 231: and the missing-note reminder.
+        "app/api/menu-run/route.ts#GET": { records: ["menu_reminder_sent", "note_reminder_sent"] },
         "app/menu-emails/off/route.ts#GET": { none: expect.stringMatching(/\S/) },
         "app/menu-emails/actions.ts#turnMenuEmailsOn": { none: expect.stringMatching(/\S/) },
         "app/menu-emails/actions.ts#turnMenuEmailsOff": { none: expect.stringMatching(/\S/) },

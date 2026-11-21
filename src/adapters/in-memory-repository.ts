@@ -99,6 +99,8 @@ export class InMemoryRepository implements Repository {
   private readonly weekMenus = new Map<string, string>();
   /** Issue 141: `<product id>|<week_of>` → when the menu on that week was emailed; deleted with the row. */
   private readonly weekMenuSent = new Map<string, Date>();
+  /** Issue 231: setting key → its value. Written by `setSetting` outside `withActor`, so never rolled back. */
+  private readonly settings = new Map<string, string>();
   // The sign-in store's seven methods are the folder's own fake, which the sign-in contract proves.
   private readonly signIn = new MemorySignInStore();
   private readonly recorded: RecordedEvent[] = [];
@@ -527,6 +529,15 @@ export class InMemoryRepository implements Repository {
   /** Issue 141: whether an event of the kind carries `detail.date` equal to the date. */
   async hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean> {
     return this.recorded.some((event) => event.kind !== "rate_limit_refusal" && event.kind === kind && event.detail?.date === clevelandDate);
+  }
+
+  async readSetting(key: string): Promise<string | null> {
+    return this.settings.get(key) ?? null;
+  }
+
+  /** Issue 231: a settings row, for tests. Rows are written by SQL and the seed only, so no port method writes one. */
+  setSetting(key: string, value: string): void {
+    this.settings.set(key, value);
   }
 
   async setMenuEmails(memberId: string, on: boolean): Promise<Member | null> {

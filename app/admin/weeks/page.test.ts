@@ -283,6 +283,20 @@ describe("AC2, AC3, AC14 — the close dialog", () => {
     const { text } = await render({ close: PAST_CUTOFF });
     expect(text).toContain(tn("admin.weeks.closeAfter", 2, { cutoff: FEB_1_CUTOFF }));
   });
+
+  // Issue 231, AC4: the close dialog's note goes to the members, so it starts with the note the week already has.
+  it("AC4 (issue 231): ?close on a week with a note: the dialog's note field starts with that note", async () => {
+    await save(OPEN, { note: "Heads up: the side door" });
+    const { html } = await render({ close: OPEN });
+    expect(controls(html).filter((control) => control.name === "note")).toEqual([
+      expect.objectContaining({ tag: "textarea", value: "Heads up: the side door" }),
+    ]);
+  });
+
+  it("AC4 (issue 231): ?close on a week with no note: the dialog's note field starts empty", async () => {
+    const { html } = await render({ close: OPEN });
+    expect(controls(html).filter((control) => control.name === "note")).toEqual([expect.objectContaining({ tag: "textarea", value: "" })]);
+  });
 });
 
 // Issue 221: the close dialog says how many members get an email. Who is due a week, and so emailed, is listWeekDue's
@@ -497,9 +511,18 @@ describe("AC6, AC14 — the note panel", () => {
     expect(submitCount(html)).toBe(1);
   });
 
-  it("AC6: ?note on an open week opens nothing: an open week takes no note from the screen", async () => {
+  // Issue 231 retargets this test: an open week before its cutoff takes a note from the screen.
+  it("AC6: ?note on an open week before its cutoff opens the panel: the note field and the week", async () => {
     const { html } = await render({ note: OPEN });
-    expect(controls(html).filter((control) => control.name === "note")).toEqual([]);
+    expect(controls(html)).toContainEqual(expect.objectContaining({ tag: "textarea", name: "note", value: "" }));
+    expect(hasControl(html, "week", OPEN)).toBe(true);
+  });
+
+  it("AC2 (issue 231): ?note on a week past its cutoff opens nothing: closed with a note, the note stays on its row and no note field opens", async () => {
+    await services.repo.closePickupWeek(product.id, PAST_CUTOFF, "Kitchen flooded", NOW);
+    const screen = await render({ note: PAST_CUTOFF });
+    expect(controls(screen.html).filter((control) => control.name === "note")).toEqual([]);
+    expect(rowOf(screen, TITLE_FEB_7, TITLE_FEB_14).text).toContain("Kitchen flooded");
   });
 });
 
@@ -688,7 +711,8 @@ describe("AC1–AC5 (issue 220) — what each row passes RowActions", () => {
     vi.mocked(RowActions).mockClear();
   });
 
-  type Passed = { main: RowAction; others: RowAction[]; moreLabel: string; moreName: string };
+  // Issue 231: a row past its cutoff and closed has no action at all, so `main` may be absent.
+  type Passed = { main?: RowAction; others: RowAction[]; moreLabel: string; moreName: string };
 
   /** An action as what it asks for: a link as its path and query, a form as its action and fields. */
   const asked = (action: RowAction) => {
@@ -701,8 +725,8 @@ describe("AC1–AC5 (issue 220) — what each row passes RowActions", () => {
   const panel = (name: string, weekOf: string) => ({ path: ADMIN_WEEKS_PATH, query: { [name]: weekOf } });
 
   /** Whether `action` is about `weekOf`: a link whose query names it, or a form posting it. */
-  const about = (action: RowAction, weekOf: string): boolean =>
-    "href" in action ? Object.values(asked(action).query ?? {}).includes(weekOf) : action.fields.week === weekOf;
+  const about = (action: RowAction | undefined, weekOf: string): boolean =>
+    action === undefined ? false : "href" in action ? Object.values(asked(action).query ?? {}).includes(weekOf) : action.fields.week === weekOf;
 
   /** The props the row for `weekOf` passed RowActions, refused unless exactly one row's actions are about it. */
   const passedFor = (weekOf: string): Passed => {
@@ -714,11 +738,22 @@ describe("AC1–AC5 (issue 220) — what each row passes RowActions", () => {
     return found[0] as Passed;
   };
 
-  it("AC1 (issue 220): an open week with no menu: main is its ?menu= link; the others, in order, its ?move= and ?close= links, and no Put back", async () => {
+  /** Issue 231: the props of the one row whose More is named with `title`, for a row with no action to find it by. */
+  const passedNamed = (title: string): Passed => {
+    const found = vi
+      .mocked(RowActions)
+      .mock.calls.map(([props]) => props as Passed)
+      .filter(({ moreName }) => moreName.includes(title));
+    expect(found, `RowActions calls named for ${title}`).toHaveLength(1);
+    return found[0] as Passed;
+  };
+
+  // Issue 231 retargets this test and the two after it: an open week before its cutoff has its ?note= link after Close week.
+  it("AC1 (issue 220): an open week with no menu: main is its ?menu= link; the others, in order, its ?move=, ?close= and ?note= links, and no Put back", async () => {
     await render();
     const { main, others } = passedFor(OPEN);
-    expect(asked(main)).toEqual(panel("menu", OPEN));
-    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN)]);
+    expect(asked(main as RowAction)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN), panel("note", OPEN)]);
   });
 
   it("AC1 (issue 220): each open row's More is named for a screen reader with that row's title", async () => {
@@ -732,33 +767,75 @@ describe("AC1–AC5 (issue 220) — what each row passes RowActions", () => {
     await services.repo.assignWeekMenu(product.id, OPEN, autumn.id);
     await render();
     const { main, others } = passedFor(OPEN);
-    expect(asked(main)).toEqual(panel("menu", OPEN));
-    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN)]);
+    expect(asked(main as RowAction)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), panel("close", OPEN), panel("note", OPEN)]);
   });
 
-  it("AC3 (issue 220): an open, moved week: the others are its ?move= link, Put back posting moveWeek with putBack=1, then its ?close= link", async () => {
+  it("AC3 (issue 220): an open, moved week: the others are its ?move= link, Put back posting moveWeek with putBack=1, then its ?close= and ?note= links", async () => {
     await save(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" });
     await render();
     const { main, others } = passedFor(OPEN);
-    expect(asked(main)).toEqual(panel("menu", OPEN));
-    expect(others.map(asked)).toEqual([panel("move", OPEN), { action: moveWeek, fields: { week: OPEN, putBack: "1" } }, panel("close", OPEN)]);
+    expect(asked(main as RowAction)).toEqual(panel("menu", OPEN));
+    expect(others.map(asked)).toEqual([panel("move", OPEN), { action: moveWeek, fields: { week: OPEN, putBack: "1" } }, panel("close", OPEN), panel("note", OPEN)]);
   });
 
   it("AC4 (issue 220): a closed week that can reopen: main is its ?reopen= link, its one other its ?note= link", async () => {
     await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
     await render();
     const { main, others } = passedFor(OPEN);
-    expect(asked(main)).toEqual(panel("reopen", OPEN));
+    expect(asked(main as RowAction)).toEqual(panel("reopen", OPEN));
     expect(others.map(asked)).toEqual([panel("note", OPEN)]);
   });
 
-  it("AC5 (issue 220): a closed week that can't reopen: main is its ?note= link, and no others", async () => {
+  // Issue 231 retargets this test: a week past its cutoff takes no note, so a closed one has no action at all.
+  it("AC5 (issue 220): a closed week that can't reopen, its cutoff passed: RowActions is given no main and no others", async () => {
     await paidFor(PAST_CUTOFF, 1);
     await services.repo.closePickupWeek(product.id, PAST_CUTOFF, null, NOW);
     await render();
-    const { main, others } = passedFor(PAST_CUTOFF);
-    expect(asked(main)).toEqual(panel("note", PAST_CUTOFF));
+    const { main, others } = passedNamed(TITLE_FEB_7);
+    expect(main).toBeUndefined();
     expect(others).toEqual([]);
+  });
+
+  // Issue 231, AC2: the note action is offered on every week whose cutoff has not passed, open or closed, and on no other.
+  // Its words are the choice between Add note and Edit note, read as the expected key's catalog line. Where the cutoff
+  // falls is AdminWeek.cutoffPassed's (src/pickup-week-calendar.test.ts); here one week each side of it.
+  describe("AC2 (issue 231) — the note action", () => {
+    const NOTED = "Heads up: the side door";
+
+    it("AC2 (issue 231): an open week before its cutoff with no note: its last other is its ?note= link, Add note", async () => {
+      await render();
+      const note = passedFor(OPEN).others.at(-1);
+      expect(note && asked(note)).toEqual(panel("note", OPEN));
+      expect(note?.label).toBe(t("admin.weeks.addNote"));
+    });
+
+    it("AC2 (issue 231): an open week before its cutoff with a note: its last other is its ?note= link, Edit note, and the note is on its row", async () => {
+      await save(OPEN, { note: NOTED });
+      const screen = await render();
+      const note = passedFor(OPEN).others.at(-1);
+      expect(note && asked(note)).toEqual(panel("note", OPEN));
+      expect(note?.label).toBe(t("admin.weeks.editNote"));
+      expect(rowOf(screen, TITLE_FEB_14, TITLE_FEB_21).text).toContain(NOTED);
+    });
+
+    it("AC2 (issue 231): an open week past its cutoff: no note action, and its note still reaches its row", async () => {
+      await save(PAST_CUTOFF, { note: NOTED });
+      const screen = await render();
+      const { main, others } = passedFor(PAST_CUTOFF);
+      expect([main, ...others].map((action) => action && asked(action))).not.toContainEqual(panel("note", PAST_CUTOFF));
+      expect(others.map(asked)).toEqual([panel("move", PAST_CUTOFF), panel("close", PAST_CUTOFF)]);
+      expect(rowOf(screen, TITLE_FEB_7, TITLE_FEB_14).text).toContain(NOTED);
+    });
+
+    it("AC2 (issue 231): a closed week past its cutoff with a note: no action at all, and its note still reaches its row", async () => {
+      await services.repo.closePickupWeek(product.id, PAST_CUTOFF, NOTED, NOW);
+      const screen = await render();
+      const { main, others } = passedNamed(TITLE_FEB_7);
+      expect(main).toBeUndefined();
+      expect(others).toEqual([]);
+      expect(rowOf(screen, TITLE_FEB_7, TITLE_FEB_14).text).toContain(NOTED);
+    });
   });
 });
 

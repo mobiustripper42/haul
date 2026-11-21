@@ -4,7 +4,7 @@
 // string lint rule covers .tsx only; this is the check for .ts templates.
 import { readFileSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
-import { legalFooter, renderEmail, siteLink, withSignOff } from "./email-templates.js";
+import { legalFooter, noteBlock, renderEmail, siteLink, withSignOff } from "./email-templates.js";
 import { createTranslator } from "./i18n.js";
 
 vi.mock("./messages/es.js", async () => {
@@ -110,7 +110,7 @@ describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharg
   const WEEK = "February 14 and 15";
 
   it.each(["weekClosedCredit", "weekClosedNoCharge"] as const)("AC6: %s in English carries the week in its subject and its body", (name) => {
-    const { subject, text } = renderEmail(name, "en", { week: WEEK }, SITE_URL);
+    const { subject, text } = renderEmail(name, "en", { week: WEEK, note: "" }, SITE_URL);
     expect(subject).toContain(WEEK);
     expect(text).toContain(WEEK);
   });
@@ -121,12 +121,31 @@ describe("AC6 (issue 151) — renderEmail weekClosedCredit and weekClosedNoCharg
   ] as const)(
     "AC6: %s in the stand-in Spanish catalog is only catalog values: the shared subject key, its body, the signup confirmation's questions line, the sign-off and the footer",
     (name, body) => {
-      expect(renderEmail(name, "es", { week: WEEK }, SITE_URL)).toEqual({
+      expect(renderEmail(name, "es", { week: WEEK, note: "" }, SITE_URL)).toEqual({
         subject: "«email.weekClosed.subject»",
         text: `«${body}»\n\n«email.signupConfirmation.questions»\n\n«email.signOff»\n\n${STAND_IN_FOOTER}`,
       });
     },
   );
+});
+
+// Issue 231: noteBlock, the one home for the note block the menu email and the two week-closed emails carry. Its output
+// is the template's `note` value, so it is asserted whole; the callers' tests (src/menu-run.test.ts,
+// app/admin/weeks/actions.test.ts) hold that each email carries it.
+describe("AC4, AC5 (issue 231) — noteBlock", () => {
+  const LINE = "⟦line⟧";
+
+  it.each(["above", "below"] as const)("AC5: with no line, %s, it is the empty string", (at) => {
+    expect(noteBlock(null, at)).toBe("");
+  });
+
+  it("AC5: above the body (the menu email), it is the line, then a blank line", () => {
+    expect(noteBlock(LINE, "above")).toBe(`${LINE}\n\n`);
+  });
+
+  it("AC4: below the body (the week-closed emails), it is a blank line, then the line", () => {
+    expect(noteBlock(LINE, "below")).toBe(`\n\n${LINE}`);
+  });
 });
 
 // Issue 150: the receipt for a week a week credit paid. Its subject is the receipt's, its closing the receipt's; only
@@ -180,6 +199,7 @@ describe("AC5, AC6 (issue 141) — renderEmail menuEmail and missingMenu", () =>
     date: "⟦date⟧",
     link: "⟦link⟧",
     offLink: "⟦offLink⟧",
+    note: "",
   };
   const MISSING_VALUES = { weeks: "⟦weeks⟧", weekday: "⟦weekday⟧", link: "⟦link⟧" };
 

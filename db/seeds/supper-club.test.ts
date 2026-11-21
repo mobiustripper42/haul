@@ -194,6 +194,30 @@ describe.skipIf(!up)(`AC1–AC4 — the supper-club seed against <test db>_suppe
     ]);
   });
 
+  // Issue 231, AC10: the two reminders' day counts are settings rows the seed writes, upserted on `key` as it upserts
+  // every row it names: a re-run writes its values back over an edited one.
+  describe("AC10 (issue 231) — the settings rows", () => {
+    const settings = async () => (await pool.query<{ key: string; value: string }>("select key, value from settings order by key")).rows;
+
+    it("AC10 (issue 231): from an emptied database, settings holds missing_menu_days 14 and missing_note_days 3", async () => {
+      await seed();
+      expect(await settings()).toEqual([
+        { key: "missing_menu_days", value: "14" },
+        { key: "missing_note_days", value: "3" },
+      ]);
+    });
+
+    it("AC10 (issue 231): re-run over edited values, it writes 14 and 3 back, one row per key", async () => {
+      await seed();
+      await pool.query("update settings set value = '30'");
+      await seed();
+      expect(await settings()).toEqual([
+        { key: "missing_menu_days", value: "14" },
+        { key: "missing_note_days", value: "3" },
+      ]);
+    });
+  });
+
   // Issue 101, AC6: the names are data, in the farm's words; the picker's question mark is the catalog's (DEC-027).
   it("AC6 (issue 101): the seed stores the option types as \"How many people\" and \"Which menu\", neither with a question mark", async () => {
     await seed();

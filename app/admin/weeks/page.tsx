@@ -43,7 +43,7 @@ const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
 
-/** Closing an open week: who it gives week credits to, before or after the cutoff, how many members are emailed, and a note for admins. */
+/** Closing an open week: who it gives week credits to, before or after the cutoff, how many members are emailed, and a note to the members it emails, which starts as the week's own. */
 function CloseDialog({ week, wording, emailed }: { week: AdminWeek; wording: Wording; emailed: number }) {
   const { t, language, counts } = wording;
   const paid = counts.get(week.weekOf)?.paid ?? 0;
@@ -63,7 +63,7 @@ function CloseDialog({ week, wording, emailed }: { week: AdminWeek; wording: Wor
       <form action={closeWeek} className="flex flex-col gap-5">
         <input type="hidden" name="week" value={week.weekOf} />
         <Field label={t("admin.weeks.closeNote")} htmlFor="close-note" help={t("admin.weeks.closeNoteHelp")}>
-          <Textarea id="close-note" name="note" aria-describedby="close-note-help" />
+          <Textarea id="close-note" name="note" defaultValue={week.note ?? ""} aria-describedby="close-note-help" />
         </Field>
         <ButtonRow>
           <Button kind="primary" type="submit">
@@ -104,7 +104,7 @@ function ReopenDialog({ week, wording }: { week: AdminWeek; wording: Wording }) 
   );
 }
 
-/** A closed week's note, in its row: save, clear (a form of its own, posting no text) or cancel. */
+/** A week's note to members, in its row, until its cutoff: save, clear (a form of its own, posting no text) or cancel. */
 function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const { t } = wording;
   const id = `note-${week.weekOf}`;
@@ -234,11 +234,13 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
   const closeAction: RowAction = { label: t("admin.weeks.closeWeek"), href: panelHref("close", week.weekOf) };
   const reopenAction: RowAction = { label: t("admin.weeks.reopen"), href: panelHref("reopen", week.weekOf) };
   const noteAction: RowAction = { label: week.note === null ? t("admin.weeks.addNote") : t("admin.weeks.editNote"), href: panelHref("note", week.weekOf) };
-  const { main, others }: { main: RowAction; others: RowAction[] } = !closed
-    ? { main: menuAction, others: [moveAction, ...(showMove ? [putBackAction] : []), closeAction] }
+  // A note is taken until the cutoff passes, on an open week or a closed one; RowActions draws nothing for a row with no action.
+  const noteActions = week.cutoffPassed ? [] : [noteAction];
+  const { main, others }: { main?: RowAction; others: RowAction[] } = !closed
+    ? { main: menuAction, others: [moveAction, ...(showMove ? [putBackAction] : []), closeAction, ...noteActions] }
     : week.canReopen
-      ? { main: reopenAction, others: [noteAction] }
-      : { main: noteAction, others: [] };
+      ? { main: reopenAction, others: noteActions }
+      : { others: noteActions };
   return (
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
@@ -257,7 +259,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       <div className="ml-auto flex justify-end">
         <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: title })} />
       </div>
-      {closed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
+      {!week.cutoffPassed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
       {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
       {!closed && one(query.move) === week.weekOf && <MovePanel week={week} wording={wording} query={query} />}
     </li>
@@ -265,8 +267,8 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
 }
 
 /**
- * The admin's calendar (docs/SPEC.md §7.2): the product's next 12 weeks, where a week is closed with a note,
- * reopened until its cutoff, or has its pickup days moved. Which dialog or panel is open comes from the URL, and
+ * The admin's calendar (docs/SPEC.md §7.2): the product's next 12 weeks, where a week is closed with a note to
+ * members, reopened until its cutoff, given a note, or has its pickup days moved. Which dialog or panel is open comes from the URL, and
  * each form posts to an action in ./actions.ts, so the screen runs no client script and the back button closes a panel.
  */
 export default async function AdminWeeks({ searchParams }: { searchParams: Promise<Query> }) {

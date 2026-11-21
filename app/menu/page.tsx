@@ -45,6 +45,7 @@ export default async function MenuPage(): Promise<ReactNode> {
                 <Heading>{t("menu.heading", { week: weekTitle(t, shown.week, language) })}</Heading>
               </div>
               <p>{t("menu.pickup", { pickup: pickupWhereLine(t, shown.week, language) })}</p>
+              {shown.week.note !== null && <p>{t("menu.note", { note: shown.week.note })}</p>}
               <div className="flex flex-col gap-4 lg:flex-row">
                 {menuSections(product, shown.menu).map((section) => (
                   <div key={section.name} className="min-w-0 flex-1">

@@ -11,9 +11,10 @@ import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, expectTypeOf, it, vi } from "vitest";
 import { FakeEmail } from "./adapters/fake-email.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
-import { renderEmail } from "./email-templates.js";
+import { noteBlock, renderEmail } from "./email-templates.js";
 import { createTranslator, type Language } from "./i18n.js";
 import { menuEmailOffLink, menuEmailTokenMatches } from "./menu-email-link.js";
+import * as menuRunModule from "./menu-run.js";
 import { currentWeekMenu, menuEmailWeekday, runMenuRun, type MenuRunDeps, type MenuRunReport } from "./menu-run.js";
 import type { Member } from "./members.js";
 import type { Menu } from "./menus.js";
@@ -164,8 +165,11 @@ function inSequence(text: string, parts: readonly string[]): string[] {
 const titleOf = (week: PickupWeek, language: Language = "en") => weekTitle(createTranslator(language), week, language);
 const ordinary = (weekOf: string) => pickupWeek(weekOf, null);
 
-/** The menu email `who` gets for `week`, a meal line for each of `meals` (each box's picks), in their language. */
-function menuEmailFor(who: Member, week: PickupWeek, meals: string[]): EmailMessage {
+/**
+ * The menu email `who` gets for `week`, a meal line for each of `meals` (each box's picks), in their language; with
+ * `note`, the week's note block above the heading (issue 231), and with none, no block.
+ */
+function menuEmailFor(who: Member, week: PickupWeek, meals: string[], note: string | null = null): EmailMessage {
   const t = createTranslator(who.language);
   return {
     to: who.email,
@@ -180,11 +184,43 @@ function menuEmailFor(who: Member, week: PickupWeek, meals: string[]): EmailMess
         date: formatPickupDate(CHARGED, who.language),
         link: ACCOUNT_WEEKS_URL,
         offLink: menuEmailOffLink(SITE_URL, who.id, SECRET),
+        note: noteBlock(note === null ? null : t("email.menu.note", { note }), "above"),
       },
       SITE_URL,
     ),
   };
 }
+
+/** The missing-note email `who` gets naming `weeks`, in their language (issue 231). */
+function missingNoteFor(who: Member, weeks: PickupWeek[]): EmailMessage {
+  return {
+    to: who.email,
+    ...renderEmail("missingNote", who.language, { weeks: weeks.map((week) => titleOf(week, who.language)).join(" · "), link: ADMIN_WEEKS_URL }, SITE_URL),
+  };
+}
+
+const escaped = (text: string): string => text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+
+/**
+ * Issue 231: whether `message` is the `name` email in `language`, whatever values fill it — its subject and text are
+ * that template's catalog words around its values — so an admin's missing-menu and missing-note emails are told apart
+ * by the renderer rather than by typed words.
+ */
+function isTemplate(name: "missingMenu" | "missingNote", language: Language, message: EmailMessage): boolean {
+  const HOLE = "\u0000";
+  const shape = renderEmail(name, language, { weeks: HOLE, weekday: HOLE, link: HOLE }, SITE_URL);
+  const matches = (rendered: string, actual: string) => new RegExp(`^${rendered.split(HOLE).map(escaped).join("[\\s\\S]*?")}$`).test(actual);
+  return matches(shape.subject, message.subject) && matches(shape.text, message.text);
+}
+
+/** The missing-menu emails `who` got: the reminder this file's issue 141 tests are about, the note reminder's left out. */
+const menuRemindersTo = (who: Member): EmailMessage[] => sentTo(who).filter((message) => isTemplate("missingMenu", who.language, message));
+/** The missing-note emails `who` got (issue 231). */
+const noteRemindersTo = (who: Member): EmailMessage[] => sentTo(who).filter((message) => isTemplate("missingNote", who.language, message));
+const noteReminders = () => repo.events().filter((event) => event.kind === "note_reminder_sent");
+
+/** Issue 231: a note on `weekOf`, its days ordinary and the week open. */
+const noteOn = (weekOf: string, note: string) => repo.savePickupWeek(product.id, { weekOf, closedAt: null, note, firstDay: null, lastDay: null });
 
 /** The missing-menu email `who` gets naming `weeks`, the email weekday being `weekdayOn`'s, in their language. */
 function missingMenuFor(who: Member, weeks: PickupWeek[], weekdayOn: string): EmailMessage {
@@ -481,7 +517,8 @@ describe("AC5 — the menu email", () => {
 });
 
 describe("AC6 — the missing-menu email", () => {
-  // The admins below hold no box, so every email one of them gets is the missing-menu email.
+  // The admins below hold no box, so every email one of them gets is a reminder. Issue 231: the note reminder emails
+  // them too, so these read only their missing-menu emails (menuRemindersTo); the window is the fallback 14, no row set.
 
   it("AC6: on January 14, with January 17's menu set and January 24's not, every admin gets one email in English naming January 24, and a member none", async () => {
     await assign(WEEK);
@@ -490,7 +527,7 @@ describe("AC6 — the missing-menu email", () => {
 
     const report = await run();
 
-    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_THURSDAY)]);
+    expect(menuRemindersTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_THURSDAY)]);
     expect(sentTo(member)).toEqual([]);
     expect(report.reminder).toEqual({ weeks: [NEXT], sent: 1 });
   });
@@ -499,14 +536,14 @@ describe("AC6 — the missing-menu email", () => {
     await assign(WEEK);
     const lenny = await admin();
     await run({ emailWeekday: 2 });
-    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_TUESDAY)]);
+    expect(menuRemindersTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(NEXT)], A_TUESDAY)]);
   });
 
   it("AC6: an admin whose language is Spanish gets it in Spanish: the Spanish week and weekday, and the Weeks link", async () => {
     await assign(WEEK);
     const michael = await admin("es");
     await run();
-    expect(sentTo(michael)).toEqual([missingMenuFor(michael, [ordinary(NEXT)], A_THURSDAY)]);
+    expect(menuRemindersTo(michael)).toEqual([missingMenuFor(michael, [ordinary(NEXT)], A_THURSDAY)]);
   });
 
   it("AC6: an admin who turned the menu email off still gets it", async () => {
@@ -514,13 +551,13 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await repo.setMenuEmails(lenny.id, false);
     await run();
-    expect(sentTo(lenny)).toHaveLength(1);
+    expect(menuRemindersTo(lenny)).toHaveLength(1);
   });
 
   it("AC6: several weeks are one email, each week's title joined with ' · ', and the event carries them ascending", async () => {
     const lenny = await admin();
     await run(at("2027-01-16T17:00:00.000Z"));
-    expect(sentTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(WEEK), ordinary(NEXT)], A_THURSDAY)]);
+    expect(menuRemindersTo(lenny)).toEqual([missingMenuFor(lenny, [ordinary(WEEK), ordinary(NEXT)], A_THURSDAY)]);
     expect(reminders()).toEqual([expect.objectContaining({ kind: "menu_reminder_sent", memberId: lenny.id, detail: { weeks: [WEEK, NEXT], date: "2027-01-16" } })]);
   });
 
@@ -540,7 +577,7 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await run();
     expect((await run(at("2027-01-15T04:30:00.000Z"))).reminder).toEqual({ weeks: [NEXT], sent: 0 });
-    expect(sentTo(lenny)).toHaveLength(1);
+    expect(menuRemindersTo(lenny)).toHaveLength(1);
     expect(reminders()).toHaveLength(1);
   });
 
@@ -549,7 +586,7 @@ describe("AC6 — the missing-menu email", () => {
     const lenny = await admin();
     await run();
     expect((await run(at("2027-01-15T15:00:00.000Z"))).reminder).toEqual({ weeks: [NEXT], sent: 1 });
-    expect(sentTo(lenny)).toHaveLength(2);
+    expect(menuRemindersTo(lenny)).toHaveLength(2);
     expect(reminders().map((event) => (event.kind === "rate_limit_refusal" ? null : event.detail?.date))).toEqual(["2027-01-14", "2027-01-15"]);
   });
 
@@ -558,7 +595,7 @@ describe("AC6 — the missing-menu email", () => {
     await assign(NEXT);
     const lenny = await admin();
     expect((await run()).reminder).toEqual({ weeks: [], sent: 0 });
-    expect(sentTo(lenny)).toEqual([]);
+    expect(menuRemindersTo(lenny)).toEqual([]);
     expect(reminders()).toEqual([]);
   });
 
@@ -573,7 +610,7 @@ describe("AC6 — the missing-menu email", () => {
 
     expect((await run()).reminder).toEqual({ weeks: [NEXT], sent: 1 });
 
-    expect(sentTo(michael)).toHaveLength(1);
+    expect(menuRemindersTo(michael)).toHaveLength(1);
     expect(reminders().map((event) => (event.kind === "rate_limit_refusal" ? null : event.memberId))).toEqual([michael.id]);
     expect(logged.mock.calls.flat()).toContainEqual(expect.objectContaining(errorFields(failure)));
     expect(inspect(logged.mock.calls, { depth: 5 })).not.toContain("the provider's whole reply");
@@ -601,6 +638,108 @@ describe("AC6 — the missing-menu email", () => {
       await repo.savePickupWeek(product.id, { weekOf: LATER, closedAt: null, note: null, firstDay: "2027-01-30", lastDay: "2027-01-31" });
       expect((await run(at("2027-01-16T17:00:00.000Z"))).reminder.weeks).toEqual([WEEK, NEXT, LATER]);
     });
+  });
+});
+
+// Issue 231: the week's note in the menu email, the missing-note reminder, and the two reminders' day counts read from
+// settings rows. The block's words and placement are noteBlock's (src/email-templates.test.ts); the parse of a setting is
+// wholeNumberSetting's (src/settings.test.ts), each reminder read here once through a seeded row; the window's edges and
+// the shared send's cases (once a day, a failed send logged, no event for a failed admin) are the missing-menu
+// reminder's tests above, the two reminders' weeks and sends having one home.
+describe("AC5 (issue 231) — the note in the menu email", () => {
+  const NOTE = "Bring a cooler bag this week";
+
+  it("AC5 (issue 231): with a note on the current week, every menu email carries it, in its note block", async () => {
+    await assign(WEEK);
+    await noteOn(WEEK, NOTE);
+    const ada = await withRow("paid");
+    const grace = await withRow("declined");
+
+    expect((await run()).menuEmail).toEqual({ weekOf: WEEK, sent: 2 });
+
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["2 people · Standard"], NOTE)]);
+    expect(sentTo(grace.member)).toEqual([menuEmailFor(grace.member, ordinary(WEEK), ["2 people · Standard"], NOTE)]);
+    for (const message of email.sent) expect(message.text).toContain(NOTE);
+  });
+
+  it("AC5 (issue 231): with no note on the current week, no menu email carries one: January 24's note is not January 17's", async () => {
+    await assign(WEEK);
+    await noteOn(NEXT, NOTE);
+    const ada = await withRow("paid");
+    await run();
+    expect(sentTo(ada.member)).toEqual([menuEmailFor(ada.member, ordinary(WEEK), ["2 people · Standard"])]);
+  });
+});
+
+describe("AC8 (issue 231) — the missing-note email", () => {
+  // On Thursday January 14 the fallback window of 3 days runs to Sunday the 17th: January 17 is in it, January 24 is not.
+  // No week here has a menu, so the missing-menu reminder fires first and records its own event that day.
+
+  it("AC8 (issue 231): January 17 open with no note: every admin gets one missing-note email in their language naming it, with the Weeks link; a member none; the report lists it, and not January 24", async () => {
+    const lenny = await admin();
+    const michael = await admin("es");
+    const member = await repo.createMember({ email: "member@example.com" });
+
+    const report = await run();
+
+    expect(noteRemindersTo(lenny)).toEqual([missingNoteFor(lenny, [ordinary(WEEK)])]);
+    expect(noteRemindersTo(michael)).toEqual([missingNoteFor(michael, [ordinary(WEEK)])]);
+    for (const who of [lenny, michael]) {
+      const text = noteRemindersTo(who)[0]?.text ?? "";
+      expect(text).toContain(ADMIN_WEEKS_URL);
+      expect(`${noteRemindersTo(who)[0]?.subject ?? ""}\n${text}`).toContain(titleOf(ordinary(WEEK), who.language));
+    }
+    expect(sentTo(member)).toEqual([]);
+    expect(report.noteReminder).toEqual({ weeks: [WEEK], sent: 2 });
+  });
+
+  it("AC8 (issue 231): one note_reminder_sent event per admin reached, on that admin's member id, with the weeks and the run's Cleveland date", async () => {
+    const lenny = await admin();
+    const michael = await admin("es");
+    await run();
+    expect(noteReminders()).toEqual([
+      expect.objectContaining({ kind: "note_reminder_sent", memberId: lenny.id, detail: { weeks: [WEEK], date: "2027-01-14" } }),
+      expect.objectContaining({ kind: "note_reminder_sent", memberId: michael.id, detail: { weeks: [WEEK], date: "2027-01-14" } }),
+    ]);
+  });
+
+  it("AC8 (issue 231): a second firing the same Cleveland day sends none and records none, and still lists the week", async () => {
+    const lenny = await admin();
+    await run();
+    expect((await run(at("2027-01-15T04:30:00.000Z"))).noteReminder).toEqual({ weeks: [WEEK], sent: 0 });
+    expect(noteRemindersTo(lenny)).toHaveLength(1);
+    expect(noteReminders()).toHaveLength(1);
+  });
+
+  it("AC8 (issue 231): a week with a note counts for nothing: January 17 noted, no week is listed and no admin gets one", async () => {
+    await noteOn(WEEK, "Bring a cooler bag this week");
+    const lenny = await admin();
+    expect((await run()).noteReminder).toEqual({ weeks: [], sent: 0 });
+    expect(noteRemindersTo(lenny)).toEqual([]);
+    expect(noteReminders()).toEqual([]);
+  });
+
+  it("AC8 (issue 231): a closed week counts for nothing: January 17 closed, no week is listed and no admin gets one", async () => {
+    await repo.closePickupWeek(product.id, WEEK, null, new Date("2027-01-12T15:00:00.000Z"));
+    const lenny = await admin();
+    expect((await run()).noteReminder).toEqual({ weeks: [], sent: 0 });
+    expect(noteRemindersTo(lenny)).toEqual([]);
+  });
+});
+
+describe("AC9 (issue 231) — the reminders' day counts are settings rows", () => {
+  it("AC9 (issue 231): the missing-menu reminder reads missing_menu_days: at 7, on January 16 January 17 counts and January 24, eight days on, does not", async () => {
+    repo.setSetting("missing_menu_days", "7");
+    expect((await run(at("2027-01-16T17:00:00.000Z"))).reminder.weeks).toEqual([WEEK]);
+  });
+
+  it("AC9 (issue 231): the missing-note reminder reads missing_note_days: at 10, on January 14 January 17 and January 24 both count", async () => {
+    repo.setSetting("missing_note_days", "10");
+    expect((await run()).noteReminder?.weeks).toEqual([WEEK, NEXT]);
+  });
+
+  it("AC9 (issue 231): MISSING_MENU_DAYS is gone from the menu run's exports", () => {
+    expect(Object.keys(menuRunModule)).not.toContain("MISSING_MENU_DAYS");
   });
 });
 

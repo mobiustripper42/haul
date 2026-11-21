@@ -6,7 +6,8 @@
  * Not a test file itself: it registers describe/it blocks, and each adapter's test file calls it.
  * `eventActors` reads back the actor of every event row recorded so far, in order (issue 71, AC5).
  * `reset`, when given, runs before every test and before `make` — the Postgres suite truncates
- * there, so each test starts from an empty database.
+ * there, so each test starts from an empty database. `setSetting` writes a `settings` row for `readSetting` to find
+ * (issue 231): the fake through its test seam, Postgres by SQL.
  *
  * The signup and week credit suites are `signup-contract.ts` and `week-credit-contract.ts`; what the three share
  * is `contract-helpers.ts`.
@@ -22,7 +23,8 @@ export function runRepositoryContract(
   name: string,
   make: () => Promise<Repository>,
   eventActors: () => Promise<Actor[]>,
-  reset?: () => Promise<void>,
+  reset: (() => Promise<void>) | undefined,
+  setSetting: (repo: Repository, key: string, value: string) => Promise<void>,
 ): void {
   describe(`Repository contract — ${name}`, () => {
     let repo: Repository;
@@ -522,6 +524,22 @@ export function runRepositoryContract(
 
       it("AC6: with no events it is false", async () => {
         expect(await repo.hasEventOn("menu_reminder_sent", "2027-01-14")).toBe(false);
+      });
+    });
+
+    // Issue 231: a settings row read by its key. Rows are written by SQL and the seed only, so each adapter's test file
+    // hands the contract its own way to write one (`setSetting`).
+    describe("readSetting (issue 231)", () => {
+      it("AC9: a key with a row is its value, as stored, and another key's row is not it", async () => {
+        await setSetting(repo, "missing_note_days", " 3 ");
+        await setSetting(repo, "missing_menu_days", "14");
+        expect(await repo.readSetting("missing_note_days")).toBe(" 3 ");
+        expect(await repo.readSetting("missing_menu_days")).toBe("14");
+      });
+
+      it("AC9: a key with no row is null", async () => {
+        await setSetting(repo, "missing_menu_days", "14");
+        expect(await repo.readSetting("missing_note_days")).toBeNull();
       });
     });
   });
