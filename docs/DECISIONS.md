@@ -74,6 +74,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-043 — Screens are English; emails follow the member's language
 - DEC-044 — Spanish is not required per key; a missing key renders in English
 - DEC-047 — The signed-in header is one bar: links inline from 1024px, a drawer below
+- DEC-048 — A list row shows one main action; two or more others go under More
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
