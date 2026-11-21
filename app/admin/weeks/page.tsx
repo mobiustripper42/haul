@@ -227,6 +227,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       ? t(pluralKey(language, "admin.weeks.creditsGiven", weekCredits), { n: weekCredits })
       : null;
   const showMove = week.moved && !closed;
+  const title = listedWeekTitle(t, week, language);
   const menuAction: RowAction = { label: menuName === null ? t("admin.weeks.assignMenu") : t("admin.weeks.changeMenu"), href: panelHref("menu", week.weekOf) };
   const moveAction: RowAction = { label: t("admin.weeks.moveDays"), href: panelHref("move", week.weekOf) };
   const putBackAction: RowAction = { label: t("admin.weeks.putBack"), action: moveWeek, fields: { week: week.weekOf, putBack: "1" } };
@@ -242,7 +243,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
     <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
-          <span className="font-semibold">{listedWeekTitle(t, week, language)}</span>
+          <span className="font-semibold">{title}</span>
           {closed && <Badge kind="closed">{t("admin.weeks.badgeClosed")}</Badge>}
           {showMove && <Badge kind="moved">{t("admin.weeks.badgeMoved")}</Badge>}
           {week.note !== null && <Badge kind="note">{t("admin.weeks.badgeNote")}</Badge>}
@@ -254,7 +255,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
         {week.note !== null && <p className="mt-1 max-w-xl rounded-sm bg-surface-alt px-3 py-2">{t("admin.weeks.noteLine", { note: week.note })}</p>}
       </div>
       <div className="ml-auto flex justify-end">
-        <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: listedWeekTitle(t, week, language) })} />
+        <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: title })} />
       </div>
       {closed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
       {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}

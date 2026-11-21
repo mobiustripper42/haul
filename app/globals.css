@@ -189,7 +189,7 @@
   .menu-group-summary[data-active] {
     @apply bg-surface-alt text-body-strong text-teal;
   }
-  /* Sign out reads muted; a form row inside a row's More (issue 220) is drawn like the link rows beside it. */
+  /* Sign out reads muted; a form row inside a row's More (issue 220) is drawn like the link rows beside it. Sign out keeps its muted look only while it stays outside any `data-menu-group`. */
   button.btn-menu:not([data-menu-group] *) {
     @apply text-ink-muted;
   }
