@@ -149,7 +149,7 @@ export function formatPickupDate(date: string, language: Language, month: "long"
   });
   if (month === "long") return words;
   const comma = words.indexOf(", ");
-  return comma === -1 ? words : `${words.slice(0, comma + 2)}${words.slice(comma + 2).replaceAll(" ", " ")}`;
+  return comma === -1 ? words : `${words.slice(0, comma + 2)}${words.slice(comma + 2).replaceAll(" ", "\u00a0")}`;
 }
 
 /** `instant`'s date on Cleveland's wall clock, `YYYY-MM-DD`. */
