@@ -871,7 +871,7 @@ describe("AC7 (issue 220) — the menu panel's Cancel", () => {
 });
 
 // Issue 230: a panel opened in a week's row is further down the page than a phone shows, so its link carries the open
-// panel's fragment and the opened panel carries that id: the browser lands on it. Close week and Reopen open at the top.
+// panel's fragment and the opened panel's row carries that id: the browser lands on the row, the panel below it. Close week and Reopen open at the top.
 describe("issue 230 — the open panel is scrolled to", () => {
   beforeEach(() => {
     vi.mocked(RowActions).mockClear();
@@ -902,7 +902,7 @@ describe("issue 230 — the open panel is scrolled to", () => {
     expect(fragments(OPEN)).toMatchObject({ reopen: "" });
   });
 
-  // Eric, 2026-11-22: the page lands on the row, so its title says which week the panel below it is for.
+  // The page lands on the row, so its title says which week the panel below it is for.
   it.each([
     ["note", 'name="note"'],
     ["menu", 'name="menu"'],

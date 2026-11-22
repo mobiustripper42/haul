@@ -40,7 +40,7 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 
 /**
  * A link back to this screen with one panel asked for: the URL says which dialog or panel is open. A panel in a week's
- * row is also the fragment, so the page lands on it (issue 230); Close week and Reopen open at the top.
+ * row also carries the fragment, so the page lands on that week's row (issue 230); Close week and Reopen open at the top.
  */
 const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string =>
   `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}${name === "close" || name === "reopen" ? "" : `#${OPEN_PANEL}`}`;
