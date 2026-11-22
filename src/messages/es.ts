@@ -215,8 +215,6 @@ export const es = {
   "admin.weeks.editNote": "Editar nota",
   "admin.weeks.closeWeek": "Cerrar semana",
   "admin.weeks.reopen": "Reabrir",
-  "admin.weeks.noteLabel": "Nota para administradores",
-  "admin.weeks.noteHelp": "Los miembros nunca la ven.",
   "admin.weeks.saveNote": "Guardar nota",
   "admin.weeks.cancel": "Cancelar",
   "admin.weeks.moveHeading": "Cambiar los días de recogida",
