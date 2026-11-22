@@ -22,7 +22,7 @@ export function WeekList({ rows }: { rows: WeekListRow[] }) {
                 <span className="font-semibold">{row.title}</span>
                 {first !== undefined && <Hint>{first}</Hint>}
               </div>
-              <div className="flex flex-col items-end gap-1">
+              <div className="flex shrink-0 flex-col items-end gap-1">
                 {row.badge}
                 {row.amount !== undefined && <strong className="font-semibold">{row.amount}</strong>}
                 {row.action}

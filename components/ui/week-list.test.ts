@@ -1,6 +1,6 @@
-// Issue 155: WeekList, the account pages' weeks: a list of rows, each its title and muted lines on the left and
-// its badge, amount and action stacked on the right (issue 230), read here as each row's runs of text. What each page puts in a row is that
-// page's test.
+// Issue 155: WeekList, the account pages' weeks: a list of rows, each its title and first muted line beside its badge,
+// amount and action, and its later lines below (issue 230), read here as each row's runs of text, in reading order.
+// What each page puts in a row is that page's test.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -28,7 +28,7 @@ describe("AC2, AC7 (issue 155) — WeekList", () => {
     expect(rowsOf([row])).toEqual([["February 7 and 8", "Paid", "Paid"]]);
   });
 
-  it("issue 230: the right column stacks the badge, then the amount, then the action", () => {
+  it("issue 230: a row reads its title, its first line, then its badge, amount and action", () => {
     const row: WeekListRow = {
       id: "2027-01-17",
       title: "January 17 and 18",
@@ -38,6 +38,18 @@ describe("AC2, AC7 (issue 155) — WeekList", () => {
       action: createElement("a", { href: "/skip" }, "Skip"),
     };
     expect(rowsOf([row])).toEqual([["January 17 and 18", "Charged at the end of Monday, January 11", "Paid", "$50", "Skip"]]);
+  });
+
+  it("issue 230: every line after the first is read after the action", () => {
+    const row: WeekListRow = {
+      id: "2027-01-24",
+      title: "January 24 and 25",
+      lines: ["2 people · Standard", "Closed after it was paid", "A week credit covers a later week"],
+      amount: "$50",
+      badge: createElement(Badge, { kind: "closed", children: "No meal" }),
+      action: createElement("a", { href: "/skip" }, "Skip"),
+    };
+    expect(rowsOf([row])).toEqual([["January 24 and 25", "2 people · Standard", "No meal", "$50", "Skip", "Closed after it was paid", "A week credit covers a later week"]]);
   });
 
   it("AC3: a row with no badge is its title and its line", () => {
