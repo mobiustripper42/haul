@@ -121,7 +121,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
             {t("admin.weeks.saveNote")}
           </Button>
         </form>
-        <Button kind="secondary" href={ADMIN_WEEKS_PATH}>
+        <Button kind="quiet" href={ADMIN_WEEKS_PATH}>
           {t("admin.weeks.cancel")}
         </Button>
       </div>
