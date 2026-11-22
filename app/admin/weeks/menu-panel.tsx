@@ -20,7 +20,7 @@ export function MenuPanel({ week, t, language, menus, current }: { week: AdminWe
   const named = [...menus].sort((a, b) => collator.compare(a.name, b.name));
   const empty = named.length === 0;
   return (
-    <form id={OPEN_PANEL} action={assignMenu} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
+    <form id={OPEN_PANEL} action={assignMenu} className="scroll-mt-4 flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
       <input type="hidden" name="week" value={week.weekOf} />
       <Heading level={2}>{t("admin.weeks.menuHeading", { days: listedWeekTitle(t, week, language) })}</Heading>
       {empty ? (

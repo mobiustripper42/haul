@@ -338,7 +338,7 @@
   /*
    * Issue 230: iOS Safari draws a date field's value in a box of its own, set at the top of the field; drawn as a plain
    * field there, the value centres as text does. `-webkit-touch-callout` is supported by iOS Safari alone, so no other
-   * browser loses its native date field. Checked by hand on an iPhone: no browser here draws it.
+   * browser loses its native date field. No test can draw it: it is checked by hand on an iPhone, an empty field too.
    */
   @supports (-webkit-touch-callout: none) {
     .field[type="date"] {

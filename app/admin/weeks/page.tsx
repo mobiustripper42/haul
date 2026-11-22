@@ -115,7 +115,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const id = `note-${week.weekOf}`;
   const form = `${id}-form`;
   return (
-    <div id={OPEN_PANEL} className="flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
+    <div id={OPEN_PANEL} className="scroll-mt-4 flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
       <Field label={t("admin.weeks.noteLabel")} htmlFor={id} help={t("admin.weeks.noteHelp")}>
         <Textarea id={id} name="note" form={form} rows={4} defaultValue={week.note ?? ""} aria-describedby={`${id}-help`} />
       </Field>
@@ -158,7 +158,7 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
   const firstBad = fault === "beforeCutoff";
   const lastBad = fault === "order" || fault === "overlapsNext";
   return (
-    <form id={OPEN_PANEL} action={moveWeek} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
+    <form id={OPEN_PANEL} action={moveWeek} className="scroll-mt-4 flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
       <input type="hidden" name="week" value={week.weekOf} />
       <Heading level={2}>{t("admin.weeks.moveHeading")}</Heading>
       <div className="flex flex-wrap gap-x-6 gap-y-4">
