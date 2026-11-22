@@ -104,7 +104,7 @@ function ReopenDialog({ week, wording }: { week: AdminWeek; wording: Wording }) 
   );
 }
 
-/** A week's note to members, in its row, until its cutoff: save, clear (a form of its own, posting no text) or cancel. */
+/** A week's note to members, in its row, until its cutoff: save or cancel. Saving an empty field clears the note. */
 function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const { t } = wording;
   const id = `note-${week.weekOf}`;
@@ -121,16 +121,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
             {t("admin.weeks.saveNote")}
           </Button>
         </form>
-        {week.note !== null && (
-          <form action={saveWeekNote}>
-            <input type="hidden" name="week" value={week.weekOf} />
-            <input type="hidden" name="note" value="" />
-            <Button kind="secondary" type="submit">
-              {t("admin.weeks.clearNote")}
-            </Button>
-          </form>
-        )}
-        <Button kind="quiet" href={ADMIN_WEEKS_PATH}>
+        <Button kind="secondary" href={ADMIN_WEEKS_PATH}>
           {t("admin.weeks.cancel")}
         </Button>
       </div>

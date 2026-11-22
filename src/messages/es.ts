@@ -218,7 +218,6 @@ export const es = {
   "admin.weeks.noteLabel": "Nota para administradores",
   "admin.weeks.noteHelp": "Los miembros nunca la ven.",
   "admin.weeks.saveNote": "Guardar nota",
-  "admin.weeks.clearNote": "Borrar nota",
   "admin.weeks.cancel": "Cancelar",
   "admin.weeks.moveHeading": "Cambiar los días de recogida",
   "admin.weeks.firstDay": "Primer día",

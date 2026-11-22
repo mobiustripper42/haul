@@ -496,19 +496,26 @@ describe("AC9, AC10, AC14 — a moved row", () => {
 });
 
 describe("AC6, AC14 — the note panel", () => {
-  it("AC6, AC14: ?note on a closed week with a note opens the panel: the note's text, the week, Save note and Clear note", async () => {
+  /** The note panel's Cancel: a secondary-button link back to the weeks list. */
+  const secondaryCancels = (html: string) => attributesOf(html, "a").filter((a) => a.href === ADMIN_WEEKS_PATH && (a.class ?? "").split(" ").includes("btn-secondary"));
+
+  // Eric, 2026-11-21: Clear note is gone; emptying the field and saving clears it, and Cancel takes Clear's place.
+  it("AC6, AC14: ?note on a closed week with a note opens the panel: the note's text, the week, Save note alone and Cancel as the secondary button", async () => {
     await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF, note: "Kitchen flooded" });
     const screen = await render({ note: OPEN });
     expect(hasControl(screen.html, "week", OPEN)).toBe(true);
     expect(controls(screen.html)).toContainEqual(expect.objectContaining({ tag: "textarea", name: "note", value: "Kitchen flooded" }));
-    expect(submitCount(screen.html)).toBe(2);
+    expect(submitCount(screen.html)).toBe(1);
+    expect(controls(screen.html)).not.toContainEqual(expect.objectContaining({ tag: "input", name: "note" }));
+    expect(secondaryCancels(screen.html)).toHaveLength(1);
   });
 
-  it("AC6: with no note there is nothing to clear: no Clear note", async () => {
+  it("AC6: with no note, the same panel: Save note alone and Cancel as the secondary button", async () => {
     await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
     const { html } = await render({ note: OPEN });
     expect(controls(html)).toContainEqual(expect.objectContaining({ tag: "textarea", name: "note" }));
     expect(submitCount(html)).toBe(1);
+    expect(secondaryCancels(html)).toHaveLength(1);
   });
 
   // Issue 231 retargets this test: an open week before its cutoff takes a note from the screen.

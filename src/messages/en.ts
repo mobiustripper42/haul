@@ -224,7 +224,6 @@ export const en = {
   "admin.weeks.noteLabel": "Note to members",
   "admin.weeks.noteHelp": "Goes out with this week's menu email and shows on the menu page.",
   "admin.weeks.saveNote": "Save note",
-  "admin.weeks.clearNote": "Clear note",
   "admin.weeks.cancel": "Cancel",
   "admin.weeks.moveHeading": "Move pickup days",
   "admin.weeks.firstDay": "First day",
