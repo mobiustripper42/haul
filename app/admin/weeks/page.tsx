@@ -23,6 +23,7 @@ import { SiteHeader } from "../../site-header";
 import { closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 import { loadCalendar } from "./calendar";
 import { MenuPanel } from "./menu-panel";
+import { OPEN_PANEL } from "./open-panel";
 
 export const generateMetadata = titled("admin.weeks.title");
 
@@ -37,8 +38,12 @@ type Fault = (typeof FAULTS)[number];
 
 const one = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);
 
-/** A link back to this screen with one panel asked for: the URL says which dialog or panel is open. */
-const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string => `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}`;
+/**
+ * A link back to this screen with one panel asked for: the URL says which dialog or panel is open. A panel in a week's
+ * row also carries the fragment, so the page lands on that week's row (issue 230); Close week and Reopen open at the top.
+ */
+const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string =>
+  `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}${name === "close" || name === "reopen" ? "" : `#${OPEN_PANEL}`}`;
 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
@@ -232,8 +237,15 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
     : week.canReopen
       ? { main: reopenAction, others: noteActions }
       : { others: noteActions };
+  const noteOpen = !week.cutoffPassed && one(query.note) === week.weekOf;
+  const menuOpen = !closed && one(query.menu) === week.weekOf;
+  const moveOpen = !closed && one(query.move) === week.weekOf;
+  // Issue 230: the row with an open panel carries the fragment's id, so the page lands on its title, the panel below it.
   return (
-    <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
+    <li
+      id={noteOpen || menuOpen || moveOpen ? OPEN_PANEL : undefined}
+      className="flex scroll-mt-4 flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0"
+    >
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="font-semibold">{title}</span>
@@ -250,9 +262,9 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       <div className="ml-auto flex justify-end">
         <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: title })} />
       </div>
-      {!week.cutoffPassed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
-      {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
-      {!closed && one(query.move) === week.weekOf && <MovePanel week={week} wording={wording} query={query} />}
+      {noteOpen && <NotePanel week={week} wording={wording} />}
+      {menuOpen && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
+      {moveOpen && <MovePanel week={week} wording={wording} query={query} />}
     </li>
   );
 }

@@ -169,7 +169,8 @@ describe("AC3 (issue 155) — a coming week's row", () => {
     const { html, rows } = await render();
     const row = rowTitled(rows, titleOf(MAR_7));
     expect(row).toHaveLength(3);
-    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en") }));
+    // Issue 230: the short month, so the line fits beside Skip on a phone.
+    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en", "short") }));
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "skipWeek", week: MAR_7 }]);
   });
 });
@@ -185,6 +186,13 @@ describe("AC9 (issue 155) — the header on Upcoming weeks", () => {
 // Issue 137: Skip and Unskip. Which week has which button is upcomingRows' (src/account-weeks.test.ts) and what a
 // press does ./actions.test.ts's; here one row of each kind goes through the page. The new words are typed once,
 // in the test of the criterion that brings them.
+
+/** The class of each button in the row titled `title`, in order. */
+const buttonClassesIn = (html: string, title: string): string[] => {
+  const row = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title);
+  if (row === undefined) throw new Error(`no row titled ${title}`);
+  return attributesOf(row, "button").map((button) => button.class ?? "");
+};
 
 /** The page drawn after a redirect back with `query`. */
 const renderWith = async (query: { error?: string }): Promise<string> => renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
@@ -212,10 +220,13 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     return render();
   };
 
-  it("AC6: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek", async () => {
+  // Issue 230 (Eric, 2026-11-22): a Skipped week with Unskip takes no badge; its line says it, and Unskip is the strong button.
+  it("AC6, issue 230: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek; no badge, and Unskip is strong", async () => {
     const { html, rows } = await arrange();
-    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1, 3)).toEqual([t("account.weeks.skipped"), t("account.marker.skipped")]);
+    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1)).toEqual([t("account.weeks.skipped"), t("account.weeks.unskip")]);
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
+    expect(buttonClassesIn(html, titleOf(MAR_7))).toEqual(["btn-strong"]);
+    expect(buttonClassesIn(html, titleOf(MAR_14))).toEqual(["btn-secondary"]);
   });
 
   it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {
@@ -226,7 +237,7 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     const { html, rows } = await arrange();
     const row = rowTitled(rows, titleOf("2027-02-07"));
     expect(row).toHaveLength(2);
-    expect(row?.[1]).toContain(formatPickupDate("2027-02-01", "en"));
+    expect(row?.[1]).toContain(formatPickupDate("2027-02-01", "en", "short"));
     expect(formsIn(html, titleOf("2027-02-07"))).toEqual([]);
   });
 });

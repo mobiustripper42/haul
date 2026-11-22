@@ -168,6 +168,10 @@
   .btn-secondary {
     @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-surface px-6 text-center text-button text-teal hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50;
   }
+  /* Issue 230: the teal fill, the inverse of secondary; emphasis where gold is taken or would repeat (docs/BRAND.md). */
+  .btn-strong {
+    @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-teal px-6 text-center text-button text-surface hover:border-teal-muted hover:bg-teal-muted disabled:cursor-not-allowed disabled:opacity-50;
+  }
   .btn-quiet {
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
   }
@@ -332,6 +336,29 @@
     /* 1rem stays: iOS zooms into a field set smaller (AC3's floor), so body's size does not apply here. Phones keep a 100% root (AC19), so it is 16px where that matters. */
     font-size: 1rem;
     line-height: 1.5rem;
+    /* Issue 230: h-field is 2.5rem, which the desktop root of 93.75% makes 37.5px; a field never drops under the 40px floor (docs/BRAND.md). */
+    min-height: 40px;
+  }
+  /*
+   * Issue 230: iOS Safari draws a date field's value in a box of its own, one line tall, set at the top of the field,
+   * where a text field centres its line. The padding leaves room for exactly that line: the field's height (the
+   * `max()` mirrors `.field`'s h-field and its 40px floor), less the 1.5rem line and the border, split above and below,
+   * so the value should sit in the middle; an invalid field's border is 2px, not 1px, so it gets its own. The height
+   * stays fixed, so an empty field keeps it. `-webkit-touch-callout` is supported by iOS Safari alone, so no other
+   * browser loses its native date field. No test can draw it: it is checked by hand on an iPhone, an empty field too.
+   */
+  @supports (-webkit-touch-callout: none) {
+    .field[type="date"] {
+      -webkit-appearance: none;
+      appearance: none;
+      padding-block: calc((max(var(--spacing-field), 40px) - 1.5rem - 2px) / 2);
+    }
+    .field[type="date"][aria-invalid="true"] {
+      padding-block: calc((max(var(--spacing-field), 40px) - 1.5rem - 4px) / 2);
+    }
+    .field[type="date"]::-webkit-date-and-time-value {
+      text-align: left;
+    }
   }
   .field-code {
     @apply h-code-field text-center text-code;

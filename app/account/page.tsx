@@ -110,93 +110,100 @@ export default async function Account({ searchParams }: { searchParams?: Promise
           {switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
-          <Card width="fill">
-            <div className="flex flex-wrap items-center justify-between gap-3">
-              <p className="font-semibold">{meal}</p>
-              <Badge kind={badge.kind}>{t(badge.key)}</Badge>
+          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. */}
+          <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
+            <div className="min-w-0 flex-1">
+              <Card width="fill">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <p className="font-semibold">{meal}</p>
+                  <Badge kind={badge.kind}>{t(badge.key)}</Badge>
+                </div>
+                {next && (
+                  <>
+                    <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
+                    <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
+                  </>
+                )}
+                {locked && <p>{t("account.noPickupLocked")}</p>}
+                {!cancelled && lockedWeek(confirmation) === null && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+                {startsAt && <Hint>{t("account.pendingSwitch", { meal: mealLabel(confirmation.options), week: listedWeekTitle(t, startsAt.week, language) })}</Hint>}
+                {!cancelled &&
+                  (open ? (
+                    <form action={switchMeal} className="flex flex-col gap-5">
+                      <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
+                      {MealPickers({ product, selected: confirmation.choices, t })}
+                      <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
+                      <ButtonRow>
+                        <Button kind="primary" type="submit">
+                          {t("account.weeks.switchSave")}
+                        </Button>
+                        <Button kind="secondary" href={ACCOUNT_PATH}>
+                          {t("account.weeks.switchCancel")}
+                        </Button>
+                      </ButtonRow>
+                    </form>
+                  ) : (
+                    <ButtonRow>
+                      {switchesFrom !== undefined && (
+                        <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
+                          {t("account.weeks.switch")}
+                        </Button>
+                      )}
+                      <Button kind="secondary" href={ACCOUNT_CANCEL_PATH}>
+                        {t("account.cancelLink")}
+                      </Button>
+                    </ButtonRow>
+                  ))}
+                {!cancelled && (
+                  <div className="flex">
+                    <Button kind="quiet" href={ACCOUNT_CARD_PATH} flush>
+                      {t("account.card.title")}
+                    </Button>
+                  </div>
+                )}
+              </Card>
             </div>
-            {next && (
-              <>
-                <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
-                <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
-              </>
-            )}
-            {locked && <p>{t("account.noPickupLocked")}</p>}
-            {!cancelled && lockedWeek(confirmation) === null && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
-            {startsAt && <Hint>{t("account.pendingSwitch", { meal: mealLabel(confirmation.options), week: listedWeekTitle(t, startsAt.week, language) })}</Hint>}
-            {!cancelled &&
-              (open ? (
-                <form action={switchMeal} className="flex flex-col gap-5">
-                  <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
-                  {MealPickers({ product, selected: confirmation.choices, t })}
-                  <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
-                  <ButtonRow>
-                    <Button kind="primary" type="submit">
-                      {t("account.weeks.switchSave")}
-                    </Button>
-                    <Button kind="secondary" href={ACCOUNT_PATH}>
-                      {t("account.weeks.switchCancel")}
-                    </Button>
-                  </ButtonRow>
-                </form>
-              ) : (
-                <ButtonRow>
-                  {switchesFrom !== undefined && (
-                    <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
-                      {t("account.weeks.switch")}
-                    </Button>
-                  )}
-                  <Button kind="secondary" href={ACCOUNT_CANCEL_PATH}>
-                    {t("account.cancelLink")}
-                  </Button>
-                </ButtonRow>
-              ))}
-            {!cancelled && (
-              <div className="flex">
-                <Button kind="quiet" href={ACCOUNT_CARD_PATH} flush>
-                  {t("account.card.title")}
-                </Button>
-              </div>
-            )}
-          </Card>
-          <Card width="fill">
-            {codeStep ? (
-              await CodeStep({
-                heading: t("details.codeTitle"),
-                headingLevel: 2,
-                sentence: t("details.codeSent", { email: pendingChange.newEmail, minutes: CODE_TTL_MS / 60_000 }),
-                buttonLabel: t("createAccount.confirm"),
-                verify: confirmEmailChange,
-                resend: resendEmailChange,
-                backHref: ACCOUNT_PATH,
-                back: (
-                  <form action={keepOldEmail}>
-                    <Button kind="quiet" type="submit" back flush>
-                      {t("details.keepOldEmail")}
-                    </Button>
-                  </form>
-                ),
-                invalid: error === "invalid",
-                invalidText: t("details.invalidCode"),
-                notice: error === "square" && <Notice icon="alert">{t("details.squareFailed")}</Notice>,
-                sent: sent === "1",
-                hint: t("createAccount.spam"),
-              })
-            ) : (
-              <>
-                <Heading level={2}>{t("account.details")}</Heading>
-                <form action={saveDetails} noValidate className="flex flex-col gap-6">
-                  {await AccountFields({ values: detailsValues(), failing: failingFields(), emailHelp: "details.emailHelp" })}
-                  <Checkbox name="menuEmails" defaultChecked={member.menuEmails} hint={t("details.menuEmailsHint")}>
-                    {t("details.menuEmails")}
-                  </Checkbox>
-                  <Button kind="primary" full type="submit">
-                    {t("details.save")}
-                  </Button>
-                </form>
-              </>
-            )}
-          </Card>
+            <div className="min-w-0 flex-1">
+              <Card width="fill">
+                {codeStep ? (
+                  await CodeStep({
+                    heading: t("details.codeTitle"),
+                    headingLevel: 2,
+                    sentence: t("details.codeSent", { email: pendingChange.newEmail, minutes: CODE_TTL_MS / 60_000 }),
+                    buttonLabel: t("createAccount.confirm"),
+                    verify: confirmEmailChange,
+                    resend: resendEmailChange,
+                    backHref: ACCOUNT_PATH,
+                    back: (
+                      <form action={keepOldEmail}>
+                        <Button kind="quiet" type="submit" back flush>
+                          {t("details.keepOldEmail")}
+                        </Button>
+                      </form>
+                    ),
+                    invalid: error === "invalid",
+                    invalidText: t("details.invalidCode"),
+                    notice: error === "square" && <Notice icon="alert">{t("details.squareFailed")}</Notice>,
+                    sent: sent === "1",
+                    hint: t("createAccount.spam"),
+                  })
+                ) : (
+                  <>
+                    <Heading level={2}>{t("account.details")}</Heading>
+                    <form action={saveDetails} noValidate className="flex flex-col gap-6">
+                      {await AccountFields({ values: detailsValues(), failing: failingFields(), emailHelp: "details.emailHelp" })}
+                      <Checkbox name="menuEmails" defaultChecked={member.menuEmails} hint={t("details.menuEmailsHint")}>
+                        {t("details.menuEmails")}
+                      </Checkbox>
+                      <Button kind="primary" full type="submit">
+                        {t("details.save")}
+                      </Button>
+                    </form>
+                  </>
+                )}
+              </Card>
+            </div>
+          </div>
         </div>
       </Shell>
     </>

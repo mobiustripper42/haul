@@ -15,6 +15,7 @@ import { SiteHeader } from "../site-header";
 import { BulletList } from "../../components/ui/bullet-list";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
+import { Panel } from "../../components/ui/panel";
 import { Shell } from "../../components/ui/shell";
 import { BackToChoices, JoinPage } from "./join-page";
 
@@ -154,9 +155,17 @@ describe("AC6 — BackToChoices", () => {
 });
 
 describe("AC1 (issue 63) — the list's look has one home", () => {
-  it("AC1: the left column's every-week list is a BulletList of the five items in the catalog", async () => {
+  it("AC1, issue 230: the left column's two lists, every week and the sample week, are each a BulletList of five items", async () => {
     const { element } = await render("none");
-    expect(findAll(element, BulletList).map((list) => (list.props.items as unknown[]).length)).toEqual([5]);
+    expect(findAll(element, BulletList).map((list) => (list.props.items as unknown[]).length)).toEqual([5, 5]);
+  });
+
+  it("issue 230: the sample week's panel is one BulletList of its five dishes, nothing set bold", async () => {
+    const { element } = await render("none");
+    const [panel] = findAll(element, Panel);
+    expect(panel).toBeDefined();
+    expect(findAll(panel, BulletList).map((list) => (list.props.items as unknown[]).length)).toEqual([5]);
+    expect(renderToStaticMarkup(panel)).not.toMatch(/font-semibold|font-bold|<strong|<b>/);
   });
 });
 

@@ -12,7 +12,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
-import { pickupWeek, weekTitle } from "@core/pickup-week.js";
+import { cutoffInstant, pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -141,7 +141,7 @@ describe("AC7 (issue 155) — what each row holds", () => {
   };
 
   it("AC7: the first week: the meal and the amount charged at signup", async () => {
-    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, t("account.history.signup"), formatUsdWhole(4500), t("account.marker.paid")]);
+    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, t("account.marker.paid"), formatUsdWhole(4500), t("account.history.signup")]);
   });
 
   it("AC7: a later paid week: the meal and the ledger's amount", async () => {
@@ -149,11 +149,24 @@ describe("AC7 (issue 155) — what each row holds", () => {
   });
 
   it("AC7: a closed week with no charge: $0, with no meal line", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.marker.closed"), formatUsdWhole(0), t("account.marker.noMeal")]);
+    expect(rowTitled(await arrange(), titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.marker.closed"), t("account.marker.noMeal"), formatUsdWhole(0)]);
   });
 
   it("AC7: a week closed after it was paid: the meal and the amount", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([titleOf("2027-01-24"), MEAL, t("account.history.closedPaid"), formatUsdWhole(4500), t("account.marker.noMeal")]);
+    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([titleOf("2027-01-24"), MEAL, t("account.marker.noMeal"), formatUsdWhole(4500), t("account.history.closedPaid")]);
+  });
+});
+
+// Issue 214, folded into issue 230: a past week paid by a week credit. January 10 paid, then closed after its cutoff,
+// grants a week credit; January 17's enrolment spends it on a 0-cent paid row. Its line and badge by their catalog lines.
+describe("issue 230 — a past week paid by a week credit", () => {
+  it("issue 230: a week a week credit paid: the week credit badge, $0, then the week credit line", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 4500);
+    await close("2027-01-10");
+    await services.repo.enrolWeek(product.id, "2027-01-17", cutoffInstant(product, "2027-01-17"));
+    const row = rowTitled((await render()).rows, titleOf("2027-01-17"));
+    expect(row?.slice(-3)).toEqual([t("account.marker.weekCredit"), formatUsdWhole(0), t("account.weeks.weekCredit")]);
   });
 });
 
@@ -163,7 +176,7 @@ describe("AC7 (issue 137) — a past skipped week", () => {
   it("AC7: a skipped week: $0, with no meal line", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.skipWeek(subscriptionId, "2027-01-17");
-    expect(rowTitled((await render()).rows, titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.weeks.skipped"), formatUsdWhole(0), t("account.marker.skipped")]);
+    expect(rowTitled((await render()).rows, titleOf("2027-01-17"))).toEqual([titleOf("2027-01-17"), t("account.weeks.skipped"), t("account.marker.skipped"), formatUsdWhole(0)]);
   });
 });
 
@@ -247,14 +260,14 @@ describe("issue 198 — History of a locked subscription", () => {
     await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
     const { html, rows } = await render();
     expect(rows.map((row) => row[0])).toEqual([titleOf(JAN_31), titleOf(JAN_24), titleOf(JAN_17), titleOf(JAN_3)]);
-    expect(rowTitled(rows, titleOf(JAN_24))).toEqual([titleOf(JAN_24), t("account.history.locked"), formatUsdWhole(0), t("account.marker.locked")]);
+    expect(rowTitled(rows, titleOf(JAN_24))).toEqual([titleOf(JAN_24), t("account.history.locked"), t("account.marker.locked"), formatUsdWhole(0)]);
     expect(rowMarkup(html, titleOf(JAN_24))).toContain(badgeOf("locked", "account.marker.locked"));
   });
 
   it("AC12: a past declined week, unpaid, is Card declined, as account home's badge: the declined line and $0, with no meal line", async () => {
     await declinedAda(JAN_31);
     const { html, rows } = await render();
-    expect(rowTitled(rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), t("account.history.declined"), formatUsdWhole(0), t(SUBSCRIPTION_BADGES.declined.key)]);
+    expect(rowTitled(rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), t("account.history.declined"), t(SUBSCRIPTION_BADGES.declined.key), formatUsdWhole(0)]);
     expect(rowMarkup(html, titleOf(JAN_31))).toContain(badgeOf(SUBSCRIPTION_BADGES.declined.kind, SUBSCRIPTION_BADGES.declined.key));
   });
 

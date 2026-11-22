@@ -17,6 +17,7 @@ import { emptyRequest } from "../../next-headers-fake";
 import { redirectOf } from "../../screen-test-helpers";
 import { addSupperClub } from "../subscribers-fixture";
 import { assignMenu, closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
+import { OPEN_PANEL } from "./open-panel";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -248,6 +249,11 @@ describe("AC9–AC11 — moveWeek", () => {
     const url = await redirectOf(moveWeek(form({ week: OPEN, firstDay: "2027-02-08", lastDay: "2027-02-14" })));
     expect(landing(url)).toEqual({ path: WEEKS_PATH, query: { move: OPEN, error: "beforeCutoff", first: "2027-02-08", last: "2027-02-14" } });
     expect(await rowOf(OPEN)).toBeNull();
+  });
+
+  it("issue 230: the form sent back carries the open panel's fragment, so the page lands on the fault", async () => {
+    const url = await redirectOf(moveWeek(form({ week: OPEN, firstDay: "2027-02-08", lastDay: "2027-02-14" })));
+    expect(new URL(url, "http://haul.test").hash).toBe(`#${OPEN_PANEL}`);
   });
 
   it.each([

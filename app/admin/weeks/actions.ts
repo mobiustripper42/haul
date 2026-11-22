@@ -9,6 +9,7 @@ import { noteBlock, renderEmail } from "@core/email-templates.js";
 import { createTranslator } from "@core/i18n.js";
 import { checkMove, isDate, pickupWeek, weekTitle } from "@core/pickup-week.js";
 import { ADMIN_WEEKS_PATH } from "../../paths";
+import { OPEN_PANEL } from "./open-panel";
 import { getEmail, getRepository, getSiteUrl } from "../../services";
 import { requireAdmin } from "../../session";
 import { sendAfterResponse, textField } from "../../sign-in/shared";
@@ -124,7 +125,7 @@ export async function moveWeek(formData: FormData): Promise<void> {
     if (!putBack) {
       const fault = checkMove(product, week.weekOf, firstDay, lastDay);
       if (fault !== "ok") {
-        redirect(`${ADMIN_WEEKS_PATH}?${new URLSearchParams({ move: week.weekOf, error: fault, first: firstDay, last: lastDay })}`);
+        redirect(`${ADMIN_WEEKS_PATH}?${new URLSearchParams({ move: week.weekOf, error: fault, first: firstDay, last: lastDay })}#${OPEN_PANEL}`);
       }
     }
     const ordinary = pickupWeek(week.weekOf, null);

@@ -27,7 +27,7 @@ type Query = { error?: string; switch?: string };
 
 /** The one muted line under an Upcoming week's title. A Locked week reads by whether the subscription is still locked (`locked`, from `lockedWeek`). */
 function lineOf(row: UpcomingRow, t: Translator, language: Language, locked: string | null): string {
-  if (row.marker === "coming" && row.chargeDate !== null) return t("account.weeks.charged", { date: formatPickupDate(row.chargeDate, language) });
+  if (row.marker === "coming" && row.chargeDate !== null) return t("account.weeks.charged", { date: formatPickupDate(row.chargeDate, language, "short") });
   if (row.marker === "closed") return t(row.closedPaid ? "account.weeks.closedPaid" : "account.weeks.closedNoCharge");
   if (row.marker === "weekCredit") return t("account.weeks.weekCredit");
   if (row.marker === "skipped") return t("account.weeks.skipped");
@@ -37,7 +37,7 @@ function lineOf(row: UpcomingRow, t: Translator, language: Language, locked: str
 }
 
 /**
- * A row's Skip or Unskip: a form of its own posting the week; null when the week has no button. The visible text
+ * A row's Skip (secondary) or Unskip (strong, issue 230): a form of its own posting the week; null when the week has no button. The visible text
  * stays short; the accessible name adds the week's title, since up to 11 of these sit on one page.
  */
 function actionOf(row: UpcomingRow, t: Translator, language: Language) {
@@ -46,7 +46,7 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
   return (
     <form action={skipping ? skipWeek : unskipWeek}>
       <input type="hidden" name="week" value={row.week.weekOf} />
-      <Button kind="secondary" type="submit" aria-label={t(skipping ? "account.weeks.skipWeek" : "account.weeks.unskipWeek", { week: listedWeekTitle(t, row.week, language) })}>
+      <Button kind={skipping ? "secondary" : "strong"} type="submit" aria-label={t(skipping ? "account.weeks.skipWeek" : "account.weeks.unskipWeek", { week: listedWeekTitle(t, row.week, language) })}>
         {t(skipping ? "account.weeks.skip" : "account.weeks.unskip")}
       </Button>
     </form>
@@ -79,7 +79,8 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     id: row.week.weekOf,
     title: listedWeekTitle(t, row.week, language),
     lines: [lineOf(row, t, language, locked)],
-    badge: row.marker === "coming" ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
+    // Issue 230: a Skipped week with Unskip takes no badge: its line says Skipped, and its Unskip is the strong button.
+    badge: row.marker === "coming" || (row.marker === "skipped" && row.action === "unskip") ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
     action: actionOf(row, t, language),
   }));
 

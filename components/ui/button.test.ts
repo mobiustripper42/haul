@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { attributesOf, normalMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { Button, type ButtonKind, type ButtonProps } from "./button";
 
-const KINDS: ButtonKind[] = ["primary", "secondary", "quiet"];
+const KINDS: ButtonKind[] = ["primary", "secondary", "strong", "quiet"];
 
 // The props are spread in as data; AC9, not this file, holds what TypeScript accepts.
 const render = (props: Record<string, unknown>, text = "Go"): string =>
