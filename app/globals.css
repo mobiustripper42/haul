@@ -332,6 +332,22 @@
     /* 1rem stays: iOS zooms into a field set smaller (AC3's floor), so body's size does not apply here. Phones keep a 100% root (AC19), so it is 16px where that matters. */
     font-size: 1rem;
     line-height: 1.5rem;
+    /* Issue 230: h-field is 2.5rem, which the desktop root of 93.75% makes 37.5px; a field never drops under the 40px floor (docs/BRAND.md). */
+    min-height: 40px;
+  }
+  /*
+   * Issue 230: iOS Safari draws a date field's value in a box of its own, set at the top of the field; drawn as a plain
+   * field there, the value centres as text does. `-webkit-touch-callout` is supported by iOS Safari alone, so no other
+   * browser loses its native date field. Checked by hand on an iPhone: no browser here draws it.
+   */
+  @supports (-webkit-touch-callout: none) {
+    .field[type="date"] {
+      -webkit-appearance: none;
+      appearance: none;
+    }
+    .field[type="date"]::-webkit-date-and-time-value {
+      text-align: left;
+    }
   }
   .field-code {
     @apply h-code-field text-center text-code;

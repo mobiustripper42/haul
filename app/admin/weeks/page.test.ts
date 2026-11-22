@@ -21,6 +21,7 @@ import { attributesOf, escapeRegExp, screenMarkup } from "../../screen-test-help
 import { SiteHeader } from "../../site-header";
 import { addSupperClub } from "../subscribers-fixture";
 import { moveWeek } from "./actions";
+import { OPEN_PANEL } from "./open-panel";
 import AdminWeeks from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -866,5 +867,43 @@ describe("AC7 (issue 220) — the menu panel's Cancel", () => {
     await services.repo.createMenu({ name: "Autumn harvest", texts: {} });
     const { html } = await render({ menu: OPEN });
     expect(cancelsIn(html)).toHaveLength(1);
+  });
+});
+
+// Issue 230: a panel opened in a week's row is further down the page than a phone shows, so its link carries the open
+// panel's fragment and the opened panel carries that id: the browser lands on it. Close week and Reopen open at the top.
+describe("issue 230 — the open panel is scrolled to", () => {
+  beforeEach(() => {
+    vi.mocked(RowActions).mockClear();
+  });
+
+  /** The fragment of each link the row for `weekOf` passes RowActions, by the panel its query asks for. */
+  const fragments = (weekOf: string): Record<string, string> =>
+    Object.fromEntries(
+      vi
+        .mocked(RowActions)
+        .mock.calls.flatMap(([props]) => {
+          const { main, others } = props as { main?: RowAction; others: RowAction[] };
+          return [main, ...others];
+        })
+        .flatMap((action) => (action !== undefined && "href" in action ? [new URL(action.href, "http://haul.test")] : []))
+        .filter((url) => Object.values(Object.fromEntries(url.searchParams)).includes(weekOf))
+        .map((url) => [[...url.searchParams.keys()][0] ?? "", url.hash]),
+    );
+
+  it("issue 230: an open week's Note, Menu and Move days links carry the open panel's fragment; Close week's does not", async () => {
+    await render();
+    expect(fragments(OPEN)).toEqual({ menu: `#${OPEN_PANEL}`, move: `#${OPEN_PANEL}`, close: "", note: `#${OPEN_PANEL}` });
+  });
+
+  it("issue 230: a closed week's Reopen link carries no fragment", async () => {
+    await save(OPEN, { closedAt: BEFORE_FEB_14_CUTOFF });
+    await render();
+    expect(fragments(OPEN)).toMatchObject({ reopen: "" });
+  });
+
+  it.each(["note", "menu", "move"])("issue 230: ?%s opens a panel carrying the open panel's id, the one element on the page that does", async (name) => {
+    const { html } = await render({ [name]: OPEN });
+    expect(attributesOf(html, "[a-z]+").filter((attrs) => attrs.id === OPEN_PANEL)).toHaveLength(1);
   });
 });

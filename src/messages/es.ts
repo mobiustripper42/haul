@@ -274,8 +274,6 @@ export const es = {
     "Dos menús cada semana, estándar y vegano. Los alérgenos están marcados en el empaque. Algunos platos traen uno o dos pasos rápidos para terminarlos en casa, para que se mantengan frescos.",
   "supperClub.sampleTitle": "UNA SEMANA DE EJEMPLO",
   "supperClub.sampleMain": "Brochetas de pollo shish tawook",
-  "supperClub.sampleSides":
-    "Arroz con lentejas y cebolla (mujadara) · Calabaza asada · Ensalada de zanahoria rallada y nueces con sumac · Sopa de calabaza butternut",
   "supperClub.sampleVegan": "Vegano: moussaka libanesa de garbanzos en lugar del pollo.",
   "supperClub.pickupWhen": "Recoja el domingo o el lunes",
   "supperClub.pickupWhere": "en la tienda de la granja, 2304 Bridge Ave. Horario: domingos de 10 a. m. a 4 p. m., lunes de mediodía a 6 p. m.",

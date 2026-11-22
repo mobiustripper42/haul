@@ -23,6 +23,7 @@ import { SiteHeader } from "../../site-header";
 import { closeWeek, moveWeek, reopenWeek, saveWeekNote } from "./actions";
 import { loadCalendar } from "./calendar";
 import { MenuPanel } from "./menu-panel";
+import { OPEN_PANEL } from "./open-panel";
 
 export const generateMetadata = titled("admin.weeks.title");
 
@@ -37,8 +38,12 @@ type Fault = (typeof FAULTS)[number];
 
 const one = (value: string | string[] | undefined): string | undefined => (Array.isArray(value) ? value[0] : value);
 
-/** A link back to this screen with one panel asked for: the URL says which dialog or panel is open. */
-const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string => `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}`;
+/**
+ * A link back to this screen with one panel asked for: the URL says which dialog or panel is open. A panel in a week's
+ * row is also the fragment, so the page lands on it (issue 230); Close week and Reopen open at the top.
+ */
+const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string =>
+  `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}${name === "close" || name === "reopen" ? "" : `#${OPEN_PANEL}`}`;
 
 /** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
@@ -110,7 +115,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const id = `note-${week.weekOf}`;
   const form = `${id}-form`;
   return (
-    <div className="flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
+    <div id={OPEN_PANEL} className="flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
       <Field label={t("admin.weeks.noteLabel")} htmlFor={id} help={t("admin.weeks.noteHelp")}>
         <Textarea id={id} name="note" form={form} rows={4} defaultValue={week.note ?? ""} aria-describedby={`${id}-help`} />
       </Field>
@@ -153,7 +158,7 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
   const firstBad = fault === "beforeCutoff";
   const lastBad = fault === "order" || fault === "overlapsNext";
   return (
-    <form action={moveWeek} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
+    <form id={OPEN_PANEL} action={moveWeek} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
       <input type="hidden" name="week" value={week.weekOf} />
       <Heading level={2}>{t("admin.weeks.moveHeading")}</Heading>
       <div className="flex flex-wrap gap-x-6 gap-y-4">

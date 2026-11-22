@@ -282,8 +282,10 @@ export const en = {
     "Two menus each week, standard and vegan. Allergens are marked on the packaging. Some dishes come with one or two quick steps to finish at home, so they stay fresh.",
   "supperClub.sampleTitle": "A SAMPLE WEEK",
   "supperClub.sampleMain": "Shish tawook chicken skewers",
-  "supperClub.sampleSides":
-    "Mujadara rice and lentils with onions · Roasted squash · Shredded carrot and walnut salad with sumac · Butternut squash soup",
+  "supperClub.sampleGrain": "Mujadara rice and lentils with onions",
+  "supperClub.sampleVeggie": "Roasted squash",
+  "supperClub.sampleSalad": "Shredded carrot and walnut salad with sumac",
+  "supperClub.sampleSoup": "Butternut squash soup",
   "supperClub.sampleVegan": "Vegan: Lebanese chickpea moussaka in place of the chicken.",
   "supperClub.pickupWhen": "Pick up Sunday or Monday",
   "supperClub.pickupWhere": "at the farm store, 2304 Bridge Ave. Hours: Sundays 10am–4pm, Mondays noon–6pm.",

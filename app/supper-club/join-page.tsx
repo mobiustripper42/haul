@@ -28,6 +28,15 @@ const EVERY_WEEK = [
   "supperClub.item.soup",
 ] as const;
 
+/** The sample week's five dishes (issue 230), one bullet each, in the order the every-week list names their kinds. */
+const SAMPLE_WEEK = [
+  "supperClub.sampleMain",
+  "supperClub.sampleGrain",
+  "supperClub.sampleVeggie",
+  "supperClub.sampleSalad",
+  "supperClub.sampleSoup",
+] as const;
+
 /**
  * The header (it reads who is signed in itself: Sign in for a visitor, Sign out for a member), then the
  * left column, then `children`. `pane` is which pane the page shows: "none" for the Supper Club page,
@@ -65,8 +74,7 @@ export async function JoinPage({
             <Hint>{t("supperClub.allergens")}</Hint>
           </Card>
           <Panel title={t("supperClub.sampleTitle")}>
-            <p className="font-semibold text-teal">{t("supperClub.sampleMain")}</p>
-            <p>{t("supperClub.sampleSides")}</p>
+            <BulletList items={SAMPLE_WEEK.map((key) => t(key))} />
             <Hint>{t("supperClub.sampleVegan")}</Hint>
           </Panel>
           <p>
