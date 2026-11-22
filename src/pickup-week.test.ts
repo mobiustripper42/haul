@@ -217,9 +217,10 @@ describe("AC13 — a pickup date in words", () => {
   });
 
   // Issue 230: Upcoming weeks' charge line sits beside Skip on a phone, so it takes the short month: one line from about 404px wide.
-  it('issue 230: with the short month it gives "Monday, Jan 11", in Spanish "lunes, 11 de ene"', () => {
-    expect(formatPickupDate("2027-01-11", "en", "short")).toBe("Monday, Jan 11");
-    expect(formatPickupDate("2027-01-11", "es", "short")).toBe("lunes, 11 de ene");
+  // A wrap may break after the weekday, never inside the date: the date's own spaces are non-breaking (Eric, 2026-11-22).
+  it('issue 230: with the short month it gives "Monday, Jan 11", in Spanish "lunes, 11 de ene", the date held together', () => {
+    expect(formatPickupDate("2027-01-11", "en", "short")).toBe("Monday, Jan 11");
+    expect(formatPickupDate("2027-01-11", "es", "short")).toBe("lunes, 11 de ene");
   });
 });
 

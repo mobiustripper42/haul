@@ -136,14 +136,20 @@ export function firstPickupLine(t: Translator, week: PickupWeek, language: Langu
   return t("supperClub.box.firstPickup", { date: formatPickupDate(week.firstDay, language) });
 }
 
-/** A pickup date as words: "Sunday, January 3"; with the short month, "Sunday, Jan 3" (issue 230). */
+/**
+ * A pickup date as words: "Sunday, January 3". With the short month, "Sunday, Jan 3" (issue 230), its date held
+ * together by non-breaking spaces, so a line that wraps breaks after the weekday, never between "Jan" and "3".
+ */
 export function formatPickupDate(date: string, language: Language, month: "long" | "short" = "long"): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
+  const words = new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
     weekday: "long",
     month,
     day: "numeric",
     timeZone: "UTC",
   });
+  if (month === "long") return words;
+  const comma = words.indexOf(", ");
+  return comma === -1 ? words : `${words.slice(0, comma + 2)}${words.slice(comma + 2).replaceAll(" ", " ")}`;
 }
 
 /** `instant`'s date on Cleveland's wall clock, `YYYY-MM-DD`. */
