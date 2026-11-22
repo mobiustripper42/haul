@@ -35,7 +35,7 @@ teal is the brand and carries headings, links and focus. gold is the one accent 
 
 - Primary button: `gold` fill, `on-gold` text (teal, 5.5:1), `radius-md`. Hover `gold-hover`. Never white text on gold (2.1:1); the Wix site does this and it is hard to read.
 - Secondary button: `surface` fill, `teal` text and 1px `teal` border.
-- Strong button: `teal` fill, `surface` text, the inverse of secondary; hover `teal-muted`. For emphasis where gold is already on the screen or would repeat, such as a row's Unskip in a list of weeks (Eric, 2026-11-22). Never beside a gold button for the same action.
+- Strong button: `teal` fill, `surface` text (about 11:1), the inverse of secondary; hover `teal-muted` (about 5:1). For emphasis where gold is already on the screen or would repeat, such as a row's Unskip in a list of weeks (Eric, 2026-11-22). Never beside a gold button for the same action.
 - Quiet button: no fill, `teal` text, for in-line actions and the language switch.
 - Text: `ink` for body, `ink-muted` for help, `teal` for headings and links, `teal-muted` for nav at 14px and up.
 - Fields: a `border` (3.2:1 on `surface`) around inputs; `divider` (sage) only between rows and sections.

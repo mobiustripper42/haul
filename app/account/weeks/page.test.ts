@@ -187,6 +187,13 @@ describe("AC9 (issue 155) — the header on Upcoming weeks", () => {
 // press does ./actions.test.ts's; here one row of each kind goes through the page. The new words are typed once,
 // in the test of the criterion that brings them.
 
+/** The class of each button in the row titled `title`, in order. */
+const buttonClassesIn = (html: string, title: string): string[] => {
+  const row = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => match[1] ?? "").find((inner) => textsOf(inner)[0] === title);
+  if (row === undefined) throw new Error(`no row titled ${title}`);
+  return attributesOf(row, "button").map((button) => button.class ?? "");
+};
+
 /** The page drawn after a redirect back with `query`. */
 const renderWith = async (query: { error?: string }): Promise<string> => renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
 
@@ -218,9 +225,8 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     const { html, rows } = await arrange();
     expect(rowTitled(rows, titleOf(MAR_7))?.slice(1)).toEqual([t("account.weeks.skipped"), t("account.weeks.unskip")]);
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
-    const kinds = attributesOf(html, "button").map((button) => button.class);
-    expect(kinds.filter((cls) => cls === "btn-strong")).toHaveLength(1);
-    expect(kinds.filter((cls) => cls === "btn-secondary").length).toBeGreaterThan(0);
+    expect(buttonClassesIn(html, titleOf(MAR_7))).toEqual(["btn-strong"]);
+    expect(buttonClassesIn(html, titleOf(MAR_14))).toEqual(["btn-secondary"]);
   });
 
   it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {

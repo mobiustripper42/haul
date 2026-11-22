@@ -102,7 +102,7 @@ const uiSelectors = [...contrastSelectors, ...rawValueSelectors, ...goldFillSele
 const useComponent = (component, what) =>
   `Use <${component}> from components/ui (DEC-024): ${what} Pass no className; the look lives in app/globals.css.`;
 const MESSAGES = {
-  Button: useComponent("Button", "every button is one, with its kind: primary, secondary or quiet."),
+  Button: useComponent("Button", "every button is one, with its kind: primary, secondary, strong, quiet or menu."),
   Input: useComponent("Input", "every text field is one."),
   Field: useComponent("Field", "every label is one, holding its field."),
   Heading: useComponent("Heading", "every screen title is one."),
