@@ -24,7 +24,7 @@ export const AUDIT_ENTRY_POINTS: AuditEntryPoints = {
   "app/supper-club/actions.ts#retrySupperClubPayment": { records: ["already_subscribed", "card_declined", "charge_outcome_unknown"] },
   "app/supper-club/continue/route.ts#GET": { none: "sets a cookie only" },
   "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown"] },
-  "app/api/menu-run/route.ts#GET": { records: ["menu_reminder_sent"] },
+  "app/api/menu-run/route.ts#GET": { records: ["menu_reminder_sent", "note_reminder_sent"] },
   "app/menu-emails/off/route.ts#GET": { none: "writes members; audited by trigger" },
   "app/menu-emails/actions.ts#turnMenuEmailsOn": { none: "writes members; audited by trigger" },
   "app/menu-emails/actions.ts#turnMenuEmailsOff": { none: "writes members; audited by trigger" },

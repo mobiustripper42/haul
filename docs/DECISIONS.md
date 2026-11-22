@@ -65,6 +65,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-042 — A subscription is locked at one decline
 - DEC-045 — A locked subscription can neither skip nor switch
 - DEC-046 — A comp is a subscription column, written by db:comp
+- DEC-049 — Settings are rows in one key-value table, not product columns or env
 
 ### Interface
 - DEC-008 — Every screen has a desktop and a mobile design, both first class

@@ -25,7 +25,7 @@ const FIRST: RowAction = { label: "First other", href: "/rows?first=1" };
 const SECOND: RowAction = { label: "Second other", href: "/rows?second=1" };
 const FORM: RowAction = { label: "Form other", action: probeAction("form-other"), fields: { row: "r-7", flag: "1" } };
 
-const render = (main: RowAction, others: RowAction[]): string =>
+const render = (main: RowAction | undefined, others: RowAction[]): string =>
   screenMarkup(renderToStaticMarkup(createElement(RowActions, { main, others, moreLabel: MORE_LABEL, moreName: MORE_NAME })));
 
 const textOf = (inner: string): string => inner.replace(/<[^>]*>/g, "").trim();
@@ -96,5 +96,22 @@ describe("AC6 (issue 220) — RowActions draws by how many others there are", ()
     expect(form).toContain("$ACTION_ID_form-other");
     const fields = attributesOf(form, "input").filter((input) => input.type === "hidden" && !input.name?.startsWith("$ACTION_"));
     expect(Object.fromEntries(fields.map((input) => [input.name, input.value]))).toEqual({ row: "r-7", flag: "1" });
+  });
+});
+
+// Issue 231, AC2: a row may have no main action — a closed week past its cutoff has no action at all — and RowActions
+// owns both cases, so the calendar passes what it has (app/admin/weeks/page.test.ts). With others only, the row is drawn
+// exactly as if the first other were its main action.
+describe("AC2 (issue 231) — RowActions with no main action", () => {
+  it("AC2 (issue 231): no main and no others: nothing is drawn", () => {
+    expect(render(undefined, [])).toBe("");
+  });
+
+  it("AC2 (issue 231): no main and one other: drawn as that other alone, as a main action", () => {
+    expect(render(undefined, [FIRST])).toBe(render(FIRST, []));
+  });
+
+  it("AC2 (issue 231): no main and three others: the first drawn as main, the other two under More", () => {
+    expect(render(undefined, [FIRST, SECOND, FORM])).toBe(render(FIRST, [SECOND, FORM]));
   });
 });

@@ -107,6 +107,8 @@ describe("AC1 — the secret fires the run", () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     vi.stubEnv("MENU_EMAIL_WEEKDAY", "4");
     const { memberEmail, adminId } = await aWeekToSend();
+    // Issue 231: January 17 carries a note, so the missing-note reminder, three days out, has nothing to send.
+    await services.repo.savePickupWeek(product.id, { weekOf: WEEK, closedAt: null, note: "Bring a cooler bag", firstDay: null, lastDay: null });
 
     const response = await fire(`Bearer ${SECRET}`);
 
@@ -114,10 +116,25 @@ describe("AC1 — the secret fires the run", () => {
     expect(response.status).toBe(200);
     expect(response.headers.get("content-type") ?? "no content-type").toMatch(/^application\/json\b/);
     expect(response.headers.get("cache-control")).toBe("no-store");
-    const expected: MenuRunReport = { menuEmail: { weekOf: WEEK, sent: 1 }, reminder: { weeks: [NEXT], sent: 1 } };
+    const expected: MenuRunReport = { menuEmail: { weekOf: WEEK, sent: 1 }, reminder: { weeks: [NEXT], sent: 1 }, noteReminder: { weeks: [], sent: 0 } };
     expect(await response.json()).toEqual(expected);
     expect(services.email.sent.map((message) => message.to).sort()).toEqual([memberEmail, "lenny@example.com"]);
     expect(services.repo.events()).toEqual([expect.objectContaining({ kind: "menu_reminder_sent", memberId: adminId })]);
+  });
+
+  // Issue 231, AC8: the route records the missing-note reminder's event too (app/audit-entry-points.ts); which weeks
+  // count and who is emailed are src/menu-run.test.ts's.
+  it("AC8 (issue 231): with January 17 open and no note on it, the run records note_reminder_sent on the admin, and the report lists the week", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    vi.stubEnv("MENU_EMAIL_WEEKDAY", "4");
+    const { adminId } = await aWeekToSend();
+
+    const response = await fire(`Bearer ${SECRET}`);
+
+    expect(((await response.json()) as MenuRunReport).noteReminder).toEqual({ weeks: [WEEK], sent: 1 });
+    expect(services.repo.events().filter((event) => event.kind === "note_reminder_sent")).toEqual([
+      expect.objectContaining({ kind: "note_reminder_sent", memberId: adminId, detail: { weeks: [WEEK], date: "2027-01-14" } }),
+    ]);
   });
 
   it("AC1: the run is given the app's repository and email, now at the request, the site URL, the Upcoming weeks and Weeks links under it, the env's weekday and the session secret", async () => {

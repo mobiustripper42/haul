@@ -964,6 +964,11 @@ export class PostgresRepository implements Repository {
     return rows[0]?.found === true;
   }
 
+  async readSetting(key: string): Promise<string | null> {
+    const { rows } = await this.db.query<{ value: string }>("select value from settings where key = $1", [key]);
+    return rows[0]?.value ?? null;
+  }
+
   async setMenuEmails(memberId: string, on: boolean): Promise<Member | null> {
     if (!UUID_SHAPE.test(memberId)) return null;
     const { rows } = await this.db.query<MemberRow>(`update members set menu_emails = $2 where id = $1 returning ${MEMBER_COLUMNS}`, [memberId, on]);

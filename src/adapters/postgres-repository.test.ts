@@ -61,7 +61,10 @@ describe.skipIf(!up)(`AC9 — Postgres contract in <test db>_repository${skipped
       },
     );
 
-  runRepositoryContract("postgres", async () => repo, eventActors, truncateAll);
+  runRepositoryContract("postgres", async () => repo, eventActors, truncateAll, async (_repo, key, value) => {
+    // Issue 231: settings rows are written by SQL and the seed only, so the contract's row is SQL here too.
+    await pool.query("insert into settings (key, value) values ($1, $2)", [key, value]);
+  });
 
   // Issue 9, AC16–AC19: the sign-in store contract, a subject being a real member row.
   runSignInStoreContract(

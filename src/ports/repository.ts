@@ -24,6 +24,8 @@ export const AUDIT_EVENT_KINDS = [
   "email_changed",
   // Issue 141: the missing-menu email's event; the menu run's route records it (AUDIT_ENTRY_POINTS).
   "menu_reminder_sent",
+  // Issue 231: the missing-note email's event, recorded by the same route.
+  "note_reminder_sent",
 ] as const;
 export type AuditEventKind = (typeof AUDIT_EVENT_KINDS)[number];
 
@@ -411,6 +413,8 @@ export interface Repository extends SignInStore, RateLimitStore {
   listWeekMade(productId: string, weekOf: string): Promise<WeekMade[]>;
   listAdmins(): Promise<Member[]>;
   hasEventOn(kind: AuditEventKind, clevelandDate: string): Promise<boolean>;
+  /** Issue 231: the `settings` row's value for `key`; null when it has none. */
+  readSetting(key: string): Promise<string | null>;
   setMenuEmails(memberId: string, on: boolean): Promise<Member | null>;
   /**
    * Issue 174: a token when this call took the run's lease (none held, or the held one expired at or before `at`), held

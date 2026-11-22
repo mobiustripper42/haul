@@ -80,6 +80,18 @@ It refuses unless `products` is empty, so it writes once; afterwards configurati
 SQL (DEC-007). Run from `main`, it would write `main`'s dev first-pickup date: `main`'s
 `db/seeds/supper-club.ts` is dev data.
 
+The seed also writes the two reminders' day counts to `settings` (DEC-049), but it refuses after the
+first run, so a production database that took the seed before `settings` existed has no rows. Insert
+them by hand, as the owner, once the settings migration has run (issue 231). Until then the
+reminders use their fallbacks, 14 and 3 days, so nothing breaks:
+
+```
+psql "$OWNER_URL" -c "insert into settings (key, value) values ('missing_menu_days', '14'), ('missing_note_days', '3') on conflict (key) do nothing"
+```
+
+Change one later with `update settings set value = '7' where key = 'missing_menu_days'`. A value that
+is not a whole number is logged by the menu run and read as its fallback.
+
 ### 4. Vercel
 
 - **Settings → Environments → Production → Branch Tracking:** `production`.
