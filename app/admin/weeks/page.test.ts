@@ -902,8 +902,21 @@ describe("issue 230 — the open panel is scrolled to", () => {
     expect(fragments(OPEN)).toMatchObject({ reopen: "" });
   });
 
-  it.each(["note", "menu", "move"])("issue 230: ?%s opens a panel carrying the open panel's id, the one element on the page that does", async (name) => {
+  // Eric, 2026-11-22: the page lands on the row, so its title says which week the panel below it is for.
+  it.each([
+    ["note", 'name="note"'],
+    ["menu", 'name="menu"'],
+    ["move", 'name="firstDay"'],
+  ])("issue 230: ?%s gives the open panel's id to its week's row, the one element on the page that has it, and the row holds the panel", async (name, control) => {
+    // With no menu in the library the menu panel offers New menu, not the select; one menu gives it its field.
+    if (name === "menu") await services.repo.createMenu({ name: "Autumn harvest", texts: {} });
     const { html } = await render({ [name]: OPEN });
     expect(attributesOf(html, "[a-z]+").filter((attrs) => attrs.id === OPEN_PANEL)).toHaveLength(1);
+    const at = html.indexOf(`id="${OPEN_PANEL}"`);
+    const tag = html.slice(html.lastIndexOf("<", at), at);
+    expect(tag.startsWith("<li")).toBe(true);
+    const nextRow = html.indexOf("<li", at);
+    const row = html.slice(at, nextRow === -1 ? undefined : nextRow);
+    expect(row).toContain(control);
   });
 });

@@ -115,7 +115,7 @@ function NotePanel({ week, wording }: { week: AdminWeek; wording: Wording }) {
   const id = `note-${week.weekOf}`;
   const form = `${id}-form`;
   return (
-    <div id={OPEN_PANEL} className="scroll-mt-4 flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
+    <div className="flex basis-full flex-col gap-3 rounded-md border border-divider bg-surface-alt p-4">
       <Field label={t("admin.weeks.noteLabel")} htmlFor={id} help={t("admin.weeks.noteHelp")}>
         <Textarea id={id} name="note" form={form} rows={4} defaultValue={week.note ?? ""} aria-describedby={`${id}-help`} />
       </Field>
@@ -158,7 +158,7 @@ function MovePanel({ week, wording, query }: { week: AdminWeek; wording: Wording
   const firstBad = fault === "beforeCutoff";
   const lastBad = fault === "order" || fault === "overlapsNext";
   return (
-    <form id={OPEN_PANEL} action={moveWeek} className="scroll-mt-4 flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
+    <form action={moveWeek} className="flex basis-full flex-col gap-4 rounded-md border border-divider bg-surface-alt p-4">
       <input type="hidden" name="week" value={week.weekOf} />
       <Heading level={2}>{t("admin.weeks.moveHeading")}</Heading>
       <div className="flex flex-wrap gap-x-6 gap-y-4">
@@ -237,8 +237,15 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
     : week.canReopen
       ? { main: reopenAction, others: noteActions }
       : { others: noteActions };
+  const noteOpen = !week.cutoffPassed && one(query.note) === week.weekOf;
+  const menuOpen = !closed && one(query.menu) === week.weekOf;
+  const moveOpen = !closed && one(query.move) === week.weekOf;
+  // Issue 230: the row with an open panel carries the fragment's id, so the page lands on its title, the panel below it.
   return (
-    <li className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
+    <li
+      id={noteOpen || menuOpen || moveOpen ? OPEN_PANEL : undefined}
+      className="flex scroll-mt-4 flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0"
+    >
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="font-semibold">{title}</span>
@@ -255,9 +262,9 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       <div className="ml-auto flex justify-end">
         <RowActions main={main} others={others} moreLabel={t("rowActions.more")} moreName={t("rowActions.moreFor", { week: title })} />
       </div>
-      {!week.cutoffPassed && one(query.note) === week.weekOf && <NotePanel week={week} wording={wording} />}
-      {!closed && one(query.menu) === week.weekOf && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
-      {!closed && one(query.move) === week.weekOf && <MovePanel week={week} wording={wording} query={query} />}
+      {noteOpen && <NotePanel week={week} wording={wording} />}
+      {menuOpen && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
+      {moveOpen && <MovePanel week={week} wording={wording} query={query} />}
     </li>
   );
 }
