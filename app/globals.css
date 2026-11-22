@@ -168,6 +168,10 @@
   .btn-secondary {
     @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-surface px-6 text-center text-button text-teal hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50;
   }
+  /* Issue 230: the teal fill, the inverse of secondary; emphasis where gold is taken or would repeat (docs/BRAND.md). */
+  .btn-strong {
+    @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-teal px-6 text-center text-button text-surface hover:border-teal-muted hover:bg-teal-muted disabled:cursor-not-allowed disabled:opacity-50;
+  }
   .btn-quiet {
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
   }

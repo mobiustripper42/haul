@@ -328,6 +328,7 @@ const OWNED: Array<[string, Component]> = [
   ["notice-info", "Notice"],
   ["btn-primary", "Button"],
   ["btn-secondary", "Button"],
+  ["btn-strong", "Button"],
   ["btn-quiet", "Button"],
   ["btn-flush", "Button"],
   ["btn-danger", "Button"],

@@ -213,10 +213,14 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     return render();
   };
 
-  it("AC6: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek", async () => {
+  // Issue 230 (Eric, 2026-11-22): a Skipped week with Unskip takes no badge; its line says it, and Unskip is the strong button.
+  it("AC6, issue 230: a Skipped week's Unskip is a form of its own, posting the week to unskipWeek; no badge, and Unskip is strong", async () => {
     const { html, rows } = await arrange();
-    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1, 3)).toEqual([t("account.weeks.skipped"), t("account.marker.skipped")]);
+    expect(rowTitled(rows, titleOf(MAR_7))?.slice(1)).toEqual([t("account.weeks.skipped"), t("account.weeks.unskip")]);
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "unskipWeek", week: MAR_7 }]);
+    const kinds = attributesOf(html, "button").map((button) => button.class);
+    expect(kinds.filter((cls) => cls === "btn-strong")).toHaveLength(1);
+    expect(kinds.filter((cls) => cls === "btn-secondary").length).toBeGreaterThan(0);
   });
 
   it("AC6: a Coming week's Skip is a form of its own, posting the week to skipWeek", async () => {

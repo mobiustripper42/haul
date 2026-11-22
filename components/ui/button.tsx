@@ -1,6 +1,10 @@
 import type { ButtonHTMLAttributes, ReactNode } from "react";
 
-export type ButtonKind = "primary" | "secondary" | "quiet" | "menu";
+/**
+ * `strong` is the teal-filled emphasis button, the inverse of `secondary` (issue 230): for a screen where gold is taken,
+ * or where several rows each need an emphasised action, which gold, one to a screen (docs/BRAND.md), cannot give.
+ */
+export type ButtonKind = "primary" | "secondary" | "strong" | "quiet" | "menu";
 
 /** `true` lines the text up with the left edge; `"end"` with the right; `"end-narrow"` with the right below `lg` only. */
 export type ButtonFlush = boolean | "end" | "end-narrow";
