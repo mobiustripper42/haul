@@ -340,14 +340,17 @@
     min-height: 40px;
   }
   /*
-   * Issue 230: iOS Safari draws a date field's value in a box of its own, set at the top of the field; drawn as a plain
-   * field there, the value centres as text does. `-webkit-touch-callout` is supported by iOS Safari alone, so no other
+   * Issue 230: iOS Safari draws a date field's value in a box of its own, one line tall, set at the top of the field,
+   * where a text field centres its line. The padding leaves room for exactly that line: the field's height, less the
+   * 1.5rem line and the 2px of border, split above and below, so the value can sit nowhere but the middle. The height
+   * stays fixed, so an empty field keeps it. `-webkit-touch-callout` is supported by iOS Safari alone, so no other
    * browser loses its native date field. No test can draw it: it is checked by hand on an iPhone, an empty field too.
    */
   @supports (-webkit-touch-callout: none) {
     .field[type="date"] {
       -webkit-appearance: none;
       appearance: none;
+      padding-block: calc((max(var(--spacing-field), 40px) - 1.5rem - 2px) / 2);
     }
     .field[type="date"]::-webkit-date-and-time-value {
       text-align: left;
