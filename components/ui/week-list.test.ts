@@ -12,13 +12,13 @@ const rowsOf = (rows: WeekListRow[]): string[][] =>
   [...renderToStaticMarkup(createElement(WeekList, { rows })).matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
 
 describe("AC2, AC7 (issue 155) — WeekList", () => {
-  it("AC7, issue 230: one list item a row, in order, each its title, its lines, then its badge over its amount", () => {
+  it("AC7, issue 230: one list item a row, in order, each its title and first line, its badge over its amount, then its later lines", () => {
     const rows: WeekListRow[] = [
       { id: "2027-01-10", title: "January 10 and 11", lines: ["2 people · Standard", "Paid"], amount: "$50", badge: createElement(Badge, { kind: "success", children: "Paid" }) },
       { id: "2027-01-03", title: "January 3 and 4", lines: ["Closed"], amount: "$0", badge: createElement(Badge, { kind: "closed", children: "No meal" }) },
     ];
     expect(rowsOf(rows)).toEqual([
-      ["January 10 and 11", "2 people · Standard", "Paid", "Paid", "$50"],
+      ["January 10 and 11", "2 people · Standard", "Paid", "$50", "Paid"],
       ["January 3 and 4", "Closed", "No meal", "$0"],
     ]);
   });

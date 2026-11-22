@@ -169,7 +169,8 @@ describe("AC3 (issue 155) — a coming week's row", () => {
     const { html, rows } = await render();
     const row = rowTitled(rows, titleOf(MAR_7));
     expect(row).toHaveLength(3);
-    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en") }));
+    // Issue 230: the short month, so the line fits beside Skip on a phone.
+    expect(row?.[1]).toBe(t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en", "short") }));
     expect(formsIn(html, titleOf(MAR_7))).toEqual([{ action: "skipWeek", week: MAR_7 }]);
   });
 });
@@ -226,7 +227,7 @@ describe("AC1, AC6 (issue 137) — Skip and Unskip on the rows", () => {
     const { html, rows } = await arrange();
     const row = rowTitled(rows, titleOf("2027-02-07"));
     expect(row).toHaveLength(2);
-    expect(row?.[1]).toContain(formatPickupDate("2027-02-01", "en"));
+    expect(row?.[1]).toContain(formatPickupDate("2027-02-01", "en", "short"));
     expect(formsIn(html, titleOf("2027-02-07"))).toEqual([]);
   });
 });

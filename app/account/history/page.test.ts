@@ -141,11 +141,11 @@ describe("AC7 (issue 155) — what each row holds", () => {
   };
 
   it("AC7: the first week: the meal and the amount charged at signup", async () => {
-    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, t("account.history.signup"), t("account.marker.paid"), formatUsdWhole(4500)]);
+    expect(rowTitled(await arrange(), titleOf(JAN_3))).toEqual([titleOf(JAN_3), MEAL, t("account.marker.paid"), formatUsdWhole(4500), t("account.history.signup")]);
   });
 
   it("AC7: a later paid week: the meal and the ledger's amount", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual([titleOf("2027-01-10"), MEAL, t("account.marker.paid"), t("account.marker.paid"), formatUsdWhole(5000)]);
+    expect(rowTitled(await arrange(), titleOf("2027-01-10"))).toEqual([titleOf("2027-01-10"), MEAL, t("account.marker.paid"), formatUsdWhole(5000), t("account.marker.paid")]);
   });
 
   it("AC7: a closed week with no charge: $0, with no meal line", async () => {
@@ -153,20 +153,20 @@ describe("AC7 (issue 155) — what each row holds", () => {
   });
 
   it("AC7: a week closed after it was paid: the meal and the amount", async () => {
-    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([titleOf("2027-01-24"), MEAL, t("account.history.closedPaid"), t("account.marker.noMeal"), formatUsdWhole(4500)]);
+    expect(rowTitled(await arrange(), titleOf("2027-01-24"))).toEqual([titleOf("2027-01-24"), MEAL, t("account.marker.noMeal"), formatUsdWhole(4500), t("account.history.closedPaid")]);
   });
 });
 
 // Issue 214, folded into issue 230: a past week paid by a week credit. January 10 paid, then closed after its cutoff,
 // grants a week credit; January 17's enrolment spends it on a 0-cent paid row. Its line and badge by their catalog lines.
 describe("issue 230 — a past week paid by a week credit", () => {
-  it("issue 230: a week a week credit paid: the week credit line, the week credit badge, and $0", async () => {
+  it("issue 230: a week a week credit paid: the week credit badge, $0, then the week credit line", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 4500);
     await close("2027-01-10");
     await services.repo.enrolWeek(product.id, "2027-01-17", cutoffInstant(product, "2027-01-17"));
     const row = rowTitled((await render()).rows, titleOf("2027-01-17"));
-    expect(row?.slice(-3)).toEqual([t("account.weeks.weekCredit"), t("account.marker.weekCredit"), formatUsdWhole(0)]);
+    expect(row?.slice(-3)).toEqual([t("account.marker.weekCredit"), formatUsdWhole(0), t("account.weeks.weekCredit")]);
   });
 });
 
@@ -274,6 +274,6 @@ describe("issue 198 — History of a locked subscription", () => {
   it("AC13: once a card update pays the declined week, it is Paid, with its meal and amount, as any paid week; guards AC12", async () => {
     const { memberId, subscriptionId } = await declinedAda(JAN_31);
     await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
-    expect(rowTitled((await render()).rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), MEAL, t("account.marker.paid"), t("account.marker.paid"), formatUsdWhole(4500)]);
+    expect(rowTitled((await render()).rows, titleOf(JAN_31))).toEqual([titleOf(JAN_31), MEAL, t("account.marker.paid"), formatUsdWhole(4500), t("account.marker.paid")]);
   });
 });

@@ -215,6 +215,12 @@ describe("AC13 — a pickup date in words", () => {
     expect(formatPickupDate("2027-01-31", "en")).toBe("Sunday, January 31");
     expect(formatPickupDate("2027-02-28", "en")).toBe("Sunday, February 28");
   });
+
+  // Issue 230: Upcoming weeks' charge line sits beside Skip on a phone, so it takes the short month and fits on one line.
+  it('issue 230: with the short month it gives "Monday, Jan 11", in Spanish "lunes, 11 de ene"', () => {
+    expect(formatPickupDate("2027-01-11", "en", "short")).toBe("Monday, Jan 11");
+    expect(formatPickupDate("2027-01-11", "es", "short")).toBe("lunes, 11 de ene");
+  });
 });
 
 // Issue 59: when a member joined, on Cleveland's calendar, and how the admin's list writes it.

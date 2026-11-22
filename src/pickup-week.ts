@@ -136,11 +136,11 @@ export function firstPickupLine(t: Translator, week: PickupWeek, language: Langu
   return t("supperClub.box.firstPickup", { date: formatPickupDate(week.firstDay, language) });
 }
 
-/** A pickup date as words: "Sunday, January 3". */
-export function formatPickupDate(date: string, language: Language): string {
+/** A pickup date as words: "Sunday, January 3"; with the short month, "Sunday, Jan 3" (issue 230). */
+export function formatPickupDate(date: string, language: Language, month: "long" | "short" = "long"): string {
   return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
     weekday: "long",
-    month: "long",
+    month,
     day: "numeric",
     timeZone: "UTC",
   });
