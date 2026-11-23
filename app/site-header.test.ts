@@ -24,7 +24,7 @@ import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
 import { emptyRequest } from "./next-headers-fake";
 import { ACCOUNT_PATH, ADMIN_LISTS_PATH, ADMIN_MENUS_PATH, ADMIN_PATH, ADMIN_WEEKS_PATH } from "./paths";
-import { findAll, textsOf } from "./screen-test-helpers";
+import { attributesOf, findAll, textsOf } from "./screen-test-helpers";
 import { SiteHeader } from "./site-header";
 import { signOut } from "./sign-in/actions";
 
@@ -138,9 +138,10 @@ const marks = (node: ReactNode): unknown[] =>
     .filter((mark) => mark !== null);
 
 describe("AC18 — SiteHeader, account none, is the header the sign-in screens had", () => {
+  // Issue 245: the wordmark is drawn by Wordmark, a next/link, so its link is read in the markup, not the tree.
   it("AC18: the farm's name is the one link, and it goes to /", async () => {
     const { element } = await header("none");
-    expect(findAll(element, "a").map((link) => link.props.href)).toEqual(["/"]);
+    expect(attributesOf(renderToStaticMarkup(element), "a").map((link) => link.href)).toEqual(["/"]);
   });
 
   it("AC18: it has no button", async () => {

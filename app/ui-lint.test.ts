@@ -383,7 +383,7 @@ describe("AC18 (issue 38) — a component's class in a class string fails outsid
   it.each([
     ["an id", '<div id="card" />'],
     ["a data attribute", '<div data-kind="btn-primary" />'],
-    ["an href", '<a href="/notice" />'],
+    ["an href", '<TextLink href="/notice" />'],
     ["a translation key", '<p>{t("card")}</p>'],
     ["a name", '<span id={name} data-x="field" />'],
   ])("AC18: passes on a component's class in %s, which is not a class string", async (_what, jsx) => {
@@ -436,6 +436,69 @@ describe("AC19 (issue 38) — inside components/ui/, the contrast, raw-value, go
       const result = await lint(jsx, filePath);
       expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
       expect(errorsWhere(result, (m) => m.includes("src/messages/")), describeMessages(result)).not.toHaveLength(0);
+    });
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+
+// Issue 245, AC5: every in-app link is a next/link, drawn only in components/ui/. Outside it, lint refuses a raw <a>, naming
+// the components that draw links, and an import of next/link; inside, the folder builds them.
+
+/** The errors whose message names every one of `components`. */
+const errorsNaming = (result: ESLint.LintResult, components: string[]) =>
+  result.messages.filter((m) => m.severity === 2 && components.every((component) => new RegExp(`(?<![\\w-])${component}(?![\\w-])`).test(m.message)));
+
+/** A whole module importing next/link and drawing it, so no other rule has anything to say. */
+const importsNextLink = [
+  'import Link from "next/link";',
+  "export const t = (key: string): string => key;",
+  "export function View() {",
+  '  return <Link href="/account">{t("a")}</Link>;',
+  "}",
+  "",
+].join("\n");
+
+async function lintModule(code: string, filePath: string): Promise<ESLint.LintResult> {
+  const [result] = await eslint.lintText(code, { filePath });
+  if (!result) throw new Error("lintText returned no result");
+  return result;
+}
+
+const RAW_LINKS: Array<[string, string]> = [
+  ["an in-app <a>", '<a href="/account">{t("a")}</a>'],
+  ["an <a> whose href is a variable", "<a href={name} />"],
+  ["a mailto: <a>", '<a href="mailto:farm@example.com" />'],
+  ["an <a> with no href", "<a />"],
+];
+
+describe("AC5 (issue 245) — a raw <a> and an import of next/link fail outside components/ui/", () => {
+  describe.each(OUTSIDE)("in %s", (filePath) => {
+    it.each(RAW_LINKS)("AC5: fails on %s, naming Button, TextLink and Wordmark", async (_what, jsx) => {
+      const result = await lint(jsx, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(errorsNaming(result, ["Button", "TextLink", "Wordmark"]), describeMessages(result)).not.toHaveLength(0);
+    });
+
+    it("AC5: fails on an import of next/link", async () => {
+      const result = await lintModule(importsNextLink, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(
+        result.messages.filter((m) => m.severity === 2 && m.ruleId === "no-restricted-imports"),
+        describeMessages(result),
+      ).not.toHaveLength(0);
+    });
+  });
+
+  describe.each(INSIDE)("in %s", (filePath) => {
+    it.each(RAW_LINKS)("AC5: passes on %s", async (_what, jsx) => {
+      await expectClean(jsx, filePath);
+    });
+
+    it("AC5: passes on an import of next/link", async () => {
+      const result = await lintModule(importsNextLink, filePath);
+      expect(result.fatalErrorCount, describeMessages(result)).toBe(0);
+      expect(result.errorCount, describeMessages(result)).toBe(0);
     });
   });
 });

@@ -106,7 +106,7 @@ describe("AC8 — lint passes on translated, whitespace-only and non-text string
     ["type", '<Button kind="quiet" type="submit" />'],
     ["name", '<Button kind="quiet" name="language" />'],
     ["value", '<Button kind="quiet" value="es" />'],
-    ["href", '<a href="/account" />'],
+    ["href", '<TextLink href="/account" />'],
     ["every other attribute together, in braces", '<Input className={"x"} type={"text"} name={"q"} value={`v`} />'],
   ];
 

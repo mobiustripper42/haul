@@ -12,6 +12,8 @@ import { useEffect } from "react";
  *   since the backdrop blocks the pointer and not the keyboard. Inerting is per sibling along the path from the
  *   drawer up, because `inert` cannot be lifted from a subtree once an ancestor sets it.
  * - The Admin group, and a row's More (issue 220): an outside click, focus moving outside it, or Escape closes it.
+ * - A link in a menu closes it when it opens the page already showing; a link to another page leaves the menu to the new
+ *   page, which draws its own header with the menus closed (issue 245).
  * - A drawer left open when the window grows to 1024px, where it is not drawn, is closed: the page would stay inert.
  *
  * Renders nothing.
@@ -73,6 +75,39 @@ export function MenuScript() {
       // A tap on the dimmed page hit-tests as the details itself; the summary and the panel are the browser's own.
       if (drawer?.open && e.target === drawer) closeDrawer(true);
       closeGroups(e.target as Node | null);
+      closeForLinkToHere(e.target);
+    };
+    // A link to another page leaves its menu to the new page, which draws its own header with the menus closed (issue 245),
+    // so the pending page can show its spinner inside the open menu. A link to the page already showing has no new page
+    // coming, so its menu closes at once.
+    const closeForLinkToHere = (target: EventTarget | null) => {
+      const link = target instanceof Element ? target.closest<HTMLAnchorElement>("a[href]") : null;
+      if (!link) return;
+      const group = link.closest<HTMLDetailsElement>("details[data-menu-group]");
+      if (!group && !drawer?.contains(link)) return;
+      const url = new URL(link.href, location.href);
+      if (url.origin !== location.origin) return;
+      if (url.pathname !== location.pathname || url.search !== location.search) {
+        closeOnArrival();
+        return;
+      }
+      if (drawer?.contains(link)) closeDrawer(false);
+      if (group) group.open = false;
+    };
+    // A page that keeps this header mounted (a row's Note on /admin/weeks changes only the query) leaves its open menu in
+    // the DOM when the new body arrives. The address changes when the page does, so the next change to the page after it has
+    // changed closes the menus; a page that draws a fresh header has taken this script down with the old one.
+    let arrival: MutationObserver | undefined;
+    const closeOnArrival = () => {
+      arrival?.disconnect();
+      const from = location.href;
+      arrival = new MutationObserver(() => {
+        if (location.href === from) return;
+        arrival?.disconnect();
+        closeDrawer(false);
+        closeGroups();
+      });
+      arrival.observe(document.body, { childList: true, subtree: true });
     };
     // Tabbing out of an open group (Weekly lists on to Sign out) closes it, or its panel hangs over the page.
     const onFocusIn = (e: FocusEvent) => closeGroups(e.target as Node | null);
@@ -93,6 +128,7 @@ export function MenuScript() {
       document.removeEventListener("click", onClick);
       document.removeEventListener("focusin", onFocusIn);
       wide.removeEventListener("change", onWide);
+      arrival?.disconnect();
       for (const el of inerted.splice(0)) el.inert = false;
     };
   }, []);

@@ -1,4 +1,6 @@
+import Link from "next/link";
 import type { ButtonHTMLAttributes, ReactNode } from "react";
+import { isInAppHref } from "./in-app-href";
 
 /**
  * `strong` is the teal-filled emphasis button, the inverse of `secondary` (issue 230): for a screen where gold is taken,
@@ -13,11 +15,12 @@ const FLUSH_CLASS = { start: "btn-flush", end: "btn-flush-end", "end-narrow": "b
 const flushClass = (flush: ButtonFlush | undefined) => (flush === true ? FLUSH_CLASS.start : flush ? FLUSH_CLASS[flush] : false);
 
 export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlush; nowrap?: boolean; children: ReactNode } & (
-  | { href: string; back?: boolean; current?: boolean }
+  | { href: string; back?: boolean; current?: boolean; download?: boolean }
   | (Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "style" | "children"> & {
       href?: never;
       back?: boolean;
       current?: never;
+      download?: never;
     })
 );
 
@@ -27,11 +30,20 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlus
  * sage-soft. `back` adds the back arrow, to a link or to a submit button. `nowrap` keeps the label on one line, for the header's buttons, which wrap as a row instead.
  */
 export function Button(props: ButtonProps) {
-  const { kind, full, flush, nowrap, children, href, back, current, ...rest } = props;
+  const { kind, full, flush, nowrap, children, href, back, current, download, ...rest } = props;
   if (href !== undefined) {
     const className = [`btn-${kind}`, back && "back-link", full && "w-full", flushClass(flush), nowrap && "btn-nowrap"].filter(Boolean).join(" ");
+    const aria = current ? { "aria-current": "page" as const } : {};
+    // A download is named, not guessed from the path: a plain <a>, whatever its href (issue 245).
+    if (isInAppHref(href) && !download) {
+      return (
+        <Link href={href} className={className} {...aria}>
+          {children}
+        </Link>
+      );
+    }
     return (
-      <a href={href} className={className} {...(current ? { "aria-current": "page" as const } : {})}>
+      <a href={href} className={className} {...aria} {...(download ? { download: true } : {})}>
         {children}
       </a>
     );
