@@ -75,7 +75,7 @@ export const headerSignOut = (page: Page) =>
  * The signed-in header's hamburger, below 1024px (issue 159): the drawer's `<summary>`, which has no role to find it by.
  * Its name is visually hidden text, so `hasText` still finds it; "Menu" is typed here.
  */
-const headerMenu = (page: Page) => page.getByRole("banner").locator("summary").filter({ hasText: "Menu" }).filter({ visible: true });
+export const headerMenu = (page: Page) => page.getByRole("banner").locator("summary").filter({ hasText: "Menu" }).filter({ visible: true });
 
 /** Opens the header's Menu when its button is showing and Sign out is not: the width where Sign out sits in it. */
 async function openMenuForSignOut(page: Page): Promise<void> {

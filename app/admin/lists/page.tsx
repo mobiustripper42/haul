@@ -88,10 +88,10 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
             />
             <Hint>{summary}</Hint>
             <ButtonRow>
-              <Button kind="secondary" href={adminPickListCsvPath(week.weekOf)}>
+              <Button kind="secondary" href={adminPickListCsvPath(week.weekOf)} download>
                 {t("admin.lists.downloadPickList")}
               </Button>
-              <Button kind="secondary" href={adminSkipsCsvPath(week.weekOf)}>
+              <Button kind="secondary" href={adminSkipsCsvPath(week.weekOf)} download>
                 {t("admin.lists.downloadSkips")}
               </Button>
               <Button kind="secondary" href={adminPickupPrintPath(week.weekOf)}>

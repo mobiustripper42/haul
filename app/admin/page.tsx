@@ -36,7 +36,7 @@ export default async function Admin() {
               <Heading>{t("admin.members.title")}</Heading>
               <Hint>{t("admin.members.taken", { n: held, cap: product.cap })}</Hint>
             </div>
-            <Button kind="secondary" href="/admin/members.csv">
+            <Button kind="secondary" href="/admin/members.csv" download>
               {t("admin.members.download")}
             </Button>
           </div>

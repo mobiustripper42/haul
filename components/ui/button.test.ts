@@ -1,11 +1,32 @@
 // Issue 38, AC7 and AC8: Button renders the buttons and the back link the screens hand-wrote
 // (app/sign-in/page.tsx:40, app/sign-in/code/page.tsx:18 and :53). AC9 checks its types in
 // components/ui/types.test.ts.
-import { createElement } from "react";
+// Issue 245, AC1 and AC3: an in-app href is drawn by next/link, any other href, and a download, by a plain <a>. next/link
+// is mocked as the real Link wrapped in a spy, so the markup is what the real one writes and the spy records what it was given.
+import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { attributesOf, normalMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { Button, type ButtonKind, type ButtonProps } from "./button";
+
+/** The props each next/link was rendered with, in order. */
+const nextLinks = vi.hoisted(() => [] as Array<Record<string, unknown>>);
+vi.mock("next/link", async (importOriginal) => {
+  const actual = await importOriginal<{ default: ComponentType<Record<string, unknown>> }>();
+  const { createElement: create } = await import("react");
+  const Real = actual.default;
+  return {
+    ...actual,
+    default: function SpiedLink(props: Record<string, unknown>) {
+      nextLinks.push(props);
+      return create(Real, props);
+    },
+  };
+});
+
+beforeEach(() => {
+  nextLinks.length = 0;
+});
 
 const KINDS: ButtonKind[] = ["primary", "secondary", "strong", "quiet"];
 
@@ -100,5 +121,37 @@ describe("AC5 (issue 77) — Button's link form, current", () => {
     const [link] = attributesOf(render({ kind: "secondary", href: "/supper-club/sign-in", current: true }), "a");
     expect(link).toMatchObject({ href: "/supper-club/sign-in", "aria-current": "page" });
     expect(link?.class).toContain("btn-secondary");
+  });
+});
+
+// Issue 245: which links are next/link is isInAppHref's (in-app-href.test.ts); here, one in-app href and one other.
+describe("AC1 (issue 245) — Button with an in-app href is a next/link", () => {
+  it("AC1: it renders one next/link to the href, with today's class, aria-current and children", () => {
+    const html = render({ kind: "menu", href: "/admin/menus", full: true, nowrap: true, current: true }, "Menus");
+    expect(nextLinks).toHaveLength(1);
+    expect(nextLinks[0]).toMatchObject({ href: "/admin/menus", className: "btn-menu w-full btn-nowrap", "aria-current": "page", children: "Menus" });
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="/admin/menus" class="btn-menu w-full btn-nowrap" aria-current="page">Menus</a>'));
+  });
+
+  it("AC1: without current, the next/link carries no aria-current, as today's <a> carries none", () => {
+    const html = render({ kind: "quiet", href: "/sign-in", back: true, flush: true });
+    expect(nextLinks).toHaveLength(1);
+    expect(nextLinks[0]).toMatchObject({ href: "/sign-in", className: "btn-quiet back-link btn-flush", children: "Go" });
+    expect(nextLinks[0]?.["aria-current"]).toBeUndefined();
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="/sign-in" class="btn-quiet back-link btn-flush">Go</a>'));
+  });
+});
+
+describe("AC3 (issue 245) — Button's other links are a plain <a>", () => {
+  it("AC3: a Button whose href is not in-app renders a plain <a> exactly as today, and no next/link", () => {
+    const html = render({ kind: "secondary", href: "mailto:farm@example.com" });
+    expect(nextLinks).toEqual([]);
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="mailto:farm@example.com" class="btn-secondary">Go</a>'));
+  });
+
+  it("AC3: a Button link given download renders a plain <a> with download, though its href is in-app", () => {
+    const html = render({ kind: "secondary", href: "/admin/members.csv", download: true });
+    expect(nextLinks).toEqual([]);
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="/admin/members.csv" class="btn-secondary" download="">Go</a>'));
   });
 });

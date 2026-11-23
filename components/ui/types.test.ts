@@ -46,6 +46,16 @@ const FIXTURES: Record<string, string> = {
     `import { Input } from ${JSON.stringify(join(UI, "input"))};`,
     'export const a = <Input id="email" className="field" />;',
   ].join("\n"),
+  // Issue 245, AC3: `download` belongs to Button's link form alone.
+  "button-link-download": [
+    `import { Button } from ${JSON.stringify(join(UI, "button"))};`,
+    'export const a = <Button kind="secondary" href="/admin/members.csv" download>x</Button>;',
+    'export const b = <Button kind="quiet" href="/admin/lists/pick.csv" download={false}>x</Button>;',
+  ].join("\n"),
+  "button-download-no-href": [
+    `import { Button } from ${JSON.stringify(join(UI, "button"))};`,
+    'export const a = <Button kind="secondary" type="button" download>x</Button>;',
+  ].join("\n"),
 };
 
 let errors: Record<string, string[]> = {};
@@ -99,5 +109,17 @@ describe("AC9 — the components' types", () => {
     const found = errors[fixture] ?? [];
     expect(found, `${fixture}.tsx typechecked clean`).not.toEqual([]);
     expect(found.join("\n")).toContain(named);
+  });
+});
+
+describe("AC3 (issue 245) — download is the link form's", () => {
+  it("AC3: a Button link given download typechecks", () => {
+    expect(errors["button-link-download"] ?? [], "a Button link with download failed").toEqual([]);
+  });
+
+  it("AC3: typecheck:app's profile fails on a Button without href given download, naming download", () => {
+    const found = errors["button-download-no-href"] ?? [];
+    expect(found, "button-download-no-href.tsx typechecked clean").not.toEqual([]);
+    expect(found.join("\n")).toContain("download");
   });
 });

@@ -5,6 +5,7 @@ import { MenuDrawer } from "../components/ui/menu-drawer";
 import { MenuGroup } from "../components/ui/menu-group";
 import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
+import { Wordmark } from "../components/ui/wordmark";
 import { getTranslator } from "./language";
 import {
   ACCOUNT_HISTORY_PATH,
@@ -82,12 +83,7 @@ export async function SiteHeader({
       </Button>
     ));
   const admin = member?.role === "admin";
-  const wordmark = (
-    <a href="/" className="flex flex-col">
-      <span className="font-display text-wordmark text-teal uppercase">{t("brand.name")}</span>
-      <span className="text-byline text-ink-muted">{t("brand.byline")}</span>
-    </a>
-  );
+  const wordmark = <Wordmark name={t("brand.name")} byline={t("brand.byline")} />;
   if (member) {
     return (
       <SiteBar as="header" wide>

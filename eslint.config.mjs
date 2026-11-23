@@ -25,6 +25,14 @@ const pgPatterns = [
   },
 ];
 
+// Every in-app link is a next/link, drawn only in components/ui/ by Button, TextLink and Wordmark (DEC-050).
+const nextLinkPatterns = [
+  {
+    group: ["next/link"],
+    message: "Use <Button>, <TextLink> or <Wordmark> from components/ui: every in-app link is a next/link drawn there (DEC-050).",
+  },
+];
+
 // A pattern refusing every import in src/sign-in/ except the ones `regex`'s negative lookahead lets by.
 const signInBoundary = (regex) => ({
   regex,
@@ -109,6 +117,7 @@ const MESSAGES = {
   Shell: useComponent("Shell", "every screen's page frame is one."),
   Card: useComponent("Card", "every card is one."),
   Notice: useComponent("Notice", "every alert is one, with its icon."),
+  Link: "Use <Button>, <TextLink> or <Wordmark> from components/ui (DEC-050): every link is one, so a tap on an in-app link swaps the page body instead of reloading it. Pass no className; the look lives in app/globals.css.",
 };
 
 // `:has(> …)`, a direct child: without the `>` it searches every descendant, so an input carrying JSX
@@ -122,6 +131,7 @@ const rawElementSelectors = [
   { selector: "JSXOpeningElement[name.name='label']", message: MESSAGES.Field },
   { selector: "JSXOpeningElement[name.name=/^h[1-6]$/]", message: MESSAGES.Heading },
   { selector: "JSXOpeningElement[name.name='main']", message: MESSAGES.Shell },
+  { selector: "JSXOpeningElement[name.name='a']", message: MESSAGES.Link },
 ];
 
 // Whole class tokens only: `h-field`, `max-w-card`, `shadow-card`, `text-field-label` and `min-h-button`
@@ -169,7 +179,19 @@ export default tseslint.config(
     rules: { "no-restricted-imports": ["error", { patterns: frameworkPatterns }] },
   },
   {
-    files: ["**/*.{ts,tsx,mts,js,mjs,cjs}"],
+    files: ["**/*.{ts,mts,js,mjs,cjs}"],
+    ignores: ["src/**"],
+    rules: { "no-restricted-imports": ["error", { patterns: pgPatterns }] },
+  },
+  {
+    // A .tsx file outside components/ui/ also may not import next/link: every in-app link is drawn there (DEC-050).
+    files: ["**/*.tsx"],
+    ignores: ["src/**", "**/*.test.tsx", "**/*.spec.tsx", "components/ui/**"],
+    rules: { "no-restricted-imports": ["error", { patterns: [...pgPatterns, ...nextLinkPatterns] }] },
+  },
+  {
+    // components/ui/ builds the links, and the tests may import what they like: they carry the pg patterns alone.
+    files: ["components/ui/**/*.tsx", "**/*.test.tsx", "**/*.spec.tsx"],
     ignores: ["src/**"],
     rules: { "no-restricted-imports": ["error", { patterns: pgPatterns }] },
   },

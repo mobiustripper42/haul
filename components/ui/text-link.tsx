@@ -1,4 +1,6 @@
+import Link from "next/link";
 import type { ReactNode } from "react";
+import { isInAppHref } from "./in-app-href";
 
 /**
  * An inline link inside a sentence: underlined and teal, because a raw `<a>` reads as plain text (issue 44).
@@ -6,6 +8,13 @@ import type { ReactNode } from "react";
  * off a form they are filling in. `Button` is a block control, not a link inside a sentence.
  */
 export function TextLink({ href, newTab, children }: { href: string; newTab?: boolean; children: ReactNode }) {
+  if (!newTab && isInAppHref(href)) {
+    return (
+      <Link href={href} className="text-teal underline">
+        {children}
+      </Link>
+    );
+  }
   return (
     <a
       href={href}
