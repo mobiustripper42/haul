@@ -12,7 +12,7 @@ claims:
     note: "the one rule for which href is in-app: safeReturnTo returns it unchanged"
   - kind: "file"
     target: "components/ui/menu-script.tsx"
-    note: "a menu link to the page already showing closes its menu at once; any other closes the menus once the address has changed and the page has redrawn"
+    note: "a menu link to the page showing closes its menu at once; any other closes the menus once the address changes"
   - kind: "test"
     target: "app/ui-lint.test.ts"
   - kind: "test"
@@ -22,18 +22,13 @@ revisit_if: "A page needs a link that must reload the whole page, or Next's clie
 
 ## DEC-050: In-app links are next/link
 
-A tap on an in-app link used to reload the whole page. Now it loads only the new page's body. The change lives inside
-`Button`'s link form and `TextLink`, so no screen's code changes, and the header's wordmark moves into `Wordmark`.
-Follows DEC-024 (one component per look): the link logic lives only in `components/ui/`, enforced by lint, which
-refuses a raw `<a>` and an import of `next/link` outside it.
+A tap on an in-app link used to reload the whole page; now it loads only the new page's body. `Button`'s link form,
+`TextLink` and `Wordmark` draw the links, so no screen changes; per DEC-024, lint refuses a raw `<a>` or a `next/link`
+import outside `components/ui/`.
 
-An `href` is in-app when `safeReturnTo` returns it unchanged. Anything else (`mailto:`, `tel:`, `http:`, `https:`,
-`//…`, `#…`), a `TextLink` with `newTab`, and a `Button` link given `download` stay a plain `<a>`: a download is named,
-not guessed from the path.
+An `href` is in-app when `safeReturnTo` returns it unchanged. Any other, a `TextLink` with `newTab`, and a `Button`
+given `download` stay a plain `<a>`: a download is named, not guessed from the path.
 
-The header's menus are `<details>` that used to close because every tap reloaded the page (DEC-047). Each page draws
-its own header, so a navigation to another path usually mounts a fresh one with its menus closed, but a query-only
-step (a row's Note on `/admin/weeks`) keeps the header and a row's More mounted. So `MenuScript` closes a menu at once
-for a link to the page already showing, where nothing will arrive, and for any other menu link closes the menus on the
-first change to the page after the address has changed: the new page, not the tap, so a tapped link stays visible
-while its page loads.
+The header's menus used to close because every tap reloaded the page (DEC-047). A query-only step (a row's Note on
+`/admin/weeks`) keeps them mounted, so `MenuScript` closes a menu at once for a link to the page showing, and for any
+other closes the menus once the address has changed and the page redrawn: the tapped link stays visible meanwhile.
