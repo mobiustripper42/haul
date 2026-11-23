@@ -3,7 +3,7 @@ schema: 1
 id: DEC-050
 title: "In-app links are next/link, drawn only in components/ui/"
 topic: "Interface"
-status: "draft"
+status: "active"
 date: "2026-11-22"
 ruling: "Every in-app link is a next/link, so a tap swaps the page body instead of reloading the page. Button, TextLink and Wordmark draw them; lint refuses a raw a element or a next/link import elsewhere."
 claims:
@@ -12,7 +12,7 @@ claims:
     note: "the one rule for which href is in-app: safeReturnTo returns it unchanged"
   - kind: "file"
     target: "components/ui/menu-script.tsx"
-    note: "a menu link to the page already showing closes its menu; any other leaves it to the new page"
+    note: "a menu link to the page already showing closes its menu at once; any other closes the menus once the address has changed and the page has redrawn"
   - kind: "test"
     target: "app/ui-lint.test.ts"
   - kind: "test"
@@ -32,5 +32,8 @@ An `href` is in-app when `safeReturnTo` returns it unchanged. Anything else (`ma
 not guessed from the path.
 
 The header's menus are `<details>` that used to close because every tap reloaded the page (DEC-047). Each page draws
-its own header, so a navigation to another path or query mounts a fresh one with its menus closed, and `MenuScript`
-closes a menu itself only for a link to the page already showing, where nothing will arrive.
+its own header, so a navigation to another path usually mounts a fresh one with its menus closed, but a query-only
+step (a row's Note on `/admin/weeks`) keeps the header and a row's More mounted. So `MenuScript` closes a menu at once
+for a link to the page already showing, where nothing will arrive, and for any other menu link closes the menus on the
+first change to the page after the address has changed: the new page, not the tap, so a tapped link stays visible
+while its page loads.

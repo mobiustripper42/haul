@@ -12,8 +12,9 @@ import { useEffect } from "react";
  *   since the backdrop blocks the pointer and not the keyboard. Inerting is per sibling along the path from the
  *   drawer up, because `inert` cannot be lifted from a subtree once an ancestor sets it.
  * - The Admin group, and a row's More (issue 220): an outside click, focus moving outside it, or Escape closes it.
- * - A link in a menu closes it when it opens the page already showing; a link to another page leaves the menu to the new
- *   page, which draws its own header with the menus closed (issue 245).
+ * - A link in a menu closes it at once when it opens the page already showing; a link to another page closes the menus
+ *   on the first change to the page after the address has changed, since a query-only step keeps this header mounted
+ *   (issue 245).
  * - A drawer left open when the window grows to 1024px, where it is not drawn, is closed: the page would stay inert.
  *
  * Renders nothing.
