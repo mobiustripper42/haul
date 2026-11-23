@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { isInAppHref } from "./in-app-href";
+import { LinkLabel } from "./link-label";
 
 /**
  * An inline link inside a sentence: underlined and teal, because a raw `<a>` reads as plain text (issue 44).
@@ -11,7 +12,7 @@ export function TextLink({ href, newTab, children }: { href: string; newTab?: bo
   if (!newTab && isInAppHref(href)) {
     return (
       <Link href={href} className="text-teal underline">
-        {children}
+        <LinkLabel>{children}</LinkLabel>
       </Link>
     );
   }

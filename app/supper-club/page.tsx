@@ -172,10 +172,10 @@ export default async function SupperClub({
                 <>
                   <p>{t("supperClub.signedOutPrompt")}</p>
                   <ButtonRow>
-                    <Button kind="primary" type="submit" name="next" value="create-account">
+                    <Button kind="primary" type="submit" name="next" value="create-account" loadsPage>
                       {t("supperClub.createAccount")}
                     </Button>
-                    <Button kind="secondary" type="submit" name="next" value="sign-in">
+                    <Button kind="secondary" type="submit" name="next" value="sign-in" loadsPage>
                       {t("home.signIn")}
                     </Button>
                   </ButtonRow>

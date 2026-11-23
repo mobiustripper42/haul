@@ -66,7 +66,9 @@ export function CardEntryBody({
             // measured 97px in issue 56's hand walk (components/ui/card-entry.test.ts:1); h-24 is the spacing step nearest it,
             // since the theme takes no arbitrary value (app/theme.test.ts). Not measured again here; AC11 checks 375px and 1440px.
             <div role="status" className="field flex h-24 items-center justify-center gap-2">
-              <Spinner />
+              <span className="inline-flex text-teal">
+                <Spinner />
+              </span>
               <Hint center>{loadingText}</Hint>
             </div>
           )}

@@ -56,6 +56,16 @@ const FIXTURES: Record<string, string> = {
     `import { Button } from ${JSON.stringify(join(UI, "button"))};`,
     'export const a = <Button kind="secondary" type="button" download>x</Button>;',
   ].join("\n"),
+  // Issue 240, AC9: `loadsPage` belongs to Button's button form alone.
+  "button-loads-page": [
+    `import { Button } from ${JSON.stringify(join(UI, "button"))};`,
+    'export const a = <Button kind="primary" type="submit" name="next" value="create-account" loadsPage>x</Button>;',
+    'export const b = <Button kind="secondary" type="submit" loadsPage={false}>x</Button>;',
+  ].join("\n"),
+  "button-link-loads-page": [
+    `import { Button } from ${JSON.stringify(join(UI, "button"))};`,
+    'export const a = <Button kind="secondary" href="/sign-in" loadsPage>x</Button>;',
+  ].join("\n"),
 };
 
 let errors: Record<string, string[]> = {};
@@ -121,5 +131,17 @@ describe("AC3 (issue 245) — download is the link form's", () => {
     const found = errors["button-download-no-href"] ?? [];
     expect(found, "button-download-no-href.tsx typechecked clean").not.toEqual([]);
     expect(found.join("\n")).toContain("download");
+  });
+});
+
+describe("AC9 (issue 240) — loadsPage is the button form's", () => {
+  it("AC9 (issue 240): a Button given loadsPage typechecks", () => {
+    expect(errors["button-loads-page"] ?? [], "a Button with loadsPage failed").toEqual([]);
+  });
+
+  it("AC9 (issue 240): typecheck:app's profile fails on a Button link given loadsPage, naming loadsPage", () => {
+    const found = errors["button-link-loads-page"] ?? [];
+    expect(found, "button-link-loads-page.tsx typechecked clean").not.toEqual([]);
+    expect(found.join("\n")).toContain("loadsPage");
   });
 });
