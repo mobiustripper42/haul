@@ -1,9 +1,8 @@
 // Issue 240: every button and in-app link shows it was tapped, and the page is locked while a form is being sent but not
-// while a link opens. What WaitingLabel draws is Vitest's (components/ui/waiting-label.test.ts), as is the card box's
-// attribute in every state (components/ui/card-entry-spare.test.ts) and a download's plain <a> (components/ui/button.test.ts);
-// when a control shows the ring, what is locked and when it is let go, only a browser can show. The menus (AC14–AC16) are
-// e2e/client-navigation.spec.ts's. The pressed look, reduced motion, a production build's prefetched links and Square's
-// bank check (AC1, AC2, AC12, AC8's last part) are by hand.
+// while a link opens. What WaitingLabel draws is Vitest's (components/ui/waiting-label.test.ts), as is a download's plain <a>
+// (components/ui/button.test.ts); when a control shows the ring, what is locked and when it is let go, only a browser can
+// show. The menus (AC14–AC16) are e2e/client-navigation.spec.ts's. The pressed look, reduced motion, a production build's
+// prefetched links and Square's bank check (AC1, AC2, AC12, AC8's last part) are by hand.
 // A send or a page is kept waiting by holding its request. A control is found by its element, not its words, so it is the
 // same control when the ring covers them. "Locked" is what a person can do: nothing takes the focus and no point of the
 // page hits a control (`reachable`).
@@ -134,7 +133,6 @@ async function onCodeStep(page: Page): Promise<void> {
 const PAY_BUTTON = submitIn('form:has(input[name="consent"])');
 const CONSENT = 'input[name="consent"]';
 const CARD = 'input[name="sourceId"]';
-const CARD_FIELD = "input sourceId";
 
 async function onPay(page: Page, request: Parameters<typeof signIn>[1]): Promise<void> {
   await signIn(page, request, ERIC);
@@ -213,7 +211,6 @@ test.describe("AC4 — the page is locked while a form is being sent", () => {
 
   test("AC4: below 1024px, closing the drawer while its Sign out is being sent leaves the page locked", async ({ page, request }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "the drawer is the phone width's");
-    // A page with no card box, which the lock spares.
     await signIn(page, request, LENNY);
     await page.goto("/admin");
     const drawer = page.locator("details[data-menu-drawer]");
@@ -379,8 +376,8 @@ test.describe("AC7 — the focus comes back to the button", () => {
   });
 });
 
-test.describe("AC8 — the card box stays usable", () => {
-  test("AC8: while Pay is being sent the card box alone can be used, and so can anything added to the page since", async ({ page, request }) => {
+test.describe("AC8 — the card box is locked with the rest of the page", () => {
+  test("AC8: while Pay is being sent the card box is locked with the rest of the page, and anything added to the page since can be used", async ({ page, request }) => {
     await onPay(page, request);
     await fillPay(page);
     const held = await holdSends(page, "/supper-club");
@@ -388,10 +385,7 @@ test.describe("AC8 — the card box stays usable", () => {
     await page.locator(PAY_BUTTON).click({ noWaitAfter: true });
     await expectHeld(held);
 
-    await expectLocked(page, [CARD_FIELD]);
-    await page.locator(CARD).click();
-    await page.keyboard.type("x");
-    await expect(page.locator(CARD)).toHaveValue(/x/);
+    await expectLocked(page);
     // What Square adds (a bank check) is not there to test with; this stands in for where it would go.
     await page.evaluate(() => {
       const added = document.createElement("button");
@@ -399,14 +393,14 @@ test.describe("AC8 — the card box stays usable", () => {
       document.body.append(added);
       added.textContent = "x";
     });
-    await expectLocked(page, [CARD_FIELD, "button added"]);
+    await expectLocked(page, ["button added"]);
 
     held.release();
     await expect(page).toHaveURL(onPath("/supper-club/done"));
     await expectUnlocked(page);
   });
 
-  test("AC8: while Save card is being sent the card box alone can be used", async ({ page, request }) => {
+  test("AC8: while Save card is being sent the card box is locked with the rest of the page", async ({ page, request }) => {
     await onPay(page, request);
     await fillPay(page);
     await page.locator(PAY_BUTTON).click();
@@ -421,7 +415,7 @@ test.describe("AC8 — the card box stays usable", () => {
     await expectHeld(held);
 
     await expectSending(page, button, words);
-    await expectLocked(page, [CARD_FIELD]);
+    await expectLocked(page);
     held.release();
     await expect(page).toHaveURL((url) => url.pathname === "/account/card" && url.searchParams.has("state"));
     await expectUnlocked(page);
