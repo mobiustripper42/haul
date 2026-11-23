@@ -8,9 +8,10 @@ import { WaitingLabel } from "./waiting-label";
 
 /**
  * `Button`'s button form (issue 240). It learns for itself that it was the one tapped: a click on it, and Enter in a field
- * counts as a tap on the form's default submit button, which the browser clicks. Another button submitting the form clears it. While its form is being sent it is
- * off and busy, with the ring over its words, and the rest of the page is locked. The lock ends when the answer comes; the ring stays for 600ms from the tap (`useHeld`), then
- * the focus comes back to the button if it had it and nothing else has it by then.
+ * counts as a tap on the form's default submit button, which the browser clicks. Another button submitting the form
+ * clears it. While its form is being sent it is off and busy, with the ring over its words, and the rest of the page is
+ * locked. The lock ends when the answer comes; the ring stays for 600ms from the tap (`useHeld`), then the focus comes
+ * back to the button if it had it and nothing else has it by then.
  *
  * `loadsPage` is for a form that loads a whole page (a GET, or a POST to a route): it has no pending state to follow. It
  * turns off just after the browser has collected the form, since turning off sooner drops which button was tapped, and
