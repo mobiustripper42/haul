@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useFormStatus } from "react-dom";
 import { Button } from "../../components/ui/button";
 import { CardEntry, type CardEntryHandle } from "../../components/ui/card-entry";
 import { Checkbox } from "../../components/ui/checkbox";
@@ -31,16 +30,6 @@ export type PaymentText = {
 };
 
 const CONSENT_ERROR_ID = "consent-error";
-
-/** Pay, disabled while the action runs, so a double-click sends one token. A child of the form, for `useFormStatus`. */
-export function PayButton({ children }: { children: string }) {
-  const { pending } = useFormStatus();
-  return (
-    <Button kind="primary" type="submit" full disabled={pending}>
-      {children}
-    </Button>
-  );
-}
 
 /**
  * Section 4, the pay form: its own POST form after the pickers' GET form, so Enter on a radio can never
@@ -168,7 +157,9 @@ export function PaymentSection({
       {consentShown && <FieldError id={CONSENT_ERROR_ID}>{text.consentError}</FieldError>}
       {payError === "declined" && <Notice icon="alert">{text.declined}</Notice>}
       {payError === "error" && <Notice icon="alert">{text.error}</Notice>}
-      <PayButton>{words.button}</PayButton>
+      <Button kind="primary" type="submit" full>
+        {words.button}
+      </Button>
       <Hint center>{text.capHint}</Hint>
     </form>
   );

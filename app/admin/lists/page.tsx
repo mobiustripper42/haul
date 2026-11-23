@@ -68,7 +68,7 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
                 />
               </Field>
             </div>
-            <Button kind="secondary" type="submit">
+            <Button kind="secondary" type="submit" loadsPage>
               {t("admin.lists.show")}
             </Button>
           </form>

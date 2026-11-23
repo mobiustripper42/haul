@@ -1,8 +1,8 @@
 import type { ChangeEvent } from "react";
 
 /**
- * A select at the field height, in the text field's look. The caller's `Field` label names it with the same
- * `id`. Uncontrolled with `defaultValue`, controlled with `value`; an `onChange` hears each pick (issue 59's "Sort by").
+ * A select at the field height, in the text field's look, its arrow drawn by `select.field` in app/globals.css (issue 240). The
+ * caller's `Field` label names it with the same `id`. Uncontrolled with `defaultValue`, controlled with `value`; an `onChange` hears each pick (issue 59's "Sort by").
  */
 export function Select({
   id,

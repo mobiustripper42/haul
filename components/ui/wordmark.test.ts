@@ -40,3 +40,10 @@ describe("AC4 (issue 245) — Wordmark", () => {
     expect(textsOf(html)).toEqual(["the-name", "the-byline"]);
   });
 });
+
+// What it shows while its page is loading is the browser's (e2e/tap-feedback.spec.ts).
+describe("AC10 (issue 240) — Wordmark at rest", () => {
+  it("AC10: the link holds its two lines alone: no wrapper, no ring and no mark", () => {
+    expect(render().replace(/ class="[^"]*"/g, "")).toBe('<a href="/"><span>the-name</span><span>the-byline</span></a>');
+  });
+});

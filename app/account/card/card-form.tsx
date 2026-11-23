@@ -1,9 +1,9 @@
 "use client";
 
 import { useRef } from "react";
+import { Button } from "../../../components/ui/button";
 import { CardEntry, type CardEntryHandle } from "../../../components/ui/card-entry";
 import type { cardEntrySettings } from "../../card-entry-settings";
-import { PayButton } from "../../supper-club/payment-section";
 import { saveCard } from "./actions";
 
 /** Issue 145: the words the card page has translated for the form, which a client component cannot get for itself. */
@@ -40,7 +40,9 @@ export function CardForm({ amountCents, card, text }: { amountCents: number; car
         amountCents={amountCents}
         billing={card.billing}
       />
-      <PayButton>{text.save}</PayButton>
+      <Button kind="primary" type="submit" full>
+        {text.save}
+      </Button>
     </form>
   );
 }

@@ -18,6 +18,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { LANGUAGES } from "@core/i18n.js";
 import { Button } from "../components/ui/button";
 import { Eyebrow } from "../components/ui/eyebrow";
+import { LinkLabel } from "../components/ui/link-label";
 import { MenuDrawer } from "../components/ui/menu-drawer";
 import { MenuGroup } from "../components/ui/menu-group";
 import { MenuScript } from "../components/ui/menu-script";
@@ -66,9 +67,9 @@ type Current = "account" | "weeks" | "history" | "admin-members" | "admin-menus"
 
 /**
  * Components read as themselves; every other function component is called through, so what it draws is read too.
- * MenuScript is a client component, kept so it is never called outside React.
+ * MenuScript and LinkLabel, which the Wordmark's link holds (issue 240), are client components, kept so they are never called outside React.
  */
-const KEPT = new Set<unknown>([Button, SiteBar, MenuDrawer, MenuGroup, MenuScript, Eyebrow]);
+const KEPT = new Set<unknown>([Button, SiteBar, MenuDrawer, MenuGroup, MenuScript, LinkLabel, Eyebrow]);
 
 const expand = (node: ReactNode): ReactNode => {
   if (Array.isArray(node)) return node.map(expand);

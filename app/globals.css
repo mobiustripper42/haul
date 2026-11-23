@@ -149,6 +149,24 @@
   input:disabled {
     cursor: not-allowed;
   }
+  /*
+   * Issue 240: the pressed look, one set of rules on the elements and not class by class. A button, a menu opener (a
+   * summary) or a sort header darkens by 20%; a button and a sort header also shrink to 94% about their centre, which a
+   * menu opener does not, since left-aligned words would jump. A link, a link drawn as a button included, fades to 40%.
+   * With reduced motion on nothing shrinks. An off button is not pressed.
+   */
+  button:not(:disabled):active,
+  summary:active {
+    filter: brightness(0.8);
+  }
+  @media (prefers-reduced-motion: no-preference) {
+    button:not(:disabled):active {
+      transform: scale(0.94);
+    }
+  }
+  a:active {
+    opacity: 0.4;
+  }
 }
 
 /*
@@ -174,6 +192,10 @@
   }
   .btn-quiet {
     @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  /* Issue 240: a button whose form is being sent is off, and not faded like an off one, so the ring over its words stays clear. */
+  button[aria-busy="true"]:disabled {
+    opacity: 1;
   }
   /* A link to the page that is showing: the header's Sign in on the sign-in pane. */
   .btn-secondary[aria-current="page"] {
@@ -359,6 +381,21 @@
     .field[type="date"]::-webkit-date-and-time-value {
       text-align: left;
     }
+  }
+  /*
+   * Issue 240: a select's arrow, drawn here so the select's markup does not change. The browser pins its own about 6px from
+   * the right border whatever the padding; this is the chevron the Admin group and More use (the path of `.menu-chevron::after`),
+   * 16px, in ink (`--color-ink`, written out: a data URI cannot read a custom property). The drawn line ends 12px from the border,
+   * as the text starts 12px from the left one, so the box is moved right by the space the path leaves on its right (5.125 of its
+   * 24 units); the text stops about 12px before the line. The option list stays the browser's. Every width.
+   */
+  select.field {
+    appearance: none;
+    padding-right: 2.125rem;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231e2a2d' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right calc(0.75rem - 1rem * 5.125 / 24) center;
+    background-size: 1rem;
   }
   .field-code {
     @apply h-code-field text-center text-code;

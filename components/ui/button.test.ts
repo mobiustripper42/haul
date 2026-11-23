@@ -3,6 +3,8 @@
 // components/ui/types.test.ts.
 // Issue 245, AC1 and AC3: an in-app href is drawn by next/link, any other href, and a download, by a plain <a>. next/link
 // is mocked as the real Link wrapped in a spy, so the markup is what the real one writes and the spy records what it was given.
+// Issue 240, AC13: a download link carries no `download` attribute, so a turned-away download opens the sign-in page. What a tapped
+// button or link shows is the browser's (e2e/tap-feedback.spec.ts); these hold the markup at rest, which it does not change.
 import { createElement, type ComponentType } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
@@ -129,14 +131,14 @@ describe("AC1 (issue 245) — Button with an in-app href is a next/link", () => 
   it("AC1: it renders one next/link to the href, with today's class, aria-current and children", () => {
     const html = render({ kind: "menu", href: "/admin/menus", full: true, nowrap: true, current: true }, "Menus");
     expect(nextLinks).toHaveLength(1);
-    expect(nextLinks[0]).toMatchObject({ href: "/admin/menus", className: "btn-menu w-full btn-nowrap", "aria-current": "page", children: "Menus" });
+    expect(nextLinks[0]).toMatchObject({ href: "/admin/menus", className: "btn-menu w-full btn-nowrap", "aria-current": "page" });
     expect(normalMarkup(html)).toBe(normalMarkup('<a href="/admin/menus" class="btn-menu w-full btn-nowrap" aria-current="page">Menus</a>'));
   });
 
   it("AC1: without current, the next/link carries no aria-current, as today's <a> carries none", () => {
     const html = render({ kind: "quiet", href: "/sign-in", back: true, flush: true });
     expect(nextLinks).toHaveLength(1);
-    expect(nextLinks[0]).toMatchObject({ href: "/sign-in", className: "btn-quiet back-link btn-flush", children: "Go" });
+    expect(nextLinks[0]).toMatchObject({ href: "/sign-in", className: "btn-quiet back-link btn-flush" });
     expect(nextLinks[0]?.["aria-current"]).toBeUndefined();
     expect(normalMarkup(html)).toBe(normalMarkup('<a href="/sign-in" class="btn-quiet back-link btn-flush">Go</a>'));
   });
@@ -149,9 +151,15 @@ describe("AC3 (issue 245) — Button's other links are a plain <a>", () => {
     expect(normalMarkup(html)).toBe(normalMarkup('<a href="mailto:farm@example.com" class="btn-secondary">Go</a>'));
   });
 
-  it("AC3: a Button link given download renders a plain <a> with download, though its href is in-app", () => {
+  it("AC3, AC13 (issue 240): a Button link given download renders a plain <a> with no download attribute and no ring, though its href is in-app", () => {
     const html = render({ kind: "secondary", href: "/admin/members.csv", download: true });
     expect(nextLinks).toEqual([]);
-    expect(normalMarkup(html)).toBe(normalMarkup('<a href="/admin/members.csv" class="btn-secondary" download="">Go</a>'));
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="/admin/members.csv" class="btn-secondary">Go</a>'));
+  });
+
+  it("AC13 (issue 240): a Button link given download renders the same plain <a> when its href is not in-app", () => {
+    const html = render({ kind: "secondary", href: "https://example.com/members.csv", download: true });
+    expect(nextLinks).toEqual([]);
+    expect(normalMarkup(html)).toBe(normalMarkup('<a href="https://example.com/members.csv" class="btn-secondary">Go</a>'));
   });
 });

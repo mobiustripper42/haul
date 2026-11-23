@@ -60,7 +60,7 @@ describe("AC2 (issue 245) — TextLink with an in-app href is a next/link", () =
   it("AC2: with no newTab it renders one next/link to the href, with today's class", () => {
     const html = renderTo("/terms");
     expect(nextLinks).toHaveLength(1);
-    expect(nextLinks[0]).toMatchObject({ href: "/terms", className: "text-teal underline", children: "Terms" });
+    expect(nextLinks[0]).toMatchObject({ href: "/terms", className: "text-teal underline" });
     expect(normalMarkup(html)).toBe(normalMarkup('<a href="/terms" class="text-teal underline">Terms</a>'));
   });
 });

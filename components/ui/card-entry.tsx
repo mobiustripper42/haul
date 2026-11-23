@@ -51,7 +51,9 @@ export function CardEntryBody({
   target: Ref<HTMLDivElement>;
 }) {
   return (
-    <div className="flex flex-col gap-2">
+    // `data-page-lock-spare`: the page's lock (components/ui/page-lock.ts) leaves this box usable while Pay or Save card is sent, in every
+    // state, since Square checks the card and may open a bank check while the form counts as being sent (issue 240).
+    <div data-page-lock-spare="" className="flex flex-col gap-2">
       <span className="text-field-label">{label}</span>
       {state === "failed" ? (
         <FieldError id="card-failed">{failedText}</FieldError>
@@ -66,7 +68,9 @@ export function CardEntryBody({
             // measured 97px in issue 56's hand walk (components/ui/card-entry.test.ts:1); h-24 is the spacing step nearest it,
             // since the theme takes no arbitrary value (app/theme.test.ts). Not measured again here; AC11 checks 375px and 1440px.
             <div role="status" className="field flex h-24 items-center justify-center gap-2">
-              <Spinner />
+              <span className="inline-flex text-teal">
+                <Spinner />
+              </span>
               <Hint center>{loadingText}</Hint>
             </div>
           )}
