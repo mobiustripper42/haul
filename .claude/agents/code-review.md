@@ -19,11 +19,10 @@ Review recent changes against project conventions and existing patterns. You are
 2. **Missing error handling** — unhandled errors from the data layer or external calls, swallowed failures, missing error-path checks — per the project's error contract in `CLAUDE-context.md § Conventions`
 3. **Access-control gaps** — data or operations reachable that shouldn't be under the project's authorization model (`CLAUDE-context.md § Conventions`); missing checks on new surfaces
 4. **Hardcoded values** — magic strings or numbers that should be constants or config
-5. **Oversized units** — any file / module / component over ~200 lines should be flagged with a split suggestion
-6. **Missing loading/error states** (projects with a UI) — surfaces that don't handle the loading or error case
-7. **Type safety** — use of `any`, missing types, assertions that bypass the type system (where the language has types)
-8. **Convention violations** — check against the project's `CLAUDE-context.md § Conventions` (naming, structure, data access, etc.)
-9. **Secret leaks** — API keys, tokens, or credentials committed to the repo
+5. **Missing loading/error states** (projects with a UI) — surfaces that don't handle the loading or error case
+6. **Type safety** — use of `any`, missing types, assertions that bypass the type system (where the language has types)
+7. **Convention violations** — check against the project's `CLAUDE-context.md § Conventions` (naming, structure, data access, etc.)
+8. **Secret leaks** — API keys, tokens, or credentials committed to the repo
 
 ## What to Skip
 
