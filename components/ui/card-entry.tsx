@@ -51,9 +51,7 @@ export function CardEntryBody({
   target: Ref<HTMLDivElement>;
 }) {
   return (
-    // `data-page-lock-spare`: the page's lock (components/ui/page-lock.ts) leaves this box usable while Pay or Save card is sent, in every
-    // state, since Square checks the card and may open a bank check while the form counts as being sent (issue 240).
-    <div data-page-lock-spare="" className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2">
       <span className="text-field-label">{label}</span>
       {state === "failed" ? (
         <FieldError id="card-failed">{failedText}</FieldError>

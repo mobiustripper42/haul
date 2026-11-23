@@ -28,8 +28,8 @@ hears the control's own name, marked busy.
 
 A button that sends a form is off while the form is sent, and for 600ms from the tap if the answer is quicker, so a second
 tap sends nothing; the rest of the page is inert until the answer. That puts one change under every form, Pay's included.
-Square's card box is spared (`data-page-lock-spare`): the form counts as being sent while Square checks the card, and a
-bank check may open. A link locks nothing and holds no 600ms, or two rings would show after a change of mind.
+The card box is locked with the rest. What is added to the page after the tap is never locked, which is what leaves
+Square's bank check usable. A link locks nothing and holds no 600ms, or two rings would show after a change of mind.
 
 Three buttons load a whole page (`loadsPage`) and turn off just after the browser collects the form; sooner drops which
 button was tapped. The lock and the menu drawer share `holdInert`, so closing the drawer cannot unlock a page still
