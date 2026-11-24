@@ -340,11 +340,14 @@ export class InMemoryRepository implements Repository {
 
   /**
    * The one decision both card-update writes make: `inactive` when the subscription is not `active`, `busy` when it holds a
-   * `pending` row or a row whose charge is out, else null.
+   * `pending` row and a card on file, or any row whose charge is out, else null. A `pending` row with no token on a
+   * subscription with no card does not make it busy: the card saved is the one that row's charge uses.
    */
   private cardUpdateRefusal(subscriptionId: string): "inactive" | "busy" | null {
-    if (this.subscriptions.get(subscriptionId)?.status !== "active") return "inactive";
-    return [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && (row.status === "pending" || this.chargeOut(row))) ? "busy" : null;
+    const subscription = this.subscriptions.get(subscriptionId);
+    if (subscription?.status !== "active") return "inactive";
+    const hasCard = subscription.squareCardId !== null;
+    return [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && ((row.status === "pending" && hasCard) || this.chargeOut(row))) ? "busy" : null;
   }
 
   /** The one home of "charge out": its token is on the row, a signup's `pending` one or a card update's `declined` one. */
@@ -737,8 +740,8 @@ export class InMemoryRepository implements Repository {
   }
 
   /**
-   * Issue 145, issue 254: a card update's claim: `inactive` when the subscription is not `active`; `busy` when it holds a
-   * `pending` row or a row whose charge is out; else the oldest open week's `declined` row, when there is one, gets its
+   * Issue 145, issue 254: a card update's claim: `inactive` when the subscription is not `active`; `busy` when it has a
+   * card on file and holds a `pending` row, or any row's charge is out; else the oldest open week's `declined` row, when there is one, gets its
    * attempt bumped and `sourceId` on it and stays `declined`, as `claimed`; else `nothing_owed`. It writes no card and deletes no row.
    */
   async claimCardUpdate(subscriptionId: string, sourceId: string): Promise<CardUpdateClaim> {

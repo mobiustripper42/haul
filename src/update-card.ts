@@ -117,7 +117,7 @@ async function resume(deps: UpdateCardDeps, { memberId }: { memberId: string }):
  * through the signup's decline write, or unknown with the row left as it is. A row with a token is charged on it,
  * buyer-started, and the card is saved from the payment; a charge run's row is charged on its saved card as the run does.
  * A failure before a charge is out (the lookup failing) is logged and recorded as nothing: the row is as it was. A charge
- * Square refuses on Try again abandons it: the row stays declined with no token and the member enters the card again (`error`).
+ * Square refuses on Try again abandons it, when the row holds a token (a charge run's row never does): the row stays declined with no token and the member enters the card again (`error`).
  */
 async function settle(deps: UpdateCardDeps, memberId: string, productId: string, charge: PendingCharge, lookupFirst: boolean): Promise<UpdateCardResult> {
   const { repo, payments, clock } = deps;
@@ -158,7 +158,7 @@ async function settle(deps: UpdateCardDeps, memberId: string, productId: string,
   } catch (error) {
     logStepFailure("card update", "charge", error);
     if (!out) return { outcome: "error" };
-    if (lookupFirst && (await abandonIfRefused(repo, actor, charge.ledgerId, error).catch(() => false))) return { outcome: "error" };
+    if (lookupFirst && charge.chargeSource !== null && (await abandonIfRefused(repo, actor, charge.ledgerId, error).catch(() => false))) return { outcome: "error" };
     await recordOutcomeUnknown(repo, actor, memberId, charge.ledgerId, error instanceof PaymentsError ? { code: error.code } : {});
     return { outcome: "unknown" };
   }

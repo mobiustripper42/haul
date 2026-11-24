@@ -618,8 +618,9 @@ export class PostgresRepository implements Repository {
 
   /**
    * The decision both card-update writes share, after locking the member row: `inactive` when the subscription is not
-   * `active`, `busy` when it holds a `pending` row, whatever its week, or a row whose charge is out (a `declined` one with
-   * its token on it); else null.
+   * `active`, `busy` when it has a card on file and holds a `pending` row, whatever its week, or when any row's charge is
+   * out (a `declined` one with its token on it); else null. A `pending` row with no token on a subscription with no card
+   * does not make it busy: the card saved is the one that row's charge uses.
    */
   private async cardUpdateRefusal(subscriptionId: string): Promise<"inactive" | "busy" | null> {
     await this.db.query(
@@ -629,7 +630,8 @@ export class PostgresRepository implements Repository {
     const { rows: active } = await this.db.query<{ id: string }>("select id from subscriptions where id = $1 and status = 'active'", [subscriptionId]);
     if (!active[0]) return "inactive";
     const { rows: held } = await this.db.query<{ id: string }>(
-      `select l.id from ledger l where l.subscription_id = $1 and (l.status = 'pending' or ${CHARGE_OUT}) limit 1`,
+      `select l.id from ledger l join subscriptions s on s.id = l.subscription_id
+        where l.subscription_id = $1 and ((l.status = 'pending' and s.square_card_id is not null) or ${CHARGE_OUT}) limit 1`,
       [subscriptionId],
     );
     return held[0] ? "busy" : null;

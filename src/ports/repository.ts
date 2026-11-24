@@ -220,7 +220,7 @@ export type DeclinedCharge = { ledgerId: string; pickupDate: string; amountCents
 /**
  * Issue 145, issue 254: what `claimCardUpdate` decided. `claimed`: the open declined row has the card token on it and a
  * bumped attempt, and stays declined, to charge; `nothing_owed`: no open week is owed, nothing written; `busy`: a
- * charge is out, nothing written; `inactive`: the subscription is not active, nothing written.
+ * charge is out or a pending one waits on the card on file, nothing written; `inactive`: the subscription is not active, nothing written.
  */
 export type CardUpdateClaim = { kind: "claimed"; charge: PendingCharge } | { kind: "nothing_owed" } | { kind: "busy" } | { kind: "inactive" };
 
@@ -311,7 +311,8 @@ export interface Repository extends SignInStore, RateLimitStore {
   abandonCharge(ledgerId: string): Promise<"pending" | "declined" | null>;
   /**
    * The card update with nothing owed, under the member row's lock: `inactive` when the subscription is not `active`,
-   * `busy` when it holds a `pending` row or a row whose charge is out, both writing nothing; else sets the card's id, brand
+   * `busy` when it holds a `pending` row and has a card on file, or any row whose charge is out, both writing nothing (a
+   * `pending` row with no token on a subscription with no card does not: the card saved is the one its charge uses); else sets the card's id, brand
    * and last four and deletes the closed weeks' `declined` rows with no token, as `replaced`.
    */
   replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<"replaced" | "busy" | "inactive">;
@@ -388,7 +389,7 @@ export interface Repository extends SignInStore, RateLimitStore {
   listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]>;
   /**
    * Issue 145, issue 254: under the member row's lock: `inactive` when the subscription is not `active`; `busy` when it
-   * holds a `pending` row or a row whose charge is out; else, when an open week's `declined` row exists (oldest week
+   * holds a `pending` row and has a card on file, or any row whose charge is out; else, when an open week's `declined` row exists (oldest week
    * first), puts `sourceId` on it, bumps its attempt, leaves it `declined` and returns it as `claimed`; else
    * `nothing_owed`. It writes no card and deletes no row.
    */

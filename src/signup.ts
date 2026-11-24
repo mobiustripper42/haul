@@ -206,18 +206,20 @@ async function linkCustomer(deps: SignupDeps, member: Member): Promise<string> {
 /**
  * Charges, or confirms what Square already took, then saves the card from the payment and writes the result. Anything
  * that fails from here on is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
- * The one exception is a charge Square refuses on Try again (`isRefusedCharge`): it cannot be sent again, so the row is
- * abandoned and the member is sent back to the form (`error`).
+ * The one exception is a charge Square refuses on Try again (`isRefusedCharge`, an error from the charge itself, not the
+ * lookup before it): it cannot be sent again, so the row is abandoned and the member is sent back to the form (`error`).
  */
 async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promise<SignupResult> {
   const { repo, payments, clock } = deps;
   const actor: Actor = { member: memberId };
   const { row } = charge;
   const unknown: AuditEventDetail = { ledgerId: row.ledgerId };
+  let out = false;
   try {
     const found = charge.lookupFirst
       ? await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt })
       : null;
+    out = true;
     const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, { row, sourceId: charge.sourceId, customerId: charge.customerId, customerInitiated: true });
     if (result.outcome === "declined") {
       await recordDecline(repo, actor, memberId, row.ledgerId, result.code);
@@ -244,8 +246,9 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     return { outcome: "paid", subscriptionId: row.subscriptionId, confirmedNow: confirmed === "confirmed" };
   } catch (error) {
     logFailure("charge", error);
-    // Only Try again abandons a refused charge: a first Pay has had no lookup, so the token may be what Square used.
-    if (charge.lookupFirst && (await abandonIfRefused(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
+    // Only Try again abandons a refused charge, and only the charge's own error: a first Pay has had no lookup, so the token
+    // may be what Square used, and a failed lookup has sent nothing.
+    if (out && charge.lookupFirst && (await abandonIfRefused(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
     await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
     return { outcome: "unknown" };
   }
