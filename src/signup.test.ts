@@ -1544,6 +1544,38 @@ describe("issue 254 — charge the token, then save the card", () => {
     expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
   });
 
+  // The lookup's own error says nothing about the charge, which Square may have taken: only an error from the charge abandons it.
+  const lookupRefused = (status: number, code: string): PaymentsError => new PaymentsError({ status, category: "INVALID_REQUEST_ERROR", code, detail: SQUARE_TEXT });
+
+  it.each([
+    [400, "INVALID_VALUE"],
+    [404, "NOT_FOUND"],
+  ])("AC23 (issue 254): Try again whose lookup Square refuses (%i %s) is unknown: nothing is charged, and the row keeps its token, its attempt and its spot", async (status, code) => {
+    await leftOut();
+    vi.spyOn(payments, "findPaymentByReference").mockRejectedValueOnce(lookupRefused(status, code));
+    const charge = vi.spyOn(payments, "charge");
+    expect((await retry()).outcome).toBe("unknown");
+    expect(charge).not.toHaveBeenCalled();
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
+    expect(await held()).toBe(1);
+    expect(kinds()).toEqual(["charge_outcome_unknown", "charge_outcome_unknown"]);
+  });
+
+  it.each<[string, () => ReturnType<typeof submit>]>([
+    ["Try again", () => retry()],
+    ["Pay with another card", () => submit({ sourceId: OTHER_SOURCE })],
+  ])("AC23 (issue 254): after a lookup Square refused, %s finds the payment Square had already taken: paid, with no second charge", async (_what, next) => {
+    chargeReplyIsLost(2);
+    await submit();
+    vi.restoreAllMocks();
+    vi.spyOn(payments, "findPaymentByReference").mockRejectedValueOnce(lookupRefused(400, "INVALID_VALUE"));
+    await retry();
+    const charge = vi.spyOn(payments, "charge");
+    expect((await next()).outcome).toBe("paid");
+    expect(charge).not.toHaveBeenCalled();
+    expect(payments.charges.map((taken) => [taken.sourceId, taken.result.outcome])).toEqual([[SOURCE, "paid"]]);
+  });
+
   it("AC8, AC21 (issue 254): a charge Square refuses on the first Pay is unknown after one send, with the token kept on the row", async () => {
     const charge = vi.spyOn(payments, "charge").mockRejectedValue(refusedCharge());
     expect((await submit()).outcome).toBe("unknown");

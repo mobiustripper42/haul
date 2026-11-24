@@ -614,6 +614,19 @@ describe("issue 254 — charge the token, then save the card", () => {
     expect(repo.events()).toEqual([]);
   });
 
+  it("AC20 (issue 254): with no card on file, a pending row with no token does not stop a save: saved, nothing charged by it, and the run then charges that row to the new card", async () => {
+    const jan17 = await declined();
+    expect((await repo.claimCardUpdate(ada.subscriptionId, SOURCE)).kind).toBe("claimed");
+    expect(await repo.confirmSignupRows(jan17, "PAYMENT_NO_CARD", 5000, PAID_AT)).toBe("confirmed");
+    expect(await onFile()).toBeNull();
+    const jan24 = await repo.addLedgerRow(ada.subscriptionId, JAN_24, "pending", 5000);
+    expect(await update("cnon:another-card")).toEqual({ outcome: "saved" });
+    expect(payments.charges).toEqual([]);
+    expect(await onFile()).toEqual(NEW_ON_FILE);
+    expect(await run()).toMatchObject({ weekOf: JAN_24, enrolled: 0, paid: 1, declined: 0 });
+    expect(payments.charges.map((charge) => [charge.referenceId, charge.sourceId])).toEqual([[jan24, newCard().id]]);
+  });
+
   it("AC16 (issue 254): Try again on a charge run's row charges the card on file, seller-started, and saves no card from the payment", async () => {
     expect(await update()).toEqual({ outcome: "saved" });
     const card = newCard();
@@ -655,6 +668,16 @@ describe("issue 254 — Square refuses the charge", () => {
     expect(await retry()).toEqual({ outcome: "unknown" });
     expect(await declinedRows()).toEqual([[jan17, 2]]);
     expect((await openRows()).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[jan17, 2, SOURCE]]);
+  });
+
+  it("AC16, AC21 (issue 254): Try again on a charge run's row whose charge Square refuses is unknown: the row stays pending at its attempt, the card on file, and charge_outcome_unknown is recorded once", async () => {
+    const jan24 = await repo.addLedgerRow(ada.subscriptionId, JAN_24, "pending", 5000);
+    vi.spyOn(payments, "charge").mockRejectedValue(refusedCharge());
+    expect(await retry()).toEqual({ outcome: "unknown" });
+    expect((await openRows()).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[jan24, 1, null]]);
+    expect(await declinedRows()).toEqual([]);
+    expect(await onFile()).toEqual(OLD_ON_FILE);
+    expect(repo.events()).toEqual([{ kind: "charge_outcome_unknown", memberId: ada.member.id, detail: { ledgerId: jan24, code: "INVALID_VALUE" }, actor: AS_ADA() }]);
   });
 
   it("AC12, AC21 (issue 254): a charge Square refuses on the first Save is unknown after one send, with the token kept on the row", async () => {

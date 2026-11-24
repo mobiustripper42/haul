@@ -931,7 +931,7 @@ export function runChargeRunContract(
           expect((await declinedOf(ada)).map((row) => [row.ledgerId, row.attempt])).toEqual([[ledgerId, 2]]);
         });
 
-        it("AC10: any pending row is busy, a charge-run row with nothing to do with the declined one included: the card stays, the declined row stays declined at its attempt, and a closed week's declined row is not deleted", async () => {
+        it("AC10: with a card on file any pending row is busy, a charge-run row with nothing to do with the declined one included: the card stays, the declined row stays declined at its attempt, and a closed week's declined row is not deleted", async () => {
           const ada = await subscriber();
           const pending = await addLedgerRow(ada.signup.subscriptionId, NEXT, "pending", 5000);
           const open = await addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
@@ -944,6 +944,34 @@ export function runChargeRunContract(
             [closed, 1],
           ]);
           expect((await rowsOf(ada)).map((row) => [row.ledgerId, row.cardId, row.attempt])).toEqual([[pending, ada.cardId, 1]]);
+        });
+
+        // The run charges that row on whatever card is on file, so with none a save must not be refused for it.
+        it.each(["open", "closed"] as const)("AC20 (issue 254): with no card on file, a pending row with no token, its week %s, is not busy: nothing is owed, and the row stays pending at its attempt", async (week) => {
+          const ada = await subscriber({ card: false });
+          const pending = await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+          if (week === "closed") await close(WEEK);
+          expect(await claim(ada)).toEqual({ kind: "nothing_owed" });
+          expect((await rowsOf(ada)).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[pending, 1, null]]);
+        });
+
+        it("AC20 (issue 254): with no card on file, an open week's declined row is claimed beside an earlier week's pending row with no token, which stays pending at its attempt", async () => {
+          const ada = await subscriber({ card: false });
+          const pending = await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+          const declined = await addLedgerRow(ada.signup.subscriptionId, NEXT, "declined", 5000);
+          expect(await claim(ada)).toEqual({ kind: "claimed", charge: claimedRow(ada, declined, NEXT, 5000, "2027-02-01") });
+          expect((await rowsOf(ada)).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([
+            [pending, 1, null],
+            [declined, 2, NEW_TOKEN],
+          ]);
+        });
+
+        it("AC20 (issue 254): with no card on file, a row with its token out is busy still: it stays declined at its attempt, with its token", async () => {
+          const ada = await subscriber({ card: false });
+          const ledgerId = await addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
+          expect((await claim(ada)).kind).toBe("claimed");
+          expect(await claim(ada, "cnon:other-card")).toEqual({ kind: "busy" });
+          expect(await rowsOf(ada)).toEqual([claimedRow(ada, ledgerId, WEEK, 5000, "2027-01-25")]);
         });
 
         it("AC3: with no declined row nothing is owed, and replaceSubscriptionCard then replaces: the new card is on file, and listPendingCharges gives the new card's id", async () => {
@@ -1129,7 +1157,7 @@ export function runChargeRunContract(
           expect(await onFile(ada)).toEqual(NEW_ON_FILE);
         });
 
-        it("AC13: any pending row is busy: the card and a closed week's declined row stay", async () => {
+        it("AC13: with a card on file any pending row is busy: the card and a closed week's declined row stay", async () => {
           const ada = await subscriber();
           const closed = await addLedgerRow(ada.signup.subscriptionId, FEB_7, "declined", 5000);
           await close(FEB_7);
@@ -1137,6 +1165,24 @@ export function runChargeRunContract(
           expect(await replace(ada)).toBe("busy");
           expect(await onFile(ada)).toEqual(OLD_ON_FILE);
           expect((await declinedOf(ada)).map((row) => row.ledgerId)).toEqual([closed]);
+        });
+
+        it.each(["open", "closed"] as const)("AC20 (issue 254): with no card on file, a pending row with no token, its week %s, is not busy: replaced, and the row, still pending at its attempt, has the new card", async (week) => {
+          const ada = await subscriber({ card: false });
+          const pending = await addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+          if (week === "closed") await close(WEEK);
+          expect(await replace(ada)).toBe("replaced");
+          expect(await onFile(ada)).toEqual(NEW_ON_FILE);
+          expect((await rowsOf(ada)).map((row) => [row.ledgerId, row.cardId, row.attempt, row.chargeSource])).toEqual([[pending, NEW_CARD.id, 1, null]]);
+        });
+
+        it("AC20 (issue 254): with no card on file, a row with its token out is busy still: no card goes on file, and the row keeps its token", async () => {
+          const ada = await subscriber({ card: false });
+          const ledgerId = await addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
+          expect((await claim(ada)).kind).toBe("claimed");
+          expect(await replace(ada)).toBe("busy");
+          expect(await onFile(ada)).toBeNull();
+          expect(await rowsOf(ada)).toEqual([claimedRow(ada, ledgerId, WEEK, 5000, "2027-01-25")]);
         });
 
         it("AC13 (issue 254): a declined row with its token out is busy too: the card, the row and its token stay", async () => {
