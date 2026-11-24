@@ -103,7 +103,8 @@ async function paymentSection({
       )}
       payError={payError}
       text={{
-        legend: t("supperClub.paymentLegend", { n: product.optionTypes.length + 2 }),
+        // Over a charge that is out there are no pickers above, so the steps start at 1.
+        legend: t("supperClub.paymentLegend", { n: (out ? 0 : product.optionTypes.length) + 2 }),
         cardLabel: t("supperClub.cardLabel"),
         cardHint: t("supperClub.cardHint"),
         testCard: t("supperClub.testCard"),
@@ -156,7 +157,7 @@ export default async function SupperClub({
 
   const choices = resolveChoices(product, query);
   const accountLegend = (
-    <p className="font-display text-section text-teal">{t("supperClub.accountLegend", { n: product.optionTypes.length + 1 })}</p>
+    <p className="font-display text-section text-teal">{t("supperClub.accountLegend", { n: (stranded ? 0 : product.optionTypes.length) + 1 })}</p>
   );
 
   return await JoinPage({

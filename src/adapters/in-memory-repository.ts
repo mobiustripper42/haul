@@ -310,11 +310,13 @@ export class InMemoryRepository implements Repository {
   }
 
   async startSignupCharge(subscriptionId: string, now: Date): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
+    const product = this.products.find((p) => p.id === this.subscriptions.get(subscriptionId)?.productId);
+    const soldOut = product !== undefined && isSoldOut(product, await this.countHeldSpots(product.id));
+    // Read after the await, so the check and the write are one step: two starts at once cannot both win.
     const subscription = this.subscriptions.get(subscriptionId);
     const ledger = this.ledgerOf(subscriptionId);
     if (!subscription || !ledger || subscription.status !== "pending" || ledger.status !== "pending" || ledger.chargeSentAt !== null) return null;
-    const product = this.products.find((p) => p.id === subscription.productId);
-    if (product && isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
+    if (soldOut) return "sold_out";
     this.ledger.set(ledger.id, { ...ledger, chargeSentAt: new Date(now) });
     return { amountCents: ledger.amountCents, attempt: ledger.attempt };
   }
