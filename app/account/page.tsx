@@ -125,7 +125,7 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                   </>
                 )}
                 {locked && <p>{t("account.noPickupLocked")}</p>}
-                {!cancelled && lockedWeek(confirmation) === null && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+                {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
                 {startsAt && <Hint>{t("account.pendingSwitch", { meal: mealLabel(confirmation.options), week: listedWeekTitle(t, startsAt.week, language) })}</Hint>}
                 {!cancelled &&
                   (open ? (

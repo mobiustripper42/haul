@@ -123,7 +123,6 @@ export function PaymentSection({
         applicationId={card.applicationId}
         locationId={card.locationId}
         amountCents={cents}
-        intent="CHARGE_AND_STORE"
         billing={card.billing}
       />
       <PricePanel

@@ -1,5 +1,5 @@
 import { matchCustomer } from "./customer-match.js";
-import { abandonIfDead, recordDecline, sendCharge, settlePaid } from "./ledger-charge.js";
+import { abandonIfRefused, recordDecline, sendCharge, settlePaid } from "./ledger-charge.js";
 import type { Member } from "./members.js";
 import { clevelandDate, firstPickup } from "./pickup-week.js";
 import { requireCardToken, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
@@ -25,7 +25,7 @@ export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date; 
 /**
  * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
  * `sold_out`: the product's cap is reached, at the check before Square or at the card bind; nothing was charged.
- * `error`: something failed before anything was charged, or Try again met a dead card token and the member enters the card again.
+ * `error`: something failed before anything was charged, or Square refused the charge on Try again and the member enters the card again.
  * `confirmedNow`, on a paid result: true only when this request flipped the rows, so it is the whole guard
  * against a second confirmation email; a signup another tab confirmed first gives false.
  */
@@ -206,8 +206,8 @@ async function linkCustomer(deps: SignupDeps, member: Member): Promise<string> {
 /**
  * Charges, or confirms what Square already took, then saves the card from the payment and writes the result. Anything
  * that fails from here on is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
- * The one exception is Try again's dead token: the charge cannot be sent again, so the row is abandoned and the member
- * is sent back to the form (`error`).
+ * The one exception is a charge Square refuses on Try again (`isRefusedCharge`): it cannot be sent again, so the row is
+ * abandoned and the member is sent back to the form (`error`).
  */
 async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promise<SignupResult> {
   const { repo, payments, clock } = deps;
@@ -244,8 +244,8 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     return { outcome: "paid", subscriptionId: row.subscriptionId, confirmedNow: confirmed === "confirmed" };
   } catch (error) {
     logFailure("charge", error);
-    // Only Try again abandons a dead token: a first Pay has had no lookup, so the token may be what Square used.
-    if (charge.lookupFirst && (await abandonIfDead(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
+    // Only Try again abandons a refused charge: a first Pay has had no lookup, so the token may be what Square used.
+    if (charge.lookupFirst && (await abandonIfRefused(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
     await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
     return { outcome: "unknown" };
   }

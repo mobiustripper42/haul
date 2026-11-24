@@ -29,9 +29,10 @@ const one = (value: string | string[] | undefined): string | undefined => (typeo
  * A member's Update your card (issue 145): the card on file, the card entry that replaces it, and, after a save, what it
  * did (`state` in the URL: `saved`, `paid` with the `row` it charged, `paidNoCard` with the `row` it charged and no card
  * saved from it (issue 254), `declined`, `unknown`, `error`). A saved or paid state has no form: the card is on file and
- * only the back link is left; `paidNoCard` keeps the form, to enter the card again. While the subscription holds a `pending` row, whatever
- * the URL says, the signup's Try again takes the form's place: the row's key and card stay fixed until it settles. Only an
- * active subscription reaches it; a cancelled one is sent to account home.
+ * only the back link is left; `paidNoCard` keeps the form, to enter the card again. While the subscription holds a row the
+ * charge run or a card update has a charge out on (a `pending` row, or a `declined` one with its token on it), whatever the URL
+ * says, Try again takes the form's place: the row's key and token stay fixed until it settles. Only an active subscription
+ * reaches it; a cancelled one is sent to account home.
  */
 export default async function UpdateCard({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const { member, product, confirmation } = await requireSubscriber();
@@ -112,8 +113,6 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
             <Card width="fill">
               {cardWords && <p>{t("account.card.onFile", { card: cardWords })}</p>}
               <CardForm
-                // A declined week owed is charged on the token and the card saved from the payment; nothing owed, the card is only stored.
-                intent={owed > 0 ? "CHARGE_AND_STORE" : "STORE"}
                 amountCents={owed > 0 ? owed : confirmation.weeklyCents}
                 card={cardEntrySettings(member)}
                 text={{

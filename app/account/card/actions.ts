@@ -25,7 +25,7 @@ export async function saveCard(formData: FormData): Promise<void> {
   landOn(await updateCard(deps(), { memberId: member.id, sourceId: textField(formData, "sourceId") }));
 }
 
-/** Try again on the subscription's pending row: Square is asked first, then the row is settled as a save settles it. */
+/** Try again on the subscription's row whose charge is out: Square is asked first, then the row is settled as a save settles it. */
 export async function retryCard(): Promise<void> {
   const { member, confirmation } = await requireSubscriber();
   if (confirmation.status === "cancelled") redirect(ACCOUNT_PATH);

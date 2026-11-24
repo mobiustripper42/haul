@@ -133,9 +133,10 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
     if (stranded || row.closed || row.chargeSource !== null) {
       const found = await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt });
       if (!found) {
-        // A closed week's row nobody paid for is deleted once the week's pickup is over: the week is not charged.
+        // A closed week's row nobody paid for is deleted once the week's pickup is over: the week is not charged. A row whose
+        // charge is out is never dropped: its member's token may yet turn up as a payment, and the row stays as it is.
         const last = { weekOf: row.pickupDate, firstDay: row.pickupDate, lastDay: row.lastPickupDay };
-        if (!stranded && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
+        if (!stranded && row.chargeSource === null && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
         return;
       }
       ({ paymentId, amountCents: chargedCents } = found);

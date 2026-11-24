@@ -1,6 +1,6 @@
 import { sha256Key } from "./customer-match.js";
 import {
-  abandonIfDead,
+  abandonIfRefused,
   logStepFailure,
   recordDecline,
   recordOutcomeUnknown,
@@ -16,12 +16,12 @@ import { requireSupperClub } from "./products.js";
 import { recordEventAs } from "./record-event.js";
 
 /**
- * A member's card update (issue 145; DEC-003, DEC-053): with a declined week owed, the claim turns its row pending with
- * the card token on it, the token is charged under the key its bumped attempt makes, and the card is saved from the
- * payment. With nothing owed the card is saved alone. The key and the token stay fixed until that charge settles, by the
- * member's Try again, or by a firing of the charge run that finds Square took it (the run never sends it), so a save while
- * any row is `pending` charges nothing and saves no card. The provider calls run between `withActor` commits, never inside
- * one. Everything written or recorded runs under the member.
+ * A member's card update (issue 145; DEC-003, DEC-053): with a declined week owed, the claim puts the card token on its
+ * row, which stays `declined`, the token is charged under the key its bumped attempt makes, and the card is saved from
+ * the payment. With nothing owed the card is saved alone. The key and the token stay fixed until that charge settles, by
+ * the member's Try again, or by a firing of the charge run that finds Square took it (the run never sends it), so a save
+ * while any row is `pending` or has its token out charges nothing and saves no card. The provider calls run between
+ * `withActor` commits, never inside one. Everything written or recorded runs under the member.
  */
 
 export type UpdateCardDeps = { repo: Repository; payments: PaymentsPort; email: EmailPort; siteUrl: string; clock: () => Date };
@@ -37,9 +37,10 @@ export type UpdateCardResult =
 /**
  * Saves `sourceId` as the member's card. `saved`: nothing was owed and the card is on file. `paid`: the declined week's
  * charge paid and the card is on file. `paidNoCard`: it paid, but the card could not be saved from the payment, so the old
- * card, if any, stays on file. `declined`: Square refused the card, or the week's charge was declined (the old card stays
- * on file, the row is declined again). `unknown`: the week's charge got no answer, or a charge was already out, and Try
- * again finishes it. `error`: something failed before any charge was sent, or Try again met a dead card token.
+ * declined card is taken off file and nothing charges it again. `declined`: Square refused the card, or the week's charge was
+ * declined (the old card stays on file, the row has no token and stays declined). `unknown`: the week's charge got no
+ * answer, or a charge was already out, and Try again finishes it. `error`: something failed before any charge was sent,
+ * or Square refused the charge on Try again and the member enters the card again.
  */
 export async function updateCard(deps: UpdateCardDeps, input: { memberId: string; sourceId: string }): Promise<UpdateCardResult> {
   try {
@@ -50,7 +51,7 @@ export async function updateCard(deps: UpdateCardDeps, input: { memberId: string
   }
 }
 
-/** "Try again": asks Square whether the pending row's charge happened, then confirms what it finds or charges the row again. */
+/** "Try again": asks Square whether the row's charge happened, then confirms what it finds or charges the row again. */
 export async function retryCardCharge(deps: UpdateCardDeps, input: { memberId: string }): Promise<UpdateCardResult> {
   try {
     return await resume(deps, input);
@@ -113,10 +114,10 @@ async function resume(deps: UpdateCardDeps, { memberId }: { memberId: string }):
 
 /**
  * Charges the claimed row, or, with `lookupFirst`, confirms what Square already took, and writes the result: paid, declined
- * through the signup's decline write, or unknown with the row left pending. A row with a token is charged on it,
+ * through the signup's decline write, or unknown with the row left as it is. A row with a token is charged on it,
  * buyer-started, and the card is saved from the payment; a charge run's row is charged on its saved card as the run does.
- * A failure before a charge is out (the lookup failing) is logged and recorded as nothing: the row is as it was. A dead
- * token on Try again abandons the charge: the row is declined again and the member enters the card again (`error`).
+ * A failure before a charge is out (the lookup failing) is logged and recorded as nothing: the row is as it was. A charge
+ * Square refuses on Try again abandons it: the row stays declined with no token and the member enters the card again (`error`).
  */
 async function settle(deps: UpdateCardDeps, memberId: string, productId: string, charge: PendingCharge, lookupFirst: boolean): Promise<UpdateCardResult> {
   const { repo, payments, clock } = deps;
@@ -157,7 +158,7 @@ async function settle(deps: UpdateCardDeps, memberId: string, productId: string,
   } catch (error) {
     logStepFailure("card update", "charge", error);
     if (!out) return { outcome: "error" };
-    if (lookupFirst && (await abandonIfDead(repo, actor, charge.ledgerId, error).catch(() => false))) return { outcome: "error" };
+    if (lookupFirst && (await abandonIfRefused(repo, actor, charge.ledgerId, error).catch(() => false))) return { outcome: "error" };
     await recordOutcomeUnknown(repo, actor, memberId, charge.ledgerId, error instanceof PaymentsError ? { code: error.code } : {});
     return { outcome: "unknown" };
   }

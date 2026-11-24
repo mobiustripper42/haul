@@ -2,7 +2,7 @@
 
 import { useRef } from "react";
 import { Button } from "../../../components/ui/button";
-import { CardEntry, type CardEntryHandle, type CardIntent } from "../../../components/ui/card-entry";
+import { CardEntry, type CardEntryHandle } from "../../../components/ui/card-entry";
 import type { cardEntrySettings } from "../../card-entry-settings";
 import { saveCard } from "./actions";
 
@@ -13,19 +13,8 @@ export type CardFormText = { cardLabel: string; cardHint: string; testCard: stri
  * Issue 145: the new card's entry and Save card. Save is the form's action: it asks `CardEntry` for a token, adds it to
  * what the form holds, and only then calls `saveCard`; with no token Square's form is showing what is wrong, or the card
  * form says it failed, and nothing is sent. The tokenize-then-submit steps are the signup's (app/supper-club/payment-section.tsx), written again here.
- * The page chooses `intent` (issue 254): `CHARGE_AND_STORE` when a declined week is owed, `STORE` otherwise.
  */
-export function CardForm({
-  intent,
-  amountCents,
-  card,
-  text,
-}: {
-  intent: CardIntent;
-  amountCents: number;
-  card: ReturnType<typeof cardEntrySettings>;
-  text: CardFormText;
-}) {
+export function CardForm({ amountCents, card, text }: { amountCents: number; card: ReturnType<typeof cardEntrySettings>; text: CardFormText }) {
   const entry = useRef<CardEntryHandle>(null);
 
   async function save(form: FormData) {
@@ -49,7 +38,6 @@ export function CardForm({
         applicationId={card.applicationId}
         locationId={card.locationId}
         amountCents={amountCents}
-        intent={intent}
         billing={card.billing}
       />
       <Button kind="primary" type="submit" full>

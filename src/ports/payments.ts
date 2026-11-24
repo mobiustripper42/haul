@@ -86,6 +86,24 @@ export function isDeadToken(error: unknown): error is PaymentsError {
   return error instanceof PaymentsError && DEAD_TOKEN_CODES.includes(error.code);
 }
 
+/**
+ * Whether `error` is Square refusing a charge outright, as against an answer that never came and may have charged: a dead
+ * token, or an `INVALID_REQUEST_ERROR` with a client status that is not a conflict or a rate limit. A key already used
+ * (`IdempotencyKeyReusedError`) is never one: the first charge under it may have been taken.
+ */
+export function isRefusedCharge(error: unknown): error is PaymentsError {
+  if (isDeadToken(error)) return true;
+  return (
+    error instanceof PaymentsError &&
+    !(error instanceof IdempotencyKeyReusedError) &&
+    error.category === "INVALID_REQUEST_ERROR" &&
+    error.status >= 400 &&
+    error.status <= 499 &&
+    error.status !== 409 &&
+    error.status !== 429
+  );
+}
+
 export const IDEMPOTENCY_KEY_MAX = 45;
 export const REFERENCE_ID_MAX = 40;
 

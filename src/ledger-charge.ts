@@ -5,7 +5,7 @@ import type { Member } from "./members.js";
 import { formatUsdWhole } from "./money.js";
 import { clevelandDate, formatPickupDate, pickupWeek, weekTitle } from "./pickup-week.js";
 import type { EmailPort } from "./ports/email.js";
-import { isDeadToken, PaymentsError, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { isRefusedCharge, PaymentsError, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import type { Actor, AuditEventDetail, Repository } from "./ports/repository.js";
 import { errorFields, recordEventAs } from "./record-event.js";
 
@@ -30,9 +30,9 @@ export async function recordDecline(repo: Repository, actor: Actor, memberId: st
 /**
  * The charge, under the key the ledger row and its attempt make. `sourceId` is a card token or a saved card's id, and
  * `customerInitiated` says whether the member started it. A throw is Square giving no answer, and the same key goes again
- * once at once: a charge Square took comes back as that payment, not a second one. A dead token (`isDeadToken`) is never
- * resent: it throws at once. When the first try failed some other way and the resend answers a dead token, the first
- * failure is thrown, because the first try may be what used the token.
+ * once at once: a charge Square took comes back as that payment, not a second one. A refused charge (`isRefusedCharge`) is
+ * never resent: it throws at once. When the first try failed some other way and the resend is refused, the first failure
+ * is thrown, because the first try may be what used the token.
  */
 export async function sendCharge(
   payments: PaymentsPort,
@@ -59,11 +59,11 @@ export async function sendCharge(
   try {
     return await payments.charge(request);
   } catch (first) {
-    if (isDeadToken(first)) throw first;
+    if (isRefusedCharge(first)) throw first;
     try {
       return await payments.charge(request);
     } catch (second) {
-      throw isDeadToken(second) ? first : second;
+      throw isRefusedCharge(second) ? first : second;
     }
   }
 }
@@ -103,11 +103,12 @@ export async function settlePaid(
 }
 
 /**
- * Try again's end for a dead token: abandons the row's charge so the member can enter the card again, and says so. True
- * when `error` is a dead token, whatever the row's state now; false for any other error, which leaves the row as it is.
+ * Try again's end for a refused charge (`isRefusedCharge`): abandons the row's charge so the member can enter the card
+ * again, and says so. True when `error` is a refused charge, whatever the row's state now; false for any other error,
+ * which leaves the row as it is.
  */
-export async function abandonIfDead(repo: Repository, actor: Actor, ledgerId: string, error: unknown): Promise<boolean> {
-  if (!isDeadToken(error)) return false;
+export async function abandonIfRefused(repo: Repository, actor: Actor, ledgerId: string, error: unknown): Promise<boolean> {
+  if (!isRefusedCharge(error)) return false;
   await repo.withActor(actor, (scoped) => scoped.abandonCharge(ledgerId));
   return true;
 }

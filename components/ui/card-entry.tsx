@@ -117,28 +117,6 @@ export async function tokenizeWhenAttached(
   }
 }
 
-/** What the card box asks Square for: a card to charge and store (a payment is made from the token), or to store alone (issue 254). */
-export type CardIntent = "CHARGE_AND_STORE" | "STORE";
-
-/**
- * What `tokenize` is sent (issue 254): the customer present and not keyed in by the seller, with the member as the billing
- * contact. `CHARGE_AND_STORE` adds the amount in dollars and cents and the currency; `STORE` has neither, as Square's
- * "Store card details" sample has it. No verification token is sent, `verifyBuyer` being retired. `billing` goes to
- * Square's card check, never to the Square customer.
- */
-export function cardDetails({
-  intent,
-  amountCents,
-  billing,
-}: {
-  intent: CardIntent;
-  amountCents: number;
-  billing: { email: string; givenName?: string; familyName?: string };
-}): object {
-  const common = { intent, customerInitiated: true, sellerKeyedIn: false, billingContact: billing };
-  return intent === "CHARGE_AND_STORE" ? { amount: (amountCents / 100).toFixed(2), currencyCode: "USD", ...common } : common;
-}
-
 type SquarePayments = { card(): Promise<SquareCard> };
 type SquareGlobal = { payments(applicationId: string, locationId: string): SquarePayments | Promise<SquarePayments> };
 
@@ -170,8 +148,10 @@ function loadSquare(applicationId: string): Promise<SquareGlobal> {
  * Square's card form, which draws its own box, in a plain block that grows to fit it (Square's form is
  * taller than a 40px field), with its label and hint. It is the page's first client code:
  * it loads Square's script, and `ref.tokenize()` turns what was typed into a single-use token, for the
- * form to post as `sourceId`. The token is asked for by the page's `intent` (`cardDetails`): a card to charge and store
- * (`CHARGE_AND_STORE`, the customer present) or to store alone (`STORE`), with the member as the billing contact.
+ * form to post as `sourceId`. The token is asked for as a card to store and charge
+ * (`CHARGE_AND_STORE`, the customer present), with the amount and the member as the billing contact; no
+ * verification token is sent, `verifyBuyer` being retired. `billing` goes to Square's card check, never to
+ * the Square customer.
  *
  * Until Square's form attaches, a placeholder holds its height with a spinner and `loadingText` (issue 222); a press
  * of pay before then waits for the form (`tokenizeWhenAttached`). `CardEntryBody` draws every state.
@@ -194,7 +174,6 @@ export function CardEntry({
   applicationId,
   locationId,
   amountCents,
-  intent,
   billing,
   ref,
 }: {
@@ -210,8 +189,6 @@ export function CardEntry({
   applicationId: string | undefined;
   locationId: string | undefined;
   amountCents: number;
-  /** What the page does with the token: charge it and store the card, or store the card alone. Chosen by the page. */
-  intent: CardIntent;
   billing: { email: string; givenName?: string; familyName?: string };
   ref?: Ref<CardEntryHandle>;
 }) {
@@ -224,8 +201,8 @@ export function CardEntry({
   // What `tokenize` waits on: made once, settled by the effect below.
   const [attachment] = useState(cardAttachment);
   // Read when pay is pressed, so a pick changed after the form loaded is the amount asked for.
-  const latest = useRef({ amountCents, intent, billing, testValue });
-  latest.current = { amountCents, intent, billing, testValue };
+  const latest = useRef({ amountCents, billing, testValue });
+  latest.current = { amountCents, billing, testValue };
 
   useEffect(() => {
     if (testMode || !applicationId || !locationId || !container.current) return;
@@ -254,7 +231,7 @@ export function CardEntry({
 
   useImperativeHandle(ref, () => ({
     async tokenize() {
-      const { amountCents: cents, intent: asked, billing: contact, testValue: typed } = latest.current;
+      const { amountCents: cents, billing: contact, testValue: typed } = latest.current;
       setRefused(false);
       let outcome: Awaited<ReturnType<typeof tokenizeWhenAttached>>;
       if (testMode) {
@@ -262,7 +239,14 @@ export function CardEntry({
         const thrown = typed === "" ? new Error("The test card field is empty") : Object.assign(new Error("The test card was refused"), { name: "TokenizationError" });
         outcome = { kind: throwKind(thrown) };
       } else {
-        outcome = await tokenizeWhenAttached(attachment.attached, cardDetails({ intent: asked, amountCents: cents, billing: contact }));
+        outcome = await tokenizeWhenAttached(attachment.attached, {
+          amount: (cents / 100).toFixed(2),
+          currencyCode: "USD",
+          intent: "CHARGE_AND_STORE",
+          customerInitiated: true,
+          sellerKeyedIn: false,
+          billingContact: contact,
+        });
       }
       if (outcome.kind === "token") return outcome.token;
       if (outcome.kind === "refused") setRefused(true);
