@@ -1,12 +1,13 @@
-// Issue 254: the three steps signup, the card update and the charge run share: sendCharge's rule for a dead token,
-// settlePaid (the card saved from the payment, then the one confirm) and abandonIfDead. Their callers' tests take one case
-// each way through them. Which errors are a dead token is isDeadToken's (src/ports/payments-dead-token.test.ts); what the
-// confirm and the abandon write is the repository's (src/adapters/signup-contract.ts, charge-run-contract.ts).
+// Issue 254: the three steps signup, the card update and the charge run share: sendCharge's rule for a refused charge,
+// settlePaid (the card saved from the payment, then the one confirm) and abandonIfRefused. Their callers' tests take one
+// case each way through them. Which errors are a refused charge is isRefusedCharge's
+// (src/ports/payments-refused-charge.test.ts), a dead token's being one; what the confirm and the abandon write is the
+// repository's (src/adapters/signup-contract.ts, charge-run-contract.ts).
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { sha256Key } from "./customer-match.js";
-import { abandonIfDead, sendCharge, settlePaid } from "./ledger-charge.js";
+import { abandonIfRefused, sendCharge, settlePaid } from "./ledger-charge.js";
 import { PaymentsError } from "./ports/payments.js";
 import type { Actor, PendingSignup } from "./ports/repository.js";
 
@@ -53,7 +54,11 @@ afterEach(() => {
 
 const actor = (): Actor => ({ member: memberId });
 const paymentsError = (code: string, category = "INVALID_REQUEST_ERROR") => new PaymentsError({ status: 400, category, code, detail: "Square's text" });
-const deadToken = () => paymentsError("CARD_TOKEN_USED");
+/** The two kinds of refused charge: a dead token, and a request Square refuses for any other reason. */
+const REFUSALS: [string, () => PaymentsError][] = [
+  ["a dead token", () => paymentsError("CARD_TOKEN_USED")],
+  ["another refusal", () => paymentsError("INVALID_VALUE")],
+];
 const noAnswer = (): Error => new DOMException("The operation timed out.", "TimeoutError");
 const onFile = () => repo.findSubscriptionCard(row.subscriptionId);
 
@@ -67,21 +72,21 @@ describe("sendCharge (issue 254)", () => {
     expect(charge.mock.calls).toEqual([[request], [request]]);
   });
 
-  it("AC8: a dead token is thrown at once, not resent", async () => {
-    const error = deadToken();
+  it.each(REFUSALS)("AC8, AC21: %s is thrown at once, not resent", async (_what, refused) => {
+    const error = refused();
     const charge = vi.spyOn(payments, "charge").mockRejectedValue(error);
     await expect(send()).rejects.toBe(error);
     expect(charge).toHaveBeenCalledTimes(1);
   });
 
-  it("AC8: any other failure and then a dead token throws the first failure: the first send may be what used the token", async () => {
+  it.each(REFUSALS)("AC8, AC21: any other failure and then %s throws the first failure: the first send may be what used the token", async (_what, refused) => {
     const first = noAnswer();
-    const charge = vi.spyOn(payments, "charge").mockRejectedValueOnce(first).mockRejectedValueOnce(deadToken());
+    const charge = vi.spyOn(payments, "charge").mockRejectedValueOnce(first).mockRejectedValueOnce(refused());
     await expect(send()).rejects.toBe(first);
     expect(charge).toHaveBeenCalledTimes(2);
   });
 
-  it("AC8: two failures that are not dead tokens throw the second, as before", async () => {
+  it("AC8, AC21: two failures that are not refusals throw the second, as before", async () => {
     const second = paymentsError("SERVICE_UNAVAILABLE", "API_ERROR");
     vi.spyOn(payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(second);
     await expect(send()).rejects.toBe(second);
@@ -146,27 +151,27 @@ describe("settlePaid (issue 254)", () => {
   });
 });
 
-describe("abandonIfDead (issue 254)", () => {
+describe("abandonIfRefused (issue 254)", () => {
   beforeEach(async () => {
     await repo.startSignupCharge(row.subscriptionId, SOURCE);
   });
 
-  it("AC8: a dead token abandons the row's charge, as the actor: true, the row pending with no token on the next attempt, and no event", async () => {
+  it.each(REFUSALS)("AC8, AC21: %s abandons the row's charge, as the actor: true, the row pending with no token on the next attempt, and no event", async (_what, refused) => {
     const withActor = vi.spyOn(repo, "withActor");
-    expect(await abandonIfDead(repo, actor(), row.ledgerId, deadToken())).toBe(true);
+    expect(await abandonIfRefused(repo, actor(), row.ledgerId, refused())).toBe(true);
     expect(withActor.mock.calls.map(([who]) => who)).toEqual([actor()]);
     expect(await repo.findPendingSignup(memberId, productId)).toMatchObject({ ledgerStatus: "pending", attempt: 2, chargeSource: null });
     expect(repo.events()).toEqual([]);
   });
 
-  it("AC8: any other error is false, and the row keeps its token and attempt", async () => {
-    expect(await abandonIfDead(repo, actor(), row.ledgerId, noAnswer())).toBe(false);
+  it("AC8, AC21: any other error is false, and the row keeps its token and attempt", async () => {
+    expect(await abandonIfRefused(repo, actor(), row.ledgerId, noAnswer())).toBe(false);
     expect(await repo.findPendingSignup(memberId, productId)).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
   });
 
-  it("AC8: a dead token whose row is no longer out is true too, and the row is left as it is", async () => {
+  it("AC8, AC21: a refusal whose row is no longer out is true too, and the row is left as it is", async () => {
     await repo.recordSignupDecline(row.ledgerId);
-    expect(await abandonIfDead(repo, actor(), row.ledgerId, deadToken())).toBe(true);
+    expect(await abandonIfRefused(repo, actor(), row.ledgerId, paymentsError("INVALID_VALUE"))).toBe(true);
     expect(await repo.findPendingSignup(memberId, productId)).toMatchObject({ ledgerStatus: "declined", attempt: 1 });
   });
 });

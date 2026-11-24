@@ -419,10 +419,23 @@ describe.skipIf(!up)(`AC1 — findProductByName in <test db>_product${skipped}`,
         await pool.query("insert into ledger (subscription_id, pickup_date, amount_cents, status) values ($1, '2027-01-10', 8000, 'declined')", [signup.subscriptionId]);
         const claim = await repo.claimCardUpdate(signup.subscriptionId, TOKEN);
         expect(claim.kind).toBe("claimed");
-        expect((await pool.query("select status, attempt, charge_source from ledger where pickup_date = '2027-01-10'")).rows).toEqual([{ status: "pending", attempt: 2, charge_source: TOKEN }]);
+        expect((await pool.query("select status, attempt, charge_source from ledger where pickup_date = '2027-01-10'")).rows).toEqual([{ status: "declined", attempt: 2, charge_source: TOKEN }]);
         if (claim.kind === "claimed") await repo.recordSignupDecline(claim.charge.ledgerId);
         expect((await pool.query("select status, attempt, charge_source from ledger where pickup_date = '2027-01-10'")).rows).toEqual([{ status: "declined", attempt: 2, charge_source: null }]);
         expect((await pool.query("select square_card_id from subscriptions")).rows).toEqual([{ square_card_id: "ccof:card-1" }]);
+      });
+
+      it("AC10 (issue 254): a paid card update's row whose card was not saved holds no token, and the card's three columns are null", async () => {
+        const { input, member } = await fixture();
+        await repo.setMemberSquareCustomer(member.id, "CUSTOMER_1");
+        const signup = await repo.savePendingSignup(input);
+        await repo.confirmSignupRows(signup.ledgerId, "PAYMENT_1", signup.amountCents, PAID_AT, cardOf("ccof:card-1"));
+        await pool.query("insert into ledger (subscription_id, pickup_date, amount_cents, status) values ($1, '2027-01-10', 8000, 'declined')", [signup.subscriptionId]);
+        const claim = await repo.claimCardUpdate(signup.subscriptionId, TOKEN);
+        expect(claim.kind).toBe("claimed");
+        if (claim.kind === "claimed") expect(await repo.confirmSignupRows(claim.charge.ledgerId, "PAYMENT_2", 8000, PAID_AT)).toBe("confirmed");
+        expect((await pool.query("select status, charge_source from ledger where pickup_date = '2027-01-10'")).rows).toEqual([{ status: "paid", charge_source: null }]);
+        expect((await pool.query("select square_card_id, card_brand, card_last4 from subscriptions")).rows).toEqual([{ square_card_id: null, card_brand: null, card_last4: null }]);
       });
 
       it("AC17 (issue 254): needsCard reads square_card_id alone: a card whose brand and last four are not stored is a card on file", async () => {

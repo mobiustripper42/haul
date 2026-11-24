@@ -113,8 +113,8 @@ const landing = (url: string) => {
 
 const noAnswer = () => new DOMException("The operation timed out.", "TimeoutError");
 
-/** The save of a new card whose charge got no answer: the declined row is claimed and left pending. Its id, and where the save landed. */
-const leftPending = async (who: Subscriber): Promise<{ row: string; url: string }> => {
+/** The save of a new card whose charge got no answer: the declined row is claimed and left with its token out. Its id, and where the save landed. */
+const leftOut = async (who: Subscriber): Promise<{ row: string; url: string }> => {
   const row = await declined(who, JAN_24);
   vi.spyOn(services.payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(noAnswer());
   const url = await redirectOf(saveCard(form({ sourceId: "cnon:new-card" })));
@@ -169,7 +169,7 @@ describe("AC4, AC7, AC8, AC10, AC11 — a save that is not done", () => {
 
   it("AC8: a charge with no answer lands on state unknown, and records charge_outcome_unknown", async () => {
     const who = await ada();
-    const { url } = await leftPending(who);
+    const { url } = await leftOut(who);
     expect(landing(url)).toEqual({ path: "/account/card", state: "unknown", row: null });
     expect(services.repo.events().map((event) => event.kind)).toEqual(["charge_outcome_unknown"]);
   });
@@ -195,9 +195,9 @@ describe("AC4, AC7, AC8, AC10, AC11 — a save that is not done", () => {
 });
 
 describe("AC9, AC11 — Try again", () => {
-  it("AC9: Try again on the row left pending lands on state paid with its ledger id, one charge made and its card saved once", async () => {
+  it("AC9: Try again on the row whose token is out lands on state paid with its ledger id, one charge made and its card saved once", async () => {
     const who = await ada();
-    const { row } = await leftPending(who);
+    const { row } = await leftOut(who);
     const save = vi.spyOn(services.payments, "saveCard");
     const url = await redirectOf(retryCard());
     expect(landing(url)).toEqual({ path: "/account/card", state: "paid", row });
@@ -205,11 +205,11 @@ describe("AC9, AC11 — Try again", () => {
     expect(services.payments.charges.map((charge) => [charge.referenceId, charge.result.outcome])).toEqual([[row, "paid"]]);
   });
 
-  it("AC9: it settles the signed-in member's pending row, not another member's", async () => {
+  it("AC9: it settles the signed-in member's row, not another member's", async () => {
     const grace = await subscriber("grace@example.com");
     const gracesRow = await services.repo.addLedgerRow(grace.subscriptionId, JAN_31, "pending", 4500);
     const who = await ada();
-    const { row } = await leftPending(who);
+    const { row } = await leftOut(who);
     await redirectOf(retryCard());
     expect(services.payments.charges.map((charge) => charge.referenceId)).toEqual([row]);
     expect((await services.repo.findPendingCharge(grace.subscriptionId))?.ledgerId).toBe(gracesRow);
@@ -217,7 +217,7 @@ describe("AC9, AC11 — Try again", () => {
 
   it("AC11: a Try again whose lookup fails lands on state error, and records nothing more", async () => {
     const who = await ada();
-    await leftPending(who);
+    await leftOut(who);
     vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(new Error("Square's lookup failed"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const url = await redirectOf(retryCard());
@@ -239,7 +239,7 @@ describe("AC10, AC12 (issue 254) — paid, and the card not saved", () => {
 
   it("AC12: a Try again whose charge pays and whose card cannot be saved lands on state paidNoCard with the row's ledger id, and records card_not_saved", async () => {
     const who = await ada();
-    const { row } = await leftPending(who);
+    const { row } = await leftOut(who);
     vi.spyOn(services.payments, "saveCard").mockRejectedValueOnce(refusal());
     vi.spyOn(console, "error").mockImplementation(() => undefined);
     const url = await redirectOf(retryCard());
@@ -249,7 +249,7 @@ describe("AC10, AC12 (issue 254) — paid, and the card not saved", () => {
 
   it("AC12: a Try again whose token is dead lands on state error, with no row", async () => {
     const who = await ada();
-    await leftPending(who);
+    await leftOut(who);
     vi.spyOn(services.payments, "charge").mockRejectedValueOnce(
       new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "CARD_TOKEN_EXPIRED", detail: "The token expired." }),
     );

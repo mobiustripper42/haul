@@ -1519,4 +1519,35 @@ describe("issue 254 — charge the token, then save the card", () => {
     expect((await retry()).outcome).toBe("unknown");
     expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
   });
+
+  // Which errors refuse a charge is isRefusedCharge's (src/ports/payments-refused-charge.test.ts); here one that is not a dead
+  // token, and one that is no refusal.
+  const refusedCharge = (): PaymentsError => new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "INVALID_VALUE", detail: SQUARE_TEXT });
+
+  it("AC8, AC21 (issue 254): Try again whose resend Square refuses: error after one send, the row pending with no token on the next attempt, no spot held, no event of its own; the next Pay is sent under that attempt's key, and pays", async () => {
+    const { row } = await leftOut();
+    const charge = vi.spyOn(payments, "charge").mockRejectedValueOnce(refusedCharge());
+    expect((await retry()).outcome).toBe("error");
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(await pending()).toMatchObject({ ledgerId: row?.ledgerId, ledgerStatus: "pending", attempt: 2, chargeSource: null });
+    expect(await held()).toBe(0);
+    expect(kinds()).toEqual(["charge_outcome_unknown"]);
+    expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("paid");
+    expect(payments.charges).toMatchObject([{ idempotencyKey: `${row?.ledgerId}:2`, sourceId: OTHER_SOURCE }]);
+  });
+
+  it("AC8, AC21 (issue 254): Try again whose key Square says is already used is unknown, and the row keeps its token and attempt", async () => {
+    await leftOut();
+    const used = new IdempotencyKeyReusedError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "IDEMPOTENCY_KEY_REUSED", detail: SQUARE_TEXT });
+    vi.spyOn(payments, "charge").mockRejectedValue(used);
+    expect((await retry()).outcome).toBe("unknown");
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
+  });
+
+  it("AC8, AC21 (issue 254): a charge Square refuses on the first Pay is unknown after one send, with the token kept on the row", async () => {
+    const charge = vi.spyOn(payments, "charge").mockRejectedValue(refusedCharge());
+    expect((await submit()).outcome).toBe("unknown");
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
+  });
 });

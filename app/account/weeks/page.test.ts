@@ -399,6 +399,17 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(textsOf(html)).not.toContain(t("account.weeks.intro"));
   });
 
+  it("AC20 (issue 254): while a card update's token is out on the declined week, it is still Card declined, the one Notice names it and the week after is Locked", async () => {
+    const { memberId, subscriptionId } = await lockedAda();
+    await services.repo.setMemberSquareCustomer(memberId, "CUSTOMER_ADA");
+    expect((await services.repo.claimCardUpdate(subscriptionId, "cnon:new-card")).kind).toBe("claimed");
+    const { html, rows } = await renderLocked();
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(alertTexts(html)[0]).toContain(titleOf(FEB_7));
+    expect(rowTitled(rows, titleOf(FEB_7))).toEqual([titleOf(FEB_7), t("account.weeks.declined"), t(SUBSCRIPTION_BADGES.declined.key)]);
+    expect(rowTitled(rows, titleOf(FEB_14))).toEqual([titleOf(FEB_14), t("account.noPickupLocked"), t("account.marker.locked")]);
+  });
+
   it("AC6: a week after the declined week is Locked: the no-pickup line, the Locked badge of the locked kind, no charge day and no button", async () => {
     await lockedAda();
     const { html, rows } = await renderLocked();

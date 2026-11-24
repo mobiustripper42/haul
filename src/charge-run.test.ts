@@ -1210,7 +1210,7 @@ describe("issue 254 — a token out, and no card", () => {
     return (await repo.listPendingCharges(product.id)).find((row) => row.ledgerId === ledgerId)?.cardId;
   };
 
-  /** A card update's row: WEEK declined, then claimed on a new token whose charge is out. */
+  /** A card update's row: WEEK declined, then claimed on a new token whose charge is out; it stays declined. */
   const claimed = async () => {
     const ada = await subscriber();
     const ledgerId = await repo.addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
@@ -1301,7 +1301,7 @@ describe("issue 254 — a token out, and no card", () => {
     expect(email.sent).toEqual(expected.sent);
   });
 
-  it("AC19: a card update's row with its token out, none found: Square is asked and nothing charged, the row stays pending with its token, no event and no email", async () => {
+  it("AC19: a card update's row with its token out, none found: Square is asked and nothing charged, the row stays declined with its token, no event and no email", async () => {
     const { ada, ledgerId, sourceId } = await claimed();
     const charge = vi.spyOn(payments, "charge");
     const find = vi.spyOn(payments, "findPaymentByReference");
@@ -1309,6 +1309,7 @@ describe("issue 254 — a token out, and no card", () => {
     expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
     expect(charge).not.toHaveBeenCalled();
     expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[ledgerId, 2, sourceId]]);
+    expect((await repo.listDeclinedCharges(ada.signup.subscriptionId)).map((row) => [row.ledgerId, row.attempt])).toEqual([[ledgerId, 2]]);
     expect(repo.events()).toEqual([]);
     expect(email.sent).toEqual([]);
   });
@@ -1332,14 +1333,33 @@ describe("issue 254 — a token out, and no card", () => {
     expect(payments.cards).toHaveLength(2);
   });
 
-  it("AC19: a closed week's row with its token out, none found, is dropped once the week's pickup is over, as any closed week's row", async () => {
-    const { ada, ledgerId } = await claimed();
-    expect(await pendingIds()).toEqual([ledgerId]);
+  it("AC19: a card update's row whose payment is found and whose card cannot be saved: the row paid, the declined card off file, card_not_saved under the charge run, and the receipt sent", async () => {
+    const out = await claimed();
+    const paymentId = await squareTookClaimed(out);
+    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await run()).toEqual(report({ paid: 1 }));
+    expect(repo.events()).toEqual([
+      { kind: "card_not_saved", memberId: out.ada.member.id, detail: { ledgerId: out.ledgerId, paymentId, code: "CVV_FAILURE" }, actor: CHARGE_RUN },
+    ]);
+    expect(await paidWeeks(out.ada)).toEqual([FIRST, WEEK]);
+    expect(email.sent.map((message) => message.to)).toEqual([out.ada.member.email]);
+    expect(await cardOnFile(out.ada)).toBeNull();
+  });
+
+  it("AC19: a closed week's card update row, none found, is never dropped: once the week's pickup is over Square is asked, and the row stays declined with its token, uncharged, no event and no email", async () => {
+    const { ada, ledgerId, sourceId } = await claimed();
     await close(WEEK);
+    // So January 17, whose cutoff has passed by now, writes no locked row.
     expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
     const charge = vi.spyOn(payments, "charge");
-    expect(await run(new Date("2027-01-12T12:00:00.000Z"))).toEqual(report({ weekOf: NEXT, dropped: 1 }));
+    const find = vi.spyOn(payments, "findPaymentByReference");
+    expect(await run(new Date("2027-01-12T12:00:00.000Z"))).toEqual(report({ weekOf: NEXT }));
+    expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
     expect(charge).not.toHaveBeenCalled();
-    expect(await pendingIds()).toEqual([]);
+    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.chargeSource])).toEqual([[ledgerId, sourceId]]);
+    expect((await repo.listDeclinedCharges(ada.signup.subscriptionId)).map((row) => [row.ledgerId, row.attempt])).toEqual([[ledgerId, 2]]);
+    expect(repo.events()).toEqual([]);
+    expect(email.sent).toEqual([]);
   });
 });

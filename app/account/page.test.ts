@@ -1066,3 +1066,47 @@ describe("AC17 (issue 254) — the no-card Notice on account home", () => {
     expect(alertTexts(html)).toEqual([]);
   });
 });
+
+// Issue 254: the charge line is shown in some states and not others: a choice, checked by its key, as AC15 (issue 198)'s.
+describe("AC22 (issue 254) — the charge line with no card on file", () => {
+  const CHARGE_LINE = t("supperClub.next.charge", { price: formatUsdWhole(4500) });
+
+  it("AC22: with the no-card Notice drawn, the charge line is not shown", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(runs).not.toContain(CHARGE_LINE);
+  });
+
+  it("AC22: a comped subscription with no card draws no Notice, and the line is shown; guards the case above", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    services.repo.markComped(rows.subscriptionId);
+    signIn(member);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toEqual([]);
+    expect(runs).toContain(CHARGE_LINE);
+  });
+});
+
+// Issue 254: while a card update's charge has no answer the week stays declined, so the page is the declined page. What the
+// claim writes is the repository's (src/adapters/charge-run-contract.ts).
+describe("AC20 (issue 254) — account home while a card update's token is out", () => {
+  it("AC20: the declined Notice names the week and links to /account/card, the badge is Card declined's, and the charge line is not shown", async () => {
+    const { member, subscriptionId } = await activeAda();
+    await services.repo.setMemberSquareCustomer(member.id, "CUSTOMER_ADA");
+    await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
+    expect((await services.repo.claimCardUpdate(subscriptionId, "cnon:new-card")).kind).toBe("claimed");
+    const { html, badge, runs } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(titleOf(FEB_7));
+    expect(attributesOf(html, "a").map((link) => link.href)).toContain("/account/card");
+    expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(runs).not.toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
+  });
+});
