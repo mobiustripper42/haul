@@ -29,6 +29,7 @@ import { hashCode } from "@core/sign-in/code.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card as CardBox } from "../../components/ui/card";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, sentencesOf, textsOf } from "../screen-test-helpers";
@@ -1095,12 +1096,12 @@ describe("AC22 (issue 254) — the charge line with no card on file", () => {
 
 // Issue 254: while a card update's charge has no answer the week stays declined, so the page is the declined page. What the
 // claim writes is the repository's (src/adapters/charge-run-contract.ts).
-describe("AC20 (issue 254) — account home while a card update's token is out", () => {
+describe("AC20 (issue 254) — account home while a card update's charge is out", () => {
   it("AC20: the declined Notice names the week and links to /account/card, the badge is Card declined's, and the charge line is not shown", async () => {
     const { member, subscriptionId } = await activeAda();
     await services.repo.setMemberSquareCustomer(member.id, "CUSTOMER_ADA");
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
-    expect((await services.repo.claimCardUpdate(subscriptionId, "cnon:new-card")).kind).toBe("claimed");
+    expect((await services.repo.claimCardUpdate(subscriptionId, NOW)).kind).toBe("claimed");
     const { html, badge, runs } = await render();
     const alerts = alertTexts(html);
     expect(alerts).toHaveLength(1);
@@ -1108,5 +1109,44 @@ describe("AC20 (issue 254) — account home while a card update's token is out",
     expect(attributesOf(html, "a").map((link) => link.href)).toContain("/account/card");
     expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
     expect(runs).not.toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
+  });
+});
+
+// Issue 254: where the Notice sits. Which one shows is AC5's (issue 198) and AC17's above; here one of each, by its column.
+// Stacked below lg the left column is the first, so one order serves both widths.
+describe("AC24 (issue 254) — the card Notice is in the left column, above the Supper Club card", () => {
+  /** The page's two columns, left first: each outermost div holding exactly one Card. */
+  const columnsOf = (element: ReactElement): ReactElement[] => {
+    const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
+    return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
+  };
+  /** What of these two a column holds, in order. */
+  const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
+
+  it.each<[string, () => Promise<unknown>]>([
+    [
+      "declined",
+      async () => {
+        const { subscriptionId } = await activeAda();
+        await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
+      },
+    ],
+    [
+      "no-card",
+      async () => {
+        const member = await ada();
+        const rows = await signup(member);
+        await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+        signIn(member);
+      },
+    ],
+  ])("AC24: the %s Notice is the first thing in the left column, above the Supper Club card, and Your details' column holds none", async (_which, arrange) => {
+    await arrange();
+    const { element } = await render();
+    const [left, right, ...more] = columnsOf(element);
+    expect(more).toEqual([]);
+    expect(orderIn(left)).toEqual(['role="alert"', "<section"]);
+    expect(orderIn(right)).toEqual(["<section"]);
+    expect(findAll(element, Notice)).toHaveLength(1);
   });
 });

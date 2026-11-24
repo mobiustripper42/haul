@@ -1,6 +1,6 @@
 // Issue 254, AC21: isRefusedCharge, the one home for "Square refused the charge outright", as against a lost answer that may
-// have charged. Every edge of the rule is here; sendCharge and abandonIfRefused (src/ledger-charge.test.ts) and the two Try
-// agains take one case each way. Which codes are a dead token is isDeadToken's (./payments-dead-token.test.ts).
+// have charged. Every edge of the rule is here; sendCharge and takeCharge (src/ledger-charge.test.ts), signUp and
+// updateCard take one case each way. Which codes are a dead token is isDeadToken's (./payments-dead-token.test.ts).
 import { describe, expect, it } from "vitest";
 import { IdempotencyKeyReusedError, isRefusedCharge, PaymentsError } from "./payments.js";
 

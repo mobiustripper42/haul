@@ -96,7 +96,7 @@ type Subscriber = { member: Member; customerId: string; cardId: string | null; s
 /**
  * A member with a Square customer, unless `customer` is false (issue 150; then `card` must be false too), and a signup
  * for `firstWeek` at `choices`: the first week paid (the subscription active), with a card saved at Square on file unless
- * `card` is false; or, when `paid` is false, a stranded signup, its charge out on the card's token. Each is created a moment after
+ * `card` is false; or, when `paid` is false, a stranded signup, its charge out since SIGNED_UP_AT. Each is created a moment after
  * the last, so the run's order between them is fixed.
  */
 async function subscriber({
@@ -131,7 +131,7 @@ async function subscriber({
     cardId = onFile?.id ?? null;
     expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, priceCents, SIGNED_UP_AT, onFile)).toBe("confirmed");
   } else if (card) {
-    await repo.startSignupCharge(signup.subscriptionId, sourceId);
+    await repo.startSignupCharge(signup.subscriptionId, SIGNED_UP_AT);
   }
   const member = await repo.findMemberById(saved.id);
   if (!member) throw new Error("the member just saved is gone");
@@ -385,7 +385,7 @@ describe("AC5 — a stranded signup is looked up, never charged", () => {
     expect(await paidWeeks(stranded)).toEqual([FIRST]);
   });
 
-  it("AC5: none found leaves the row for the member's Try again: no charge, still pending, no email, no event", async () => {
+  it("AC5: none found leaves the row for the member's next submit: no charge, still pending, no email, no event", async () => {
     const stranded = await subscriber({ paid: false });
     const charge = vi.spyOn(payments, "charge");
     const find = vi.spyOn(payments, "findPaymentByReference");
@@ -1194,10 +1194,10 @@ describe("issue 194 — a comped subscription", () => {
   });
 });
 
-// Issue 254: the run's own rules for a row with a token out and for a row with neither card nor token. Which rows are listed
-// is the repository's (src/adapters/charge-run-contract.ts); what settling a found token payment saves, confirms and
-// records is settlePaid's (src/ledger-charge.test.ts), and here takes one case each way.
-describe("issue 254 — a token out, and no card", () => {
+// Issue 254: the run's own rules for a row whose charge is out and for a row with neither card nor charge out. Which rows are
+// listed, and which charge an abandon ends, is the repository's (src/adapters/charge-run-contract.ts); what settling a found
+// payment saves, confirms and records is settlePaid's (src/ledger-charge.test.ts), and here takes one case each way.
+describe("issue 254 — a charge out, and no card", () => {
   const en = createTranslator("en");
   const TITLE = weekTitle(en, pickupWeek(WEEK, null), "en");
   const FAR = "2027-03-07";
@@ -1210,12 +1210,15 @@ describe("issue 254 — a token out, and no card", () => {
     return (await repo.listPendingCharges(product.id)).find((row) => row.ledgerId === ledgerId)?.cardId;
   };
 
-  /** A card update's row: WEEK declined, then claimed on a new token whose charge is out; it stays declined. */
-  const claimed = async () => {
+  /** When a card update's charge was sent: an hour before the run. */
+  const CLAIMED_AT = new Date(RUN_AT.getTime() - 60 * 60_000);
+
+  /** A card update's row: WEEK declined, then claimed at `sentAt`, its charge out; it stays declined. */
+  const claimed = async (sentAt: Date = CLAIMED_AT) => {
     const ada = await subscriber();
     const ledgerId = await repo.addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
     const sourceId = "cnon:card-update";
-    await repo.claimCardUpdate(ada.signup.subscriptionId, sourceId);
+    await repo.claimCardUpdate(ada.signup.subscriptionId, sentAt);
     return { ada, ledgerId, sourceId };
   };
 
@@ -1301,14 +1304,14 @@ describe("issue 254 — a token out, and no card", () => {
     expect(email.sent).toEqual(expected.sent);
   });
 
-  it("AC19: a card update's row with its token out, none found: Square is asked and nothing charged, the row stays declined with its token, no event and no email", async () => {
-    const { ada, ledgerId, sourceId } = await claimed();
+  it("AC19: a card update's row with its charge out, none found: Square is asked and nothing charged, the row stays declined with its charge out, no event and no email", async () => {
+    const { ada, ledgerId } = await claimed();
     const charge = vi.spyOn(payments, "charge");
     const find = vi.spyOn(payments, "findPaymentByReference");
     expect(await run()).toEqual(report());
     expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
     expect(charge).not.toHaveBeenCalled();
-    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[ledgerId, 2, sourceId]]);
+    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.attempt, row.chargeSentAt])).toEqual([[ledgerId, 2, CLAIMED_AT]]);
     expect((await repo.listDeclinedCharges(ada.signup.subscriptionId)).map((row) => [row.ledgerId, row.attempt])).toEqual([[ledgerId, 2]]);
     expect(repo.events()).toEqual([]);
     expect(email.sent).toEqual([]);
@@ -1347,8 +1350,8 @@ describe("issue 254 — a token out, and no card", () => {
     expect(await cardOnFile(out.ada)).toBeNull();
   });
 
-  it("AC19: a closed week's card update row, none found, is never dropped: once the week's pickup is over Square is asked, and the row stays declined with its token, uncharged, no event and no email", async () => {
-    const { ada, ledgerId, sourceId } = await claimed();
+  it("AC19: a closed week's card update row, none found, is never dropped: once the week's pickup is over Square is asked, and the row stays declined with its charge out, uncharged, no event and no email", async () => {
+    const { ada, ledgerId } = await claimed();
     await close(WEEK);
     // So January 17, whose cutoff has passed by now, writes no locked row.
     expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
@@ -1357,9 +1360,94 @@ describe("issue 254 — a token out, and no card", () => {
     expect(await run(new Date("2027-01-12T12:00:00.000Z"))).toEqual(report({ weekOf: NEXT }));
     expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
     expect(charge).not.toHaveBeenCalled();
-    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.chargeSource])).toEqual([[ledgerId, sourceId]]);
+    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.chargeSentAt])).toEqual([[ledgerId, CLAIMED_AT]]);
     expect((await repo.listDeclinedCharges(ada.signup.subscriptionId)).map((row) => [row.ledgerId, row.attempt])).toEqual([[ledgerId, 2]]);
     expect(repo.events()).toEqual([]);
     expect(email.sent).toEqual([]);
+  });
+
+  it("AC5: the run's decline names the attempt it charged", async () => {
+    const ada = await subscriber();
+    payments.declineCard(ada.cardId ?? "no card", "GENERIC_DECLINE");
+    const decline = vi.spyOn(repo, "recordSignupDecline");
+    expect(await run()).toEqual(report({ enrolled: 1, declined: 1 }));
+    const [row] = await repo.listDeclinedCharges(ada.signup.subscriptionId);
+    expect(decline.mock.calls).toEqual([[row?.ledgerId, 1]]);
+  });
+
+  describe("AC19 — a cancelled subscription's charge out, none found", () => {
+    const TEN_MINUTES = 10 * 60_000;
+    const before = (ms: number): Date => new Date(RUN_AT.getTime() - ms);
+
+    /** A card update's charge out since `sentAt`, and its subscription cancelled after the week's cutoff. */
+    const cancelledOut = async (sentAt: Date) => {
+      const out = await claimed(sentAt);
+      expect(await repo.cancelSubscription(out.ada.signup.subscriptionId, RUN_AT)).toBe(true);
+      return out;
+    };
+    /** The run at RUN_AT on a clock that reads it too, so the lookup starts then. */
+    const runNow = (clock: () => Date = () => RUN_AT) => run(RUN_AT, clock);
+    const declinedRows = async (who: Subscriber) => (await repo.listDeclinedCharges(who.signup.subscriptionId)).map((row) => [row.ledgerId, row.attempt]);
+    const outRows = async () => (await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.chargeSentAt]);
+
+    it("AC19: sent ten minutes before the lookup started: its charge is ended, the row declined at its attempt with no charge out, as the charge run; nothing charged, no event and no email", async () => {
+      const { ada, ledgerId } = await cancelledOut(before(TEN_MINUTES));
+      const charge = vi.spyOn(payments, "charge");
+      const withActor = vi.spyOn(repo, "withActor");
+      expect(await runNow()).toMatchObject({ paid: 0, unknown: 0, dropped: 0 });
+      expect(await outRows()).toEqual([]);
+      expect(await declinedRows(ada)).toEqual([[ledgerId, 2]]);
+      expect(withActor.mock.calls.map(([who]) => who)).toEqual(withActor.mock.calls.map(() => CHARGE_RUN));
+      expect(charge).not.toHaveBeenCalled();
+      expect(repo.events()).toEqual([]);
+      expect(email.sent).toEqual([]);
+    });
+
+    it("AC19: sent a millisecond under ten minutes before, it is left as it is", async () => {
+      const sentAt = before(TEN_MINUTES - 1);
+      const { ada, ledgerId } = await cancelledOut(sentAt);
+      const find = vi.spyOn(payments, "findPaymentByReference");
+      await runNow();
+      expect(find).toHaveBeenCalledTimes(1);
+      expect(await outRows()).toEqual([[ledgerId, sentAt]]);
+      expect(await declinedRows(ada)).toEqual([[ledgerId, 2]]);
+      expect(repo.events()).toEqual([]);
+    });
+
+    it("AC19: a lookup started under ten minutes after that answers past them leaves it as it is", async () => {
+      const sentAt = before(TEN_MINUTES - 1);
+      const { ledgerId } = await cancelledOut(sentAt);
+      const real = payments.findPaymentByReference.bind(payments);
+      let back = false;
+      vi.spyOn(payments, "findPaymentByReference").mockImplementation(async (input) => {
+        const found = await real(input);
+        back = true;
+        return found;
+      });
+      await runNow(() => (back ? PAID_AT : RUN_AT));
+      expect(back).toBe(true);
+      expect(await outRows()).toEqual([[ledgerId, sentAt]]);
+    });
+
+    it("AC19: a charge taken over while the run looked is not ended: only the one it listed is", async () => {
+      const { ledgerId } = await cancelledOut(before(TEN_MINUTES));
+      const real = payments.findPaymentByReference.bind(payments);
+      const taken = before(1000);
+      vi.spyOn(payments, "findPaymentByReference").mockImplementation(async (input) => {
+        const found = await real(input);
+        expect(await repo.markChargeSent(ledgerId, 2, before(TEN_MINUTES), taken)).toEqual(taken);
+        return found;
+      });
+      await runNow();
+      expect(await outRows()).toEqual([[ledgerId, taken]]);
+    });
+
+    it("AC19: a payment found is confirmed, as any other's: the week paid, no charge out", async () => {
+      const out = await cancelledOut(before(TEN_MINUTES));
+      await squareTookClaimed(out);
+      expect(await runNow()).toMatchObject({ paid: 1 });
+      expect(await paidWeeks(out.ada)).toEqual([FIRST, WEEK]);
+      expect(await outRows()).toEqual([]);
+    });
   });
 });

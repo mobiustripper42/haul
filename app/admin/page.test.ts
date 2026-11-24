@@ -148,7 +148,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       const product = addSupperClub(services.repo, { cap: 7 });
       await activeSubscriber(services.repo, product, ROSA, PICKS);
       const midPayment = await pendingSignup(services.repo, product, CHIDI, PICKS);
-      await services.repo.startSignupCharge(midPayment.subscriptionId, "cnon:card-1");
+      await services.repo.startSignupCharge(midPayment.subscriptionId, new Date());
       await pendingSignup(services.repo, product, MARCO, PICKS);
 
       const { element, rows } = await page();
@@ -188,7 +188,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     it("AC7: a signup mid-payment is not an active subscription: the card is still empty", async () => {
       const product = addSupperClub(services.repo);
       const midPayment = await pendingSignup(services.repo, product, ROSA, PICKS);
-      await services.repo.startSignupCharge(midPayment.subscriptionId, "cnon:card-1");
+      await services.repo.startSignupCharge(midPayment.subscriptionId, new Date());
       expectEmpty(await Admin());
     });
 

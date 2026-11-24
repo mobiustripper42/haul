@@ -125,7 +125,7 @@ describe("AC1 — the secret fires the run", () => {
     vi.stubEnv("CRON_SECRET", SECRET);
     const { customerId, subscriptionId } = await subscriber();
     const ledgerId = await services.repo.addLedgerRow(subscriptionId, WEEK, "declined", 8000);
-    await services.repo.claimCardUpdate(subscriptionId, "cnon:card-update");
+    await services.repo.claimCardUpdate(subscriptionId, RUN_AT);
     await services.payments.charge({ customerId, sourceId: "cnon:card-update", amountCents: 8000, idempotencyKey: `${ledgerId}:2`, referenceId: ledgerId, customerInitiated: true });
     vi.spyOn(services.payments, "saveCard").mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"));
     vi.spyOn(console, "error").mockImplementation(() => undefined);

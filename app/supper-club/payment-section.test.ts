@@ -131,6 +131,14 @@ describe("AC2 — the price follows the pick", () => {
   });
 });
 
+describe("AC25 (issue 254) — the price panel's summary", () => {
+  it("AC25: a summary stands in the price panel, above its amounts", () => {
+    const html = render({ summary: "3–4 people · Vegan" });
+    expect(ascending(positions(html, ["3–4 people · Vegan", "<strong"]))).toBe(true);
+    expect(panelAmounts(html)).toEqual([formatUsdWhole(5000), formatUsdWhole(5000)]);
+  });
+});
+
 describe("AC4, AC9, AC10a — what a failed pay shows", () => {
   it("AC4: ?payError=consent shows the field error after the checkbox, before the button, and no notice", () => {
     const html = render({ payError: "consent" });

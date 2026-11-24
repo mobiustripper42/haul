@@ -1,8 +1,8 @@
-// Issue 55, AC1–AC3 and AC14, issue 56 (the payment section's place, the retry state, the redirect of a member
+// Issue 55, AC1–AC3 and AC14, issue 56 (the payment section's place, a charge that is out, the redirect of a member
 // who already has a subscription) and issue 57 (the sold-out card's place): /supper-club,
 // `await SupperClub(props)` rendered through react-dom/server with `next/headers` faked and the composition
 // root handing out an InMemoryRepository. This file holds what the page decides and what it passes in: the
-// pickers, the form and its target, which of the Join card, the retry state and the sold-out card shows, and
+// pickers, the form and its target, which of the Join card, the card form over a charge that is out and the sold-out card shows, and
 // what `PaymentSection` and `SoldOutCard` are given. Their own words are payment-section.test.ts and
 // sold-out-card.test.ts; `OptionPicker`'s radios are components/ui/option-picker.test.ts; the frame around
 // the page is join-page.test.ts; `resolveChoices`'s edge cases are src/choices.test.ts. A changed pick
@@ -20,11 +20,9 @@ import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
 import { Notice } from "../../components/ui/notice";
 import { OptionPicker } from "../../components/ui/option-picker";
-import { PricePanel } from "../../components/ui/price-panel";
 import { Shell } from "../../components/ui/shell";
 import { emptyRequest } from "../next-headers-fake";
-import { findAll, inOrder, redirectOf } from "../screen-test-helpers";
-import { retrySupperClubPayment } from "./actions";
+import { alertTexts, attributesOf, findAll, redirectOf } from "../screen-test-helpers";
 import SupperClub from "./page";
 import { paymentWording } from "./payment-wording";
 import { PaymentSection } from "./payment-section";
@@ -164,20 +162,20 @@ const rowsFor = (memberId: string): PendingSignupInput => ({
   consentAt: SIGNUP_DAY,
 });
 
-/** A signup that charged and heard nothing: the ledger row pending, the card token on it unless `token` is false. */
-const stranded = async (over: { token?: boolean; declined?: boolean } = {}) => {
+/** A signup that charged and heard nothing: the ledger row pending, its charge out unless `out` is false. */
+const stranded = async (over: { out?: boolean; declined?: boolean } = {}) => {
   const member = await signIn();
   const signup = await services.repo.savePendingSignup(rowsFor(member.id));
-  if (over.token !== false) await services.repo.startSignupCharge(signup.subscriptionId, "cnon:card-1");
+  if (over.out !== false) await services.repo.startSignupCharge(signup.subscriptionId, SIGNUP_DAY);
   if (over.declined) await services.repo.recordSignupDecline(signup.ledgerId);
   return signup;
 };
 
-/** Another member's pending rows with a card token on them and the charge unanswered: a held spot. */
+/** Another member's pending rows with a charge out, unanswered: a held spot. */
 const holdASpot = async (email = "grace@example.com") => {
   const other = await services.repo.createMember({ email });
   const row = await services.repo.savePendingSignup(rowsFor(other.id));
-  await services.repo.startSignupCharge(row.subscriptionId, `cnon:${other.id}`);
+  await services.repo.startSignupCharge(row.subscriptionId, SIGNUP_DAY);
 };
 
 describe("AC1 — one picker per option type, in stored order", () => {
@@ -381,59 +379,80 @@ describe("AC5 — a member who already has a subscription", () => {
   });
 });
 
-describe("AC10 — the retry state", () => {
-  it("AC10: a pending row with a card shows the notice, the box and amount from the row, and Try again, in order, with no query", async () => {
+describe("AC25 (issue 254) — a charge that is out", () => {
+  const ROW_PICKS = () => ({ [typeId(0)]: optionId(0, 1), [typeId(1)]: optionId(1, 1) });
+
+  it("AC25: a pending row whose charge is out shows the notice, then the card form with the row's picks and their names as its summary, in order, with no query", async () => {
     await stranded();
     const { element } = await render();
     expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
-    const tryAgain = (el: ReactElement<Record<string, unknown>>) => el.type === Button && el.props.type === "submit";
-    expectInOrder(positionsOf(element, [ofType(Notice), ofType(PricePanel), tryAgain]));
-    expect(findAll(element, PricePanel).map((panel) => [panel.props.summary, panel.props.rows])).toEqual([
-      ["3–4 person · Vegan", [{ label: expect.any(String), value: "$80" }]],
-    ]);
+    expectInOrder(positionsOf(element, [ofType(Notice), ofType(PaymentSection)]));
+    expect(sectionOf(element)).toMatchObject({ choices: ROW_PICKS(), summary: "3–4 person · Vegan" });
+    expect(sectionOf(element)?.wordings["8000"]?.price).toBe("$80");
   });
 
-  it("AC10: it replaces the pickers and the payment section", async () => {
+  it("AC25: it replaces the pickers, whose GET form is gone with them; the card form stays", async () => {
     await stranded();
     const { element } = await render();
     expect(pickersOf(element)).toEqual([]);
-    expect(sectionOf(element)).toBeUndefined();
     expect(joinForm(element)).toBeUndefined();
+    expect(sectionOf(element)).toBeDefined();
   });
 
-  it('AC10: "Try again" is the primary button of a form posting to retrySupperClubPayment', async () => {
+  it("AC25: there is no Try again button: the page has no form or button of its own, and Pay is the card form's", async () => {
     await stranded();
-    const { element } = await render();
-    const tryAgain = findAll(element, Button).find((button) => button.props.children === t("supperClub.tryAgain"));
-    expect(tryAgain?.props).toMatchObject({ kind: "primary", type: "submit" });
-    expect(formsOf(element).map((form) => form.props.action)).toEqual([retrySupperClubPayment]);
+    const { element, html } = await render();
+    expect(formsOf(element)).toEqual([]);
+    expect(findAll(findAll(element, Card), Button)).toEqual([]);
+    const join = /<section\b[^>]*>([\s\S]*)<\/section>/.exec(html)?.[1] ?? "";
+    expect(attributesOf(join, "button").filter((button) => button.type === "submit")).toHaveLength(1);
   });
 
-  it("AC10: it shows when they come back later with other picks in the query: the row decides, not the URL", async () => {
+  it("AC25: it shows when they come back later with other picks in the query: the row decides, not the URL", async () => {
     await stranded();
     const { element } = await render({ [typeId(0)]: optionId(0, 0) });
     expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
-    expect(findAll(element, PricePanel)[0]?.props.rows).toEqual([{ label: expect.any(String), value: "$80" }]);
+    expect(sectionOf(element)).toMatchObject({ choices: ROW_PICKS(), summary: "3–4 person · Vegan" });
   });
 
-  it('AC10: when "Try again" comes back error, the error notice shows above the price panel, and only then', async () => {
+  it("AC25: payError=error is not drawn while the charge is out, though another payError still is", async () => {
     await stranded();
-    const { element, html } = await render({ payError: "error" });
-    expect(noticesOf(element)).toEqual([t("supperClub.retryNotice"), t("supperClub.payError")]);
-    const order = [t("supperClub.payError"), "3–4 person · Vegan"];
-    expect(inOrder(html, order)).toEqual(order);
-    expect(noticesOf((await render()).element)).toEqual([t("supperClub.retryNotice")]);
+    const { html } = await render({ payError: "error" });
+    expect(alertTexts(html)).toEqual([t("supperClub.retryNotice")]);
+    expect(sectionOf((await render({ payError: "consent" })).element)?.payError).toBe("consent");
+  });
+
+  it("AC25: its words name the row's pickup week, though the cutoff for it has passed", async () => {
+    vi.setSystemTime(new Date("2026-12-29T05:00:00.000Z"));
+    await stranded();
+    const words = sectionOf((await render()).element)?.wordings["8000"];
+    expect(words).toEqual(paymentWording(t, { priceCents: 8000, firstPickup: "2027-01-03", language: "en" }));
+  });
+
+  it("AC25: a row's week moved to Saturday and Sunday is named by its Saturday, January 2", async () => {
+    await stranded();
+    await services.repo.savePickupWeek(product.id, { weekOf: "2027-01-03", closedAt: null, note: "Moved", firstDay: "2027-01-02", lastDay: "2027-01-03" });
+    const words = sectionOf((await render()).element)?.wordings["8000"];
+    expect(words).toEqual(paymentWording(t, { priceCents: 8000, firstPickup: "2027-01-02", language: "en" }));
   });
 
   it.each([
-    ["?payError=unknown with no pending row", async () => signIn(), { payError: "unknown" }],
-    ["a pending row with no token, as a dead token leaves it", async () => stranded({ token: false }), {}],
-    ["a declined row, its token gone", async () => stranded({ declined: true }), {}],
-  ])("AC10: %s is the normal form", async (_what, setUp, query) => {
+    ["a pending row with no charge out, as a refused charge leaves it", async () => stranded({ out: false })],
+    ["a declined row", async () => stranded({ declined: true })],
+  ])("AC10: %s is the normal form", async (_what, setUp) => {
     await setUp();
-    const { element } = await render(query);
+    const { element } = await render();
     expect(sectionOf(element)).toBeDefined();
+    expect(pickersOf(element)).toHaveLength(2);
     expect(noticesOf(element)).toEqual([]);
+  });
+
+  it("AC26: ?payError=unknown with no pending row is the normal form, with the retry notice", async () => {
+    await signIn();
+    const { element, html } = await render({ payError: "unknown" });
+    expect(sectionOf(element)).toBeDefined();
+    expect(pickersOf(element)).toHaveLength(2);
+    expect(alertTexts(html)).toEqual([t("supperClub.retryNotice")]);
   });
 });
 
@@ -481,12 +500,12 @@ describe("issue 57 — the sold-out card", () => {
   });
 
   describe("AC4 — a member the cap does not stop", () => {
-    it('AC4: a member with a stranded payment still sees "Try again" at the cap, and no sold-out card', async () => {
+    it("AC4: a member with a stranded payment still sees the card form at the cap, and no sold-out card", async () => {
       stock([SIZE, PREFERENCE], 1);
       await stranded();
       const { element } = await render();
       expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
-      expect(formsOf(element).map((form) => form.props.action)).toEqual([retrySupperClubPayment]);
+      expect(sectionOf(element)).toBeDefined();
       expect(findAll(element, SoldOutCard)).toEqual([]);
     });
   });
@@ -499,12 +518,13 @@ describe("issue 57 — the sold-out card", () => {
       expect(noticesOf(element)).toEqual([]);
     });
 
-    it('AC5: payError=soldout on a stranded payment is "Try again", with no sold-out card', async () => {
+    it("AC5: payError=soldout on a stranded payment is the card form, with no sold-out card", async () => {
       stock([SIZE, PREFERENCE], 1);
       await stranded();
       const { element } = await render({ payError: "soldout" });
       expect(findAll(element, SoldOutCard)).toEqual([]);
       expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
+      expect(sectionOf(element)).toBeDefined();
     });
   });
 
@@ -542,7 +562,7 @@ describe("issue 77 — the page opens on JoinPage's frame", () => {
   });
 });
 
-// Issue 101, AC9: step 3 names a member who has a name, in the normal and the retry state. Which name is
+// Issue 101, AC9: step 3 names a member who has a name, in the normal state and over a charge that is out. Which name is
 // `memberDisplayName`'s (src/members.test.ts); a member with none still reads "Signed in as {email}." (AC3 above).
 describe("AC9 (issue 101) — step 3 names the member", () => {
   const PAULA = "paid@example.com";
@@ -562,10 +582,10 @@ describe("AC9 (issue 101) — step 3 names the member", () => {
     expectInOrder(positionsOf(element, [lineReading(SIGNED_IN_AS_PAULA), ofType(PaymentSection)]));
   });
 
-  it("AC9: in the retry state it reads the same line, before the notice", async () => {
+  it("AC9: over a charge that is out it reads the same line, before the notice", async () => {
     const member = await signInPaula();
     const signup = await services.repo.savePendingSignup(rowsFor(member.id));
-    await services.repo.startSignupCharge(signup.subscriptionId, "cnon:card-1");
+    await services.repo.startSignupCharge(signup.subscriptionId, SIGNUP_DAY);
     const { element } = await render();
     expect(noticesOf(element)).toEqual([t("supperClub.retryNotice")]);
     expectInOrder(positionsOf(element, [lineReading(SIGNED_IN_AS_PAULA), ofType(Notice)]));
