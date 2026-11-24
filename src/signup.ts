@@ -2,7 +2,7 @@ import { matchCustomer } from "./customer-match.js";
 import { abandonIfDead, recordDecline, sendCharge, settlePaid } from "./ledger-charge.js";
 import type { Member } from "./members.js";
 import { clevelandDate, firstPickup } from "./pickup-week.js";
-import { requireText, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { requireCardToken, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
@@ -94,8 +94,8 @@ async function prepare(
 
   // A row whose charge is out holds its own spot, so only a signup that would take a new one meets the cap.
   if (isSoldOut(product, await repo.countHeldSpots(product.id))) return soldOut(repo, input.memberId);
-  // A blank token is an error before anything is written or sent.
-  requireText("sourceId", input.sourceId);
+  // A blank token, or CASH or EXTERNAL, is an error before anything is written or sent.
+  requireCardToken(input.sourceId);
 
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 

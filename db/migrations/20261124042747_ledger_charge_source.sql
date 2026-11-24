@@ -5,5 +5,5 @@
 -- token lives on the pending ledger row while its charge is out, and that column is what "charge out" means: the spot
 -- count, the refusal of a second tab, Try again and the charge run's look-but-don't-charge rule all read it. Null once the
 -- row settles or its token is abandoned. The card on file stays in subscriptions.square_card_id. `ledger` already carries
--- the audit trigger.
+-- the audit trigger, so audit_log keeps a copy of the token: single-use, short-lived, and no use without the farm's Square secret.
 alter table ledger add column charge_source nonblank_text;

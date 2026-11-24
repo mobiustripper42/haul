@@ -89,9 +89,20 @@ export function isDeadToken(error: unknown): error is PaymentsError {
 export const IDEMPOTENCY_KEY_MAX = 45;
 export const REFERENCE_ID_MAX = 40;
 
-export function requireText(field: string, value: unknown): void {
+function requireText(field: string, value: unknown): void {
   if (typeof value !== "string" || value === "") {
     throw new RangeError(`${field} must be a non-empty string`);
+  }
+}
+
+/**
+ * A browser's card token for `sourceId`. Square's CreatePayment reads `CASH` and `EXTERNAL` as money received
+ * outside Square, so a member's request must never carry either: they are refused as a blank one is.
+ */
+export function requireCardToken(value: unknown): void {
+  requireText("sourceId", value);
+  if (value === "CASH" || value === "EXTERNAL") {
+    throw new RangeError("sourceId must be a card token");
   }
 }
 

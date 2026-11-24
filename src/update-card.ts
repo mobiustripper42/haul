@@ -10,7 +10,7 @@ import {
   settlePaid,
 } from "./ledger-charge.js";
 import type { EmailPort } from "./ports/email.js";
-import { isCardRefusal, PaymentsError, requireText, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { isCardRefusal, PaymentsError, requireCardToken, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import type { Actor, PendingCharge, Repository } from "./ports/repository.js";
 import { requireSupperClub } from "./products.js";
 import { recordEventAs } from "./record-event.js";
@@ -19,9 +19,9 @@ import { recordEventAs } from "./record-event.js";
  * A member's card update (issue 145; DEC-003, DEC-053): with a declined week owed, the claim turns its row pending with
  * the card token on it, the token is charged under the key its bumped attempt makes, and the card is saved from the
  * payment. With nothing owed the card is saved alone. The key and the token stay fixed until that charge settles, by the
- * member's Try again or the charge run's next firing, so a save while any row is `pending` charges nothing and saves no
- * card. The provider calls run between `withActor` commits, never inside one. Everything written or recorded runs under
- * the member.
+ * member's Try again, or by a firing of the charge run that finds Square took it (the run never sends it), so a save while
+ * any row is `pending` charges nothing and saves no card. The provider calls run between `withActor` commits, never inside
+ * one. Everything written or recorded runs under the member.
  */
 
 export type UpdateCardDeps = { repo: Repository; payments: PaymentsPort; email: EmailPort; siteUrl: string; clock: () => Date };
@@ -68,8 +68,8 @@ async function save(deps: UpdateCardDeps, { memberId, sourceId }: { memberId: st
   const customerId = (await repo.findMemberById(memberId))?.squareCustomerId;
   if (!subscription || !customerId) return { outcome: "error" };
 
-  // A blank token is an error before anything is claimed, charged or saved.
-  requireText("sourceId", sourceId);
+  // A blank token, or CASH or EXTERNAL, is an error before anything is claimed, charged or saved.
+  requireCardToken(sourceId);
 
   const claim = await repo.withActor(actor, (scoped) => scoped.claimCardUpdate(subscription.id, sourceId));
   switch (claim.kind) {
