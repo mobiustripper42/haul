@@ -1371,6 +1371,19 @@ describe("issue 254 — charge the token, then save the card", () => {
     expect(await held()).toBe(0);
   });
 
+  // Square's CreatePayment takes these two words as money received outside Square, so a browser's text must never be one.
+  it.each(["CASH", "EXTERNAL"])("AC1 (issue 254): a sourceId of %s is error, as a blank one is: nothing is sent to Square, and no row holds it", async (word) => {
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    const result = await submit({ sourceId: word });
+    expect(charge).not.toHaveBeenCalled();
+    expect(result.outcome).toBe("error");
+    expect(save).not.toHaveBeenCalled();
+    expect(payments.customers).toEqual([]);
+    expect((await pending())?.chargeSource ?? null).toBeNull();
+    expect(await held()).toBe(0);
+  });
+
   it("AC2 (issue 254): while the charge is out the token is on the row and holds its spot, and a second tab's save is refused", async () => {
     const real = payments.charge.bind(payments);
     const during: unknown[] = [];

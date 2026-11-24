@@ -447,6 +447,31 @@ describe("issue 254 — charge the token, then save the card", () => {
     expect(await pendingRows()).toEqual([]);
   });
 
+  // Square's CreatePayment takes these two words as money received outside Square, so a browser's text must never be one.
+  it.each(["CASH", "EXTERNAL"])("AC9 (issue 254): a sourceId of %s with a week owed is error, as a blank one is: nothing is charged or saved, and the row stays declined at its attempt", async (word) => {
+    const jan17 = await declined();
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    const result = await update(word);
+    expect(charge).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "error" });
+    expect(save).not.toHaveBeenCalled();
+    expect(await declinedRows()).toEqual([[jan17, 1]]);
+    expect(await pendingRows()).toEqual([]);
+  });
+
+  it.each(["CASH", "EXTERNAL"])("AC13 (issue 254): a sourceId of %s with nothing owed is error, as a blank one is: nothing is charged, and no save is sent to Square", async (word) => {
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    const result = await update(word);
+    expect(save).not.toHaveBeenCalled();
+    expect(charge).not.toHaveBeenCalled();
+    expect(result).toEqual({ outcome: "error" });
+    expect(await onFile()).toEqual(OLD_ON_FILE);
+  });
+
   it("AC10 (issue 254): a paid charge's card is saved once, from the payment's id, under its SHA-256, and replaces the card on file; a closed week's declined row is deleted; the receipt goes once", async () => {
     const jan17 = await declined();
     await declined(JAN_24);
