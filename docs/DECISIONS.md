@@ -39,6 +39,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-035 — A week credit is spent at enrolment, as a paid 0-cent row
 - DEC-040 — A declined week's charge after a card update is claimed on its own row
 - DEC-041 — A closed week's declined row is never charged, and a card save deletes it
+- DEC-052 — Every charge Haul sends Square says the seller started it
 
 ### Data model
 - DEC-006 — Product choices are option types and options, priced by sum

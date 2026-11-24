@@ -174,6 +174,7 @@ export class SquarePayments implements PaymentsPort {
       location_id: this.locationId,
       amount_money: { amount: input.amountCents, currency: "USD" },
       autocomplete: true,
+      customer_details: { customer_initiated: false },
       ...(input.referenceId !== undefined && { reference_id: input.referenceId }),
     });
     if (!reply.ok) {

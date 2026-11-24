@@ -2,7 +2,8 @@
 // (AC11), paging (AC12), how it reads Square's replies (AC13) and errors (AC14), and what it never
 // leaks (AC15). Nothing here reaches the network; the contract against the real sandbox is
 // square-payments.sandbox.ts. Issue 56 adds a customer's reference_id (AC6), the payment lookup (AC10)
-// and the timeout on every request (AC12).
+// and the timeout on every request (AC12). Issue 251 adds customer_details to both of charge's
+// pinned requests (its AC1), in the two charge tests under AC11.
 import { afterEach, beforeEach, describe, expect, it, vi, type MockInstance } from "vitest";
 import type * as PortModule from "../ports/payments.js";
 import { checkPaymentsInput, IdempotencyKeyReusedError, PaymentsError } from "../ports/payments.js";
@@ -279,7 +280,7 @@ describe("AC11 (issue 54) — SquarePayments' requests", () => {
     });
   });
 
-  it("AC11: charge sends the card as source_id, the location, USD amount_money and autocomplete, and nothing else without a referenceId", async () => {
+  it("AC11: charge sends the card as source_id, the location, USD amount_money, autocomplete and customer_details, and nothing else without a referenceId", async () => {
     const { fetch, calls } = okFetch("charge");
     await square(fetch).charge({ customerId: "CUS_ADA", cardId: "ccof:Abc123", amountCents: 5000, idempotencyKey: "charge-key-1" });
     expect(bodyOf(calls[0])).toStrictEqual({
@@ -289,6 +290,7 @@ describe("AC11 (issue 54) — SquarePayments' requests", () => {
       location_id: LOCATION,
       amount_money: { amount: 5000, currency: "USD" },
       autocomplete: true,
+      customer_details: { customer_initiated: false },
     });
   });
 
@@ -308,6 +310,7 @@ describe("AC11 (issue 54) — SquarePayments' requests", () => {
       location_id: LOCATION,
       amount_money: { amount: 1234, currency: "USD" },
       autocomplete: true,
+      customer_details: { customer_initiated: false },
       reference_id: "week-2026-45",
     });
   });
