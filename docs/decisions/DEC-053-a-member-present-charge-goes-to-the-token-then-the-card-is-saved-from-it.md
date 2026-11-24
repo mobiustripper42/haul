@@ -5,13 +5,13 @@ title: "A member-present charge goes to the token first; the card is saved from 
 topic: "Payments"
 status: "active"
 date: "2026-11-24"
-ruling: "Signup and a card update with a week owed charge the card token first, buyer-started, then save the card from the payment; a saved card's charge, the weekly run's included, stays seller-started."
+ruling: "Signup and a card update with a week owed charge the card entered first, buyer-started, then save the card from the payment; no token is stored, and a second submit is charged under the same key."
 claims:
   - kind: "file"
     target: "src/ledger-charge.ts"
-    note: "sendCharge, settlePaid, abandonIfRefused"
+    note: "takeCharge, settlePaid"
   - kind: "column"
-    target: "ledger.charge_source"
+    target: "ledger.charge_sent_at"
   - kind: "test"
     target: "src/ledger-charge.test.ts"
 supersedes:
@@ -22,17 +22,18 @@ revisit_if: "Square changes charge-and-store, or paid weeks with no card saved b
 
 ## DEC-053: A member-present charge goes to the token first; the card is saved from it
 
-Square's charge-and-store guide: CreatePayment with the card token, then CreateCard with the payment's id as its
-source. Bank-check cards paid without it (DEC-052); 254 follows the guide.
+Square's charge-and-store guide: CreatePayment with the card token, then CreateCard with the payment's id as its source.
+Bank-check cards paid without it (DEC-052); 254 follows the guide.
 
-**The token lives on the ledger row** while its charge is out (`ledger.charge_source`); a filled one is what "charge
-out" means: the spot count, a second save's refusal, Try again and the run's lookup rule read it. The key
-`ledgerId:attempt` stays fixed until the charge settles (DEC-003). A signup's row stays `pending`; a card update's claim
-puts the token on the open declined row and bumps its attempt, and the row stays `declined` (DEC-042) until the card is
-saved. Try again asks Square first and resends the same charge; only one Square refuses outright clears the token.
+No token is stored. `ledger.charge_sent_at` is when a charge with no recorded answer was sent; set, the charge is out:
+the spot count, a second save's refusal and the run's lookup rule read it. The key `ledgerId:attempt` stays fixed until
+the charge settles (DEC-003). A signup's row stays `pending`; a card update's claim marks the open declined row, which
+stays `declined` (DEC-042) until a card is saved.
 
-**Who started a charge**: a token's is buyer-started, a saved card's seller-started, the weekly run's included.
+A second submit charges its card under the same key, once Square has no payment under the ledger id. Square takes one
+charge per key, so the next key comes only when Square says the key is used, no payment is found and ten minutes have
+passed since the stamp the row was read with. A stamp is compared before it is replaced, so a slow tab cannot end a
+newer one. A charge Square refuses outright ends.
 
-**The card is written at confirm**, with the rows turning paid. A failed save after the payment leaves a paid week with
-no card (`card_not_saved`) and takes a card update's declined card off file; a week the run meets with no card is
-declined `NO_CARD`. DEC-041 holds. Ship with no charge in flight.
+A token's charge is buyer-started, a saved card's seller-started, the run's included. The card is written at confirm;
+a failed save leaves a paid week with no card (`card_not_saved`). DEC-041 holds.

@@ -74,8 +74,8 @@ export type PendingSignup = {
   ledgerStatus: "pending" | "paid" | "declined";
   attempt: number;
   squareCardId: string | null;
-  /** The card token while the row's charge is out, null otherwise (DEC-053): "charge out" is `pending` with it set. */
-  chargeSource: string | null;
+  /** When the charge that has no answer yet was sent, null when none is out (DEC-053). */
+  chargeSentAt: Date | null;
   amountCents: number;
   weeklyCents: number;
   pickupDate: string;
@@ -201,8 +201,8 @@ export type PendingCharge = {
   memberId: string;
   customerId: string;
   cardId: string | null;
-  /** The card token while the row's charge is out, null otherwise. */
-  chargeSource: string | null;
+  /** When the charge that has no answer yet was sent, null when none is out. */
+  chargeSentAt: Date | null;
   amountCents: number;
   attempt: number;
   pickupDate: string;
@@ -218,11 +218,17 @@ export type PendingCharge = {
 export type DeclinedCharge = { ledgerId: string; pickupDate: string; amountCents: number; attempt: number; closed: boolean };
 
 /**
- * Issue 145, issue 254: what `claimCardUpdate` decided. `claimed`: the open declined row has the card token on it and a
- * bumped attempt, and stays declined, to charge; `nothing_owed`: no open week is owed, nothing written; `busy`: a
- * charge is out or a pending one waits on the card on file, nothing written; `inactive`: the subscription is not active, nothing written.
+ * Issue 145, issue 254: what `claimCardUpdate` decided. `claimed`: the open declined row has its charge marked sent and a
+ * bumped attempt, and stays declined, to charge; `out`: a charge is already out, on `charge`, nothing written; `busy`: a
+ * pending row waits on the card on file, nothing written; `nothing_owed`: no open week is owed, nothing written;
+ * `inactive`: the subscription is not active, nothing written.
  */
-export type CardUpdateClaim = { kind: "claimed"; charge: PendingCharge } | { kind: "nothing_owed" } | { kind: "busy" } | { kind: "inactive" };
+export type CardUpdateClaim =
+  | { kind: "inactive" }
+  | { kind: "out"; charge: PendingCharge }
+  | { kind: "busy" }
+  | { kind: "claimed"; charge: PendingCharge }
+  | { kind: "nothing_owed" };
 
 /**
  * Issue 150: what `enrolWeek` wrote: `pending` rows to charge, rows paid at 0 cents for a 0-cent set (`zeroCents`), and
@@ -296,42 +302,57 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   savePendingSignup(input: PendingSignupInput): Promise<PendingSignup>;
   /**
-   * Puts the card token (`ledger.charge_source`) on a pending subscription's ledger row that has none, and gives back the
-   * amount and attempt of that row, which are what to charge. The charge is out from here. Null when the start is lost:
-   * another token is there, or the subscription is no longer pending, or its ledger row is not pending. Those outrank the
-   * cap. Otherwise, under the member row's lock and then the product row's, it counts held spots and returns "sold_out"
+   * Marks the charge out (`ledger.charge_sent_at` = `now`) on a pending subscription's ledger row that has none, and gives
+   * back the amount and attempt of that row, which are what to charge. The charge is out from here. Null when the start is
+   * lost: a charge is already out, or the subscription is no longer pending, or its ledger row is not pending. Those outrank
+   * the cap. Otherwise, under the member row's lock and then the product row's, it counts held spots and returns "sold_out"
    * when the product is full, writing nothing.
    */
-  startSignupCharge(subscriptionId: string, sourceId: string): Promise<{ amountCents: number; attempt: number } | "sold_out" | null>;
+  startSignupCharge(subscriptionId: string, now: Date): Promise<{ amountCents: number; attempt: number } | "sold_out" | null>;
   /**
-   * Try again's end for a refused charge: clears the token of a row whose charge is out. A signup's `pending` row stays
-   * `pending` with its attempt bumped (the next token is a new request under a new key); a card update's `declined` one
-   * stays `declined` at its attempt. Null, writing nothing, when the row has no token.
+   * The end of a refused charge: clears `charge_sent_at` of a row whose charge is out, when it is still `sentAt`, the stamp
+   * of the charge that ended. A signup's `pending` row stays `pending` with its attempt bumped (the next card is a new
+   * request under a new key); a card update's `declined` one stays `declined` at its attempt. Null, writing nothing, when
+   * the row has no charge out or another charge's stamp.
    */
-  abandonCharge(ledgerId: string): Promise<"pending" | "declined" | null>;
+  abandonCharge(ledgerId: string, sentAt: Date): Promise<"pending" | "declined" | null>;
+  /**
+   * A submit takes over the charge that is out: on a row out at `attempt` with the stamp `expected`, sets the stamp to the
+   * later of `now` and `expected` + 1 ms (two submits never hold one stamp) and gives back what it wrote. Null, writing
+   * nothing, on any other row.
+   */
+  markChargeSent(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<Date | null>;
+  /**
+   * The next key: on a row out at `attempt` with the stamp `expected`, the attempt one higher and the stamp the later of
+   * `now` and `expected` + 1 ms. Null, writing nothing, on any other row.
+   */
+  restartCharge(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<{ attempt: number; sentAt: Date } | null>;
+  /** Puts `previous` back as the stamp of a row out at `attempt` with the stamp `expected`; false, writing nothing, on any other row. */
+  restoreChargeSent(ledgerId: string, attempt: number, expected: Date, previous: Date): Promise<boolean>;
   /**
    * The card update with nothing owed, under the member row's lock: `inactive` when the subscription is not `active`,
    * `busy` when it holds a `pending` row and has a card on file, or any row whose charge is out, both writing nothing (a
-   * `pending` row with no token on a subscription with no card does not: the card saved is the one its charge uses); else sets the card's id, brand
-   * and last four and deletes the closed weeks' `declined` rows with no token, as `replaced`.
+   * `pending` row with no charge out on a subscription with no card does not: the card saved is the one its charge uses); else sets the card's id, brand
+   * and last four and deletes the closed weeks' `declined` rows with no charge out, as `replaced`.
    */
   replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<"replaced" | "busy" | "inactive">;
   /**
    * The spots of a product that are taken: an active subscription, or a pending one whose ledger row is pending with a
-   * charge out (its token on it). A declined row and one with no token hold none, so a decline releases its spot with no write.
+   * charge out (`charge_sent_at` set). A declined row and one with no charge out hold none, so a decline releases its spot with no write.
    */
   countHeldSpots(productId: string): Promise<number>;
   /**
-   * Ends a ledger row that is `pending`, or `declined` with its token out (a card update's), as `declined` with no token. True
-   * only when this call made that change; false when the row was paid, already declined with no token (another firing's), or
-   * does not exist, so only the writer that did it acts on the decline.
+   * Ends a ledger row that is `pending`, or `declined` with its charge out (a card update's), as `declined` with no charge out. True
+   * only when this call made that change; false when the row was paid, already declined with no charge out (another firing's), or
+   * does not exist, so only the writer that did it acts on the decline. With `attempt`, only a row at that attempt: a
+   * decline that comes back once a newer charge is out ends nothing.
    */
-  recordSignupDecline(ledgerId: string): Promise<boolean>;
+  recordSignupDecline(ledgerId: string, attempt?: number): Promise<boolean>;
   /**
-   * Flips the rows when `amountCents` is the ledger's `amount_cents`, clearing the token; "mismatch" leaves them as they are.
+   * Flips the rows when `amountCents` is the ledger's `amount_cents`, clearing `charge_sent_at`; "mismatch" leaves them as they are.
    * A row already paid is "already" whatever the amount, so a replay never reads as a mismatch. With `card`, the same
    * transaction sets the subscription's card id, brand and last four and deletes its closed weeks' `declined` rows that have
-   * no token out; with none, a `declined` row whose token was out sets those three columns null (a card update paid whose card
+   * no charge out; with none, a `declined` row whose charge was out sets those three columns null (a card update paid whose card
    * could not be saved). "mismatch" and "already" write no card.
    */
   confirmSignupRows(ledgerId: string, paymentId: string, amountCents: number, now: Date, card?: Card): Promise<"confirmed" | "already" | "mismatch">;
@@ -373,8 +394,8 @@ export interface Repository extends SignInStore, RateLimitStore {
    */
   enrolWeek(productId: string, weekOf: string, cutoff: Date): Promise<EnrolledWeek>;
   /**
-   * Issue 134: the product's `pending` ledger rows whose subscription has a card or whose charge is out (its token on the
-   * row), and, issue 254, `declined` rows whose charge is out (a card update's), oldest `pickup_date` first, then
+   * Issue 134: the product's `pending` ledger rows whose subscription has a card or whose charge is out (its
+   * `charge_sent_at` set), and, issue 254, `declined` rows whose charge is out (a card update's), oldest `pickup_date` first, then
    * subscription `created_at`; and an active subscription's `pending` row with neither, for the run to decline `NO_CARD`.
    */
   listPendingCharges(productId: string): Promise<PendingCharge[]>;
@@ -388,13 +409,16 @@ export interface Repository extends SignInStore, RateLimitStore {
   /** Issue 145: the subscription's `declined` rows, closed weeks' included, oldest week first. */
   listDeclinedCharges(subscriptionId: string): Promise<DeclinedCharge[]>;
   /**
-   * Issue 145, issue 254: under the member row's lock: `inactive` when the subscription is not `active`; `busy` when it
-   * holds a `pending` row and has a card on file, or any row whose charge is out; else, when an open week's `declined` row exists (oldest week
-   * first), puts `sourceId` on it, bumps its attempt, leaves it `declined` and returns it as `claimed`; else
-   * `nothing_owed`. It writes no card and deletes no row.
+   * Issue 145, issue 254: under the member row's lock: `inactive` when the subscription is not `active`; `out` when any
+   * row's charge is out, with that row, nothing written; `busy` when it holds a `pending` row and has a card on file; else,
+   * when an open week's `declined` row exists (oldest week first), marks its charge sent at `now`, bumps its attempt,
+   * leaves it `declined` and returns it as `claimed`; else `nothing_owed`. It writes no card and deletes no row.
    */
-  claimCardUpdate(subscriptionId: string, sourceId: string): Promise<CardUpdateClaim>;
-  /** Issue 145: the subscription's oldest row `listPendingCharges` lists (a card, or a token on a `pending` or `declined` row, and a Square customer), from its select. */
+  claimCardUpdate(subscriptionId: string, now: Date): Promise<CardUpdateClaim>;
+  /**
+   * Issue 145: the subscription's oldest row `listPendingCharges` lists (a card, or a charge out on a `pending` or `declined`
+   * row, and a Square customer), from its select; a row whose charge is out comes before a `pending` one.
+   */
   findPendingCharge(subscriptionId: string): Promise<PendingCharge | null>;
   /** Issue 145: the row, when it is one of this subscription's `paid` rows; null otherwise. */
   findPaidCharge(subscriptionId: string, ledgerId: string): Promise<{ ledgerId: string; pickupDate: string; amountCents: number } | null>;

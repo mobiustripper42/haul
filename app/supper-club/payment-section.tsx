@@ -36,10 +36,11 @@ const CONSENT_ERROR_ID = "consent-error";
  * submit a payment. It copies the picks into hidden fields named by option type id, and follows the
  * radios as they change: `wordings` holds the words for every price a pick can come to (made on the
  * server, so the words shown and the words stored are one), and the price panel, the checkbox sentence
- * and the button follow the sum. Pay is the form's action: it asks `CardEntry` for a token, adds it to what
+ * and the button follow the sum; given a `summary` (the picks of a row whose charge is out) the panel opens with it. Pay is the form's action: it asks `CardEntry` for a token, adds it to what
  * the form holds, and only then calls `joinSupperClub`; it does not go on without the tick.
  */
 export function PaymentSection({
+  summary,
   prices,
   choices: firstChoices,
   wordings,
@@ -47,6 +48,8 @@ export function PaymentSection({
   text,
   card,
 }: {
+  /** Over a charge that is out, the names of the row's picks, which the price panel opens with. */
+  summary?: string;
   /** Per option type, in order: the price of each option. */
   prices: { typeId: string; options: { id: string; priceCents: number }[] }[];
   choices: Record<string, string>;
@@ -126,6 +129,7 @@ export function PaymentSection({
         billing={card.billing}
       />
       <PricePanel
+        summary={summary}
         rows={[
           { label: text.todayLabel, value: words.price },
           { label: text.weeklyLabel, value: words.price },

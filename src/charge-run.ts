@@ -4,6 +4,7 @@ import {
   recordDecline,
   recordOutcomeUnknown,
   renderReceipt,
+  RESEND_AFTER_MS,
   sendCharge,
   sendMemberEmail as sendEmailTo,
   settlePaid,
@@ -118,10 +119,10 @@ function logFailure(step: string, error: unknown): void {
 }
 
 /**
- * One row. A stranded signup (its subscription still `pending`), a closed week's row and a row whose charge is out (its
- * token on it: a member's charge, which the run never sends) are looked up, never charged; an active subscription's row with
+ * One row. A stranded signup (its subscription still `pending`), a closed week's row and a row whose charge is out (a
+ * member's charge, which the run never sends) are looked up, never charged; an active subscription's row with
  * no card on file is declined `NO_CARD`; any other is charged on the card on file. What Square took, however found, is
- * confirmed, a found token payment saving its card as the member's own charge would; a decline is recorded; anything else
+ * confirmed, a found payment of a card the member entered saving its card as the member's own charge would; a decline is recorded; anything else
  * leaves the row `pending` and records that the outcome is unknown.
  */
 async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge, report: ChargeRunReport): Promise<void> {
@@ -130,13 +131,20 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
   try {
     let paymentId: string;
     let chargedCents: number;
-    if (stranded || row.closed || row.chargeSource !== null) {
+    if (stranded || row.closed || row.chargeSentAt !== null) {
+      const lookupStartedAt = clock();
       const found = await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt });
       if (!found) {
         // A closed week's row nobody paid for is deleted once the week's pickup is over: the week is not charged. A row whose
-        // charge is out is never dropped: its member's token may yet turn up as a payment, and the row stays as it is.
+        // charge is out is never dropped: its member's charge may yet turn up as a payment, and the row stays as it is. A
+        // cancelled subscription's, sent ten minutes or more before this lookup started and not found, has no member to
+        // enter another card: its charge ends, by the stamp this run listed, so a charge taken over meanwhile is left alone.
         const last = { weekOf: row.pickupDate, firstDay: row.pickupDate, lastDay: row.lastPickupDay };
-        if (!stranded && row.chargeSource === null && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
+        if (!stranded && row.chargeSentAt === null && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
+        const sentAt = row.chargeSentAt;
+        if (sentAt !== null && row.subscriptionStatus === "cancelled" && lookupStartedAt.getTime() - sentAt.getTime() >= RESEND_AFTER_MS) {
+          await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.abandonCharge(row.ledgerId, sentAt));
+        }
         return;
       }
       ({ paymentId, amountCents: chargedCents } = found);
@@ -155,9 +163,9 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
     }
     // The answer is back: this is the moment `paid_at` records.
     const paidAt = clock();
-    // A payment made from a token is a member's: its card is saved from it. A saved card's charge has none to save.
+    // A payment made from a card the member entered is theirs: its card is saved from it. A saved card's charge has none to save.
     const confirmed =
-      row.chargeSource === null
+      row.chargeSentAt === null
         ? await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.confirmSignupRows(row.ledgerId, paymentId, chargedCents, paidAt))
         : (
             await settlePaid(repo, payments, CHARGE_RUN_ACTOR, {
@@ -189,7 +197,7 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
  * firing that turned the row declined: a loser of the race has nothing to tell the member.
  */
 async function declineAndEmail(deps: ChargeRunDeps, productId: string, row: PendingCharge, code: string, report: ChargeRunReport): Promise<void> {
-  const flipped = await recordDecline(deps.repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, code);
+  const flipped = await recordDecline(deps.repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, code, row.attempt);
   report.declined++;
   if (!flipped) return;
   await sendMemberEmail(deps, row.memberId, async (member) => {

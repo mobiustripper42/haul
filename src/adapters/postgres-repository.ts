@@ -91,7 +91,7 @@ type PendingSignupRow = {
   ledger_status: PendingSignup["ledgerStatus"];
   attempt: number;
   square_card_id: string | null;
-  charge_source: string | null;
+  charge_sent_at: Date | null;
   amount_cents: number;
   weekly_cents: number;
   pickup_date: string;
@@ -167,11 +167,11 @@ const weekClosed = (productExpr: string, weekExpr: string): string =>
   `exists (select 1 from pickup_weeks w where w.product_id = ${productExpr} and w.week_of = ${weekExpr} and w.closed_at is not null)`;
 
 /**
- * A condition on `ledger l`: the row's charge is out (DEC-053): the card token is on it (`charge_source`), on a `pending`
- * row (a signup's) or a `declined` one (a card update's). The one home of the rule, used by `countHeldSpots`,
- * `savePendingSignup`'s refusal, `abandonCharge`'s match, the card update's `busy` and what `writeCard` leaves alone.
+ * A condition on `ledger l`: the row's charge is out (DEC-053): `charge_sent_at` is set, on a `pending` row (a signup's) or a
+ * `declined` one (a card update's). The one home of the rule, used by `countHeldSpots`, `savePendingSignup`'s refusal, the
+ * writes that name a charge, the card update's `out` and what `writeCard` leaves alone.
  */
-const CHARGE_OUT = `l.status in ('pending', 'declined') and l.charge_source is not null`;
+const CHARGE_OUT = `l.status in ('pending', 'declined') and l.charge_sent_at is not null`;
 
 /**
  * Issue 196: the `from` clause of the `declined` ledger rows of the subscription `s`: the one home of "this
@@ -452,7 +452,7 @@ export class PostgresRepository implements Repository {
   async findPendingSignup(memberId: string, productId: string): Promise<PendingSignup | null> {
     if (!UUID_SHAPE.test(memberId) || !UUID_SHAPE.test(productId)) return null;
     const { rows } = await this.db.query<PendingSignupRow>(
-      `select s.id as subscription_id, l.id as ledger_id, l.status as ledger_status, l.attempt, s.square_card_id, l.charge_source,
+      `select s.id as subscription_id, l.id as ledger_id, l.status as ledger_status, l.attempt, s.square_card_id, l.charge_sent_at,
               l.amount_cents, s.weekly_cents, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date, s.created_at,
               array(select so.option_id::text from subscription_options so where so.subscription_id = s.id) as option_ids
          from subscriptions s
@@ -470,7 +470,7 @@ export class PostgresRepository implements Repository {
           ledgerStatus: row.ledger_status,
           attempt: row.attempt,
           squareCardId: row.square_card_id,
-          chargeSource: row.charge_source,
+          chargeSentAt: row.charge_sent_at,
           amountCents: row.amount_cents,
           weeklyCents: row.weekly_cents,
           pickupDate: row.pickup_date,
@@ -484,7 +484,7 @@ export class PostgresRepository implements Repository {
    * The pending subscription, its picks and its ledger row, in one transaction under a lock on the member
    * row, which a bind and a confirm take too, so neither lands between the checks and the write. With the
    * lock held it refuses (`SignupRefusedError`) when the member holds an active subscription to the product,
-   * or when the pending row's charge is out (its ledger row pending with the card token on it): that row is frozen.
+   * or when the pending row's charge is out (its ledger row pending with `charge_sent_at` set): that row is frozen.
    * Otherwise the upsert on the one-pending-row index makes a double submit one signup. A decline charged nothing, so the
    * row after one goes back to pending as the next attempt; a pending row keeps its attempt.
    */
@@ -549,15 +549,15 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * Puts the card token on the ledger row where the subscription is pending and the row is pending with none, and
+   * Marks the charge sent on the ledger row where the subscription is pending and the row is pending with none out, and
    * returns the amount and attempt the same statement read from the row: that is what the caller charges. No row, no
    * start. The member row is locked first, then the product row, so two starts for the last spot take turns; a
    * confirm takes only the member lock, so the order cannot deadlock. The row's own state outranks the cap: a
    * row that cannot start returns null before the count is read, and a full product returns "sold_out".
    */
-  async startSignupCharge(subscriptionId: string, sourceId: string): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
+  async startSignupCharge(subscriptionId: string, now: Date): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     if (!UUID_SHAPE.test(subscriptionId)) return null;
-    if (!this.scoped) return this.withActor(null, (repo) => repo.startSignupCharge(subscriptionId, sourceId));
+    if (!this.scoped) return this.withActor(null, (repo) => repo.startSignupCharge(subscriptionId, now));
     await this.db.query(
       "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
       [subscriptionId],
@@ -570,37 +570,77 @@ export class PostgresRepository implements Repository {
     if (!product) return null;
     const { rows: startable } = await this.db.query<{ id: string }>(
       `select s.id from subscriptions s join ledger l on l.subscription_id = s.id
-        where s.id = $1 and s.status = 'pending' and l.status = 'pending' and l.charge_source is null`,
+        where s.id = $1 and s.status = 'pending' and l.status = 'pending' and l.charge_sent_at is null`,
       [subscriptionId],
     );
     if (!startable[0]) return null;
     if (isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
     const { rows } = await this.db.query<{ amount_cents: number; attempt: number }>(
-      `update ledger l set charge_source = $2
+      `update ledger l set charge_sent_at = $2
          from subscriptions s
-        where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and l.status = 'pending' and l.charge_source is null
+        where s.id = $1 and l.subscription_id = s.id and s.status = 'pending' and l.status = 'pending' and l.charge_sent_at is null
         returning l.amount_cents, l.attempt`,
-      [subscriptionId, sourceId],
+      [subscriptionId, now],
     );
     return rows[0] ? { amountCents: rows[0].amount_cents, attempt: rows[0].attempt } : null;
   }
 
   /**
-   * Clears the token of a row whose charge is out, in one statement, and says what the row is: a signup's `pending` row
-   * stays `pending` on the next attempt (the next token is a new request under a new key); a card update's `declined` one
-   * stays `declined` at its attempt, which its claim already bumped. Null, writing nothing, when the row has no token.
+   * Clears `charge_sent_at` of a row whose charge is out and is still the one sent at `sentAt`, in one statement, and says
+   * what the row is: a signup's `pending` row stays `pending` on the next attempt (the next card is a new request under a
+   * new key); a card update's `declined` one stays `declined` at its attempt, which its claim already bumped. Null, writing
+   * nothing, when the row has no charge out or another charge's stamp.
    */
-  async abandonCharge(ledgerId: string): Promise<"pending" | "declined" | null> {
+  async abandonCharge(ledgerId: string, sentAt: Date): Promise<"pending" | "declined" | null> {
     if (!UUID_SHAPE.test(ledgerId)) return null;
     const { rows } = await this.db.query<{ status: "pending" | "declined" }>(
       `update ledger l
-          set charge_source = null,
+          set charge_sent_at = null,
               attempt = case when l.status = 'pending' then l.attempt + 1 else l.attempt end
-        where l.id = $1 and ${CHARGE_OUT}
+        where l.id = $1 and l.charge_sent_at = $2::timestamptz and ${CHARGE_OUT}
         returning l.status`,
-      [ledgerId],
+      [ledgerId, sentAt],
     );
     return rows[0]?.status ?? null;
+  }
+
+  /**
+   * The three writes that name the charge they mean, each one statement whose condition is the charge's attempt and stamp,
+   * so of two that read the same stamp one writes and the other finds it gone. A stamp written is the later of `now` and
+   * the one replaced + 1 ms.
+   */
+  private static readonly NEXT_STAMP = "greatest($4::timestamptz, $3::timestamptz + interval '1 millisecond')";
+
+  async markChargeSent(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<Date | null> {
+    if (!UUID_SHAPE.test(ledgerId)) return null;
+    const { rows } = await this.db.query<{ charge_sent_at: Date }>(
+      `update ledger l set charge_sent_at = ${PostgresRepository.NEXT_STAMP}
+        where l.id = $1 and l.attempt = $2 and l.charge_sent_at = $3::timestamptz and ${CHARGE_OUT}
+        returning l.charge_sent_at`,
+      [ledgerId, attempt, expected, now],
+    );
+    return rows[0]?.charge_sent_at ?? null;
+  }
+
+  async restartCharge(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<{ attempt: number; sentAt: Date } | null> {
+    if (!UUID_SHAPE.test(ledgerId)) return null;
+    const { rows } = await this.db.query<{ attempt: number; charge_sent_at: Date }>(
+      `update ledger l set attempt = l.attempt + 1, charge_sent_at = ${PostgresRepository.NEXT_STAMP}
+        where l.id = $1 and l.attempt = $2 and l.charge_sent_at = $3::timestamptz and ${CHARGE_OUT}
+        returning l.attempt, l.charge_sent_at`,
+      [ledgerId, attempt, expected, now],
+    );
+    return rows[0] ? { attempt: rows[0].attempt, sentAt: rows[0].charge_sent_at } : null;
+  }
+
+  async restoreChargeSent(ledgerId: string, attempt: number, expected: Date, previous: Date): Promise<boolean> {
+    if (!UUID_SHAPE.test(ledgerId)) return false;
+    const { rowCount } = await this.db.query(
+      `update ledger l set charge_sent_at = $4::timestamptz
+        where l.id = $1 and l.attempt = $2 and l.charge_sent_at = $3::timestamptz and ${CHARGE_OUT}`,
+      [ledgerId, attempt, expected, previous],
+    );
+    return rowCount === 1;
   }
 
   /**
@@ -611,30 +651,32 @@ export class PostgresRepository implements Repository {
     if (!UUID_SHAPE.test(subscriptionId)) return "inactive";
     if (!this.scoped) return this.withActor(null, (repo) => repo.replaceSubscriptionCard(subscriptionId, card));
     const refusal = await this.cardUpdateRefusal(subscriptionId);
-    if (refusal !== null) return refusal;
+    if (refusal !== null) return refusal === "out" ? "busy" : refusal;
     await this.writeCard(subscriptionId, card);
     return "replaced";
   }
 
   /**
    * The decision both card-update writes share, after locking the member row: `inactive` when the subscription is not
-   * `active`, `busy` when it has a card on file and holds a `pending` row, whatever its week, or when any row's charge is
-   * out (a `declined` one with its token on it); else null. A `pending` row with no token on a subscription with no card
-   * does not make it busy: the card saved is the one that row's charge uses.
+   * `active`, then `out` when any row's charge is out (a `pending` or a `declined` one with `charge_sent_at` set), then `busy`
+   * when it has a card on file and holds a `pending` row, whatever its week; else null. A `pending` row with no charge out
+   * on a subscription with no card does not make it busy: the card saved is the one that row's charge uses.
    */
-  private async cardUpdateRefusal(subscriptionId: string): Promise<"inactive" | "busy" | null> {
+  private async cardUpdateRefusal(subscriptionId: string): Promise<"inactive" | "out" | "busy" | null> {
     await this.db.query(
       "select m.id from members m join subscriptions s on s.member_id = m.id where s.id = $1 for update of m",
       [subscriptionId],
     );
     const { rows: active } = await this.db.query<{ id: string }>("select id from subscriptions where id = $1 and status = 'active'", [subscriptionId]);
     if (!active[0]) return "inactive";
-    const { rows: held } = await this.db.query<{ id: string }>(
+    const { rows: out } = await this.db.query<{ id: string }>(`select l.id from ledger l where l.subscription_id = $1 and ${CHARGE_OUT} limit 1`, [subscriptionId]);
+    if (out[0]) return "out";
+    const { rows: waiting } = await this.db.query<{ id: string }>(
       `select l.id from ledger l join subscriptions s on s.id = l.subscription_id
-        where l.subscription_id = $1 and ((l.status = 'pending' and s.square_card_id is not null) or ${CHARGE_OUT}) limit 1`,
+        where l.subscription_id = $1 and l.status = 'pending' and s.square_card_id is not null limit 1`,
       [subscriptionId],
     );
-    return held[0] ? "busy" : null;
+    return waiting[0] ? "busy" : null;
   }
 
   /**
@@ -650,7 +692,7 @@ export class PostgresRepository implements Repository {
     ]);
     await this.db.query(
       `delete from ledger l using subscriptions s
-        where l.subscription_id = $1 and s.id = l.subscription_id and l.status = 'declined' and l.charge_source is null
+        where l.subscription_id = $1 and s.id = l.subscription_id and l.status = 'declined' and l.charge_sent_at is null
           and ${weekClosed("s.product_id", "l.pickup_date")}`,
       [subscriptionId],
     );
@@ -672,24 +714,24 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * Ends a row that is `pending`, or `declined` with its token out (a card update's), as `declined` with no token. True
-   * only when this call did; a card update's row keeps the attempt its claim bumped.
+   * Ends a row that is `pending`, or `declined` with its charge out (a card update's), as `declined` with no charge out. True
+   * only when this call did; a card update's row keeps the attempt its claim bumped. With `attempt`, only a row at that attempt.
    */
-  async recordSignupDecline(ledgerId: string): Promise<boolean> {
+  async recordSignupDecline(ledgerId: string, attempt?: number): Promise<boolean> {
     if (!UUID_SHAPE.test(ledgerId)) return false;
     const { rowCount } = await this.db.query(
-      `update ledger l set status = 'declined', charge_source = null
-        where l.id = $1 and (l.status = 'pending' or ${CHARGE_OUT})`,
-      [ledgerId],
+      `update ledger l set status = 'declined', charge_sent_at = null
+        where l.id = $1 and (l.status = 'pending' or ${CHARGE_OUT}) and ($2::int is null or l.attempt = $2::int)`,
+      [ledgerId, attempt ?? null],
     );
     return rowCount === 1;
   }
 
   /**
-   * Flips the ledger row and its subscription together, under the member row's lock, clearing the token: a concurrent
+   * Flips the ledger row and its subscription together, under the member row's lock, clearing the charge out: a concurrent
    * confirm waits, re-reads the row and finds it paid, so it says "already", whatever amount it brings. An amount that is not
    * the ledger's leaves both rows as they are and says "mismatch". With `card`, the same transaction writes it
-   * (`writeCard`); with none, a `declined` row whose token was out (a card update's, whose card could not be saved) takes the
+   * (`writeCard`); with none, a `declined` row whose charge was out (a card update's, whose card could not be saved) takes the
    * old card off file, so nothing charges it again. "already" and "mismatch" write no card. The product row is locked after the member row,
    * as closing a week locks it, so a confirmation that lands after its week closed sees the closure and grants
    * its week credit itself.
@@ -717,20 +759,20 @@ export class PostgresRepository implements Repository {
         where l.id = $1 for update of p`,
       [ledgerId],
     );
-    const { rows: held } = await this.db.query<{ status: string; amount_cents: number; subscription_id: string; charge_source: string | null }>(
-      "select status, amount_cents, subscription_id, charge_source from ledger where id = $1 for update",
+    const { rows: held } = await this.db.query<{ status: string; amount_cents: number; subscription_id: string; charge_sent_at: Date | null }>(
+      "select status, amount_cents, subscription_id, charge_sent_at from ledger where id = $1 for update",
       [ledgerId],
     );
     const row = held[0];
     if (!row || row.status === "paid") return "already";
     if (row.amount_cents !== amountCents) return "mismatch";
-    await this.db.query("update ledger set status = 'paid', square_payment_id = $2, paid_at = $3, charge_source = null where id = $1", [
+    await this.db.query("update ledger set status = 'paid', square_payment_id = $2, paid_at = $3, charge_sent_at = null where id = $1", [
       ledgerId,
       paymentId,
       now,
     ]);
     if (card) await this.writeCard(row.subscription_id, card);
-    else if (row.status === "declined" && row.charge_source !== null) {
+    else if (row.status === "declined" && row.charge_sent_at !== null) {
       await this.db.query("update subscriptions set square_card_id = null, card_brand = null, card_last4 = null where id = $1", [row.subscription_id]);
     }
     // Only a signup's subscription turns active: a charge run's row on an active or a cancelled one leaves its status.
@@ -1198,7 +1240,7 @@ export class PostgresRepository implements Repository {
 
   /**
    * The product's `pending` rows whose member has a Square customer and whose subscription has a card or whose charge is
-   * out (its token on the row), a `declined` row whose charge is out (a card update's), and an active subscription's
+   * out (`charge_sent_at` set), a `declined` row whose charge is out (a card update's), and an active subscription's
    * `pending` row with neither (issue 254: the run declines it `NO_CARD`), oldest week first, then the subscription's
    * `created_at`: each with whether its week is closed and its week's last pickup day.
    */
@@ -1207,18 +1249,18 @@ export class PostgresRepository implements Repository {
     return this.selectPendingCharges("s.product_id = $1", productId, true);
   }
 
-  /** Issue 145: the subscription's oldest row `listPendingCharges` lists, from its select without its cardless rows. */
+  /** Issue 145: the subscription's oldest row `listPendingCharges` lists, from its select without its cardless rows; a row whose charge is out comes first. */
   async findPendingCharge(subscriptionId: string): Promise<PendingCharge | null> {
     if (!UUID_SHAPE.test(subscriptionId)) return null;
-    return (await this.selectPendingCharges("s.id = $1", subscriptionId, false))[0] ?? null;
+    return (await this.selectPendingCharges("s.id = $1", subscriptionId, false, true))[0] ?? null;
   }
 
   /**
-   * The one select for the rows a charge is owed on: `pending` with a card or a token, `declined` with a token, and a Square
-   * customer, oldest week first, then the subscription's `created_at`: `where` narrows it by its one parameter, and
-   * `cardless` adds an active subscription's `pending` row with neither.
+   * The one select for the rows a charge is owed on: `pending` with a card or a charge out, `declined` with a charge out, and
+   * a Square customer, oldest week first, then the subscription's `created_at`: `where` narrows it by its one parameter,
+   * `cardless` adds an active subscription's `pending` row with neither, and `outFirst` puts a row whose charge is out first.
    */
-  private async selectPendingCharges(where: string, parameter: string, cardless: boolean): Promise<PendingCharge[]> {
+  private async selectPendingCharges(where: string, parameter: string, cardless: boolean, outFirst = false): Promise<PendingCharge[]> {
     const { rows } = await this.db.query<{
       ledger_id: string;
       subscription_id: string;
@@ -1226,7 +1268,7 @@ export class PostgresRepository implements Repository {
       member_id: string;
       customer_id: string;
       card_id: string | null;
-      charge_source: string | null;
+      charge_sent_at: Date | null;
       amount_cents: number;
       attempt: number;
       pickup_date: string;
@@ -1236,7 +1278,7 @@ export class PostgresRepository implements Repository {
       last_day: string | null;
     }>(
       `select l.id as ledger_id, s.id as subscription_id, s.status, s.member_id, m.square_customer_id as customer_id,
-              s.square_card_id as card_id, l.charge_source, l.amount_cents, l.attempt, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date,
+              s.square_card_id as card_id, l.charge_sent_at, l.amount_cents, l.attempt, to_char(l.pickup_date, 'YYYY-MM-DD') as pickup_date,
               s.created_at, ${weekClosed("s.product_id", "l.pickup_date")} as closed,
               to_char(w.first_day, 'YYYY-MM-DD') as first_day, to_char(w.last_day, 'YYYY-MM-DD') as last_day
          from ledger l
@@ -1244,9 +1286,9 @@ export class PostgresRepository implements Repository {
          join members m on m.id = s.member_id
          left join pickup_weeks w on w.product_id = s.product_id and w.week_of = l.pickup_date
         where ${where} and m.square_customer_id is not null
-          and ((l.status = 'pending' and (s.square_card_id is not null or l.charge_source is not null${cardless ? " or s.status = 'active'" : ""}))
-               or (l.status = 'declined' and l.charge_source is not null))
-        order by l.pickup_date, s.created_at, l.id`,
+          and ((l.status = 'pending' and (s.square_card_id is not null or l.charge_sent_at is not null${cardless ? " or s.status = 'active'" : ""}))
+               or (l.status = 'declined' and l.charge_sent_at is not null))
+        order by ${outFirst ? "(l.charge_sent_at is null), " : ""}l.pickup_date, s.created_at, l.id`,
       [parameter],
     );
     return rows.map((row) => ({
@@ -1256,7 +1298,7 @@ export class PostgresRepository implements Repository {
       memberId: row.member_id,
       customerId: row.customer_id,
       cardId: row.card_id,
-      chargeSource: row.charge_source,
+      chargeSentAt: row.charge_sent_at,
       amountCents: row.amount_cents,
       attempt: row.attempt,
       pickupDate: row.pickup_date,
@@ -1279,27 +1321,33 @@ export class PostgresRepository implements Repository {
   }
 
   /**
-   * Issue 145, issue 254: a card update's claim, under the member row's lock (`cardUpdateRefusal`: `inactive`, then `busy`);
-   * else the oldest open week's `declined` row, when there is one, gets its attempt bumped and `sourceId` on it and stays
-   * `declined`, as `claimed`; else `nothing_owed`. It writes no card and deletes no row.
+   * Issue 145, issue 254: a card update's claim, under the member row's lock (`cardUpdateRefusal`: `inactive`, then `out`
+   * with the row whose charge is out, then `busy`); else the oldest open week's `declined` row, when there is one, gets its
+   * attempt bumped and its charge marked sent at `now` and stays `declined`, as `claimed`; else `nothing_owed`. It writes no
+   * card and deletes no row.
    */
-  async claimCardUpdate(subscriptionId: string, sourceId: string): Promise<CardUpdateClaim> {
+  async claimCardUpdate(subscriptionId: string, now: Date): Promise<CardUpdateClaim> {
     if (!UUID_SHAPE.test(subscriptionId)) return { kind: "inactive" };
-    if (!this.scoped) return this.withActor(null, (repo) => repo.claimCardUpdate(subscriptionId, sourceId));
+    if (!this.scoped) return this.withActor(null, (repo) => repo.claimCardUpdate(subscriptionId, now));
     const refusal = await this.cardUpdateRefusal(subscriptionId);
+    if (refusal === "out") {
+      const charge = await this.findPendingCharge(subscriptionId);
+      if (!charge) throw new Error("The row whose charge is out has no Square customer");
+      return { kind: "out", charge };
+    }
     if (refusal !== null) return { kind: refusal };
     const { rowCount } = await this.db.query(
-      `update ledger set attempt = attempt + 1, charge_source = $2
+      `update ledger set attempt = attempt + 1, charge_sent_at = $2
         where id = (select l.id from ledger l join subscriptions s on s.id = l.subscription_id
                      where l.subscription_id = $1 and l.status = 'declined' and not ${weekClosed("s.product_id", "l.pickup_date")}
                      order by l.pickup_date, l.id limit 1)
           and status = 'declined'`,
-      [subscriptionId, sourceId],
+      [subscriptionId, now],
     );
     if (rowCount !== 1) return { kind: "nothing_owed" };
-    // The only row with its token out, since none was held above: the claimed one, as the run lists it.
+    // The only row with its charge out, since none was held above: the claimed one, as the run lists it.
     const charge = await this.findPendingCharge(subscriptionId);
-    if (!charge) throw new Error("The claimed row has no token or Square customer");
+    if (!charge) throw new Error("The claimed row has no Square customer");
     return { kind: "claimed", charge };
   }
 

@@ -66,8 +66,8 @@ type StoredLedger = {
   attempt: number;
   squarePaymentId: string | null;
   paidAt: Date | null;
-  /** The card token while the row's charge is out (DEC-053); null otherwise. */
-  chargeSource: string | null;
+  /** When the charge that has no answer yet was sent (DEC-053); null when none is out. */
+  chargeSentAt: Date | null;
 };
 
 type StoredWeekCredit = {
@@ -258,7 +258,7 @@ export class InMemoryRepository implements Repository {
       ledgerStatus: ledger.status,
       attempt: ledger.attempt,
       squareCardId: subscription.squareCardId,
-      chargeSource: ledger.chargeSource,
+      chargeSentAt: ledger.chargeSentAt && new Date(ledger.chargeSentAt),
       amountCents: ledger.amountCents,
       weeklyCents: subscription.weeklyCents,
       pickupDate: ledger.pickupDate,
@@ -301,7 +301,7 @@ export class InMemoryRepository implements Repository {
       attempt: before ? before.attempt + (declined ? 1 : 0) : 1,
       squarePaymentId: before?.squarePaymentId ?? null,
       paidAt: before?.paidAt ?? null,
-      chargeSource: null,
+      chargeSentAt: null,
     };
     this.subscriptions.set(subscription.id, subscription);
     this.ledger.set(ledger.id, ledger);
@@ -309,50 +309,80 @@ export class InMemoryRepository implements Repository {
     return saved as PendingSignup;
   }
 
-  async startSignupCharge(subscriptionId: string, sourceId: string): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
+  async startSignupCharge(subscriptionId: string, now: Date): Promise<{ amountCents: number; attempt: number } | "sold_out" | null> {
     const subscription = this.subscriptions.get(subscriptionId);
     const ledger = this.ledgerOf(subscriptionId);
-    if (!subscription || !ledger || subscription.status !== "pending" || ledger.status !== "pending" || ledger.chargeSource !== null) return null;
+    if (!subscription || !ledger || subscription.status !== "pending" || ledger.status !== "pending" || ledger.chargeSentAt !== null) return null;
     const product = this.products.find((p) => p.id === subscription.productId);
     if (product && isSoldOut(product, await this.countHeldSpots(product.id))) return "sold_out";
-    this.ledger.set(ledger.id, { ...ledger, chargeSource: sourceId });
+    this.ledger.set(ledger.id, { ...ledger, chargeSentAt: new Date(now) });
     return { amountCents: ledger.amountCents, attempt: ledger.attempt };
   }
 
-  async abandonCharge(ledgerId: string): Promise<"pending" | "declined" | null> {
+  async abandonCharge(ledgerId: string, sentAt: Date): Promise<"pending" | "declined" | null> {
     const row = this.ledger.get(ledgerId);
-    if (!row || !this.chargeOut(row)) return null;
-    // A signup's pending row's next token is a new request under a new key; a card update's declined row stays declined at its attempt.
+    if (!row || !this.chargeOut(row) || row.chargeSentAt?.getTime() !== sentAt.getTime()) return null;
+    // A signup's pending row's next card is a new request under a new key; a card update's declined row stays declined at its attempt.
     if (row.status === "pending") {
-      this.ledger.set(ledgerId, { ...row, chargeSource: null, attempt: row.attempt + 1 });
+      this.ledger.set(ledgerId, { ...row, chargeSentAt: null, attempt: row.attempt + 1 });
       return "pending";
     }
-    this.ledger.set(ledgerId, { ...row, chargeSource: null });
+    this.ledger.set(ledgerId, { ...row, chargeSentAt: null });
     return "declined";
+  }
+
+  async markChargeSent(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<Date | null> {
+    const row = this.outAt(ledgerId, attempt, expected);
+    if (!row) return null;
+    const sentAt = laterStamp(now, expected);
+    this.ledger.set(ledgerId, { ...row, chargeSentAt: sentAt });
+    return new Date(sentAt);
+  }
+
+  async restartCharge(ledgerId: string, attempt: number, expected: Date, now: Date): Promise<{ attempt: number; sentAt: Date } | null> {
+    const row = this.outAt(ledgerId, attempt, expected);
+    if (!row) return null;
+    const sentAt = laterStamp(now, expected);
+    this.ledger.set(ledgerId, { ...row, attempt: row.attempt + 1, chargeSentAt: sentAt });
+    return { attempt: row.attempt + 1, sentAt: new Date(sentAt) };
+  }
+
+  async restoreChargeSent(ledgerId: string, attempt: number, expected: Date, previous: Date): Promise<boolean> {
+    const row = this.outAt(ledgerId, attempt, expected);
+    if (!row) return false;
+    this.ledger.set(ledgerId, { ...row, chargeSentAt: new Date(previous) });
+    return true;
+  }
+
+  /** The row whose charge is out at `attempt` since `sentAt`, the charge a write names; undefined when it is another. */
+  private outAt(ledgerId: string, attempt: number, sentAt: Date): StoredLedger | undefined {
+    const row = this.ledger.get(ledgerId);
+    return row && this.chargeOut(row) && row.attempt === attempt && row.chargeSentAt?.getTime() === sentAt.getTime() ? row : undefined;
   }
 
   async replaceSubscriptionCard(subscriptionId: string, card: Card): Promise<"replaced" | "busy" | "inactive"> {
     const refusal = this.cardUpdateRefusal(subscriptionId);
-    if (refusal !== null) return refusal;
+    if (refusal !== null) return refusal === "out" ? "busy" : refusal;
     this.writeCard(subscriptionId, card);
     return "replaced";
   }
 
   /**
-   * The one decision both card-update writes make: `inactive` when the subscription is not `active`, `busy` when it holds a
-   * `pending` row and a card on file, or any row whose charge is out, else null. A `pending` row with no token on a
-   * subscription with no card does not make it busy: the card saved is the one that row's charge uses.
+   * The one decision both card-update writes make: `inactive` when the subscription is not `active`, then `out` when any row's
+   * charge is out, then `busy` when it holds a `pending` row and a card on file, else null. A `pending` row with no charge
+   * out on a subscription with no card does not make it busy: the card saved is the one that row's charge uses.
    */
-  private cardUpdateRefusal(subscriptionId: string): "inactive" | "busy" | null {
+  private cardUpdateRefusal(subscriptionId: string): "inactive" | "out" | "busy" | null {
     const subscription = this.subscriptions.get(subscriptionId);
     if (subscription?.status !== "active") return "inactive";
-    const hasCard = subscription.squareCardId !== null;
-    return [...this.ledger.values()].some((row) => row.subscriptionId === subscriptionId && ((row.status === "pending" && hasCard) || this.chargeOut(row))) ? "busy" : null;
+    const rows = [...this.ledger.values()].filter((row) => row.subscriptionId === subscriptionId);
+    if (rows.some((row) => this.chargeOut(row))) return "out";
+    return rows.some((row) => row.status === "pending" && subscription.squareCardId !== null) ? "busy" : null;
   }
 
-  /** The one home of "charge out": its token is on the row, a signup's `pending` one or a card update's `declined` one. */
+  /** The one home of "charge out": `charge_sent_at` is set, on a signup's `pending` row or a card update's `declined` one. */
   private chargeOut(row: StoredLedger): boolean {
-    return (row.status === "pending" || row.status === "declined") && row.chargeSource !== null;
+    return (row.status === "pending" || row.status === "declined") && row.chargeSentAt !== null;
   }
 
   /** Whether the subscription's signup row has its charge out. */
@@ -370,7 +400,7 @@ export class InMemoryRepository implements Repository {
     if (!subscription) return;
     this.subscriptions.set(subscriptionId, { ...subscription, squareCardId: card.id, cardBrand: card.brand, cardLast4: card.last4 });
     for (const row of this.declinedRows(subscriptionId)) {
-      if (row.chargeSource === null && this.weekClosed(subscription.productId, row.pickupDate)) this.ledger.delete(row.id);
+      if (row.chargeSentAt === null && this.weekClosed(subscription.productId, row.pickupDate)) this.ledger.delete(row.id);
     }
   }
 
@@ -389,10 +419,11 @@ export class InMemoryRepository implements Repository {
     ).length;
   }
 
-  async recordSignupDecline(ledgerId: string): Promise<boolean> {
+  async recordSignupDecline(ledgerId: string, attempt?: number): Promise<boolean> {
     const row = this.ledger.get(ledgerId);
     if (!row || (row.status !== "pending" && !this.chargeOut(row))) return false;
-    this.ledger.set(ledgerId, { ...row, status: "declined", chargeSource: null });
+    if (attempt !== undefined && row.attempt !== attempt) return false;
+    this.ledger.set(ledgerId, { ...row, status: "declined", chargeSentAt: null });
     return true;
   }
 
@@ -406,9 +437,9 @@ export class InMemoryRepository implements Repository {
     const row = this.ledger.get(ledgerId);
     if (!row || row.status === "paid") return "already";
     if (row.amountCents !== amountCents) return "mismatch";
-    this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now), chargeSource: null });
+    this.ledger.set(ledgerId, { ...row, status: "paid", squarePaymentId: paymentId, paidAt: new Date(now), chargeSentAt: null });
     if (card) this.writeCard(row.subscriptionId, card);
-    else if (row.status === "declined" && row.chargeSource !== null) this.clearCard(row.subscriptionId);
+    else if (row.status === "declined" && row.chargeSentAt !== null) this.clearCard(row.subscriptionId);
     const subscription = this.subscriptions.get(row.subscriptionId);
     // Only a signup's subscription turns active: a charge run's row on an active or a cancelled one leaves its status.
     if (subscription?.status === "pending") this.subscriptions.set(subscription.id, { ...subscription, status: "active" });
@@ -690,17 +721,17 @@ export class InMemoryRepository implements Repository {
     return this.pendingCharges(productId, true);
   }
 
-  /** `listPendingCharges`' select; `cardless` adds an active subscription's row with no card and no token. */
+  /** `listPendingCharges`' select; `cardless` adds an active subscription's row with no card and no charge out. */
   private pendingCharges(productId: string, cardless: boolean): PendingCharge[] {
     return [...this.ledger.values()]
       .flatMap((row): { row: StoredLedger; subscription: StoredSubscription; customerId: string }[] => {
         const subscription = this.subscriptions.get(row.subscriptionId);
         const customerId = subscription && this.members.get(subscription.memberId)?.squareCustomerId;
         if (subscription?.productId !== productId || !customerId) return [];
-        // A card update's `declined` row is owed a charge only while its token is out.
-        if (row.status === "declined") return row.chargeSource !== null ? [{ row, subscription, customerId }] : [];
+        // A card update's `declined` row is owed a charge only while its charge is out.
+        if (row.status === "declined") return row.chargeSentAt !== null ? [{ row, subscription, customerId }] : [];
         if (row.status !== "pending") return [];
-        const holdsCard = subscription.squareCardId !== null || row.chargeSource !== null;
+        const holdsCard = subscription.squareCardId !== null || row.chargeSentAt !== null;
         if (!holdsCard && !(cardless && subscription.status === "active")) return [];
         return [{ row, subscription, customerId }];
       })
@@ -719,7 +750,7 @@ export class InMemoryRepository implements Repository {
           memberId: subscription.memberId,
           customerId,
           cardId: subscription.squareCardId,
-          chargeSource: row.chargeSource,
+          chargeSentAt: row.chargeSentAt && new Date(row.chargeSentAt),
           amountCents: row.amountCents,
           attempt: row.attempt,
           pickupDate: row.pickupDate,
@@ -740,30 +771,37 @@ export class InMemoryRepository implements Repository {
   }
 
   /**
-   * Issue 145, issue 254: a card update's claim: `inactive` when the subscription is not `active`; `busy` when it has a
-   * card on file and holds a `pending` row, or any row's charge is out; else the oldest open week's `declined` row, when there is one, gets its
-   * attempt bumped and `sourceId` on it and stays `declined`, as `claimed`; else `nothing_owed`. It writes no card and deletes no row.
+   * Issue 145, issue 254: a card update's claim: `inactive` when the subscription is not `active`; `out` when any row's charge
+   * is out, with that row; `busy` when it has a card on file and holds a `pending` row; else the oldest open week's `declined`
+   * row, when there is one, gets its attempt bumped and its charge marked sent at `now` and stays `declined`, as `claimed`;
+   * else `nothing_owed`. It writes no card and deletes no row.
    */
-  async claimCardUpdate(subscriptionId: string, sourceId: string): Promise<CardUpdateClaim> {
+  async claimCardUpdate(subscriptionId: string, now: Date): Promise<CardUpdateClaim> {
     const refusal = this.cardUpdateRefusal(subscriptionId);
+    if (refusal === "out") {
+      const charge = await this.findPendingCharge(subscriptionId);
+      if (!charge) throw new Error("The row whose charge is out has no Square customer");
+      return { kind: "out", charge };
+    }
     if (refusal !== null) return { kind: refusal };
     const subscription = this.subscriptions.get(subscriptionId);
     const open = this.declinedRows(subscriptionId)
       .filter((row) => !this.weekClosed(subscription?.productId ?? "", row.pickupDate))
       .sort((a, b) => a.pickupDate.localeCompare(b.pickupDate) || a.id.localeCompare(b.id))[0];
     if (!open) return { kind: "nothing_owed" };
-    this.ledger.set(open.id, { ...open, attempt: open.attempt + 1, chargeSource: sourceId });
-    // The only row with its token out, since none was held above: the claimed one, as the run lists it.
+    this.ledger.set(open.id, { ...open, attempt: open.attempt + 1, chargeSentAt: new Date(now) });
+    // The only row with its charge out, since none was held above: the claimed one, as the run lists it.
     const charge = await this.findPendingCharge(subscriptionId);
-    if (!charge) throw new Error("The claimed row has no token or Square customer");
+    if (!charge) throw new Error("The claimed row has no Square customer");
     return { kind: "claimed", charge };
   }
 
-  /** Issue 145: the subscription's oldest row `listPendingCharges` lists, without its cardless rows. */
+  /** Issue 145: the subscription's oldest row `listPendingCharges` lists, without its cardless rows; a row whose charge is out comes first. */
   async findPendingCharge(subscriptionId: string): Promise<PendingCharge | null> {
     const subscription = this.subscriptions.get(subscriptionId);
     if (!subscription) return null;
-    return this.pendingCharges(subscription.productId, false).find((charge) => charge.subscriptionId === subscriptionId) ?? null;
+    const mine = this.pendingCharges(subscription.productId, false).filter((charge) => charge.subscriptionId === subscriptionId);
+    return mine.find((charge) => charge.chargeSentAt !== null) ?? mine[0] ?? null;
   }
 
   async findSubscriptionCard(subscriptionId: string): Promise<{ brand: string; last4: string } | null> {
@@ -930,7 +968,7 @@ export class InMemoryRepository implements Repository {
       attempt: 1,
       squarePaymentId: null,
       paidAt: status === "paid" ? new Date(paidAt ?? Date.now()) : null,
-      chargeSource: null,
+      chargeSentAt: null,
     });
     return id;
   }
@@ -1216,6 +1254,9 @@ const copy = (member: Member): Member => ({
 const setKey = (set: StoredSet): [string, [string, string][]] => [set.fromWeek, Object.entries(set.optionIds).sort(([a], [b]) => a.localeCompare(b))];
 
 const weekKey = (productId: string, weekOf: string): string => `${productId}|${weekOf}`;
+
+/** The stamp a write puts on a charge: `now`, or a millisecond after the one it replaces when `now` is not later, so two submits never hold one. */
+const laterStamp = (now: Date, replaced: Date): Date => new Date(Math.max(now.getTime(), replaced.getTime() + 1));
 
 const copyWeek = (week: ChangedWeek): ChangedWeek => ({ ...week, closedAt: week.closedAt && new Date(week.closedAt) });
 

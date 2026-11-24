@@ -6,9 +6,9 @@ import { redirect } from "next/navigation";
 import { choicesQuery, resolveChoices } from "@core/choices.js";
 import { siteLink } from "@core/email-templates.js";
 import { clevelandDate, firstPickup } from "@core/pickup-week.js";
-import { priceOfChoices, requireSupperClub, type ProductWithOptions } from "@core/products.js";
+import { priceOfChoices, requireSupperClub } from "@core/products.js";
 import type { Repository } from "@core/ports/repository.js";
-import { retrySignup, signUp, type SignupResult } from "@core/signup.js";
+import { isChargeOut, signUp, type SignupResult } from "@core/signup.js";
 import { deliverSignupConfirmation } from "@core/signup-email.js";
 import { requestAccountCodeFor, resendAccountCodeFor } from "../create-account/shared";
 import { getLanguage, getTranslator } from "../language";
@@ -17,6 +17,7 @@ import { getEmail, getPayments, getRepository, getSiteUrl } from "../services";
 import { getSignedInMember } from "../session";
 import { requestCodeFor, sendAfterResponse, textField, verifyCodeFor } from "../sign-in/shared";
 import { paymentWording } from "./payment-wording";
+import { picksOf } from "./picks";
 import {
   PANE_CREATE_PAGES,
   PANE_SIGN_IN_PAGES,
@@ -46,7 +47,7 @@ export async function resendPaneAccountCode(formData: FormData): Promise<void> {
   await resendAccountCodeFor(formData, PANE_CREATE_PAGES);
 }
 
-/** Back to the page with why, and the picks kept, so the member can try again where they were. */
+/** Back to the page with why, and the picks kept, so the member can enter their card again where they were. */
 const backToPage = (payError: "consent" | "declined" | "unknown" | typeof PAY_ERROR_SOLD_OUT | "error", choices: Record<string, string> | null): string =>
   `${SUPPER_CLUB_PATH}?${new URLSearchParams({ payError })}${choices ? `&${choicesQuery(choices)}` : ""}`;
 
@@ -92,7 +93,9 @@ function sendConfirmationAfterResponse(repo: Repository, memberId: string, resul
 /**
  * Pay. A visitor goes to the sign-in pane and an unticked box back to the page; otherwise the price, the
  * first pickup and the consent wording are all worked out here, from the option ids and the clock. Nothing
- * of the sort is read from the form but the picks, the card token and the tick.
+ * of the sort is read from the form but the picks, the card token and the tick. Over a charge that is out the card is
+ * charged under that charge's key for the row's own picks, and a landing back on the page carries the row's picks, not
+ * the ones submitted.
  */
 export async function joinSupperClub(formData: FormData): Promise<void> {
   const member = await getSignedInMember();
@@ -112,39 +115,14 @@ export async function joinSupperClub(formData: FormData): Promise<void> {
     firstPickup: firstPickup(product, now, await repo.listChangedWeeks(product.id, clevelandDate(now))).firstDay,
     language: await getLanguage(),
   });
+  const held = await repo.findPendingSignup(member.id, product.id);
   const result = await signUp(
     { repo, payments: getPayments(), now, clock: () => new Date() },
     { memberId: member.id, choices, sourceId: textField(formData, "sourceId"), consentText: wording.consentText },
   );
   sendConfirmationAfterResponse(repo, member.id, result);
-  redirect(landing(result, choices));
-}
-
-/** "Try again" on a payment that got no answer: Square is asked first, and only then is the saved card charged. */
-export async function retrySupperClubPayment(): Promise<void> {
-  const member = await getSignedInMember();
-  if (!member) redirect(PANE_SIGN_IN_PAGES.start);
-
-  const repo = getRepository();
-  const result = await retrySignup(
-    { repo, payments: getPayments(), now: new Date(), clock: () => new Date() },
-    { memberId: member.id },
-  );
-  sendConfirmationAfterResponse(repo, member.id, result);
-  // A decline shows the normal form again, with the picks the pending row holds.
-  const kept = result.outcome === "declined" || result.outcome === "error" ? await picksOf(repo, member.id) : null;
+  // A landing that sends the member back to the form shows what the row holds, once a charge was out over it.
+  const backToForm = result.outcome === "declined" || result.outcome === "error" || result.outcome === "unknown";
+  const kept = backToForm && held !== null && isChargeOut(held) ? ((await picksOf(repo, member.id)) ?? choices) : choices;
   redirect(landing(result, kept));
-}
-
-/** The picks of the member's pending signup, as choices; null when there is none. */
-async function picksOf(repo: Repository, memberId: string): Promise<Record<string, string> | null> {
-  const product: ProductWithOptions = await requireSupperClub(repo);
-  const row = await repo.findPendingSignup(memberId, product.id);
-  if (!row) return null;
-  return Object.fromEntries(
-    product.optionTypes.flatMap((type) => {
-      const picked = type.options.find((option) => row.optionIds.includes(option.id));
-      return picked ? [[type.id, picked.id]] : [];
-    }),
-  );
 }

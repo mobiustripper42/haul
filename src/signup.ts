@@ -1,8 +1,8 @@
 import { matchCustomer } from "./customer-match.js";
-import { abandonIfRefused, recordDecline, sendCharge, settlePaid } from "./ledger-charge.js";
+import { recordDecline, settlePaid, takeCharge } from "./ledger-charge.js";
 import type { Member } from "./members.js";
 import { clevelandDate, firstPickup } from "./pickup-week.js";
-import { requireCardToken, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { PaymentsError, requireCardToken, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
@@ -10,9 +10,10 @@ import { errorFields, recordEventAs } from "./record-event.js";
 /**
  * The Supper Club signup: a member's first week paid and a card saved (issue 56; DEC-003, DEC-004, DEC-053).
  * The ledger row is committed before any charge and its id, with the attempt, is the charge's
- * idempotency key, so a retry can never charge twice. The card token goes on the row while its charge is out, the
- * token is charged buyer-started, and the card is saved from the payment. The provider calls run between `withActor`
- * commits, never inside one, so a pending row survives a failed call. Everything written or recorded
+ * idempotency key, so a second submit can never charge twice. The row holds the moment its charge was sent while the charge
+ * is out, the card token is charged buyer-started and kept nowhere, and the card is saved from the payment. A submit over
+ * a charge that is out charges the card it brings under the same key (`takeCharge`). The provider calls run between
+ * `withActor` commits, never inside one, so a pending row survives a failed call. Everything written or recorded
  * runs under the member.
  */
 
@@ -23,9 +24,9 @@ import { errorFields, recordEventAs } from "./record-event.js";
 export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date; clock: () => Date };
 
 /**
- * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
- * `sold_out`: the product's cap is reached, at the check before Square or at the card bind; nothing was charged.
- * `error`: something failed before anything was charged, or Square refused the charge on Try again and the member enters the card again.
+ * `unknown`: the charge may or may not have happened, and the pending row stays out for the member's next submit.
+ * `sold_out`: the product's cap is reached, at the check before Square or at the charge's start; nothing was charged.
+ * `error`: something failed before anything was charged, or Square refused the charge outright and the member enters the card again.
  * `confirmedNow`, on a paid result: true only when this request flipped the rows, so it is the whole guard
  * against a second confirmation email; a signup another tab confirmed first gives false.
  */
@@ -35,12 +36,15 @@ export type SignupResult = {
   confirmedNow?: boolean;
 };
 
-/** A signup ready to charge: its pending rows, the card token on the row and the member's Square customer. */
-type Charge = { row: PendingSignup; productId: string; sourceId: string; customerId: string; lookupFirst: boolean };
+/**
+ * A signup ready to charge: its pending row with its charge out, the card the member just entered and the member's Square
+ * customer. `first`: this submit started the charge, so it goes at once; otherwise it is over one that was out.
+ */
+type Charge = { row: PendingSignup & { chargeSentAt: Date }; productId: string; sourceId: string; customerId: string; first: boolean };
 
-/** Whether the row's charge is out: `pending` with the card token on it, and no answer recorded. The one home for "charge out". */
-export function isChargeOut(row: PendingSignup): row is PendingSignup & { chargeSource: string } {
-  return row.ledgerStatus === "pending" && row.chargeSource !== null;
+/** Whether the row's charge is out: a charge the member sent has no recorded answer, so `charge_sent_at` is set. The one home for "charge out". */
+export function isChargeOut<T extends { chargeSentAt: Date | null }>(row: T): row is T & { chargeSentAt: Date } {
+  return row.chargeSentAt !== null;
 }
 
 /** The log line for a failure: its name and code, never its message, which can carry the provider's text. */
@@ -49,8 +53,9 @@ function logFailure(step: string, error: unknown): void {
 }
 
 /**
- * Signs `memberId` up: AC5's check, the Square customer, the pending rows, the token on the row, then the charge and the card
- * saved from it. A row whose charge is already out takes the "Try again" path and ignores what was submitted.
+ * Signs `memberId` up: AC5's check, the Square customer, the pending rows, the charge marked sent on the row, then the
+ * charge and the card saved from it. A row whose charge is already out is charged the new card under the same key, for its
+ * own amount and picks: what was submitted with it is ignored.
  */
 export async function signUp(
   deps: SignupDeps,
@@ -61,18 +66,6 @@ export async function signUp(
     next = await prepare(deps, input);
   } catch (error) {
     logFailure("prepare", error);
-    return { outcome: "error" };
-  }
-  return "outcome" in next ? next : settle(deps, input.memberId, next);
-}
-
-/** "Try again": asks Square whether the charge happened, then confirms what it finds or charges the token on the row again. */
-export async function retrySignup(deps: SignupDeps, input: { memberId: string }): Promise<SignupResult> {
-  let next: SignupResult | Charge;
-  try {
-    next = await resume(deps, input.memberId);
-  } catch (error) {
-    logFailure("resume", error);
     return { outcome: "error" };
   }
   return "outcome" in next ? next : settle(deps, input.memberId, next);
@@ -90,7 +83,11 @@ async function prepare(
   const member = await requireMember(repo, input.memberId);
 
   const earlier = await repo.findPendingSignup(input.memberId, product.id);
-  if (earlier && isChargeOut(earlier)) return chargeOut(member.squareCustomerId, product.id, earlier);
+  if (earlier && isChargeOut(earlier)) {
+    // A blank token, or CASH or EXTERNAL, is an error before Square is asked anything.
+    requireCardToken(input.sourceId);
+    return charging(member.squareCustomerId, product.id, earlier, input.sourceId);
+  }
 
   // A row whose charge is out holds its own spot, so only a signup that would take a new one meets the cap.
   if (isSoldOut(product, await repo.countHeldSpots(product.id))) return soldOut(repo, input.memberId);
@@ -118,46 +115,38 @@ async function prepare(
   } catch (error) {
     // Another tab got there first: the box is theirs, or their charge is out on the row and the rewrite is refused.
     if (!(error instanceof SignupRefusedError)) throw error;
-    return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(error);
+    return (await overtaken(repo, input.memberId, product.id, customerId, input.sourceId)) ?? raise(error);
   }
 
-  // The token goes on the row: the charge is out from here. It returns the amount and attempt to charge, since the row
+  // The charge is marked sent on the row: it is out from here. It returns the amount and attempt to charge, since the row
   // may have been rewritten since this tab's save. It also takes the spot, and refuses when the last one went after the check above.
-  const bound = await repo.withActor(actor, (scoped) => scoped.startSignupCharge(row.subscriptionId, input.sourceId));
+  const sentAt = deps.clock();
+  const bound = await repo.withActor(actor, (scoped) => scoped.startSignupCharge(row.subscriptionId, sentAt));
   if (bound === "sold_out") return soldOut(repo, input.memberId);
-  if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card token was not put on the row"));
+  if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId, input.sourceId)) ?? raise(new Error("The charge was not marked sent on the row"));
   return {
-    row: { ...row, chargeSource: input.sourceId, amountCents: bound.amountCents, attempt: bound.attempt },
+    row: { ...row, chargeSentAt: sentAt, amountCents: bound.amountCents, attempt: bound.attempt },
     productId: product.id,
     sourceId: input.sourceId,
     customerId,
-    lookupFirst: false,
+    first: true,
   };
 }
 
-async function resume(deps: SignupDeps, memberId: string): Promise<SignupResult | Charge> {
-  const { repo } = deps;
-  const product = await requireSupperClub(repo);
-  if (await repo.findActiveSubscription(memberId, product.id)) return alreadySubscribed(repo, memberId);
-  const member = await requireMember(repo, memberId);
-  const row = await repo.findPendingSignup(memberId, product.id);
-  return row && isChargeOut(row) ? chargeOut(member.squareCustomerId, product.id, row) : { outcome: "error" };
-}
-
-/** A pending row whose charge is out: look it up, then charge its token (if none was taken), under the member's customer. */
-function chargeOut(customerId: string | null, productId: string, row: PendingSignup & { chargeSource: string }): Charge {
-  if (customerId === null) throw new Error("A card token is on a signup whose member has no Square customer");
-  return { row, productId, sourceId: row.chargeSource, customerId, lookupFirst: true };
+/** A pending row whose charge is out: this submit's card is charged over it, under the member's customer. */
+function charging(customerId: string | null, productId: string, row: PendingSignup & { chargeSentAt: Date }, sourceId: string): Charge {
+  if (customerId === null) throw new Error("A charge is out on a signup whose member has no Square customer");
+  return { row, productId, sourceId, customerId, first: false };
 }
 
 /**
- * What another tab left behind when this tab's save or bind lost: their box is active, or their charge is out on
- * the pending row and this tab takes "Try again". Null when neither is so.
+ * What another tab left behind when this tab's save or start lost: their box is active, or their charge is out on
+ * the pending row and this tab's card is charged over it. Null when neither is so.
  */
-async function overtaken(repo: Repository, memberId: string, productId: string, customerId: string): Promise<SignupResult | Charge | null> {
+async function overtaken(repo: Repository, memberId: string, productId: string, customerId: string, sourceId: string): Promise<SignupResult | Charge | null> {
   if (await repo.findActiveSubscription(memberId, productId)) return alreadySubscribed(repo, memberId);
   const row = await repo.findPendingSignup(memberId, productId);
-  return row && isChargeOut(row) ? chargeOut(customerId, productId, row) : null;
+  return row && isChargeOut(row) ? charging(customerId, productId, row, sourceId) : null;
 }
 
 function raise(error: unknown): never {
@@ -204,34 +193,32 @@ async function linkCustomer(deps: SignupDeps, member: Member): Promise<string> {
 }
 
 /**
- * Charges, or confirms what Square already took, then saves the card from the payment and writes the result. Anything
- * that fails from here on is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
- * The one exception is a charge Square refuses on Try again (`isRefusedCharge`, an error from the charge itself, not the
- * lookup before it): it cannot be sent again, so the row is abandoned and the member is sent back to the form (`error`).
+ * Takes the charge (`takeCharge`: the first send, or the submit over the one that is out), saves the card from the payment
+ * and writes the result. Anything that fails from here on is `unknown`: the charge may have happened, the row stays out, and
+ * the member's next submit finishes it. The one exception is a charge Square refuses outright (`refused`): it ends, and the
+ * member is sent back to the form (`error`).
  */
 async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promise<SignupResult> {
   const { repo, payments, clock } = deps;
   const actor: Actor = { member: memberId };
   const { row } = charge;
   const unknown: AuditEventDetail = { ledgerId: row.ledgerId };
-  let out = false;
-  try {
-    const found = charge.lookupFirst
-      ? await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt })
-      : null;
-    out = true;
-    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, { row, sourceId: charge.sourceId, customerId: charge.customerId, customerInitiated: true });
-    if (result.outcome === "declined") {
-      await recordDecline(repo, actor, memberId, row.ledgerId, result.code);
+
+  const finish = async (): Promise<SignupResult | { unknown: unknown }> => {
+    const taken = await takeCharge(repo, payments, actor, { row, first: charge.first, sourceId: charge.sourceId, customerId: charge.customerId, clock });
+    if (taken.outcome === "refused") return { outcome: "error" };
+    if (taken.outcome === "unknown") return { unknown: taken.error };
+    if (taken.outcome === "declined") {
+      await recordDecline(repo, actor, memberId, row.ledgerId, taken.code, taken.attempt);
       return { outcome: "declined" };
     }
     // What Square took, not what was asked: it must be the ledger's amount before anything turns active.
-    const chargedCents = found ? found.amountCents : row.amountCents;
+    const chargedCents = taken.amountCents;
     // The paid answer is back: this is the moment `paid_at` records.
     const paidAt = clock();
     const { confirmed } = await settlePaid(repo, payments, actor, {
       ledgerId: row.ledgerId,
-      paymentId: result.paymentId,
+      paymentId: taken.paymentId,
       amountCents: chargedCents,
       customerId: charge.customerId,
       memberId,
@@ -244,12 +231,17 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
       throw new Error("The charge is not the ledger's amount");
     }
     return { outcome: "paid", subscriptionId: row.subscriptionId, confirmedNow: confirmed === "confirmed" };
+  };
+
+  let answer: SignupResult | { unknown: unknown };
+  try {
+    answer = await finish();
   } catch (error) {
-    logFailure("charge", error);
-    // Only Try again abandons a refused charge, and only the charge's own error: a first Pay has had no lookup, so the token
-    // may be what Square used, and a failed lookup has sent nothing.
-    if (out && charge.lookupFirst && (await abandonIfRefused(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
-    await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
-    return { outcome: "unknown" };
+    answer = { unknown: error };
   }
+  if (!("unknown" in answer)) return answer;
+  if (answer.unknown !== undefined) logFailure("charge", answer.unknown);
+  if (answer.unknown instanceof PaymentsError) unknown.code = answer.unknown.code;
+  await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
+  return { outcome: "unknown" };
 }
