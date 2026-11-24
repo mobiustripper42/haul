@@ -408,6 +408,7 @@ describe("AC1 (issue 198) — lockedWeek: whether a subscription is locked", () 
     status,
     cancelledAt: status === "cancelled" ? new Date("2027-02-03T17:00:00.000Z") : null,
     declinedWeek,
+    needsCard: false,
   });
 
   it("AC1: an active subscription holding a declined row is locked: lockedWeek is the declined week", () => {

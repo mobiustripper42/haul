@@ -5,6 +5,7 @@ import { memberDisplayName, type Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { clevelandDate, firstPickup } from "@core/pickup-week.js";
 import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
+import { isChargeOut } from "@core/signup.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import { Button } from "../../components/ui/button";
 import { ButtonRow } from "../../components/ui/button-row";
@@ -123,8 +124,8 @@ export default async function SupperClub({
 
   if (member && (await repo.findActiveSubscription(member.id, product.id))) redirect(SUPPER_CLUB_ALREADY_PATH);
   const pending = member ? await repo.findPendingSignup(member.id, product.id) : null;
-  // The charge went out on a saved card and no answer came back: only "Try again" is left to press.
-  const stranded = pending !== null && pending.ledgerStatus === "pending" && pending.squareCardId !== null ? pending : null;
+  // The charge went out on the card token and no answer came back: only "Try again" is left to press.
+  const stranded = pending !== null && isChargeOut(pending) ? pending : null;
 
   // The cap is read from the count, never the URL. A stranded payment holds its own spot, so it is never sold out.
   if (!stranded && isSoldOut(product, await repo.countHeldSpots(product.id))) {

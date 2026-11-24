@@ -289,8 +289,7 @@ export function runMenuContract(
           consentText: "I agree to a weekly charge of $50.",
           consentAt: CONSENT_AT,
         });
-        expect(await repo.saveSubscriptionCard(signup.subscriptionId, cardOf(`ccof:made-${n}`))).toEqual({ amountCents: 5000, attempt: 1 });
-        expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, PAID_AT)).toBe("confirmed");
+        expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, 5000, PAID_AT, cardOf(`ccof:made-${n}`))).toBe("confirmed");
         const stored = await repo.findMemberById(member.id);
         if (!stored) throw new Error("the member just saved is gone");
         return { member: stored, subscriptionId: signup.subscriptionId };

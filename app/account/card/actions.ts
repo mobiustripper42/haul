@@ -15,9 +15,10 @@ import { requireSubscriber } from "../subscriber";
 const deps = (): UpdateCardDeps => ({ repo: getRepository(), payments: getPayments(), email: getEmail(), siteUrl: getSiteUrl(), clock: () => new Date() });
 
 /** Back to Update your card with the outcome, and for a paid week the row it paid. */
-const landOn = (result: UpdateCardResult): never => redirect(accountCardPath(result.outcome, result.outcome === "paid" ? result.ledgerId : undefined));
+const landOn = (result: UpdateCardResult): never =>
+  redirect(accountCardPath(result.outcome, result.outcome === "paid" || result.outcome === "paidNoCard" ? result.ledgerId : undefined));
 
-/** Saves the new card and charges the declined week on it, then goes back to Update your card with the outcome. */
+/** Charges the declined week on the new card's token and saves the card from the payment (or saves it alone when nothing is owed), then goes back to Update your card with the outcome. */
 export async function saveCard(formData: FormData): Promise<void> {
   const { member, confirmation } = await requireSubscriber();
   if (confirmation.status === "cancelled") redirect(ACCOUNT_PATH);

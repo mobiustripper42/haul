@@ -20,15 +20,16 @@ import { CardForm } from "./card-form";
 
 export const generateMetadata = titled("account.card.title");
 
-const STATES = ["saved", "paid", "declined", "unknown", "error"] as const;
+const STATES = ["saved", "paid", "paidNoCard", "declined", "unknown", "error"] as const;
 
 /** A query value that is one string, or nothing. */
 const one = (value: string | string[] | undefined): string | undefined => (typeof value === "string" ? value : undefined);
 
 /**
  * A member's Update your card (issue 145): the card on file, the card entry that replaces it, and, after a save, what it
- * did (`state` in the URL: `saved`, `paid` with the `row` it charged, `declined`, `unknown`, `error`). A saved or paid state
- * has no form: the card is on file and only the back link is left. While the subscription holds a `pending` row, whatever
+ * did (`state` in the URL: `saved`, `paid` with the `row` it charged, `paidNoCard` with the `row` it charged and no card
+ * saved from it (issue 254), `declined`, `unknown`, `error`). A saved or paid state has no form: the card is on file and
+ * only the back link is left; `paidNoCard` keeps the form, to enter the card again. While the subscription holds a `pending` row, whatever
  * the URL says, the signup's Try again takes the form's place: the row's key and card stay fixed until it settles. Only an
  * active subscription reaches it; a cancelled one is sent to account home.
  */
@@ -46,9 +47,10 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
   const charged = await repo.findPendingCharge(subscriptionId);
 
   // A paid state counts only for the one row of this subscription's the URL names.
-  const paidRow = one(query[ACCOUNT_CARD_STATE_PARAM]) === "paid" ? await repo.findPaidCharge(subscriptionId, one(query[ACCOUNT_CARD_ROW_PARAM]) ?? "") : null;
-  const known = STATES.find((found) => found === one(query[ACCOUNT_CARD_STATE_PARAM]));
-  const state = known === "paid" && !paidRow ? undefined : known;
+  const paidState = one(query[ACCOUNT_CARD_STATE_PARAM]);
+  const paidRow = paidState === "paid" || paidState === "paidNoCard" ? await repo.findPaidCharge(subscriptionId, one(query[ACCOUNT_CARD_ROW_PARAM]) ?? "") : null;
+  const known = STATES.find((found) => found === paidState);
+  const state = (known === "paid" || known === "paidNoCard") && !paidRow ? undefined : known;
 
   let notice: { lead: string; text: string } | null = null;
   if (state === "saved" && cardWords) {
@@ -65,6 +67,11 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
         card: cardWords,
         week: await weekNamed(repo, product.id, paidRow.pickupDate, language),
       }),
+    };
+  } else if (state === "paidNoCard" && paidRow) {
+    notice = {
+      lead: t("account.card.paidNoCardLead"),
+      text: t("account.card.paidNoCard", { amount: formatUsdWhole(paidRow.amountCents), week: await weekNamed(repo, product.id, paidRow.pickupDate, language) }),
     };
   } else if (state === "declined") {
     notice = { lead: t("account.card.refusedLead"), text: t("account.card.refused") };
@@ -105,6 +112,8 @@ export default async function UpdateCard({ searchParams }: { searchParams: Promi
             <Card width="fill">
               {cardWords && <p>{t("account.card.onFile", { card: cardWords })}</p>}
               <CardForm
+                // A declined week owed is charged on the token and the card saved from the payment; nothing owed, the card is only stored.
+                intent={owed > 0 ? "CHARGE_AND_STORE" : "STORE"}
                 amountCents={owed > 0 ? owed : confirmation.weeklyCents}
                 card={cardEntrySettings(member)}
                 text={{

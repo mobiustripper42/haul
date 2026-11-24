@@ -7,7 +7,7 @@ import { createElement, createRef } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { attributesOf, screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
-import { CardEntry, CardEntryBody, cardAttachment, tokenizeWhenAttached, type SquareCard } from "./card-entry";
+import { CardEntry, CardEntryBody, cardAttachment, cardDetails, tokenizeWhenAttached, type SquareCard } from "./card-entry";
 
 const render = (testMode: boolean) =>
   renderToStaticMarkup(
@@ -21,6 +21,7 @@ const render = (testMode: boolean) =>
       applicationId: "sandbox-application",
       locationId: "LOCATION",
       amountCents: 5000,
+      intent: "CHARGE_AND_STORE",
       billing: { email: "member@example.com" },
     }),
   );
@@ -172,5 +173,31 @@ describe("AC10 (issue 222) — tokenizeWhenAttached", () => {
       throw new Error("Square's form fell over");
     });
     await expect(tokenizeWhenAttached(Promise.resolve(card), DETAILS)).resolves.toEqual({ kind: "failed" });
+  });
+});
+
+// Issue 254: what Square's tokenize is sent. Which intent a page picks is the page's (app/account/card/page.test.ts) and
+// app/card-intent.test.ts's.
+describe("AC14 (issue 254) — cardDetails", () => {
+  const billing = { email: "member@example.com", givenName: "Ada", familyName: "Lovelace" };
+
+  it("AC14: CHARGE_AND_STORE is the amount in dollars and cents, USD, the buyer present, and the member as billing contact", () => {
+    expect(cardDetails({ intent: "CHARGE_AND_STORE", amountCents: 5000, billing })).toStrictEqual({
+      amount: "50.00",
+      currencyCode: "USD",
+      intent: "CHARGE_AND_STORE",
+      customerInitiated: true,
+      sellerKeyedIn: false,
+      billingContact: billing,
+    });
+  });
+
+  it("AC14: STORE has no amount and no currency", () => {
+    expect(cardDetails({ intent: "STORE", amountCents: 5000, billing })).toStrictEqual({
+      intent: "STORE",
+      customerInitiated: true,
+      sellerKeyedIn: false,
+      billingContact: billing,
+    });
   });
 });

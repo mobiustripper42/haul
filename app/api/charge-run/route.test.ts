@@ -61,8 +61,8 @@ afterEach(() => {
 const fire = (authorization?: string): Promise<Response> =>
   GET(new Request("http://localhost/api/charge-run", authorization === undefined ? {} : { headers: { authorization } }));
 
-/** A member with a Square customer, a card bound to their Supper Club signup, and its first week, January 3, paid. */
-async function subscriber(): Promise<{ customerId: string; cardId: string }> {
+/** A member with a Square customer, their Supper Club signup's first week, January 3, paid, and a card on file. */
+async function subscriber(): Promise<{ customerId: string; cardId: string; subscriptionId: string }> {
   const n = ++members;
   const address = `member-${n}@example.com`;
   const saved = await services.repo.saveAccount({ email: address, firstName: `Member${n}`, lastName: "Lovelace", phone: "216-555-0100", language: "en" });
@@ -79,16 +79,15 @@ async function subscriber(): Promise<{ customerId: string; cardId: string }> {
     consentAt: SIGNED_UP_AT,
   });
   const card = await services.payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` });
-  await services.repo.saveSubscriptionCard(signup.subscriptionId, card);
-  expect(await services.repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, 8000, SIGNED_UP_AT)).toBe("confirmed");
-  return { customerId, cardId: card.id };
+  expect(await services.repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, 8000, SIGNED_UP_AT, card)).toBe("confirmed");
+  return { customerId, cardId: card.id, subscriptionId: signup.subscriptionId };
 }
 
 /** Charges to `cardId` get no answer, and Square takes none of them; any other charge goes to the fake. */
 function noAnswerFor(cardId: string): void {
   const real = services.payments.charge.bind(services.payments);
   vi.spyOn(services.payments, "charge").mockImplementation(async (input) =>
-    input.cardId === cardId ? Promise.reject(new DOMException("The operation timed out.", "TimeoutError")) : real(input),
+    input.sourceId === cardId ? Promise.reject(new DOMException("The operation timed out.", "TimeoutError")) : real(input),
   );
 }
 
@@ -119,6 +118,22 @@ describe("AC1 — the secret fires the run", () => {
       [declined.customerId]: "declined",
     });
     expect(services.repo.events().map((event) => event.kind).sort()).toEqual(["card_declined", "charge_outcome_unknown"]);
+  });
+
+  // Issue 254: the third event the route's run records. What the run does with it is src/charge-run.test.ts's.
+  it("AC19 (issue 254): a card update's payment the run finds, whose card cannot be saved, is recorded as card_not_saved", async () => {
+    vi.stubEnv("CRON_SECRET", SECRET);
+    const { customerId, subscriptionId } = await subscriber();
+    const ledgerId = await services.repo.addLedgerRow(subscriptionId, WEEK, "declined", 8000);
+    await services.repo.claimCardUpdate(subscriptionId, "cnon:card-update");
+    await services.payments.charge({ customerId, sourceId: "cnon:card-update", amountCents: 8000, idempotencyKey: `${ledgerId}:2`, referenceId: ledgerId, customerInitiated: true });
+    vi.spyOn(services.payments, "saveCard").mockRejectedValueOnce(new DOMException("The operation timed out.", "TimeoutError"));
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+
+    const response = await fire(`Bearer ${SECRET}`);
+
+    expect(await response.json()).toMatchObject({ paid: 1 });
+    expect(services.repo.events().map((event) => event.kind)).toEqual(["card_not_saved"]);
   });
 
   it("AC1: the run is given the app's repository, payments and email, the site URL, the account link under it, now at the request, and a clock that reads the real time", async () => {

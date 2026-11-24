@@ -3,7 +3,7 @@ schema: 1
 id: DEC-040
 title: "A declined week's charge after a card update is claimed on its own row"
 topic: "Payments"
-status: "active"
+status: "superseded"
 date: "2026-11-15"
 ruling: "A card update claims the declined week on its own row in one write: card on file, row pending, attempt bumped, only while still declined. The key stays fixed until the charge settles; a save while any row is pending charges nothing."
 claims:
@@ -12,6 +12,7 @@ claims:
     note: "updateCard and retryCardCharge: the claim's answer, then the one settle step"
   - kind: "test"
     target: "src/update-card.test.ts"
+superseded_by: DEC-053
 revisit_if: "Square adds a stored-card verification Haul can use before charging, or a member asks to keep a card that failed"
 ---
 

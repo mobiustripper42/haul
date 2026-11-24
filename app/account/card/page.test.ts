@@ -94,7 +94,7 @@ const signIn = (member: Member): void => {
 };
 
 /**
- * Ada, signed in, with an active subscription paid for January 3 at $45 a week, `card` bound at the signup (none when
+ * Ada, signed in, with an active subscription paid for January 3 at $45 a week, `card` on file from the signup (none when
  * null). Her member and the subscription's id.
  */
 const subscribedAda = async (card: Card | null = OLD_CARD): Promise<{ member: Member; subscriptionId: string }> => {
@@ -109,8 +109,7 @@ const subscribedAda = async (card: Card | null = OLD_CARD): Promise<{ member: Me
     consentText: "I agree to a weekly charge of $45.",
     consentAt: new Date("2026-12-01T17:00:00.000Z"),
   });
-  if (card) await services.repo.saveSubscriptionCard(rows.subscriptionId, card);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), card ?? undefined);
   signIn(member);
   return { member, subscriptionId: rows.subscriptionId };
 };
@@ -289,6 +288,54 @@ describe("AC6 — state paid", () => {
     const { element, html } = await render(withRow ? { state: "paid", row: declined } : { state: "paid" });
     expect(alertTexts(html)).toEqual([]);
     expect(cardFormOf(element)).toBeDefined();
+  });
+});
+
+describe("AC10 (issue 254) — state paidNoCard", () => {
+  it("AC10: with the row the week paid, an alert Notice names its amount and the week, and the card form stays", async () => {
+    const { subscriptionId } = await subscribedAda(null);
+    const paid = await services.repo.addLedgerRow(subscriptionId, JAN_31, "paid", 4500);
+    const { element, html } = await render({ state: "paidNoCard", row: paid });
+    expect(noticeIcons(element)).toEqual(["alert"]);
+    for (const value of [formatUsdWhole(4500), titleOf(JAN_31)]) expect(alertTexts(html)[0]).toContain(value);
+    expect(cardFormOf(element)).toBeDefined();
+  });
+
+  it("AC10: with the old card still on file, the Notice and the form are the same", async () => {
+    const { subscriptionId } = await subscribedAda();
+    const paid = await services.repo.addLedgerRow(subscriptionId, JAN_31, "paid", 4500);
+    const { element, html } = await render({ state: "paidNoCard", row: paid });
+    expect(noticeIcons(element)).toEqual(["alert"]);
+    expect(alertTexts(html)[0]).toContain(titleOf(JAN_31));
+    expect(cardFormOf(element)).toBeDefined();
+  });
+
+  it.each([
+    ["a row that is not the subscription's paid row", true],
+    ["no row", false],
+  ])("AC10: a paidNoCard state with %s is ignored: no Notice, and the form shows", async (_what, withRow) => {
+    const { subscriptionId } = await subscribedAda();
+    const declined = await services.repo.addLedgerRow(subscriptionId, JAN_24, "declined", 4500);
+    const { element, html } = await render(withRow ? { state: "paidNoCard", row: declined } : { state: "paidNoCard" });
+    expect(alertTexts(html)).toEqual([]);
+    expect(cardFormOf(element)).toBeDefined();
+  });
+});
+
+// CardForm hands its intent on to CardEntry: app/card-intent.test.ts.
+describe("AC14 (issue 254) — the card box's intent", () => {
+  it("AC14: with nothing owed, a closed week's declined row included, the card is only stored: STORE", async () => {
+    const { subscriptionId } = await subscribedAda();
+    expect(cardFormOf((await render()).element)).toMatchObject({ intent: "STORE" });
+    await services.repo.addLedgerRow(subscriptionId, JAN_17, "declined", 4500);
+    await services.repo.closePickupWeek(product.id, JAN_17, null, new Date("2027-01-10T15:00:00.000Z"));
+    expect(cardFormOf((await render()).element)).toMatchObject({ intent: "STORE" });
+  });
+
+  it("AC14: with an open declined week owed, it is charged and stored: CHARGE_AND_STORE", async () => {
+    const { subscriptionId } = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, JAN_24, "declined", 4500);
+    expect(cardFormOf((await render()).element)).toMatchObject({ intent: "CHARGE_AND_STORE" });
   });
 });
 

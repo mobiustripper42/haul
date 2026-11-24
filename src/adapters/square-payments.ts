@@ -2,6 +2,7 @@ import {
   checkPaymentsInput,
   IdempotencyKeyReusedError,
   isCardRefusal,
+  isDeadToken,
   PaymentsError,
   type Card,
   type ChargeResult,
@@ -28,6 +29,7 @@ export const SQUARE_TIMEOUT_MS = 15_000;
 /** Square's sandbox test values: the one home for them. */
 export const SQUARE_SANDBOX_VALUES = {
   cardNonceOk: "cnon:card-nonce-ok",
+  cardNonceDeclined: "cnon:card-nonce-declined",
   cardOnFileOk: "ccof:customer-card-id-ok",
   cardOnFileDeclined: "ccof:customer-card-id-declined",
 } as const;
@@ -161,24 +163,28 @@ export class SquarePayments implements PaymentsPort {
    */
   async charge(input: {
     customerId: string;
-    cardId: string;
+    sourceId: string;
     amountCents: number;
     idempotencyKey: string;
     referenceId?: string;
+    customerInitiated: boolean;
   }): Promise<ChargeResult> {
     checkPaymentsInput("charge", input);
     const reply = await this.request("POST", "/payments", {
       idempotency_key: input.idempotencyKey,
-      source_id: input.cardId,
+      source_id: input.sourceId,
       customer_id: input.customerId,
       location_id: this.locationId,
       amount_money: { amount: input.amountCents, currency: "USD" },
       autocomplete: true,
-      customer_details: { customer_initiated: false },
+      customer_details: { customer_initiated: input.customerInitiated },
       ...(input.referenceId !== undefined && { reference_id: input.referenceId }),
     });
     if (!reply.ok) {
-      const failure = errorFor(reply);
+      // `unknown`, so the dead-token test leaves `failure` a PaymentsError for the decline test after it.
+      const failure: unknown = errorFor(reply);
+      // A dead token is never a decline, whatever its category: the member must enter the card again.
+      if (isDeadToken(failure)) throw failure;
       if (isCardRefusal(failure)) {
         const { paymentId } = readSquareError(reply.text);
         return { outcome: "declined", code: failure.code, ...(paymentId !== undefined && { paymentId }) };

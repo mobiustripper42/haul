@@ -30,12 +30,17 @@ export interface PaymentsPort {
     referenceId?: string;
   }): Promise<Customer>;
   saveCard(input: { customerId: string; sourceId: string; idempotencyKey: string; verificationToken?: string }): Promise<Card>;
+  /**
+   * `sourceId` is a card token or a saved card's id: Square takes both in the same field. `customerInitiated` says
+   * who started it: the member present (a token) or the seller (the run, a saved card).
+   */
   charge(input: {
     customerId: string;
-    cardId: string;
+    sourceId: string;
     amountCents: number;
     idempotencyKey: string;
     referenceId?: string;
+    customerInitiated: boolean;
   }): Promise<ChargeResult>;
   setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void>;
   /** Issue 156: the customer's email, Haul's match key, set to `email`. */
@@ -74,10 +79,17 @@ export function isCardRefusal(error: unknown): error is PaymentsError {
   return error instanceof PaymentsError && error.category === "PAYMENT_METHOD_ERROR";
 }
 
+const DEAD_TOKEN_CODES = ["CARD_TOKEN_EXPIRED", "CARD_TOKEN_USED", "SOURCE_USED", "SOURCE_EXPIRED"];
+
+/** Whether `error` is Square saying the card token is no longer usable. Square gives these codes no category, so the code alone decides. */
+export function isDeadToken(error: unknown): error is PaymentsError {
+  return error instanceof PaymentsError && DEAD_TOKEN_CODES.includes(error.code);
+}
+
 export const IDEMPOTENCY_KEY_MAX = 45;
 export const REFERENCE_ID_MAX = 40;
 
-function requireText(field: string, value: unknown): void {
+export function requireText(field: string, value: unknown): void {
   if (typeof value !== "string" || value === "") {
     throw new RangeError(`${field} must be a non-empty string`);
   }
@@ -138,7 +150,7 @@ export function checkPaymentsInput(method: keyof PaymentsPort, input: object): v
       break;
     case "charge":
       requireText("customerId", fields.customerId);
-      requireText("cardId", fields.cardId);
+      requireText("sourceId", fields.sourceId);
       requirePositiveCents(fields.amountCents);
       requireKey(fields.idempotencyKey);
       if (fields.referenceId !== undefined) requireReference(fields.referenceId);

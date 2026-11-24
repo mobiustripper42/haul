@@ -12,6 +12,7 @@ import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
 import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import type { Card } from "@core/ports/payments.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
@@ -99,11 +100,14 @@ const signup = (member: Member, firstWeek: string): Promise<PendingSignup> =>
     consentAt: new Date("2026-12-01T17:00:00.000Z"),
   });
 
-/** Ada, signed in, with an active subscription whose first week is `firstWeek`; its id. */
-const subscribedAda = async (firstWeek = "2027-01-03"): Promise<string> => {
+/** The card Square saved, on file from the signup's confirm (issue 254). */
+const CARD: Card = { id: "ccof:card-1", brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 };
+
+/** Ada, signed in, with an active subscription whose first week is `firstWeek`, a card on file unless null; its id. */
+const subscribedAda = async (firstWeek = "2027-01-03", card: Card | null = CARD): Promise<string> => {
   const member = await ada();
   const rows = await signup(member, firstWeek);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), card ?? undefined);
   signIn(member);
   return rows.subscriptionId;
 };
@@ -453,6 +457,32 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     await updatedAda();
     const { html } = await renderLocked();
     expect(formsIn(html, titleOf(FEB_14))).toEqual([{ action: "skipWeek", week: FEB_14 }]);
+    expect(alertTexts(html)).toEqual([]);
+  });
+});
+
+// Issue 254: the no-card Notice. Whether a subscription needs a card is the repository's (needsCard, owned by
+// src/adapters/signup-contract.ts and postgres-product.test.ts); here one present and one absent case through the page.
+describe("AC17 (issue 254) — the no-card Notice on Upcoming weeks", () => {
+  /** Whether one of the page's Notices holds a primary link to /account/card; its words are not read. */
+  const noticeAsksForACard = (html: string): boolean => {
+    const primary = attributesOf(renderToStaticMarkup(createElement(Button, { kind: "primary", href: "/account/card", children: "x" })), "a")[0];
+    expect(primary?.class).toBeDefined();
+    return [...html.matchAll(/<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/g)].some(([, , inner = ""]) =>
+      attributesOf(inner, "a").some((link) => link.href === "/account/card" && link.class === primary?.class),
+    );
+  };
+
+  it("AC17: an active subscription with no card on file and no declined row: a Notice holds a primary link to /account/card", async () => {
+    await subscribedAda("2027-01-03", null);
+    expect(noticeAsksForACard((await render()).html)).toBe(true);
+  });
+
+  it("AC17: with a card on file whose brand and last four are not stored, there is none", async () => {
+    await subscribedAda();
+    vi.spyOn(services.repo, "findSubscriptionCard").mockResolvedValue(null);
+    const { html } = await render();
+    expect(noticeAsksForACard(html)).toBe(false);
     expect(alertTexts(html)).toEqual([]);
   });
 });

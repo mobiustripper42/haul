@@ -12,12 +12,17 @@ import { SQUARE_SANDBOX_VALUES } from "./square-payments.js";
 /** One resolved charge, paid or declined, as `FakePayments.charges` holds it. */
 export type FakeCharge = {
   customerId: string;
-  cardId: string;
+  /** The card token or saved card's id the charge was made from. */
+  sourceId: string;
   amountCents: number;
   idempotencyKey: string;
   referenceId: string | undefined;
+  customerInitiated: boolean;
   result: ChargeResult;
 };
+
+/** What marks a source as a card token, as Square's sandbox tokens are. */
+const TOKEN_PREFIX = "cnon:";
 
 /** The card `saveCard` returns: Square's sandbox test card. */
 const FAKE_CARD = { brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 } as const;
@@ -48,9 +53,9 @@ export class FakePayments implements PaymentsPort {
     return structuredClone(added);
   }
 
-  /** Makes every later charge to `cardId` decline with `code`. */
-  declineCard(cardId: string, code: string): void {
-    this.declined.set(cardId, code);
+  /** Makes every later charge from `sourceId`, a saved card's id or a token, decline with `code`. */
+  declineCard(sourceId: string, code: string): void {
+    this.declined.set(sourceId, code);
   }
 
   /** Makes the next call of any method reject with `error`, once. */
@@ -111,24 +116,29 @@ export class FakePayments implements PaymentsPort {
       if (!this.customerList.some((customer) => customer.id === customerId)) {
         throw notFound(`Customer ${customerId} not found`);
       }
+      // Square saves a card from a token, or from a payment made from one; nothing else is a source.
+      const paidFrom = this.chargeList.find((charge) => charge.result.outcome === "paid" && charge.result.paymentId === sourceId);
+      if (paidFrom !== undefined && !paidFrom.sourceId.startsWith(TOKEN_PREFIX)) throw notFound(`Source ${sourceId} not found`);
+      if (paidFrom === undefined && !sourceId.startsWith(TOKEN_PREFIX)) throw notFound(`Source ${sourceId} not found`);
       const card: Card = { id: this.nextId("ccof:card"), ...FAKE_CARD };
-      this.cardList.push({ customerId, card });
+      this.cardList.push({ customerId: paidFrom?.customerId ?? customerId, card });
       return card;
     });
   }
 
   async charge(input: {
     customerId: string;
-    cardId: string;
+    sourceId: string;
     amountCents: number;
     idempotencyKey: string;
     referenceId?: string;
+    customerInitiated: boolean;
   }): Promise<ChargeResult> {
     this.begin("charge", input);
-    const { customerId, cardId, amountCents, idempotencyKey, referenceId } = input;
-    return this.idempotent("charge", idempotencyKey, { customerId, cardId, amountCents, referenceId }, () => {
-      const result = this.chargeResult(customerId, cardId);
-      this.chargeList.push({ customerId, cardId, amountCents, idempotencyKey, referenceId, result });
+    const { customerId, sourceId, amountCents, idempotencyKey, referenceId, customerInitiated } = input;
+    return this.idempotent("charge", idempotencyKey, { customerId, sourceId, amountCents, referenceId, customerInitiated }, () => {
+      const result = this.chargeResult(customerId, sourceId);
+      this.chargeList.push({ customerId, sourceId, amountCents, idempotencyKey, referenceId, customerInitiated, result });
       return result;
     });
   }
@@ -173,13 +183,22 @@ export class FakePayments implements PaymentsPort {
     return `${prefix}_${this.sequence}`;
   }
 
-  /** What a charge to `cardId` comes to: the decline `declineCard` set, Square's sandbox ids, or a card saved to this customer. */
-  private chargeResult(customerId: string, cardId: string): ChargeResult {
-    const code = this.declined.get(cardId);
+  /**
+   * What a charge from `sourceId` comes to: the decline `declineCard` set, Square's sandbox ids, any `cnon:` token, or
+   * a card saved to this customer. A token's being single-use is not modelled.
+   */
+  private chargeResult(customerId: string, sourceId: string): ChargeResult {
+    const code = this.declined.get(sourceId);
     if (code !== undefined) return { outcome: "declined", code };
-    if (cardId === SQUARE_SANDBOX_VALUES.cardOnFileDeclined) return { outcome: "declined", code: "GENERIC_DECLINE" };
-    if (cardId !== SQUARE_SANDBOX_VALUES.cardOnFileOk && !this.cardList.some((saved) => saved.card.id === cardId && saved.customerId === customerId)) {
-      throw notFound(`Card ${cardId} not found for customer ${customerId}`);
+    if (sourceId === SQUARE_SANDBOX_VALUES.cardOnFileDeclined || sourceId === SQUARE_SANDBOX_VALUES.cardNonceDeclined) {
+      return { outcome: "declined", code: "GENERIC_DECLINE" };
+    }
+    if (
+      !sourceId.startsWith(TOKEN_PREFIX) &&
+      sourceId !== SQUARE_SANDBOX_VALUES.cardOnFileOk &&
+      !this.cardList.some((saved) => saved.card.id === sourceId && saved.customerId === customerId)
+    ) {
+      throw notFound(`Source ${sourceId} not found for customer ${customerId}`);
     }
     return { outcome: "paid", paymentId: this.nextId("PAYMENT") };
   }

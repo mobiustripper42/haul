@@ -354,13 +354,9 @@ describe("issue 56 — the pay actions", () => {
 
   const noAnswer = () => new DOMException("The operation timed out.", "TimeoutError");
 
+  /** The token `pay()` posts is one Square declines to charge. */
   const nextCardDeclines = () => {
-    const real = services.payments.saveCard.bind(services.payments);
-    vi.spyOn(services.payments, "saveCard").mockImplementationOnce(async (input) => {
-      const card = await real(input);
-      services.payments.declineCard(card.id, "GENERIC_DECLINE");
-      return card;
-    });
+    services.payments.declineCard(SOURCE, "GENERIC_DECLINE");
   };
 
   const stranded = async () => {
@@ -553,6 +549,46 @@ describe("issue 56 — the pay actions", () => {
       await stranded();
       vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
       expect(landed(await retry())).toMatchObject({ path: "/supper-club", query: { payError: "unknown" } });
+    });
+  });
+
+  // Issue 254: what the action does with a paid signup whose card was not saved, and with a dead token; what each writes and
+  // records is src/signup.test.ts's. The email's values are the issue 58 cases' below.
+  describe("AC4, AC6, AC8 (issue 254) — a card not saved, and a dead token", () => {
+    const cardNotSaved = () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(services.payments, "saveCard").mockRejectedValueOnce(
+        new PaymentsError({ status: 402, category: "PAYMENT_METHOD_ERROR", code: "CVV_FAILURE", detail: "Refused." }),
+      );
+    };
+    const emailed = async () => {
+      await runScheduled();
+      return (services.email as FakeEmail).sent.map((message) => message.to);
+    };
+
+    it("AC4: Pay that is paid with its card not saved lands on done, records card_not_saved, and emails the member once", async () => {
+      signIn();
+      cardNotSaved();
+      expect(await join(pay())).toBe("/supper-club/done");
+      expect(repo.events().map((event) => event.kind)).toEqual(["card_not_saved"]);
+      expect(await emailed()).toEqual([ADA]);
+    });
+
+    it("AC6: Try again that is paid with its card not saved lands on done, records card_not_saved, and emails the member once", async () => {
+      await stranded();
+      cardNotSaved();
+      expect(await retry()).toBe("/supper-club/done");
+      expect(repo.events().map((event) => event.kind)).toEqual(["charge_outcome_unknown", "card_not_saved"]);
+      expect(await emailed()).toEqual([ADA]);
+    });
+
+    it("AC8: Try again on a dead token goes back to the page with payError=error, the picks kept", async () => {
+      await stranded();
+      vi.spyOn(services.payments, "charge").mockRejectedValueOnce(
+        new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "CARD_TOKEN_EXPIRED", detail: "Expired." }),
+      );
+      expect(landed(await retry())).toEqual({ path: "/supper-club", query: { payError: "error", ...picksKept() } });
+      expect(await emailed()).toEqual([]);
     });
   });
 

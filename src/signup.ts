@@ -1,16 +1,17 @@
-import { matchCustomer, sha256Key } from "./customer-match.js";
-import { recordDecline, sendCharge } from "./ledger-charge.js";
+import { matchCustomer } from "./customer-match.js";
+import { abandonIfDead, recordDecline, sendCharge, settlePaid } from "./ledger-charge.js";
 import type { Member } from "./members.js";
 import { clevelandDate, firstPickup } from "./pickup-week.js";
-import { isCardRefusal, type Card, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
+import { requireText, type ChargeResult, type PaymentsPort } from "./ports/payments.js";
 import { SignupRefusedError, type Actor, type AuditEventDetail, type PendingSignup, type Repository } from "./ports/repository.js";
 import { isSoldOut, priceOfChoices, requireSupperClub } from "./products.js";
 import { errorFields, recordEventAs } from "./record-event.js";
 
 /**
- * The Supper Club signup: a member's first week paid and a card saved (issue 56; DEC-003, DEC-004).
+ * The Supper Club signup: a member's first week paid and a card saved (issue 56; DEC-003, DEC-004, DEC-053).
  * The ledger row is committed before any charge and its id, with the attempt, is the charge's
- * idempotency key, so a retry can never charge twice. The provider calls run between `withActor`
+ * idempotency key, so a retry can never charge twice. The card token goes on the row while its charge is out, the
+ * token is charged buyer-started, and the card is saved from the payment. The provider calls run between `withActor`
  * commits, never inside one, so a pending row survives a failed call. Everything written or recorded
  * runs under the member.
  */
@@ -24,7 +25,7 @@ export type SignupDeps = { repo: Repository; payments: PaymentsPort; now: Date; 
 /**
  * `unknown`: the charge may or may not have happened, and the pending row stays for "Try again".
  * `sold_out`: the product's cap is reached, at the check before Square or at the card bind; nothing was charged.
- * `error`: something failed before anything was charged.
+ * `error`: something failed before anything was charged, or Try again met a dead card token and the member enters the card again.
  * `confirmedNow`, on a paid result: true only when this request flipped the rows, so it is the whole guard
  * against a second confirmation email; a signup another tab confirmed first gives false.
  */
@@ -34,12 +35,13 @@ export type SignupResult = {
   confirmedNow?: boolean;
 };
 
-/** A signup ready to charge: its pending rows, the card on the row and the member's Square customer. */
-type Charge = { row: PendingSignup; productId: string; cardId: string; customerId: string; lookupFirst: boolean };
+/** A signup ready to charge: its pending rows, the card token on the row and the member's Square customer. */
+type Charge = { row: PendingSignup; productId: string; sourceId: string; customerId: string; lookupFirst: boolean };
 
-/** The retry state: charged (or about to be) on a saved card, and no answer recorded. */
-const isStranded = (row: PendingSignup): row is PendingSignup & { squareCardId: string } =>
-  row.ledgerStatus === "pending" && row.squareCardId !== null;
+/** Whether the row's charge is out: `pending` with the card token on it, and no answer recorded. The one home for "charge out". */
+export function isChargeOut(row: PendingSignup): row is PendingSignup & { chargeSource: string } {
+  return row.ledgerStatus === "pending" && row.chargeSource !== null;
+}
 
 /** The log line for a failure: its name and code, never its message, which can carry the provider's text. */
 function logFailure(step: string, error: unknown): void {
@@ -47,8 +49,8 @@ function logFailure(step: string, error: unknown): void {
 }
 
 /**
- * Signs `memberId` up: AC5's check, the Square customer, the pending rows, the card, then the charge.
- * A row already stranded on a charge takes the "Try again" path and ignores what was submitted.
+ * Signs `memberId` up: AC5's check, the Square customer, the pending rows, the token on the row, then the charge and the card
+ * saved from it. A row whose charge is already out takes the "Try again" path and ignores what was submitted.
  */
 export async function signUp(
   deps: SignupDeps,
@@ -64,7 +66,7 @@ export async function signUp(
   return "outcome" in next ? next : settle(deps, input.memberId, next);
 }
 
-/** "Try again": asks Square whether the charge happened, then confirms what it finds or charges the saved card. */
+/** "Try again": asks Square whether the charge happened, then confirms what it finds or charges the token on the row again. */
 export async function retrySignup(deps: SignupDeps, input: { memberId: string }): Promise<SignupResult> {
   let next: SignupResult | Charge;
   try {
@@ -76,19 +78,11 @@ export async function retrySignup(deps: SignupDeps, input: { memberId: string })
   return "outcome" in next ? next : settle(deps, input.memberId, next);
 }
 
-/** The one confirm: both rows flip together, and a second run says "already". */
-export async function confirmSignup(
-  repo: Repository,
-  input: { ledgerId: string; paymentId: string; amountCents: number; now: Date },
-): Promise<"confirmed" | "already" | "mismatch"> {
-  return repo.confirmSignupRows(input.ledgerId, input.paymentId, input.amountCents, input.now);
-}
-
 async function prepare(
   deps: SignupDeps,
   input: { memberId: string; choices: Record<string, string>; sourceId: string; consentText: string },
 ): Promise<SignupResult | Charge> {
-  const { repo, payments, now } = deps;
+  const { repo, now } = deps;
   const actor: Actor = { member: input.memberId };
   const product = await requireSupperClub(repo);
 
@@ -96,10 +90,12 @@ async function prepare(
   const member = await requireMember(repo, input.memberId);
 
   const earlier = await repo.findPendingSignup(input.memberId, product.id);
-  if (earlier && isStranded(earlier)) return stranded(member.squareCustomerId, product.id, earlier);
+  if (earlier && isChargeOut(earlier)) return chargeOut(member.squareCustomerId, product.id, earlier);
 
-  // A stranded row holds its own spot, so only a signup that would take a new one meets the cap.
+  // A row whose charge is out holds its own spot, so only a signup that would take a new one meets the cap.
   if (isSoldOut(product, await repo.countHeldSpots(product.id))) return soldOut(repo, input.memberId);
+  // A blank token is an error before anything is written or sent.
+  requireText("sourceId", input.sourceId);
 
   const customerId = member.squareCustomerId ?? (await linkCustomer(deps, member));
 
@@ -120,33 +116,20 @@ async function prepare(
       }),
     );
   } catch (error) {
-    // Another tab got there first: the box is theirs, or their card is on the row and the rewrite is refused.
+    // Another tab got there first: the box is theirs, or their charge is out on the row and the rewrite is refused.
     if (!(error instanceof SignupRefusedError)) throw error;
     return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(error);
   }
 
-  let card: Card;
-  try {
-    card = await payments.saveCard({
-      customerId,
-      sourceId: input.sourceId,
-      idempotencyKey: sha256Key(input.sourceId),
-    });
-  } catch (error) {
-    // A card Square refuses to save is a decline; any other failure charged nothing and is an error.
-    if (!isCardRefusal(error)) throw error;
-    await recordDecline(repo, actor, input.memberId, row.ledgerId, error.code);
-    return { outcome: "declined" };
-  }
-  // The bind returns the amount and attempt to charge: the row may have been rewritten since this tab's save.
-  // It also takes the spot, and refuses when the last one went after the check above.
-  const bound = await repo.withActor(actor, (scoped) => scoped.saveSubscriptionCard(row.subscriptionId, card));
+  // The token goes on the row: the charge is out from here. It returns the amount and attempt to charge, since the row
+  // may have been rewritten since this tab's save. It also takes the spot, and refuses when the last one went after the check above.
+  const bound = await repo.withActor(actor, (scoped) => scoped.startSignupCharge(row.subscriptionId, input.sourceId));
   if (bound === "sold_out") return soldOut(repo, input.memberId);
-  if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card was not bound"));
+  if (!bound) return (await overtaken(repo, input.memberId, product.id, customerId)) ?? raise(new Error("The card token was not put on the row"));
   return {
-    row: { ...row, squareCardId: card.id, amountCents: bound.amountCents, attempt: bound.attempt },
+    row: { ...row, chargeSource: input.sourceId, amountCents: bound.amountCents, attempt: bound.attempt },
     productId: product.id,
-    cardId: card.id,
+    sourceId: input.sourceId,
     customerId,
     lookupFirst: false,
   };
@@ -158,23 +141,23 @@ async function resume(deps: SignupDeps, memberId: string): Promise<SignupResult 
   if (await repo.findActiveSubscription(memberId, product.id)) return alreadySubscribed(repo, memberId);
   const member = await requireMember(repo, memberId);
   const row = await repo.findPendingSignup(memberId, product.id);
-  return row && isStranded(row) ? stranded(member.squareCustomerId, product.id, row) : { outcome: "error" };
+  return row && isChargeOut(row) ? chargeOut(member.squareCustomerId, product.id, row) : { outcome: "error" };
 }
 
-/** A pending row with a saved card: charge it (after asking Square), under the member's customer. */
-function stranded(customerId: string | null, productId: string, row: PendingSignup & { squareCardId: string }): Charge {
-  if (customerId === null) throw new Error("A saved card is on a signup whose member has no Square customer");
-  return { row, productId, cardId: row.squareCardId, customerId, lookupFirst: true };
+/** A pending row whose charge is out: look it up, then charge its token (if none was taken), under the member's customer. */
+function chargeOut(customerId: string | null, productId: string, row: PendingSignup & { chargeSource: string }): Charge {
+  if (customerId === null) throw new Error("A card token is on a signup whose member has no Square customer");
+  return { row, productId, sourceId: row.chargeSource, customerId, lookupFirst: true };
 }
 
 /**
- * What another tab left behind when this tab's save or bind lost: their box is active, or their card is on
+ * What another tab left behind when this tab's save or bind lost: their box is active, or their charge is out on
  * the pending row and this tab takes "Try again". Null when neither is so.
  */
 async function overtaken(repo: Repository, memberId: string, productId: string, customerId: string): Promise<SignupResult | Charge | null> {
   if (await repo.findActiveSubscription(memberId, productId)) return alreadySubscribed(repo, memberId);
   const row = await repo.findPendingSignup(memberId, productId);
-  return row && isStranded(row) ? stranded(customerId, productId, row) : null;
+  return row && isChargeOut(row) ? chargeOut(customerId, productId, row) : null;
 }
 
 function raise(error: unknown): never {
@@ -221,8 +204,10 @@ async function linkCustomer(deps: SignupDeps, member: Member): Promise<string> {
 }
 
 /**
- * Charges, or confirms what Square already took, and writes the result. Anything that fails from here on
- * is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
+ * Charges, or confirms what Square already took, then saves the card from the payment and writes the result. Anything
+ * that fails from here on is `unknown`: the charge may have happened, the row stays pending, and "Try again" finishes it.
+ * The one exception is Try again's dead token: the charge cannot be sent again, so the row is abandoned and the member
+ * is sent back to the form (`error`).
  */
 async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promise<SignupResult> {
   const { repo, payments, clock } = deps;
@@ -233,7 +218,7 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     const found = charge.lookupFirst
       ? await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt })
       : null;
-    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, charge);
+    const result: ChargeResult = found ? { outcome: "paid", paymentId: found.paymentId } : await sendCharge(payments, { row, sourceId: charge.sourceId, customerId: charge.customerId, customerInitiated: true });
     if (result.outcome === "declined") {
       await recordDecline(repo, actor, memberId, row.ledgerId, result.code);
       return { outcome: "declined" };
@@ -242,9 +227,14 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     const chargedCents = found ? found.amountCents : row.amountCents;
     // The paid answer is back: this is the moment `paid_at` records.
     const paidAt = clock();
-    const confirmed = await repo.withActor(actor, (scoped) =>
-      confirmSignup(scoped, { ledgerId: row.ledgerId, paymentId: result.paymentId, amountCents: chargedCents, now: paidAt }),
-    );
+    const { confirmed } = await settlePaid(repo, payments, actor, {
+      ledgerId: row.ledgerId,
+      paymentId: result.paymentId,
+      amountCents: chargedCents,
+      customerId: charge.customerId,
+      memberId,
+      paidAt,
+    });
     if (confirmed === "mismatch") {
       unknown.chargedCents = chargedCents;
       const ledgerCents = (await repo.findPendingSignup(memberId, charge.productId))?.amountCents;
@@ -254,6 +244,8 @@ async function settle(deps: SignupDeps, memberId: string, charge: Charge): Promi
     return { outcome: "paid", subscriptionId: row.subscriptionId, confirmedNow: confirmed === "confirmed" };
   } catch (error) {
     logFailure("charge", error);
+    // Only Try again abandons a dead token: a first Pay has had no lookup, so the token may be what Square used.
+    if (charge.lookupFirst && (await abandonIfDead(repo, actor, row.ledgerId, error).catch(() => false))) return { outcome: "error" };
     await recordEventAs(repo, actor, { kind: "charge_outcome_unknown", memberId, detail: unknown });
     return { outcome: "unknown" };
   }

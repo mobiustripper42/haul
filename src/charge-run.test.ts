@@ -91,12 +91,12 @@ const picks = (size = 0, menu = 0): Record<string, string> => {
   };
 };
 
-type Subscriber = { member: Member; customerId: string; cardId: string | null; signup: PendingSignup };
+type Subscriber = { member: Member; customerId: string; cardId: string | null; sourceId: string; signup: PendingSignup };
 
 /**
  * A member with a Square customer, unless `customer` is false (issue 150; then `card` must be false too), and a signup
- * for `firstWeek` at `choices`: a card saved at Square and bound to the row unless `card` is false, and the first week
- * paid (the subscription active) unless `paid` is false, which leaves a stranded signup. Each is created a moment after
+ * for `firstWeek` at `choices`: the first week paid (the subscription active), with a card saved at Square on file unless
+ * `card` is false; or, when `paid` is false, a stranded signup, its charge out on the card's token. Each is created a moment after
  * the last, so the run's order between them is fixed.
  */
 async function subscriber({
@@ -124,16 +124,18 @@ async function subscriber({
     consentText: "I agree to a weekly charge until I cancel.",
     consentAt: SIGNED_UP_AT,
   });
+  const sourceId = `cnon:card-${n}`;
   let cardId: string | null = null;
-  if (card) {
-    const saved = await payments.saveCard({ customerId, sourceId: `cnon:card-${n}`, idempotencyKey: `card-${n}` });
-    cardId = saved.id;
-    expect(await repo.saveSubscriptionCard(signup.subscriptionId, saved)).toEqual({ amountCents: priceCents, attempt: 1 });
+  if (paid) {
+    const onFile = card ? await payments.saveCard({ customerId, sourceId, idempotencyKey: `card-${n}` }) : undefined;
+    cardId = onFile?.id ?? null;
+    expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, priceCents, SIGNED_UP_AT, onFile)).toBe("confirmed");
+  } else if (card) {
+    await repo.startSignupCharge(signup.subscriptionId, sourceId);
   }
-  if (paid) expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_SIGNUP_${n}`, priceCents, SIGNED_UP_AT)).toBe("confirmed");
   const member = await repo.findMemberById(saved.id);
   if (!member) throw new Error("the member just saved is gone");
-  return { member, customerId, cardId, signup };
+  return { member, customerId, cardId, sourceId, signup };
 }
 
 const run = (now: Date = RUN_AT, clock: () => Date = () => PAID_AT): Promise<ChargeRunReport> =>
@@ -199,10 +201,11 @@ function pendingAtEachCharge(): PendingCharge[][] {
 async function squareTookSignup(who: Subscriber, amountCents: number = who.signup.amountCents): Promise<void> {
   await payments.charge({
     customerId: who.customerId,
-    cardId: who.cardId ?? "no card",
+    sourceId: who.sourceId,
     amountCents,
     idempotencyKey: amountCents === who.signup.amountCents ? `${who.signup.ledgerId}:1` : "an-earlier-try",
     referenceId: who.signup.ledgerId,
+    customerInitiated: true,
   });
 }
 
@@ -264,10 +267,11 @@ describe("AC4 — the charge", () => {
     expect(payments.charges).toEqual([
       {
         customerId: ada.customerId,
-        cardId: ada.cardId,
+        sourceId: ada.cardId,
         amountCents: 8500,
         idempotencyKey: `${row?.ledgerId}:1`,
         referenceId: row?.ledgerId,
+        customerInitiated: false,
         result: { outcome: "paid", paymentId: expect.any(String) },
       },
     ]);
@@ -281,17 +285,6 @@ describe("AC4 — the charge", () => {
     expect(charge.mock.calls[1]).toEqual(charge.mock.calls[0]);
     expect(await paidWeeks(ada)).toEqual([FIRST, WEEK]);
     expect(repo.events()).toEqual([]);
-  });
-
-  it("AC4: a pending row whose subscription has no card is left alone: no charge, no event, the row still there", async () => {
-    const ada = await subscriber({ card: false });
-    const charge = vi.spyOn(payments, "charge");
-    expect(await run()).toEqual(report({ enrolled: 1 }));
-    expect(charge).not.toHaveBeenCalled();
-    expect(repo.events()).toEqual([]);
-    // The row stands in the way of a skip, so it is there, and it is not paid.
-    expect(await repo.skipWeek(ada.signup.subscriptionId, WEEK)).toBe(false);
-    expect(await paidWeeks(ada)).toEqual([FIRST]);
   });
 });
 
@@ -565,7 +558,7 @@ describe("AC8 — a decline", () => {
     await subscriber();
     payments.declineCard(ada.cardId ?? "no card", "INSUFFICIENT_FUNDS");
     expect(await run()).toEqual(report({ enrolled: 2, paid: 1, declined: 1 }));
-    const ledgerId = payments.charges.find((charge) => charge.cardId === ada.cardId)?.referenceId;
+    const ledgerId = payments.charges.find((charge) => charge.sourceId === ada.cardId)?.referenceId;
     expect(ledgerId).toBeDefined();
     expect(repo.events()).toEqual([{ kind: "card_declined", memberId: ada.member.id, detail: { ledgerId, code: "INSUFFICIENT_FUNDS" }, actor: CHARGE_RUN }]);
     expect(await paidWeeks(ada)).toEqual([FIRST]);
@@ -700,7 +693,7 @@ describe("AC12 — the report", () => {
     await squareTookSignup(stranded);
     payments.declineCard(declined.cardId ?? "no card", "GENERIC_DECLINE");
     const real = payments.charge.bind(payments);
-    vi.spyOn(payments, "charge").mockImplementation(async (input) => (input.cardId === silent.cardId ? Promise.reject(noAnswer()) : real(input)));
+    vi.spyOn(payments, "charge").mockImplementation(async (input) => (input.sourceId === silent.cardId ? Promise.reject(noAnswer()) : real(input)));
     expect(await run()).toEqual(report({ enrolled: 3, paid: 2, declined: 1, unknown: 1 }));
     expect(repo.events().filter((event) => event.kind === "charge_outcome_unknown")).toHaveLength(1);
   });
@@ -1198,5 +1191,155 @@ describe("issue 194 — a comped subscription", () => {
     await run();
     expect(payments.charges).toEqual([]);
     expect(email.sent).toEqual([{ to: ada.member.email, ...renderEmail("weekCreditReceipt", ada.member.language, { week: TITLE }, SITE_URL) }]);
+  });
+});
+
+// Issue 254: the run's own rules for a row with a token out and for a row with neither card nor token. Which rows are listed
+// is the repository's (src/adapters/charge-run-contract.ts); what settling a found token payment saves, confirms and
+// records is settlePaid's (src/ledger-charge.test.ts), and here takes one case each way.
+describe("issue 254 — a token out, and no card", () => {
+  const en = createTranslator("en");
+  const TITLE = weekTitle(en, pickupWeek(WEEK, null), "en");
+  const FAR = "2027-03-07";
+
+  const refused = (): PaymentsError => new PaymentsError({ status: 402, category: "PAYMENT_METHOD_ERROR", code: "CVV_FAILURE", detail: SQUARE_TEXT });
+
+  /** The id of the card on file, as the run would charge it; null when there is none. */
+  const cardOnFile = async (who: Subscriber): Promise<string | null | undefined> => {
+    const ledgerId = await repo.addLedgerRow(who.signup.subscriptionId, FAR, "pending", 5000);
+    return (await repo.listPendingCharges(product.id)).find((row) => row.ledgerId === ledgerId)?.cardId;
+  };
+
+  /** A card update's row: WEEK declined, then claimed on a new token whose charge is out. */
+  const claimed = async () => {
+    const ada = await subscriber();
+    const ledgerId = await repo.addLedgerRow(ada.signup.subscriptionId, WEEK, "declined", 5000);
+    const sourceId = "cnon:card-update";
+    await repo.claimCardUpdate(ada.signup.subscriptionId, sourceId);
+    return { ada, ledgerId, sourceId };
+  };
+
+  /** Square took the claimed row's charge, and its answer was lost. The payment's id. */
+  const squareTookClaimed = async ({ ada, ledgerId, sourceId }: Awaited<ReturnType<typeof claimed>>): Promise<string | undefined> => {
+    const result = await payments.charge({ customerId: ada.customerId, sourceId, amountCents: 5000, idempotencyKey: `${ledgerId}:2`, referenceId: ledgerId, customerInitiated: true });
+    return result.outcome === "paid" ? result.paymentId : undefined;
+  };
+
+  const noCardEmail = (who: Subscriber) => ({
+    to: who.member.email,
+    ...renderEmail("cardDeclined", who.member.language, { week: TITLE, amount: formatUsdWhole(5000), link: CARD_URL }, SITE_URL),
+  });
+
+  it("AC15: an active subscription with no card on file: its row is declined with NO_CARD under the charge run, the decline email goes to the member, and Square is not called", async () => {
+    const ada = await subscriber({ card: false });
+    const charge = vi.spyOn(payments, "charge");
+    const find = vi.spyOn(payments, "findPaymentByReference");
+    expect(await run()).toEqual(report({ enrolled: 1, declined: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(find).not.toHaveBeenCalled();
+    const [row] = await repo.listDeclinedCharges(ada.signup.subscriptionId);
+    expect(row).toMatchObject({ pickupDate: WEEK, attempt: 1 });
+    expect(repo.events()).toEqual([{ kind: "card_declined", memberId: ada.member.id, detail: { ledgerId: row?.ledgerId, code: "NO_CARD" }, actor: CHARGE_RUN }]);
+    expect(email.sent).toEqual([noCardEmail(ada)]);
+  });
+
+  it("AC15: a NO_CARD decline that another write made first counts as declined and emails nobody", async () => {
+    await subscriber({ card: false });
+    vi.spyOn(repo, "recordSignupDecline").mockResolvedValueOnce(false);
+    expect(await run()).toEqual(report({ enrolled: 1, declined: 1 }));
+    expect(email.sent).toEqual([]);
+  });
+
+  it("AC15: a closed week's row with no card is looked up and left, never declined", async () => {
+    const ada = await subscriber({ card: false });
+    const ledgerId = await repo.addLedgerRow(ada.signup.subscriptionId, WEEK, "pending", 5000);
+    await close(WEEK);
+    const find = vi.spyOn(payments, "findPaymentByReference");
+    expect(await run()).toEqual(report());
+    expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
+    expect(await pendingIds()).toEqual([ledgerId]);
+    expect(await repo.listDeclinedCharges(ada.signup.subscriptionId)).toEqual([]);
+    expect(email.sent).toEqual([]);
+  });
+
+  it("AC16: a charge on the card on file saves no card from its payment", async () => {
+    await subscriber();
+    const save = vi.spyOn(payments, "saveCard");
+    expect(await run()).toEqual(report({ enrolled: 1, paid: 1 }));
+    expect(save).not.toHaveBeenCalled();
+    expect(payments.charges.map((charge) => charge.customerInitiated)).toEqual([false]);
+  });
+
+  it("AC19: a stranded signup's payment found saves the card from it: active with the card on file, nothing charged", async () => {
+    const stranded = await subscriber({ paid: false });
+    await squareTookSignup(stranded);
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    expect(await run()).toEqual(report({ paid: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(save.mock.calls.map(([input]) => [input.customerId, input.sourceId])).toEqual([[stranded.customerId, payments.charges[0]?.result.paymentId]]);
+    const [card] = payments.cards;
+    expect(card).toBeDefined();
+    expect(await cardOnFile(stranded)).toBe(card?.id);
+  });
+
+  it("AC19: a stranded signup's payment found whose card cannot be saved: active with no card, card_not_saved under the charge run, and the signup confirmation sent", async () => {
+    const stranded = await subscriber({ paid: false });
+    await squareTookSignup(stranded);
+    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
+    vi.spyOn(console, "error").mockImplementation(() => undefined);
+    expect(await run()).toEqual(report({ paid: 1 }));
+    const paymentId = payments.charges[0]?.result.paymentId;
+    expect(repo.events()).toEqual([
+      { kind: "card_not_saved", memberId: stranded.member.id, detail: { ledgerId: stranded.signup.ledgerId, paymentId, code: "CVV_FAILURE" }, actor: CHARGE_RUN },
+    ]);
+    expect(await repo.findActiveSubscription(stranded.member.id, product.id)).toEqual({ id: stranded.signup.subscriptionId });
+    expect(await cardOnFile(stranded)).toBeNull();
+    const confirmation = await repo.findSignupConfirmation(stranded.member.id, product.id);
+    const expected = new FakeEmail();
+    if (confirmation) await deliverSignupConfirmation(expected, stranded.member, confirmation, ACCOUNT_URL, SITE_URL);
+    expect(email.sent).toEqual(expected.sent);
+  });
+
+  it("AC19: a card update's row with its token out, none found: Square is asked and nothing charged, the row stays pending with its token, no event and no email", async () => {
+    const { ada, ledgerId, sourceId } = await claimed();
+    const charge = vi.spyOn(payments, "charge");
+    const find = vi.spyOn(payments, "findPaymentByReference");
+    expect(await run()).toEqual(report());
+    expect(find.mock.calls).toEqual([[{ referenceId: ledgerId, since: ada.signup.createdAt }]]);
+    expect(charge).not.toHaveBeenCalled();
+    expect((await repo.listPendingCharges(product.id)).map((row) => [row.ledgerId, row.attempt, row.chargeSource])).toEqual([[ledgerId, 2, sourceId]]);
+    expect(repo.events()).toEqual([]);
+    expect(email.sent).toEqual([]);
+  });
+
+  it("AC19: a card update's row whose payment is found: the row paid, the card saved from the payment replaces the card on file, and the receipt goes to the member", async () => {
+    const out = await claimed();
+    const paymentId = await squareTookClaimed(out);
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    expect(await run()).toEqual(report({ paid: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(save.mock.calls.map(([input]) => input.sourceId)).toEqual([paymentId]);
+    expect(await paidWeeks(out.ada)).toEqual([FIRST, WEEK]);
+    expect(email.sent).toEqual([
+      {
+        to: out.ada.member.email,
+        ...renderEmail("receipt", "en", { amount: formatUsdWhole(5000), date: formatPickupDate("2027-01-05", "en"), week: TITLE }, SITE_URL),
+      },
+    ]);
+    expect(await cardOnFile(out.ada)).toBe(payments.cards.at(-1)?.id);
+    expect(payments.cards).toHaveLength(2);
+  });
+
+  it("AC19: a closed week's row with its token out, none found, is dropped once the week's pickup is over, as any closed week's row", async () => {
+    const { ada, ledgerId } = await claimed();
+    expect(await pendingIds()).toEqual([ledgerId]);
+    await close(WEEK);
+    expect(await repo.skipWeek(ada.signup.subscriptionId, NEXT)).toBe(true);
+    const charge = vi.spyOn(payments, "charge");
+    expect(await run(new Date("2027-01-12T12:00:00.000Z"))).toEqual(report({ weekOf: NEXT, dropped: 1 }));
+    expect(charge).not.toHaveBeenCalled();
+    expect(await pendingIds()).toEqual([]);
   });
 });

@@ -146,9 +146,10 @@ describe("AC10 (issue 54) — SquarePayments checks input first and sends nothin
 });
 
 describe("AC16 (issue 54) — Square's sandbox test values, in their one home", () => {
-  it("AC16: SQUARE_SANDBOX_VALUES holds Square's three sandbox test values", () => {
+  it("AC16: SQUARE_SANDBOX_VALUES holds Square's four sandbox test values", () => {
     expect(SQUARE_SANDBOX_VALUES).toStrictEqual({
       cardNonceOk: "cnon:card-nonce-ok",
+      cardNonceDeclined: "cnon:card-nonce-declined",
       cardOnFileOk: "ccof:customer-card-id-ok",
       cardOnFileDeclined: "ccof:customer-card-id-declined",
     });
@@ -282,7 +283,7 @@ describe("AC11 (issue 54) — SquarePayments' requests", () => {
 
   it("AC11: charge sends the card as source_id, the location, USD amount_money, autocomplete and customer_details, and nothing else without a referenceId", async () => {
     const { fetch, calls } = okFetch("charge");
-    await square(fetch).charge({ customerId: "CUS_ADA", cardId: "ccof:Abc123", amountCents: 5000, idempotencyKey: "charge-key-1" });
+    await square(fetch).charge({ customerId: "CUS_ADA", sourceId: "ccof:Abc123", amountCents: 5000, idempotencyKey: "charge-key-1", customerInitiated: false });
     expect(bodyOf(calls[0])).toStrictEqual({
       idempotency_key: "charge-key-1",
       source_id: "ccof:Abc123",
@@ -298,19 +299,20 @@ describe("AC11 (issue 54) — SquarePayments' requests", () => {
     const { fetch, calls } = okFetch("charge");
     await square(fetch).charge({
       customerId: "CUS_ADA",
-      cardId: "ccof:Abc123",
+      sourceId: "cnon:browser-token",
       amountCents: 1234,
       idempotencyKey: "charge-key-1",
       referenceId: "week-2026-45",
+      customerInitiated: true,
     });
     expect(bodyOf(calls[0])).toStrictEqual({
       idempotency_key: "charge-key-1",
-      source_id: "ccof:Abc123",
+      source_id: "cnon:browser-token",
       customer_id: "CUS_ADA",
       location_id: LOCATION,
       amount_money: { amount: 1234, currency: "USD" },
       autocomplete: true,
-      customer_details: { customer_initiated: false },
+      customer_details: { customer_initiated: true },
       reference_id: "week-2026-45",
     });
   });
@@ -458,6 +460,14 @@ describe("AC14 (issue 54) — SquarePayments on an error reply", () => {
     const { fetch } = stubFetch(json(402, squareError("PAYMENT_METHOD_ERROR", "INSUFFICIENT_FUNDS", "Declined.")));
     const result = await call(square(fetch), "charge");
     expect(result).toStrictEqual({ outcome: "declined", code: "INSUFFICIENT_FUNDS" });
+  });
+
+  // Which codes are a dead token is isDeadToken's (src/ports/payments-dead-token.test.ts).
+  it("AC8 (issue 254): from charge, a dead token's code rejects with PaymentsError, never a decline, whatever its category", async () => {
+    const { fetch } = stubFetch(json(400, squareError("PAYMENT_METHOD_ERROR", "CARD_TOKEN_USED", "The token was used.")));
+    const error = await rejectionOf(call(square(fetch), "charge"));
+    expect(error).toBeInstanceOf(PaymentsError);
+    expect(error).toMatchObject({ code: "CARD_TOKEN_USED" });
   });
 
   it("AC14: from charge, a PAYMENT_METHOD_ERROR that is not the first error is no decline", async () => {

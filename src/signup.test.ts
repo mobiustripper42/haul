@@ -1,4 +1,4 @@
-// Issue 56: signUp, retrySignup and confirmSignup over the two fakes. A provider that gives no answer, a
+// Issue 56: signUp and retrySignup over the two fakes. A provider that gives no answer, a
 // reply that gets lost after Square took the money and a write that fails are each made by a spy on one
 // method, which falls through to the fake once it is spent. What only Postgres can show (the actor on a
 // trigger row, callers racing on a unique index) is in src/adapters/postgres-product.test.ts.
@@ -8,10 +8,10 @@ import { FakePayments } from "./adapters/fake-payments.js";
 import { InMemoryRepository } from "./adapters/in-memory-repository.js";
 import { customerIdempotencyKey, sha256Key } from "./customer-match.js";
 import type { Member } from "./members.js";
-import { IDEMPOTENCY_KEY_MAX, IdempotencyKeyReusedError, PaymentsError, type Card } from "./ports/payments.js";
-import { AUDIT_EVENT_KINDS, type PendingSignupInput, type Repository } from "./ports/repository.js";
+import { IDEMPOTENCY_KEY_MAX, IdempotencyKeyReusedError, PaymentsError } from "./ports/payments.js";
+import { AUDIT_EVENT_KINDS, SignupRefusedError, type PendingSignupInput, type Repository } from "./ports/repository.js";
 import type { ProductWithOptions } from "./products.js";
-import { confirmSignup, retrySignup, signUp } from "./signup.js";
+import { retrySignup, signUp } from "./signup.js";
 
 const NOW = new Date("2026-11-06T15:00:00.000Z");
 const LATER = new Date("2026-11-06T15:20:00.000Z");
@@ -20,8 +20,6 @@ const SOURCE = "cnon:card-nonce-ok";
 const OTHER_SOURCE = "cnon:another-card";
 const CONSENT = "I agree to a weekly charge of $50 until I cancel, and to the Terms and Privacy Policy.";
 const SQUARE_TEXT = "Authorization error: the reason Square gave, for member 4242";
-/** The card Square saved, as the bind is given it (issue 145). */
-const cardOf = (id: string): Card => ({ id, brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 });
 
 let repo: InMemoryRepository;
 let payments: FakePayments;
@@ -113,14 +111,9 @@ function chargeReplyIsLost(times: number) {
   return charge;
 }
 
-/** The next card saved is one that Square declines to charge. */
+/** The token the next submit sends is one Square declines to charge; another card's token is not. */
 function nextCardDeclines(code = "GENERIC_DECLINE") {
-  const real = payments.saveCard.bind(payments);
-  return vi.spyOn(payments, "saveCard").mockImplementationOnce(async (input) => {
-    const card = await real(input);
-    payments.declineCard(card.id, code);
-    return card;
-  });
+  payments.declineCard(SOURCE, code);
 }
 
 /** A signup that paid, made through the repository alone. */
@@ -139,23 +132,35 @@ async function alreadyActive(): Promise<string> {
   return signup.subscriptionId;
 }
 
-/** `other` runs after this tab has saved its card at Square and before it binds it to the row. */
-const overtakenBeforeBind = (other: (card: { customerId: string }) => Promise<unknown>) => {
-  const save = payments.saveCard.bind(payments);
-  vi.spyOn(payments, "saveCard").mockImplementationOnce(async (input) => {
-    const card = await save(input);
-    await other(input);
-    return card;
+/** `other` runs once this tab's pending rows have committed, before it puts its token on the row (`startSignupCharge`). */
+const overtakenBeforeBind = (other: () => Promise<unknown>) => {
+  const save = repo.savePendingSignup;
+  const withActor = repo.withActor.bind(repo);
+  let saved = false;
+  vi.spyOn(repo, "savePendingSignup").mockImplementationOnce(async function (this: Repository, input) {
+    const row = await save.call(this, input);
+    saved = true;
+    return row;
+  });
+  vi.spyOn(repo, "withActor").mockImplementation(async (actor, fn) => {
+    const result = await withActor(actor, fn);
+    if (saved) {
+      saved = false;
+      await other();
+    }
+    return result;
   });
 };
 
-/** Another tab saves its own card at Square and binds it to the row. */
-const otherTabBinds = async (customerId: string) => {
-  const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
+/** Another tab puts its own card's token on the row, about to charge it. */
+const otherTabBinds = async () => {
   const row = await pending();
-  await repo.saveSubscriptionCard(row?.subscriptionId ?? "no row", card);
-  return { cardId: card.id, ledgerId: row?.ledgerId ?? "no row" };
+  await repo.startSignupCharge(row?.subscriptionId ?? "no row", OTHER_SOURCE);
+  return { ledgerId: row?.ledgerId ?? "no row" };
 };
+
+/** Every source a card was saved from, in order. */
+const savedFrom = (spy: { mock: { calls: Array<[{ sourceId: string }]> } }) => spy.mock.calls.map(([input]) => input.sourceId);
 
 describe("AC2 — the price", () => {
   it("AC2: the charge is the sum of the picked options, worked out from the option ids", async () => {
@@ -373,7 +378,7 @@ describe("AC6 — the Square customer", () => {
 });
 
 describe("AC7 — the rows commit before any charge", () => {
-  it("AC7: when the charge is sent, the pending rows are there, with the customer and card ids on them", async () => {
+  it("AC7: when the charge is sent, the pending rows are there, with the customer id and the card token on them", async () => {
     const real = payments.charge.bind(payments);
     const seen: Array<{ input: Parameters<FakePayments["charge"]>[0]; row: Awaited<ReturnType<typeof pending>>; customerId: string | null | undefined }> = [];
     vi.spyOn(payments, "charge").mockImplementation(async (input) => {
@@ -382,7 +387,8 @@ describe("AC7 — the rows commit before any charge", () => {
     });
     await submit();
     const [at] = seen;
-    expect(at?.row).toMatchObject({ ledgerStatus: "pending", attempt: 1, squareCardId: at?.input.cardId });
+    expect(at?.row).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: at?.input.sourceId });
+    expect(at?.input.sourceId).toBe(SOURCE);
     expect(at?.customerId).toBe(at?.input.customerId);
   });
 
@@ -407,14 +413,8 @@ describe("AC7 — the rows commit before any charge", () => {
       });
     }
     await submit();
-    expect(seen.map(({ method }) => method)).toEqual(["findCustomersByEmail", "setCustomerReference", "saveCard", "charge"]);
+    expect(seen.map(({ method }) => method)).toEqual(["findCustomersByEmail", "setCustomerReference", "charge", "saveCard"]);
     expect(seen.filter((call) => call.open !== 0)).toEqual([]);
-  });
-
-  it("AC7: the card is saved to the member's customer, its key the SHA-256 of the sourceId, with no verification token", async () => {
-    const save = vi.spyOn(payments, "saveCard");
-    await submit();
-    expect(save.mock.calls).toStrictEqual([[{ customerId: payments.customers[0]?.id, sourceId: SOURCE, idempotencyKey: sha256Key(SOURCE) }]]);
   });
 
   it("AC9: the charge key is the ledger row plus the attempt, within IDEMPOTENCY_KEY_MAX, and its referenceId the ledger row", async () => {
@@ -451,7 +451,9 @@ describe("AC8 — a paid result", () => {
     });
     await submit();
     const [charge] = payments.charges;
-    expect(confirm.mock.calls).toEqual([[ledgerId, charge?.result.paymentId, charge?.amountCents, NOW]]);
+    const [card] = payments.cards;
+    expect(card).toBeDefined();
+    expect(confirm.mock.calls).toEqual([[ledgerId, charge?.result.paymentId, charge?.amountCents, NOW, card]]);
   });
 
   it("AC8: it records no event", async () => {
@@ -511,27 +513,6 @@ describe("AC1, AC2 (issue 102) — paid_at is when the paid answer came back", (
 
     expect(charge).not.toHaveBeenCalled();
     expect(confirm.mock.calls.map((call) => call[3])).toEqual([found]);
-  });
-});
-
-describe("AC8 — confirmSignup, the one confirm function", () => {
-  const saved = () =>
-    repo.savePendingSignup({
-      memberId: member.id,
-      productId: product.id,
-      choices: picks(),
-      firstChargeCents: 5000,
-      weeklyCents: 5000,
-      pickupDate: "2027-01-03",
-      consentText: CONSENT,
-      consentAt: NOW,
-    });
-
-  it('AC8: it returns "confirmed", and a second run returns "already"', async () => {
-    const { ledgerId, subscriptionId, amountCents } = await saved();
-    expect(await confirmSignup(repo, { ledgerId, paymentId: "PAYMENT_1", amountCents, now: NOW })).toBe("confirmed");
-    expect(await confirmSignup(repo, { ledgerId, paymentId: "PAYMENT_1", amountCents, now: NOW })).toBe("already");
-    expect(await active()).toEqual({ id: subscriptionId });
   });
 });
 
@@ -611,11 +592,11 @@ describe("AC10 — Square gives no answer", () => {
     expect(await active()).not.toBeNull();
   });
 
-  it("AC10: with no answer twice, signUp returns unknown after exactly two tries, and the row stays pending with its card", async () => {
+  it("AC10: with no answer twice, signUp returns unknown after exactly two tries, and the row stays pending with its token", async () => {
     const charge = chargeGetsNoAnswer(2);
     expect((await submit()).outcome).toBe("unknown");
     expect(charge).toHaveBeenCalledTimes(2);
-    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, squareCardId: expect.any(String) });
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
     expect(await active()).toBeNull();
   });
 
@@ -662,18 +643,20 @@ describe('AC10 — "Try again"', () => {
     expect(result).toMatchObject({ outcome: "paid", subscriptionId: row?.subscriptionId });
     expect(charge).not.toHaveBeenCalled();
     expect(payments.charges).toHaveLength(1);
-    expect(confirm.mock.calls).toEqual([[row?.ledgerId, payments.charges[0]?.result.paymentId, payments.charges[0]?.amountCents, LATER]]);
+    const [card] = payments.cards;
+    expect(card).toBeDefined();
+    expect(confirm.mock.calls).toEqual([[row?.ledgerId, payments.charges[0]?.result.paymentId, payments.charges[0]?.amountCents, LATER, card]]);
     expect(await active()).toEqual({ id: row?.subscriptionId });
   });
 
-  it("AC10: with none found it charges the saved card and amount under the same key, never a new one, and pays", async () => {
+  it("AC10: with none found it charges the same token and amount under the same key, never a new one, and pays", async () => {
     const charge = chargeGetsNoAnswer(2);
     await submit({ choices: picks(1, 0) });
     const row = await pending();
     const key = charge.mock.calls[0]?.[0].idempotencyKey;
     expect((await retry()).outcome).toBe("paid");
     expect(payments.charges).toHaveLength(1);
-    expect(payments.charges[0]).toMatchObject({ idempotencyKey: key, cardId: row?.squareCardId, amountCents: 8000, referenceId: row?.ledgerId });
+    expect(payments.charges[0]).toMatchObject({ idempotencyKey: key, sourceId: SOURCE, amountCents: 8000, referenceId: row?.ledgerId });
     expect(await active()).toEqual({ id: row?.subscriptionId });
   });
 
@@ -717,7 +700,7 @@ describe('AC10 — "Try again"', () => {
     });
     await submit();
     expect((await retry()).outcome).toBe("unknown");
-    expect(await pending()).toMatchObject({ ledgerStatus: "pending", squareCardId: expect.any(String) });
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", chargeSource: SOURCE });
     expect(await active()).toBeNull();
     answering = true;
     expect((await retry()).outcome).toBe("paid");
@@ -729,15 +712,14 @@ describe("AC10 — a normal submit on a row in the retry state", () => {
   it("AC10: it rewrites nothing, ignores the picks and the sourceId, and takes the Try again path", async () => {
     chargeGetsNoAnswer(2);
     await submit();
-    const row = await pending();
     const save = vi.spyOn(repo, "savePendingSignup");
     const card = vi.spyOn(payments, "saveCard");
     const result = await submit({ choices: picks(1, 1), sourceId: OTHER_SOURCE, consentText: "Other wording." });
     expect(result.outcome).toBe("paid");
     expect(save).not.toHaveBeenCalled();
-    expect(card).not.toHaveBeenCalled();
+    expect(savedFrom(card)).not.toContain(OTHER_SOURCE);
     expect(payments.charges).toHaveLength(1);
-    expect(payments.charges[0]).toMatchObject({ amountCents: 5000, cardId: row?.squareCardId });
+    expect(payments.charges[0]).toMatchObject({ amountCents: 5000, sourceId: SOURCE });
   });
 
   it("AC10: when the payment went through, it confirms with no second charge", async () => {
@@ -762,8 +744,7 @@ describe("AC10a — a failure before the charge", () => {
     ],
     ["storing the customer id", () => vi.spyOn(repo, "setMemberSquareCustomer").mockRejectedValueOnce(new Error("write failed"))],
     ["writing the pending rows", () => vi.spyOn(repo, "savePendingSignup").mockRejectedValueOnce(new Error("write failed"))],
-    ["saveCard", () => vi.spyOn(payments, "saveCard").mockRejectedValueOnce(outage())],
-    ["storing the card id", () => vi.spyOn(repo, "saveSubscriptionCard").mockRejectedValueOnce(new Error("write failed"))],
+    ["storing the card token", () => vi.spyOn(repo, "startSignupCharge").mockRejectedValueOnce(new Error("write failed"))],
   ];
 
   it.each(FAILS)("AC10a: when %s fails, signUp returns error and nothing is charged", async (_what, fail) => {
@@ -783,43 +764,18 @@ describe("AC10a — a failure before the charge", () => {
     expect(payments.charges[0]?.idempotencyKey).toMatch(/:1$/);
   });
 
-  it("AC10a: an error before the card is stored leaves no retry state: the card id stays null", async () => {
-    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(outage());
+  it("AC10a: an error before the card token is stored leaves no retry state: the token stays null", async () => {
+    vi.spyOn(repo, "startSignupCharge").mockRejectedValueOnce(new Error("write failed"));
     await submit();
-    expect(await pending()).toMatchObject({ ledgerStatus: "pending", squareCardId: null });
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", chargeSource: null });
   });
 
-  it("AC10a: after a decline, a saveCard failure leaves no retry state either: the rewrite nulled the card", async () => {
+  it("AC10a: after a decline, a failure storing the token leaves no retry state either: the decline's token is gone", async () => {
     nextCardDeclines();
     await submit();
-    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(outage());
+    vi.spyOn(repo, "startSignupCharge").mockRejectedValueOnce(new Error("write failed"));
     expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("error");
-    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 2, squareCardId: null });
-  });
-});
-
-describe("AC10a — a card Square refuses while saving", () => {
-  it("AC10a: it is a decline: no charge, the row declined", async () => {
-    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
-    expect((await submit()).outcome).toBe("declined");
-    expect(payments.charges).toEqual([]);
-    expect(await pending()).toMatchObject({ ledgerStatus: "declined" });
-  });
-
-  it("AC10a: card_declined records the error's code and the ledger row, and never Square's text", async () => {
-    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused("CVV_FAILURE"));
-    await submit();
-    const ledgerId = (await pending())?.ledgerId;
-    expect(ledgerId).toBeDefined();
-    expect(repo.events()).toEqual([{ kind: "card_declined", memberId: member.id, detail: { ledgerId, code: "CVV_FAILURE" }, actor: asMember() }]);
-  });
-
-  it("AC10a: the next submit is the next attempt", async () => {
-    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
-    await submit();
-    const ledgerId = (await pending())?.ledgerId;
-    expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("paid");
-    expect(payments.charges.map((charge) => charge.idempotencyKey)).toEqual([`${ledgerId}:2`]);
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 2, chargeSource: null });
   });
 });
 
@@ -827,7 +783,7 @@ describe("AC10a — a write that fails after the charge", () => {
   it("AC10a: after a paid charge it is unknown, the row stays pending, and Try again finishes with no second charge", async () => {
     vi.spyOn(repo, "confirmSignupRows").mockRejectedValueOnce(new Error("write failed"));
     expect((await submit()).outcome).toBe("unknown");
-    expect(await pending()).toMatchObject({ ledgerStatus: "pending", squareCardId: expect.any(String) });
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", chargeSource: SOURCE });
     expect(payments.charges).toHaveLength(1);
     expect((await retry()).outcome).toBe("paid");
     expect(payments.charges).toHaveLength(1);
@@ -924,17 +880,16 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
     expect(kinds()).toEqual(["already_subscribed"]);
   });
 
-  it("AC11: a tab whose save meets a card already bound rewrites nothing and takes the Try again path", async () => {
-    const customerId = await linked();
+  it("AC11: a tab whose save meets a charge already out rewrites nothing and takes the Try again path", async () => {
+    await linked();
     const row = await repo.savePendingSignup(rows());
-    const card = await payments.saveCard({ customerId, sourceId: OTHER_SOURCE, idempotencyKey: sha256Key(OTHER_SOURCE) });
-    overtakenBeforeSave(() => repo.saveSubscriptionCard(row.subscriptionId, card));
+    overtakenBeforeSave(() => repo.startSignupCharge(row.subscriptionId, OTHER_SOURCE));
     const save = vi.spyOn(payments, "saveCard");
     const lookup = vi.spyOn(payments, "findPaymentByReference");
     expect(await submit({ choices: picks(1, 1) })).toMatchObject({ outcome: "paid", subscriptionId: row.subscriptionId });
     expect(lookup).toHaveBeenCalledTimes(1);
-    expect(save).not.toHaveBeenCalled();
-    expect(payments.charges).toMatchObject([{ amountCents: 5000, cardId: card.id }]);
+    expect(savedFrom(save)).not.toContain(SOURCE);
+    expect(payments.charges).toMatchObject([{ amountCents: 5000, sourceId: OTHER_SOURCE }]);
   });
 
   it("AC11: signUp charges the amount the bind returned, not the one its own save read", async () => {
@@ -955,20 +910,18 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
   });
 
   it("AC11: a lost bind looks first, then charges the card that won, never its own", async () => {
-    let won: string | undefined;
-    overtakenBeforeBind(async ({ customerId }) => {
-      won = (await otherTabBinds(customerId)).cardId;
-    });
+    overtakenBeforeBind(otherTabBinds);
     const lookup = vi.spyOn(payments, "findPaymentByReference");
     expect((await submit()).outcome).toBe("paid");
     expect(lookup).toHaveBeenCalledTimes(1);
-    expect(payments.charges.map((charge) => charge.cardId)).toEqual([won]);
+    expect(payments.charges.map((charge) => charge.sourceId)).toEqual([OTHER_SOURCE]);
   });
 
   it("AC11: a lost bind to a tab that has charged confirms that payment, with no second charge", async () => {
-    overtakenBeforeBind(async ({ customerId }) => {
-      const { cardId, ledgerId } = await otherTabBinds(customerId);
-      await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: `${ledgerId}:1`, referenceId: ledgerId });
+    overtakenBeforeBind(async () => {
+      const { ledgerId } = await otherTabBinds();
+      const customerId = (await stored())?.squareCustomerId ?? "no customer";
+      await payments.charge({ customerId, sourceId: OTHER_SOURCE, amountCents: 5000, idempotencyKey: `${ledgerId}:1`, referenceId: ledgerId, customerInitiated: true });
     });
     expect((await submit()).outcome).toBe("paid");
     expect(payments.charges).toHaveLength(1);
@@ -983,9 +936,9 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
   });
 
   it("AC11: a charge that is not the ledger's amount confirms nothing: the row stays pending, and the event holds both amounts", async () => {
-    const bind = repo.saveSubscriptionCard;
-    vi.spyOn(repo, "saveSubscriptionCard").mockImplementationOnce(async function (this: Repository, subscriptionId, card) {
-      const bound = await bind.call(this, subscriptionId, card);
+    const bind = repo.startSignupCharge;
+    vi.spyOn(repo, "startSignupCharge").mockImplementationOnce(async function (this: Repository, subscriptionId, sourceId) {
+      const bound = await bind.call(this, subscriptionId, sourceId);
       return typeof bound === "object" && bound !== null ? { ...bound, amountCents: 7000 } : bound;
     });
     expect((await submit()).outcome).toBe("unknown");
@@ -1005,10 +958,11 @@ describe("AC11 — a second tab lands between this tab's steps", () => {
     const ledgerId = row?.ledgerId ?? "no row";
     await payments.charge({
       customerId: (await stored())?.squareCustomerId ?? "no customer",
-      cardId: row?.squareCardId ?? "no card",
+      sourceId: SOURCE,
       amountCents: 8000,
       idempotencyKey: "an earlier run",
       referenceId: ledgerId,
+      customerInitiated: true,
     });
 
     expect((await retry()).outcome).toBe("unknown");
@@ -1048,10 +1002,10 @@ describe("issue 57 — the cap", () => {
     consentAt: NOW,
   });
 
-  /** Another member with a card on a pending row and the charge unanswered. */
+  /** Another member with a card token on a pending row and the charge unanswered. */
   const holdsASpot = async (): Promise<void> => {
     const row = await repo.savePendingSignup(rowsFor((await another()).id));
-    await repo.saveSubscriptionCard(row.subscriptionId, cardOf(`ccof:${row.subscriptionId}`));
+    await repo.startSignupCharge(row.subscriptionId, `cnon:${row.subscriptionId}`);
   };
 
   /** Another member with an active subscription, confirmed straight on, as a lowered cap would leave them. */
@@ -1098,12 +1052,12 @@ describe("issue 57 — the cap", () => {
       expect((await stored())?.squareCustomerId).toBeNull();
     });
 
-    it("AC6 (issue 57): a member's own cardless pending row holds nothing: at the cap they are refused and the row is left as it was", async () => {
+    it("AC6 (issue 57): a member's own pending row with no token holds nothing: at the cap they are refused and the row is left as it was", async () => {
       await cappedAt(1);
       const row = await repo.savePendingSignup(rowsFor(member.id));
       await holdsASpot();
       expect((await submit({ choices: picks(1, 1) })).outcome).toBe("sold_out");
-      expect(await pending()).toMatchObject({ subscriptionId: row.subscriptionId, ledgerStatus: "pending", attempt: 1, squareCardId: null, amountCents: 5000 });
+      expect(await pending()).toMatchObject({ subscriptionId: row.subscriptionId, ledgerStatus: "pending", attempt: 1, chargeSource: null, amountCents: 5000 });
       expect(payments.charges).toEqual([]);
     });
 
@@ -1130,7 +1084,7 @@ describe("issue 57 — the cap", () => {
   });
 
   describe("AC7 — the last spot goes after the check", () => {
-    it("AC7 (issue 57): the bind refuses, signUp returns sold_out, nothing is charged and the pending row stays cardless", async () => {
+    it("AC7 (issue 57): the bind refuses, signUp returns sold_out, nothing is charged and the pending row holds no token", async () => {
       await cappedAt(1);
       overtakenBeforeBind(holdsASpot);
       const charge = vi.spyOn(payments, "charge");
@@ -1138,18 +1092,15 @@ describe("issue 57 — the cap", () => {
       expect(await submit()).toMatchObject({ outcome: "sold_out" });
       expect(charge).not.toHaveBeenCalled();
       expect(lookup).not.toHaveBeenCalled();
-      expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, squareCardId: null });
+      expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: null });
       expect(await active()).toBeNull();
     });
 
     it("AC7 (issue 57): a bind lost to the member's own other tab at the cap takes that tab's card, not sold_out", async () => {
       await cappedAt(1);
-      let won: string | undefined;
-      overtakenBeforeBind(async ({ customerId }) => {
-        won = (await otherTabBinds(customerId)).cardId;
-      });
+      overtakenBeforeBind(otherTabBinds);
       expect((await submit()).outcome).toBe("paid");
-      expect(payments.charges.map((charge) => charge.cardId)).toEqual([won]);
+      expect(payments.charges.map((charge) => charge.sourceId)).toEqual([OTHER_SOURCE]);
       expect(kinds()).not.toContain("sold_out");
     });
 
@@ -1161,11 +1112,11 @@ describe("issue 57 — the cap", () => {
       expect(kinds()).toEqual(["already_subscribed"]);
     });
 
-    it("AC7 (issue 57): a refused card in another tab leaves the row declined and cardless: this tab's bind is refused, it returns error and charges nothing", async () => {
+    it("AC7 (issue 57): a declined card in another tab leaves the row declined with no token: this tab's bind is refused, it returns error and charges nothing", async () => {
       overtakenBeforeBind(async () => repo.recordSignupDecline((await pending())?.ledgerId ?? "no row"));
       expect((await submit()).outcome).toBe("error");
       expect(payments.charges).toEqual([]);
-      expect(await pending()).toMatchObject({ ledgerStatus: "declined", squareCardId: null });
+      expect(await pending()).toMatchObject({ ledgerStatus: "declined", chargeSource: null });
     });
 
     it("AC7 (issue 57): the same at the cap is error too, with no sold_out recorded", async () => {
@@ -1212,14 +1163,6 @@ describe("issue 57 — the cap", () => {
       expect((await anotherSignsUp()).outcome).toBe("paid");
       expect(await held()).toBe(1);
     });
-
-    it("AC11 (issue 57): a card refused at the save holds nothing either, and another member then takes the spot", async () => {
-      await cappedAt(1);
-      vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
-      expect((await submit()).outcome).toBe("declined");
-      expect(await held()).toBe(0);
-      expect((await anotherSignsUp()).outcome).toBe("paid");
-    });
   });
 
   describe("AC12 — a declined member resubmits at the cap", () => {
@@ -1254,7 +1197,8 @@ describe("issue 57 — the cap", () => {
       await submit();
       const card = vi.spyOn(payments, "saveCard");
       expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("paid");
-      expect(card).not.toHaveBeenCalled();
+      expect(payments.charges.map((charge) => charge.sourceId)).toEqual([SOURCE]);
+      expect(savedFrom(card)).not.toContain(OTHER_SOURCE);
       expect(kinds()).not.toContain("sold_out");
     });
 
@@ -1306,18 +1250,18 @@ describe("AC12 — Square's detail stays out of the logs", () => {
     expect(JSON.stringify(repo.events())).not.toContain(SQUARE_TEXT);
   });
 
-  it("AC12: a failed saveCard logs none of its detail", async () => {
+  it("AC12: a saveCard that fails after the payment logs none of its detail", async () => {
     const spies = silenced();
     const save = vi.spyOn(payments, "saveCard").mockRejectedValueOnce(outage());
-    await submit();
+    expect((await submit()).outcome).toBe("paid");
     expect(save).toHaveBeenCalledTimes(1);
     expect(logged(spies)).not.toContain(SQUARE_TEXT);
   });
 
-  it("AC12: a refused card logs none of its detail, and the event carries none", async () => {
+  it("AC12: a card Square refuses to save after the payment logs none of its detail, and the event carries none", async () => {
     const spies = silenced();
     vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused());
-    expect((await submit()).outcome).toBe("declined");
+    expect((await submit()).outcome).toBe("paid");
     expect(logged(spies)).not.toContain(SQUARE_TEXT);
     expect(JSON.stringify(repo.events())).not.toContain(SQUARE_TEXT);
   });
@@ -1373,5 +1317,193 @@ describe("AC1, AC2, AC3 (issue 58) — confirmedNow, the whole guard against a s
     await submit();
     otherTabConfirmsDuring("findPaymentByReference");
     expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: false });
+  });
+});
+
+// Issue 254: the charge goes to the card token, then the card is saved from the payment. What settling a paid charge
+// saves, confirms and records in each case is settlePaid's (src/ledger-charge.test.ts), and when a dead token is thrown or
+// resent is sendCharge's; startSignupCharge, abandonCharge and which rows hold a spot are the repository's
+// (src/adapters/signup-contract.ts, src/adapters/charge-run-contract.ts). Here each goes through signUp and Try again.
+describe("issue 254 — charge the token, then save the card", () => {
+  const held = () => repo.countHeldSpots(product.id);
+  const dead = (code = "CARD_TOKEN_EXPIRED"): PaymentsError => new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code, detail: SQUARE_TEXT });
+  const onFile = async () => repo.findSubscriptionCard((await active())?.id ?? "no subscription");
+  const notSaved = () => repo.events().filter((event) => event.kind === "card_not_saved");
+
+  /** A signup whose charge and its resend got no answer: pending with its token. The charge that went out. */
+  const leftOut = async () => {
+    const charge = chargeGetsNoAnswer(2);
+    expect((await submit()).outcome).toBe("unknown");
+    const sent = charge.mock.calls[0]?.[0];
+    vi.restoreAllMocks();
+    return { sent, row: await pending() };
+  };
+
+  it("AC1 (issue 254): Pay charges the card token, buyer-started, under ledgerId:attempt with the ledger id as its reference, before any card is saved", async () => {
+    const real = payments.charge.bind(payments);
+    const atCharge: Array<{ ledgerId: string | undefined; cards: number }> = [];
+    vi.spyOn(payments, "charge").mockImplementation(async (input) => {
+      atCharge.push({ ledgerId: (await pending())?.ledgerId, cards: payments.cards.length });
+      return real(input);
+    });
+    await submit();
+    const [seen] = atCharge;
+    expect(atCharge).toEqual([{ ledgerId: expect.any(String), cards: 0 }]);
+    expect(payments.charges).toEqual([
+      {
+        customerId: payments.customers[0]?.id,
+        sourceId: SOURCE,
+        amountCents: 5000,
+        idempotencyKey: `${seen?.ledgerId}:1`,
+        referenceId: seen?.ledgerId,
+        customerInitiated: true,
+        result: { outcome: "paid", paymentId: expect.any(String) },
+      },
+    ]);
+  });
+
+  it("AC1 (issue 254): a blank sourceId is error: nothing is charged or saved, and no row holds a token", async () => {
+    const charge = vi.spyOn(payments, "charge");
+    expect((await submit({ sourceId: "" })).outcome).toBe("error");
+    expect(charge).not.toHaveBeenCalled();
+    expect(payments.cards).toEqual([]);
+    expect((await pending())?.chargeSource ?? null).toBeNull();
+    expect(await held()).toBe(0);
+  });
+
+  it("AC2 (issue 254): while the charge is out the token is on the row and holds its spot, and a second tab's save is refused", async () => {
+    const real = payments.charge.bind(payments);
+    const during: unknown[] = [];
+    vi.spyOn(payments, "charge").mockImplementationOnce(async (input) => {
+      const second = repo.savePendingSignup({
+        memberId: member.id,
+        productId: product.id,
+        choices: picks(1, 1),
+        firstChargeCents: 8500,
+        weeklyCents: 8500,
+        pickupDate: "2027-01-03",
+        consentText: CONSENT,
+        consentAt: NOW,
+      });
+      during.push((await pending())?.chargeSource, await held(), await second.then(() => "saved", (error: unknown) => (error instanceof SignupRefusedError ? "refused" : error)));
+      return real(input);
+    });
+    await submit();
+    expect(during).toEqual([SOURCE, 1, "refused"]);
+  });
+
+  it("AC3 (issue 254): a paid charge's card is saved once, from the payment's id, under its SHA-256, with no verification token; paid with confirmedNow, and the card is on file", async () => {
+    const save = vi.spyOn(payments, "saveCard");
+    const result = await submit();
+    expect(result).toMatchObject({ outcome: "paid", confirmedNow: true });
+    const paid = payments.charges[0]?.result;
+    const paymentId = paid?.outcome === "paid" ? paid.paymentId : "no payment";
+    expect(save.mock.calls).toStrictEqual([[{ customerId: payments.customers[0]?.id, sourceId: paymentId, idempotencyKey: sha256Key(paymentId) }]]);
+    expect(await onFile()).toEqual({ brand: "VISA", last4: "1111" });
+    expect(await active()).toEqual({ id: result.subscriptionId });
+  });
+
+  it("AC4 (issue 254): a paid charge whose card Square refuses to save: paid with confirmedNow, active with no card on file, and card_not_saved under the member", async () => {
+    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(refused("CVV_FAILURE"));
+    const result = await submit();
+    expect(result).toMatchObject({ outcome: "paid", confirmedNow: true });
+    expect(await active()).toEqual({ id: result.subscriptionId });
+    expect(await onFile()).toBeNull();
+    const [charge] = payments.charges;
+    expect(repo.events()).toEqual([
+      { kind: "card_not_saved", memberId: member.id, detail: { ledgerId: charge?.referenceId, paymentId: charge?.result.paymentId, code: "CVV_FAILURE" }, actor: asMember() },
+    ]);
+  });
+
+  it("AC5 (issue 254): a declined charge saves no card, the token leaves the row, the spot is released, and the decline is recorded", async () => {
+    nextCardDeclines("INSUFFICIENT_FUNDS");
+    const save = vi.spyOn(payments, "saveCard");
+    expect(await submit()).toMatchObject({ outcome: "declined" });
+    expect(save).not.toHaveBeenCalled();
+    const row = await pending();
+    expect(row).toMatchObject({ ledgerStatus: "declined", attempt: 1, chargeSource: null });
+    expect(await held()).toBe(0);
+    expect(repo.events()).toEqual([{ kind: "card_declined", memberId: member.id, detail: { ledgerId: row?.ledgerId, code: "INSUFFICIENT_FUNDS" }, actor: asMember() }]);
+  });
+
+  it("AC6 (issue 254): Try again that finds the payment saves the card from it and charges nothing more", async () => {
+    chargeReplyIsLost(2);
+    await submit();
+    vi.restoreAllMocks();
+    const charge = vi.spyOn(payments, "charge");
+    const save = vi.spyOn(payments, "saveCard");
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: true });
+    expect(charge).not.toHaveBeenCalled();
+    expect(savedFrom(save)).toEqual([payments.charges[0]?.result.paymentId]);
+    expect(await onFile()).toEqual({ brand: "VISA", last4: "1111" });
+  });
+
+  it("AC6 (issue 254): Try again that finds the payment and cannot save its card is paid, active with no card, and records card_not_saved", async () => {
+    chargeReplyIsLost(2);
+    await submit();
+    vi.restoreAllMocks();
+    vi.spyOn(payments, "saveCard").mockRejectedValueOnce(outage());
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: true });
+    expect(await onFile()).toBeNull();
+    expect(notSaved()).toHaveLength(1);
+  });
+
+  it("AC7 (issue 254): Try again that finds none resends the very same charge, and saves the card from the payment it makes", async () => {
+    const { sent } = await leftOut();
+    const charge = vi.spyOn(payments, "charge");
+    expect(await retry()).toMatchObject({ outcome: "paid", confirmedNow: true });
+    expect(sent).toMatchObject({ sourceId: SOURCE, customerInitiated: true });
+    expect(charge.mock.calls).toEqual([[sent]]);
+    expect(await onFile()).toEqual({ brand: "VISA", last4: "1111" });
+  });
+
+  it.each(["CARD_TOKEN_EXPIRED", "CARD_TOKEN_USED"])("AC8 (issue 254): Try again whose resend answers %s: error after one send, the row pending with no token on the next attempt, no spot held, no event of its own", async (code) => {
+    const { row } = await leftOut();
+    const charge = vi.spyOn(payments, "charge").mockRejectedValue(dead(code));
+    expect((await retry()).outcome).toBe("error");
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(await pending()).toMatchObject({ ledgerId: row?.ledgerId, ledgerStatus: "pending", attempt: 2, chargeSource: null });
+    expect(await held()).toBe(0);
+    expect(kinds()).toEqual(["charge_outcome_unknown"]);
+  });
+
+  it("AC8 (issue 254): the next Pay after a dead token is sent under the new attempt's key with the new token, and pays", async () => {
+    const { row } = await leftOut();
+    vi.spyOn(payments, "charge").mockRejectedValueOnce(dead());
+    await retry();
+    vi.restoreAllMocks();
+    expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("paid");
+    expect(payments.charges).toMatchObject([{ idempotencyKey: `${row?.ledgerId}:2`, sourceId: OTHER_SOURCE }]);
+  });
+
+  it("AC8 (issue 254): a normal Pay over a row whose charge is out takes the same path: a dead token is abandoned, and what was submitted is not charged", async () => {
+    await leftOut();
+    const charge = vi.spyOn(payments, "charge").mockRejectedValueOnce(dead());
+    expect((await submit({ sourceId: OTHER_SOURCE })).outcome).toBe("error");
+    expect(charge.mock.calls.map(([input]) => input.sourceId)).toEqual([SOURCE]);
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 2, chargeSource: null });
+  });
+
+  it("AC8 (issue 254): a dead token whose row another tab settled first is error too", async () => {
+    await leftOut();
+    vi.spyOn(payments, "charge").mockRejectedValueOnce(dead());
+    const abandon = vi.spyOn(repo, "abandonCharge").mockResolvedValueOnce(null);
+    expect((await retry()).outcome).toBe("error");
+    expect(abandon).toHaveBeenCalledTimes(1);
+    expect(kinds()).toEqual(["charge_outcome_unknown"]);
+  });
+
+  it("AC8 (issue 254): a dead token on the first Pay is unknown after one send, with the token kept on the row", async () => {
+    const charge = vi.spyOn(payments, "charge").mockRejectedValue(dead());
+    expect((await submit()).outcome).toBe("unknown");
+    expect(charge).toHaveBeenCalledTimes(1);
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
+  });
+
+  it("AC8 (issue 254): on Try again, no answer and then a dead token is unknown, and the token is kept: the first send may be what used it", async () => {
+    await leftOut();
+    vi.spyOn(payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(dead("CARD_TOKEN_USED"));
+    expect((await retry()).outcome).toBe("unknown");
+    expect(await pending()).toMatchObject({ ledgerStatus: "pending", attempt: 1, chargeSource: SOURCE });
   });
 });

@@ -22,6 +22,7 @@ import { createTranslator, pluralKey, type Language, type MessageKey } from "@co
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, pickupWhereLine, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import type { Card } from "@core/ports/payments.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { hashCode } from "@core/sign-in/code.js";
@@ -131,17 +132,20 @@ const signup = (member: Member, { picks = ["2 people", "Standard"], firstWeek = 
     consentAt: new Date("2026-12-01T17:00:00.000Z"),
   });
 
-/** An active subscription: the signup's first charge paid. */
+/** The card Square saved, on file from the signup's confirm (issue 254). */
+const CARD: Card = { id: "ccof:card-1", brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 };
+
+/** An active subscription: the signup's first charge paid, with a card on file. */
 const subscribed = async (member: Member, options?: Parameters<typeof signup>[1]): Promise<void> => {
   const rows = await signup(member, options);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), CARD);
 };
 
-/** Ada, signed in, with an active subscription paid for January 3; her member and its id. */
+/** Ada, signed in, with an active subscription paid for January 3 and a card on file; her member and its id. */
 const activeAda = async (options?: Parameters<typeof signup>[1]): Promise<{ member: Member; subscriptionId: string }> => {
   const member = await ada();
   const rows = await signup(member, options);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), CARD);
   signIn(member);
   return { member, subscriptionId: rows.subscriptionId };
 };
@@ -442,7 +446,7 @@ describe("issue 139 — account home, cancelled and not", () => {
     const member = await services.repo.findMemberByEmail("ada@example.com");
     if (!member) throw new Error("Ada is gone");
     const again = await signup(member, { picks: ["2 people", "Vegan"] });
-    await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW);
+    await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW, CARD);
     const { html, runs, badge, badgeText } = await render();
     expect(runs).toContain("2 people · Vegan");
     expect(badge).toBe(SUBSCRIPTION_BADGES.active.kind);
@@ -1031,5 +1035,34 @@ describe("issue 156 — Your details, on /account", () => {
       expect(codeStepShows(html)).toBe(false);
       expect(valuesOf(html)).toMatchObject({ email: OLD });
     });
+  });
+});
+
+// Issue 254: the no-card Notice. Whether a subscription needs a card is the repository's (needsCard, owned by
+// src/adapters/signup-contract.ts and postgres-product.test.ts); here one present and one absent case through the page.
+describe("AC17 (issue 254) — the no-card Notice on account home", () => {
+  /** Whether one of the page's Notices holds a primary link to /account/card; its words are not read. */
+  const noticeAsksForACard = (html: string): boolean => {
+    const primary = attributesOf(renderToStaticMarkup(createElement(Button, { kind: "primary", href: "/account/card", children: "x" })), "a")[0];
+    expect(primary?.class).toBeDefined();
+    return [...html.matchAll(/<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/g)].some(([, , inner = ""]) =>
+      attributesOf(inner, "a").some((link) => link.href === "/account/card" && link.class === primary?.class),
+    );
+  };
+
+  it("AC17: an active subscription with no card on file and no declined row: a Notice holds a primary link to /account/card", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    expect(noticeAsksForACard((await render()).html)).toBe(true);
+  });
+
+  it("AC17: with a card on file whose brand and last four are not stored, there is none", async () => {
+    await activeAda();
+    vi.spyOn(services.repo, "findSubscriptionCard").mockResolvedValue(null);
+    const { html } = await render();
+    expect(noticeAsksForACard(html)).toBe(false);
+    expect(alertTexts(html)).toEqual([]);
   });
 });
