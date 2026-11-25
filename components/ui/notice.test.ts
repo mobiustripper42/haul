@@ -7,7 +7,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { compile } from "tailwindcss";
 import { describe, expect, it } from "vitest";
-import { alertTexts, attributesOf, normalMarkup, screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
+import { alertTexts, attributesOf, blocksInsideParagraphs, normalMarkup, screenMarkup, utilitiesOf } from "../../app/screen-test-helpers";
 import { Notice, type NoticeIcon } from "./notice";
 
 describe("AC6 — Notice", () => {
@@ -34,6 +34,50 @@ describe("AC1 (issue 145) — Notice's lead", () => {
     expect(lead?.[2]).toBe("Your card was declined.");
     expect(utilitiesOf(attributesOf(`<strong${lead?.[1] ?? ""}>`, "strong")[0]?.class)).toContain("block");
   });
+});
+
+// Issue 238: `action`, the one home for a button under a Notice's words: the declined and no-card Notices and the cancelled
+// one pass theirs. Which button each passes is that page's test; here, where the action is drawn.
+describe("AC5 (issue 238) — Notice's action", () => {
+  const html = (lead?: string) =>
+    screenMarkup(
+      renderToStaticMarkup(createElement(Notice, { icon: "info", ...(lead === undefined ? {} : { lead }), action: createElement("a", { href: "/supper-club" }, "Go"), children: "The words." })),
+    );
+  /** The span the action sits in, as drawn. */
+  const actionSpan = (drawn: string) => /<span\b[^>]*><a href="\/supper-club">Go<\/a><\/span>/.exec(drawn)?.[0];
+
+  // `.notice` is a flex row: words and action that were two of its children would sit side by side, not one under the other.
+  it.each([
+    ["with no lead", undefined, "The words. Go"],
+    ["with a lead", "The lead.", "The lead. The words. Go"],
+  ])("AC5: %s, the alert is a p holding, in one element beside the icon, the words and then the action in its span", (_which, lead, text) => {
+    const drawn = html(lead);
+    expect(alertTexts(drawn)).toEqual([text]);
+    expect(actionSpan(drawn)).toBeDefined();
+    const inner = /^<p\b[^>]*\brole="alert"[^>]*>([\s\S]*)<\/p>$/.exec(drawn)?.[1] ?? "";
+    expect(topLevelOf(inner)).toHaveLength(1);
+    expect(blocksInsideParagraphs(drawn)).toEqual([]);
+  });
+
+  it("AC5: the action is drawn the same way with and without a lead", () => {
+    expect(actionSpan(html("The lead."))).toBeDefined();
+    expect(actionSpan(html("The lead."))).toBe(actionSpan(html()));
+  });
+
+  /** The text runs and elements directly inside `inner`, in order. */
+  function topLevelOf(inner: string): string[] {
+    const found: string[] = [];
+    let depth = 0;
+    for (const [piece] of inner.matchAll(/<[^>]*>|[^<]+/g)) {
+      const closing = piece.startsWith("</");
+      if (closing) depth -= 1;
+      else {
+        if (depth === 0 && piece.trim() !== "") found.push(piece);
+        if (piece.startsWith("<")) depth += 1;
+      }
+    }
+    return found;
+  }
 });
 
 // Issue 101, AC3: the success notice is a kind of Notice, `check`, keeping role="alert" as every kind does.

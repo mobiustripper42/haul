@@ -24,6 +24,7 @@ export const en = {
   "account.cancelLink": "Cancel the Supper Club",
   "account.cancel.nothingMore": "Nothing more is charged.",
   "account.cancel.joinAgain": "You can join again any time while there are meals.",
+  "account.cancel.joinAgainLink": "Join again",
   "account.cancel.title": "Cancel the Supper Club?",
   "account.cancel.lastPickup": "Your last pickup is {week}, which you already paid for.",
   "account.cancel.skipInstead": "If you only need a break, skip the weeks instead.",

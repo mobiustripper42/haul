@@ -6,7 +6,7 @@ import { SubmitButton } from "./submit-button";
 
 /**
  * `strong` is the teal-filled emphasis button, the inverse of `secondary` (issue 230): for a screen where gold is taken,
- * or where several rows each need an emphasised action, which gold, one to a screen (docs/BRAND.md), cannot give.
+ * or where several rows each need an emphasised action, which gold, one to a card or notice (docs/BRAND.md), cannot give.
  */
 export type ButtonKind = "primary" | "secondary" | "strong" | "quiet" | "menu";
 
