@@ -301,10 +301,12 @@ describe("issue 138 — switchMeal", () => {
     expect(await mealOf(memberId)).toEqual(before);
   });
 
-  it("AC6: a signed-in member with no active, paid subscription is sent to /supper-club", async () => {
+  it("AC9 (issue 260): a member who never joined, switching on a week that is open, goes back to the account page, and nothing is written", async () => {
     const member = await services.repo.createMember({ email: "ada@example.com" });
     signIn(member.id);
-    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe("/supper-club");
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await expect(redirectOf(switchMeal(switchForm(OPEN, choiceOf(["2 people", "Vegan"]))))).resolves.toBe(ACCOUNT_PATH);
+    expect(withActor).not.toHaveBeenCalled();
   });
 
   it('AC7: an "unchanged" save of the picks held leaves weekly_cents as stored, though their price today differs, and goes back with no Notice', async () => {
@@ -367,5 +369,38 @@ describe("AC3 (issue 219) — where a refusal at the cutoff lands", () => {
     await expect(redirectOf(skipWeek(form({ week: PAST_CUTOFF }))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
     await services.repo.skipWeek(subscriptionId, PAST_CUTOFF);
     await expect(redirectOf(unskipWeek(form({ week: PAST_CUTOFF }))).then(landing)).resolves.toEqual(CUTOFF_NOTICE);
+  });
+});
+
+// Issue 260: a member who never joined has no week and no meal, so each post goes back with no error, the week posted past
+// its cutoff or not; who counts as one is requireAccount's (../subscriber.test.ts). Switch on an open week is in issue 138's
+// tests above. A cancelled member's posts are as they were: the cutoff Notice is theirs too.
+describe("AC9 (issue 260) — a member with no active subscription", () => {
+  const choices = () => Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[1]?.id ?? "no such option"]));
+
+  it.each([
+    ["skipWeek", "open", skipWeek, OPEN, WEEKS_PATH],
+    ["skipWeek", "past its cutoff", skipWeek, PAST_CUTOFF, WEEKS_PATH],
+    ["unskipWeek", "open", unskipWeek, OPEN, WEEKS_PATH],
+    ["unskipWeek", "past its cutoff", unskipWeek, PAST_CUTOFF, WEEKS_PATH],
+    ["switchMeal", "past its cutoff", switchMeal, PAST_CUTOFF, ACCOUNT_PATH],
+  ] as const)("AC9: never joined, %s for a week %s goes back with no error, and nothing is written", async (_name, _when, action, week, back) => {
+    const member = await services.repo.createMember({ email: "ada@example.com" });
+    signIn(member.id);
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await expect(redirectOf(action(form({ week, ...choices() })))).resolves.toBe(back);
+    expect(withActor).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["skipWeek", skipWeek, CUTOFF_NOTICE],
+    ["unskipWeek", unskipWeek, CUTOFF_NOTICE],
+    ["switchMeal", switchMeal, SWITCH_CUTOFF_NOTICE],
+  ] as const)("AC9: cancelled, %s for a week past its cutoff goes back with the cutoff Notice, as today, and nothing is written", async (_name, action, back) => {
+    const { subscriptionId } = await ada();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await expect(redirectOf(action(form({ week: PAST_CUTOFF, ...choices() }))).then(landing)).resolves.toEqual(back);
+    expect(withActor).not.toHaveBeenCalled();
   });
 });

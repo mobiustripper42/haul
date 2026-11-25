@@ -1,5 +1,5 @@
 // Issue 139: the member's cancel confirm, `await CancelSupperClub()` with `next/headers` faked and the composition root
-// mocked, as app/account/page.test.ts renders /account. Who is let in is requireSubscriber's
+// mocked, as app/account/page.test.ts renders /account. Who is let in is requireAccount's
 // (app/account/subscriber.test.ts) and which week is the last pickup lastPickup's (src/account-weeks.test.ts); here
 // each of the page's branches goes through it once, read by its links, form, Notice and the values in them, and the key
 // of the credit line it picks, never its words (issue 211). What the button does is ./actions.test.ts's.
@@ -13,9 +13,10 @@ import { pickupWeek, weekTitle } from "@core/pickup-week.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
+import { Notice } from "../../../components/ui/notice";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, attributesOf, redirectOf, screenMarkup } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import CancelSupperClub from "./page";
 
@@ -135,15 +136,35 @@ describe("AC11 (issue 139) — who reaches /account/cancel", () => {
     await expect(redirectOf(CancelSupperClub())).resolves.toBe("/sign-in");
   });
 
-  it("AC11: a signed-in member with no subscription is sent to /supper-club", async () => {
+  // Issue 260: a member with no active subscription stays here. What the Notice is is noSupperClubNotice's
+  // (../no-supper-club-notice.test.ts), so here it is which one, by its lead's catalog line, and where its button goes.
+  /** The page, drawn for such a member and sending nobody anywhere: the back link, then the heading, then the one Notice with `lead` and its link to /supper-club, and no card, form or button. */
+  const expectNoticePage = async (lead: string): Promise<{ html: string }> => {
+    await expect(CancelSupperClub()).resolves.toBeDefined();
+    const element = await CancelSupperClub();
+    const html = screenMarkup(renderToStaticMarkup(element));
+    expect(findAll(element, Notice).map(({ props }) => props.lead)).toEqual([lead]);
+    expect(hrefsOf(html)).toEqual(["/account", "/supper-club"]);
+    expect(inPageOrder(html, ['href="/account"', "<h1", 'role="alert"', 'href="/supper-club"'])).toBe(true);
+    expect(html).not.toMatch(/<section\b|<form\b|<button\b/);
+    return { html };
+  };
+  /** The page's one h1's words. */
+  const headingOf = (html: string): string => [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map(([, inner = ""]) => textsOf(inner).join(" ")).join(" | ");
+
+  it("AC8 (issue 260): a member who never joined gets the back link to /account, the heading and the never-joined Notice; no cancel form", async () => {
     signIn(await ada());
-    await expect(redirectOf(CancelSupperClub())).resolves.toBe("/supper-club");
+    await expectNoticePage(t("account.noSupperClub"));
   });
 
-  it("AC10: a member whose subscription is already cancelled is sent to /account", async () => {
+  it("AC8 (issue 260): a cancelled member gets the back link to /account, the heading an active member sees, and the cancelled Notice; no cancel form", async () => {
     const subscriptionId = await subscribedAda();
+    const heading = headingOf((await render()).html);
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    await expect(redirectOf(CancelSupperClub())).resolves.toBe("/account");
+    vi.mocked(SiteHeader).mockClear();
+    const { html } = await expectNoticePage(t("account.cancelledNotice"));
+    expect(headingOf(html)).toBe(heading);
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "account" }));
   });
 });
 

@@ -1,5 +1,5 @@
 // Issue 155: Upcoming weeks, `await UpcomingWeeks()` with `next/headers` faked and the composition root mocked, as
-// app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
+// app/account/page.test.ts renders /account. Who is let in is requireAccount's (app/account/subscriber.test.ts);
 // which weeks are listed is upcomingWeeks' and each week's marker upcomingRows' (src/pickup-week.test.ts,
 // src/account-weeks.test.ts), which also owns what each marker is. Here one case goes through the page, read by the
 // values, forms and links in each row and card, and a row's line and badge, which the page picks by its marker, by
@@ -23,7 +23,7 @@ import { Button } from "../../../components/ui/button";
 import { addSupperClub, MENUS, SIZES } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { ACCOUNT_CARD_PATH } from "../../paths";
-import { alertTexts, attributesOf, redirectOf, textsOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
 import { payDeclinedWeek } from "../declined-fixture";
@@ -131,9 +131,17 @@ const render = async (): Promise<{ html: string; rows: string[][] }> => {
 const rowTitled = (rows: string[][], title: string): string[] | undefined => rows.find((row) => row[0] === title);
 
 describe("AC1 (issue 155) — who gets in", () => {
-  it("AC1: a signed-in member with no active, paid subscription is sent to /supper-club", async () => {
+  // Issue 260: a member who never joined stays here; who counts as one is requireAccount's. The empty lines are the catalog's.
+  it("AC7 (issue 260): a member who never joined is let in: an Upcoming card and a History card, each with no rows, and no Notice and no form", async () => {
     signIn(await ada());
-    await expect(redirectOf(UpcomingWeeks())).resolves.toBe("/supper-club");
+    await expect(UpcomingWeeks()).resolves.toBeDefined();
+    const { html } = await render();
+    for (const column of [upcomingColumn(html), historyColumn(html)]) {
+      expect(column.match(/<section\b/g)).toHaveLength(1);
+      expect(listItems(column)).toEqual([]);
+    }
+    expect(alertTexts(html)).toEqual([]);
+    expect(html).not.toContain("<form");
   });
 
   it("AC1: a subscribed member is let in: the page lists the current week", async () => {

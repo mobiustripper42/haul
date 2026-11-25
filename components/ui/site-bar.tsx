@@ -7,7 +7,7 @@ const INNER = row("max-w-page");
  * The bar the header and the footer share (issue 97): a `<header>` or `<footer>` on `surface` with a
  * `divider` border on its inner edge, and a row inside it. The footer sits at the bottom of a short page.
  * `wide` runs the header's row at `max-w-bar` in place of the page's width (issue 159): only the signed-in
- * header passes it, so its four links, Admin and Sign out fit beside the farm's name at 1024px.
+ * header passes it, so its five links, Admin and Sign out fit beside the farm's name at 1024px.
  */
 export function SiteBar({ as, wide, children }: { as: "header" | "footer"; wide?: boolean; children: ReactNode }) {
   if (as === "footer") {

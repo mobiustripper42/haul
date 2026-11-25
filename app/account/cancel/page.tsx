@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { listedWeekTitle } from "@core/pickup-week.js";
 import { Button } from "../../../components/ui/button";
 import { ButtonRow } from "../../../components/ui/button-row";
@@ -11,7 +10,8 @@ import { titled } from "../../page-title";
 import { ACCOUNT_PATH, ACCOUNT_WEEKS_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { SiteHeader } from "../../site-header";
-import { requireSubscriber } from "../subscriber";
+import { noSupperClubNotice, noSupperClubPage } from "../no-supper-club-notice";
+import { requireAccount } from "../subscriber";
 import { loadLastPickup } from "../weeks/rows";
 import { cancelSubscription } from "./actions";
 
@@ -20,18 +20,20 @@ export const generateMetadata = titled("account.cancel.title");
 /**
  * The member's cancel confirm (issue 139): what a cancel leaves them with, their last pickup (a week already paid for
  * is still made) and the week credits the farm refunds by hand (DEC-005), and the button that cancels. Only an active
- * subscription reaches it; a cancelled one is sent to account home.
+ * subscription reaches it: a member with no active subscription, cancelled or never joined, stays here and gets the back link,
+ * the heading and their Notice (issue 260, DEC-055).
  */
 export default async function CancelSupperClub() {
-  const { product, confirmation } = await requireSubscriber();
-  if (confirmation.status === "cancelled") redirect(ACCOUNT_PATH);
+  const account = await requireAccount();
+  const now = new Date();
+  const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
+  const noSupperClub = await noSupperClubNotice(account, t, language, now);
+  if (noSupperClub) return noSupperClubPage(t, "account.cancel.title", noSupperClub);
+  const { product, confirmation } = account;
+  // The Notice is null only for an active subscription.
+  if (confirmation === null) throw new Error("a member with no subscription has a Notice");
   const repo = getRepository();
-  const [t, language, last, ledger] = await Promise.all([
-    getTranslator(),
-    getLanguage(),
-    loadLastPickup(product, confirmation.subscriptionId, new Date()),
-    repo.listMemberWeeks(confirmation.subscriptionId),
-  ]);
+  const [last, ledger] = await Promise.all([loadLastPickup(product, confirmation.subscriptionId, now), repo.listMemberWeeks(confirmation.subscriptionId)]);
   // The last pickup is a sentence only while a paid week is still to come: one already passed is no news to the member.
   const stillToCome = last !== null && !last.passed ? last.week : null;
   const credits = ledger.weekCredits.length;

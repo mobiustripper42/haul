@@ -17,7 +17,7 @@ import { createTranslator } from "../src/i18n.js";
 import { en } from "../src/messages/en.js";
 import { requireSupperClub } from "../src/products.js";
 import { e2eDatabaseUrl } from "./database";
-import { expect, expectSignedIn, outboxCount, test, waitForSignInCode } from "./fixtures";
+import { expect, expectOnAccount, expectSignedIn, outboxCount, test, waitForSignInCode } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 // The `members` seed's name for ERIC (db/seeds/members.ts).
@@ -203,15 +203,14 @@ test("AC2, AC9: Sign in opens the pane, a code lands back on the Supper Club pag
   await expect(page.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
 });
 
-test("AC4: the header's Sign in goes to the pane, and a code confirmed with no return path lands on /supper-club", async ({ page, request }) => {
+test("AC4, AC10 (issue 260): the header's Sign in goes to the pane, and a code confirmed with no return path lands on /account, signed in", async ({ page, request }) => {
   await page.goto("/supper-club");
   await headerSignIn(page).click();
   await expect(page).toHaveURL(onPath(SIGN_IN_PANE));
 
   await enterSignInCode(page, await askForCode(page, request));
 
-  await expect(page).toHaveURL(onPath("/supper-club"));
-  await expect(page.getByText(signedInAs(ERIC_NAME, ERIC))).toBeVisible();
+  await expectOnAccount(page);
 });
 
 test("AC3: at lg the pane stands where the Join card stood, at its width, beside the left column", async ({ page, request }, testInfo) => {

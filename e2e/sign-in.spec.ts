@@ -2,11 +2,11 @@
 // desktop and mobile. Each test starts from an emptied e2e database with the `members` seed
 // (fixtures.ts). Controls are found by role and the English wording in `en`, never by class or test id; what
 // a screen says is Vitest's, so a state here is read from the URL.
-// Issue 97: signing in still sends to `/`, which redirects on to /supper-club (AC2), and "signed in" is
-// the header's Sign out button, where the home page's "Signed in as" line was.
+// Issue 97: "signed in" is the header's Sign out button, where the home page's "Signed in as" line was.
+// Issue 260, AC10: signing in lands on /account, and a member with no Supper Club subscription, as ERIC is, stays there.
 import type { APIRequestContext, Page } from "@playwright/test";
 import { en } from "../src/messages/en.js";
-import { expect, expectSignedIn, headerSignOut, outboxCount, signOut, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
+import { expect, expectOnAccount, expectSignedIn, headerSignOut, outboxCount, signOut, test, waitForSignInCode, waitForSignInLink } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const STRANGER = "nobody@ocf.xx";
@@ -46,13 +46,12 @@ test("AC12: a member's email leads to Enter your code, and the outbox gets him a
   expect(await outboxCount(request, ERIC)).toBe(before + 1);
 });
 
-test("AC13, AC2 (issue 97): that code, entered in 6-digit code, signs him in, and he ends on /supper-club with the header's Sign out", async ({ page, request }) => {
+test("AC13, AC10 (issue 260): that code, entered in 6-digit code, signs him in, and he ends on /account with the header's Sign out", async ({ page, request }) => {
   const code = await codeFor(page, request, ERIC);
 
   await enterCode(page, code);
 
-  await expect(page).toHaveURL(onPath("/supper-club"));
-  await expectSignedIn(page);
+  await expectOnAccount(page);
 });
 
 test("AC14: a wrong code keeps him on /sign-in/code, refused (error=invalid); the right code still signs him in", async ({
@@ -68,8 +67,7 @@ test("AC14: a wrong code keeps him on /sign-in/code, refused (error=invalid); th
 
   await enterCode(page, code);
 
-  await expect(page).toHaveURL(onPath("/supper-club"));
-  await expectSignedIn(page);
+  await expectOnAccount(page);
 });
 
 test("AC15: an email no member has gets the same code screen, and the outbox gets nothing for it", async ({
@@ -117,7 +115,7 @@ async function pressSignInOnLinkPage(page: Page): Promise<void> {
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
 }
 
-test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in, and (AC2, issue 97) he ends on /supper-club. AC30: pressed again, in a fresh browser, the link lands on /sign-in with error=link", async ({
+test("AC29: five wrong codes email him a sign-in link; the right code is refused too; the link signs him in, and (AC10, issue 260) he ends on /account. AC30: pressed again, in a fresh browser, the link lands on /sign-in with error=link", async ({
   page,
   request,
   browser,
@@ -137,8 +135,7 @@ test("AC29: five wrong codes email him a sign-in link; the right code is refused
 
   await page.goto(link);
   await pressSignInOnLinkPage(page);
-  await expect(page).toHaveURL(onPath("/supper-club"));
-  await expectSignedIn(page);
+  await expectOnAccount(page);
 
   // AC30
   const fresh = await browser.newContext();

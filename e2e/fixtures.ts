@@ -90,6 +90,16 @@ export async function expectSignedIn(page: Page): Promise<void> {
   await expect(headerSignOut(page)).toBeVisible();
 }
 
+/**
+ * Expects the member to have ended on /account, signed in (issue 260, AC10). Your details is waited for first: a page that
+ * sends the member on shows /account in the address bar on the way, so the URL alone says nothing about staying.
+ */
+export async function expectOnAccount(page: Page): Promise<void> {
+  await expect(page.getByRole("main").locator('input[name="firstName"]')).toBeVisible();
+  await expect(page).toHaveURL((url) => url.pathname === "/account");
+  await expectSignedIn(page);
+}
+
 /** Signs out through the header (issue 155): the Menu opened where Sign out sits in it, then Sign out submitted. */
 export async function signOut(page: Page): Promise<void> {
   await openMenuForSignOut(page);
@@ -97,10 +107,10 @@ export async function signOut(page: Page): Promise<void> {
 }
 
 /**
- * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands, signed in: `/account`
- * for a subscriber, given as `landing`; a member with no Supper Club subscription is sent on from it to /supper-club.
+ * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands, signed in: `landing`,
+ * `/account` for every member, a Supper Club subscription or none (issue 260).
  */
-export async function signIn(page: Page, request: APIRequestContext, email: string, landing = "/supper-club"): Promise<void> {
+export async function signIn(page: Page, request: APIRequestContext, email: string, landing = "/account"): Promise<void> {
   const before = await outboxCount(request, email);
   await page.goto("/sign-in");
   await page.getByLabel(en["signIn.emailLabel"]).fill(email);

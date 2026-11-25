@@ -35,7 +35,7 @@ export default async function MenuPage(): Promise<ReactNode> {
 
   return (
     <>
-      {await SiteHeader({ account: "sign-in" })}
+      {await SiteHeader({ account: "sign-in", current: "menu" })}
       <Shell width="page">
         <div className="flex w-full min-w-0 flex-col gap-5">
           {shown ? (

@@ -1,4 +1,3 @@
-import { redirect } from "next/navigation";
 import { weekNamed } from "@core/ledger-charge.js";
 import { formatUsdWhole } from "@core/money.js";
 import { cutoffDate, formatPickupDate } from "@core/pickup-week.js";
@@ -14,7 +13,8 @@ import { titled } from "../../page-title";
 import { ACCOUNT_CARD_ROW_PARAM, ACCOUNT_CARD_STATE_PARAM, ACCOUNT_PATH } from "../../paths";
 import { getRepository } from "../../services";
 import { SiteHeader } from "../../site-header";
-import { requireSubscriber } from "../subscriber";
+import { noSupperClubNotice, noSupperClubPage } from "../no-supper-club-notice";
+import { requireAccount } from "../subscriber";
 import { loadNextPickup } from "../weeks/rows";
 import { CardForm } from "./card-form";
 
@@ -33,15 +33,20 @@ const one = (value: string | string[] | undefined): string | undefined => (typeo
  * whose charge is out (a card update's `declined` one with `charge_sent_at` set), whatever the URL says, the retry Notice
  * stands over the form, whose card is charged under that charge's key, for that row's amount. While it holds the weekly run's
  * `pending` row with a card on file, the confirming Notice takes the form's place: the run settles that row, and no save may
- * touch it. Only an active subscription reaches it; a cancelled one is sent to account home.
+ * touch it. Only an active subscription reaches the card: a member with no active subscription, cancelled or never joined, stays
+ * here and gets the back link, the heading and their Notice, whatever the query says (issue 260, DEC-055).
  */
 export default async function UpdateCard({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const { member, product, confirmation } = await requireSubscriber();
-  if (confirmation.status === "cancelled") redirect(ACCOUNT_PATH);
+  const account = await requireAccount();
   const query = await searchParams;
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
-  const repo = getRepository();
   const now = new Date();
+  const noSupperClub = await noSupperClubNotice(account, t, language, now);
+  if (noSupperClub) return noSupperClubPage(t, "account.card.title", noSupperClub);
+  const { member, product, confirmation } = account;
+  // The Notice is null only for an active subscription.
+  if (confirmation === null) throw new Error("a member with no subscription has a Notice");
+  const repo = getRepository();
   const { subscriptionId } = confirmation;
 
   const stored = await repo.findSubscriptionCard(subscriptionId);

@@ -43,7 +43,8 @@ const SAMPLE_WEEK = [
  * which keeps its left column and header link at every width; a pane hides the left column below `lg`.
  * The two account panes (Create Account and sign-in) also hide the header link there, mark the header's
  * Sign in as current on the sign-in pane, and send a signed-in member to the Supper Club page; "done" and
- * "already" are for a signed-in member, so they send nobody away.
+ * "already" are for a signed-in member, so they send nobody away. The Supper Club page itself (`pane` "none") marks its own header
+ * link as the page showing (issue 260); a pane page marks none.
  */
 export async function JoinPage({
   pane,
@@ -59,7 +60,7 @@ export async function JoinPage({
   const wide = pane === "none" ? "" : " wide-only";
   return (
     <>
-      {await SiteHeader({ account, wideOnly: accountPane })}
+      {await SiteHeader({ account, wideOnly: accountPane, ...(pane === "none" ? { current: "supper-club" as const } : {}) })}
       <Shell width={pane === "none" ? "page" : "pane"}>
         <section className={`flex min-w-0 flex-1 flex-col gap-5${wide}`}>
           <div className="flex flex-col gap-2">

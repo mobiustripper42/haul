@@ -1,7 +1,7 @@
 // Issue 139: the member's cancel, `cancelSubscription`, through an InMemoryRepository with `next/headers` faked and
 // `redirect` throwing as the real one does, as app/account/weeks/actions.test.ts drives Skip. What a cancel writes, and
 // that a second one writes nothing, is the repository contract's (src/adapters/signup-contract.ts); who is let in is
-// requireSubscriber's. These hold what the action does with them: the subscription it acts on, the time it passes,
+// requireAccount's. These hold what the action does with them: the subscription it acts on, the time it passes,
 // that it checks no cutoff, the write as the member, and where the member lands.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
@@ -144,5 +144,17 @@ describe("AC11 (issue 139) — the subscription cancelled is the member's own", 
     const { memberId } = await subscriber("ada@example.com");
     await expect(redirectOf(cancelSubscription(form()))).resolves.toBe("/sign-in");
     expect(await services.repo.findActiveSubscription(memberId, product.id)).not.toBeNull();
+  });
+});
+
+// Issue 260: who counts as never joined is requireAccount's (../subscriber.test.ts); the cancelled member is AC10's above.
+describe("AC9 (issue 260) — a member who never joined", () => {
+  it("AC9: never joined, a cancel lands on /account with no error, and nothing is written", async () => {
+    const grace = await subscriber("grace@example.com");
+    signIn((await services.repo.createMember({ email: "ada@example.com" })).id);
+    const withActor = vi.spyOn(services.repo, "withActor");
+    await expect(redirectOf(cancelSubscription(form({ subscription: grace.subscriptionId, subscriptionId: grace.subscriptionId })))).resolves.toBe("/account");
+    expect(withActor).not.toHaveBeenCalled();
+    expect(await statusOf(grace.memberId)).toEqual({ status: "active", cancelledAt: null });
   });
 });

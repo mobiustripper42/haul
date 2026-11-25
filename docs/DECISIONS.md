@@ -81,6 +81,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-048 — A list row shows one main action; two or more others go under More
 - DEC-050 — In-app links are next/link, drawn only in components/ui/
 - DEC-051 — Every tap shows it landed, and a sending form locks the page
+- DEC-055 — A signed-in member is never sent to another page for lacking a subscription
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a
