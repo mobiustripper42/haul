@@ -115,4 +115,36 @@ test.describe("AC5 — the History link", () => {
       expect(await page.evaluate(() => window.scrollY)).toBe(0);
     });
   }
+
+  test(`AC5: below 1024px, tapping History in the drawer on ${WEEKS} a second time, after scrolling back to the top, closes the drawer and brings the History list to the top of the screen again`, async ({ page, request }, testInfo) => {
+    mobileOnly(testInfo);
+    await page.setViewportSize({ width: 375, height: 400 });
+    await signedInOn(page, request, WEEKS);
+
+    for (const tap of ["first", "second"]) {
+      expect(await page.evaluate(() => window.scrollY), `the page is at its top before the ${tap} tap`).toBe(0);
+      await headerMenu(page).click();
+      await expect(drawer(page)).toHaveJSProperty("open", true);
+
+      await historyLink(drawer(page)).click();
+
+      await expectHistoryArrived(page);
+      await expect(drawer(page)).toHaveJSProperty("open", false);
+      // At the top: the column's top edge sits its own scroll margin below the viewport's.
+      await expect
+        .poll(() => history(page).evaluate((el) => Math.abs(el.getBoundingClientRect().top - parseFloat(getComputedStyle(el).scrollMarginTop))), {
+          message: `the ${tap} tap brings the History list to the top of the screen`,
+        })
+        .toBeLessThan(1);
+      expect(await page.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+
+      if (tap === "first") {
+        // The member scrolls back up; the address still ends in #history.
+        await page.evaluate(() => window.scrollTo(0, 0));
+        await expect(page).toHaveURL((url) => url.hash === "#history");
+        // Time for a scroll the page would make by itself, so that one cannot pass for the second tap's.
+        await page.waitForTimeout(500);
+      }
+    }
+  });
 });
