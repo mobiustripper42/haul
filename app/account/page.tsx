@@ -52,10 +52,10 @@ type Query = { switch?: string; switchError?: string; saved?: string; error?: st
  * a pending-switch line when a newer set starts after it; with no next pickup it is the newest set, and no line shows.
  * The price is the one stored on the subscription, not the price of its picks today. An active card holds Switch (with
  * `?switch=1` and a switch week listed, the pickers in a form posting that week to `switchMeal`, and neither of the other
- * two) and Update your card in a row, and a quiet Cancel below it (issue 238); a cancelled one shows the Notice, with the
- * last pickup and a Join again button (issue 238), and a Cancelled badge, and no next pickup, no where line, no charge line
- * and no buttons in the card: no pickup or charge is coming from it, unless a paid week is still to come, which the Notice
- * names. An active one holding a declined row is locked (issue 196): its next pickup stands while the
+ * two) and Update your card in a row, and a quiet Cancel below it (issue 238); a cancelled one shows the Notice
+ * above its card, in the left column, with the last pickup and a Join again button (issue 238), and a Cancelled badge, and
+ * no next pickup, no where line, no charge line and no buttons in the card: no pickup or charge is coming from it, unless
+ * a paid week is still to come, which the Notice names. An active one holding a declined row is locked (issue 196): its next pickup stands while the
  * declined week's is still to come, then one line says none is coming until the card is updated. Everything is in the
  * page's language (`getTranslator()`), never the member's email language.
  */
@@ -104,25 +104,25 @@ export default async function Account({ searchParams }: { searchParams?: Promise
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.title")}</Heading>
-          {cancelled && (
-            <Notice
-              icon="info"
-              lead={t("account.cancelledNotice")}
-              action={
-                <Button kind="secondary" href={SUPPER_CLUB_PATH}>
-                  {t("account.cancel.joinAgainLink")}
-                </Button>
-              }
-            >
-              {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
-            </Notice>
-          )}
           {switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
-          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice is the first thing in the left column, so it stands above the Supper Club card at both widths. */}
+          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice, and the cancelled one (issue 238), are the first thing in the left column, so they stand above the Supper Club card at both widths. */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
             <div className="flex min-w-0 flex-1 flex-col gap-5">
+              {cancelled && (
+                <Notice
+                  icon="info"
+                  lead={t("account.cancelledNotice")}
+                  action={
+                    <Button kind="secondary" href={SUPPER_CLUB_PATH}>
+                      {t("account.cancel.joinAgainLink")}
+                    </Button>
+                  }
+                >
+                  {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+                </Notice>
+              )}
               {notice}
               <Card width="fill">
                 <div className="flex flex-wrap items-center justify-between gap-3">
