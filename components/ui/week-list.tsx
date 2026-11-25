@@ -1,14 +1,14 @@
 import type { ReactNode } from "react";
 import { Hint } from "./hint";
 
-export type WeekListRow = { id: string; title: string; lines: string[]; amount?: string; badge?: ReactNode; action?: ReactNode };
+export type WeekListRow = { id: string; title: string; lines: string[]; amount?: string; badge?: ReactNode; action?: ReactNode; below?: ReactNode };
 
 /**
  * The account pages' weeks (issue 155): a list of rows, divided as the admin weeks list's. Each row's top is the title
  * and its first muted line on the left, and on the right, stacked and right-aligned, the badge, then the amount, each if
  * any, then an optional action (issues 137, 230). Every later line runs the row's full width below, so a long status
- * line is not squeezed beside the badge on a phone (issue 230). One column at every width: `RowList` does not fit, for
- * it hides at 720px and wider.
+ * line is not squeezed beside the badge on a phone (issue 230), and then `below`, full width too (issue 243: a week's
+ * rolldown). One column at every width: `RowList` does not fit, for it hides at 720px and wider.
  */
 export function WeekList({ rows }: { rows: WeekListRow[] }) {
   return (
@@ -31,6 +31,7 @@ export function WeekList({ rows }: { rows: WeekListRow[] }) {
             {rest.map((line) => (
               <Hint key={line}>{line}</Hint>
             ))}
+            {row.below}
           </li>
         );
       })}

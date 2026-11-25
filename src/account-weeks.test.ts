@@ -67,7 +67,7 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
 
   it("AC3: an open week with no paid row is Coming, charged at the end of its cutoff Monday: February 1 for February 7", () => {
     expect(upcomingRows([week(FEB_7)], member([]), PRODUCT)).toEqual([
-      { week: week(FEB_7), marker: "coming", closedPaid: false, weekCreditUsed: false, chargeDate: "2027-02-01", action: "skip" },
+      { week: week(FEB_7), marker: "coming", closedPaid: false, weekCreditUsed: false, chargeDate: "2027-02-01", action: "skip", picksWeek: FEB_7 },
     ]);
   });
 
@@ -77,7 +77,7 @@ describe("AC3 (issue 155) — upcomingRows: one marker a week", () => {
   });
 
   it("AC3: an open week with a paid row is Paid, with no charge date", () => {
-    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null }]);
+    expect(upcomingRows([week(FEB_7)], member([FEB_7]), PRODUCT)).toEqual([{ week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_7 }]);
   });
 
   it("AC3: a closed week is Closed whether or not it was paid, with no charge date", () => {
@@ -194,7 +194,7 @@ const actions = (rows: UpcomingRow[]) => rows.map((row) => [row.week.weekOf, row
 describe("AC1 (issue 137) — upcomingRows: a skipped week", () => {
   it("AC1: an open week with a skipped row is Skipped, with no charge date, and its button is Unskip", () => {
     expect(upcomingRows([week(FEB_7)], skipping(member([]), [FEB_7]), PRODUCT)).toEqual([
-      { week: week(FEB_7), marker: "skipped", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "unskip" },
+      { week: week(FEB_7), marker: "skipped", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "unskip", picksWeek: FEB_7 },
     ]);
   });
 });
@@ -267,8 +267,8 @@ describe("AC5 (issue 139) — upcomingRows for a cancelled subscription", () => 
     const weeks = [week(FEB_7), week(FEB_14, { closed: true }), week(FEB_21), week(FEB_28), week(MAR_7)];
     const ledger = skipping(member([FEB_7, FEB_14, MAR_7]), [FEB_28]);
     expect(upcomingRows(weeks, ledger, PRODUCT, true)).toEqual([
-      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
-      { week: week(MAR_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_7 },
+      { week: week(MAR_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: MAR_7 },
     ]);
   });
 
@@ -327,16 +327,16 @@ describe("issue 150 — a week paid by a week credit, on Upcoming weeks and Hist
     const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21)];
     const rows = upcomingRows(weeks, creditPaid(member([FEB_7], ["2027-01-31"]), [FEB_14]), PRODUCT);
     expect(rows.slice(1)).toEqual([
-      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null },
-      { week: week(FEB_21), marker: "weekCredit", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "skip" },
+      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null, picksWeek: FEB_14 },
+      { week: week(FEB_21), marker: "weekCredit", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: "skip", picksWeek: "2027-01-31" },
     ]);
   });
 
   it("AC9: a cancelled subscription's week paid by a week credit stays listed, as a paid week does: Week credit, used, no button", () => {
     const weeks = [week(FEB_7), week(FEB_14), week(FEB_21)];
     expect(upcomingRows(weeks, creditPaid(member([FEB_7]), [FEB_14]), PRODUCT, true)).toEqual([
-      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
-      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null },
+      { week: week(FEB_7), marker: "paid", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_7 },
+      { week: week(FEB_14), marker: "weekCredit", closedPaid: false, weekCreditUsed: true, chargeDate: null, action: null, picksWeek: FEB_14 },
     ]);
   });
 
@@ -365,6 +365,7 @@ describe("AC10 (issue 150) — lastPickup counts a week paid by a week credit", 
     weekCreditUsed,
     chargeDate: null,
     action: null,
+    picksWeek: weekOf,
   });
   const historyRow = (weekOf: string, marker: HistoryRow["marker"], line: HistoryRow["line"]): HistoryRow => ({ week: week(weekOf), marker, amountCents: 0, line });
 
@@ -439,8 +440,8 @@ describe("AC6 (issue 198) — upcomingRows: the weeks after the declined week ar
     const weeks = [pastCutoff(week(FEB_7)), week(FEB_14), week(FEB_21)];
     const rows = upcomingRows(weeks, holding(member([]), { declined: [FEB_7] }), PRODUCT, false, FEB_7);
     expect(rows.slice(1)).toEqual([
-      { week: week(FEB_14), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
-      { week: week(FEB_21), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null },
+      { week: week(FEB_14), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_14 },
+      { week: week(FEB_21), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_21 },
     ]);
   });
 });
@@ -452,7 +453,7 @@ describe("AC7 (issue 198) — upcomingRows: a week holding a locked row", () => 
 
   it("AC7: a week holding a locked row is Locked, though its cutoff has passed and its pickup is to come, and after the card update, with no declined week", () => {
     const rows = upcomingRows([pastCutoff(week(FEB_7)), week(FEB_14)], afterUpdate, PRODUCT, false, null);
-    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null });
+    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_7 });
   });
 
   it("AC7: a closed week holding a locked row is Closed: closed wins; guards the case above", () => {
@@ -523,7 +524,7 @@ describe("AC10 (issue 198) — historyRows: a past week holding a locked row", (
 describe("AC11 (issue 198) — upcomingRows: the declined week", () => {
   it("AC11: the declined week's row is Card declined, with no charge date and no button", () => {
     const rows = upcomingRows([pastCutoff(week(FEB_7)), week(FEB_14)], holding(member([]), { declined: [FEB_7] }), PRODUCT, false, FEB_7);
-    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "declined", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null });
+    expect(rows[0]).toEqual({ week: pastCutoff(week(FEB_7)), marker: "declined", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek: FEB_7 });
   });
 
   it("AC11: closed by an admin, the declined week is Closed instead, and the weeks after it are still Locked", () => {
@@ -557,6 +558,33 @@ describe("AC14 (issue 198) — upcomingRows: once the card update pays the decli
     expect(actions(upcomingRows(weeks, ledger, PRODUCT, false, null)).slice(1)).toEqual([
       [FEB_14, "coming", "skip"],
       [FEB_21, "coming", "skip"],
+    ]);
+  });
+});
+
+// Issue 243: the week whose picks a row's meal comes from, which the page reads the rolldown's dishes by. Every whole row
+// above carries one; where a week credit lands is AC5 (issue 155)'s.
+describe("AC9 (issue 243) — upcomingRows: the week whose picks each row's meal comes from", () => {
+  const picksWeeks = (rows: UpcomingRow[]) => rows.map((row) => [row.week.weekOf, row.marker, row.picksWeek]);
+
+  it("AC9: a week an unspent week credit lands on reads the picks of the week the credit was granted for, each of two its own; the week after reads its own", () => {
+    const weeks = [week(FEB_7), week(FEB_14), week(FEB_21)];
+    expect(picksWeeks(upcomingRows(weeks, member([], ["2027-01-31", "2027-01-24"]), PRODUCT))).toEqual([
+      [FEB_7, "weekCredit", "2027-01-24"],
+      [FEB_14, "weekCredit", "2027-01-31"],
+      [FEB_21, "coming", FEB_21],
+    ]);
+  });
+
+  it("AC9: every other week reads its own: closed, paid, paid by a week credit, skipped and coming", () => {
+    const weeks = [week(FEB_7, { closed: true }), week(FEB_14), week(FEB_21), week(FEB_28), week(MAR_7)];
+    const ledger = skipping(creditPaid(member([FEB_7, FEB_14]), [FEB_21]), [FEB_28]);
+    expect(picksWeeks(upcomingRows(weeks, ledger, PRODUCT))).toEqual([
+      [FEB_7, "closed", FEB_7],
+      [FEB_14, "paid", FEB_14],
+      [FEB_21, "weekCredit", FEB_21],
+      [FEB_28, "skipped", FEB_28],
+      [MAR_7, "coming", MAR_7],
     ]);
   });
 });

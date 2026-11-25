@@ -22,8 +22,10 @@ export const ACCOUNT_SWITCH_OPEN = "1";
 /** The account page's query naming why a switch was refused (issue 219); its value is `ACCOUNT_WEEKS_CUTOFF_ERROR`. */
 export const ACCOUNT_SWITCH_ERROR_PARAM = "switchError";
 
-/** A member's History. */
-export const ACCOUNT_HISTORY_PATH = "/account/history";
+/** The `id` of the Upcoming weeks page's History column (issue 243), which the menu's History link goes to. */
+export const ACCOUNT_HISTORY_ID = "history";
+/** A member's History: the second list of Upcoming weeks (issue 243). The server never sees the part after `#`, so the menu never marks it. */
+export const ACCOUNT_HISTORY_PATH = `${ACCOUNT_WEEKS_PATH}#${ACCOUNT_HISTORY_ID}`;
 
 /** The admin's page, the header's Admin button. */
 export const ADMIN_PATH = "/admin";

@@ -75,6 +75,8 @@ export const en = {
   "account.weeks.switchCancel": "Cancel",
   "account.weeks.declined": "Your meal is still made.",
   "account.weeks.lockedAfterUpdate": "No meal this week: your card was still declined at the cutoff.",
+  "account.weeks.menu": "Menu: {name}",
+  "account.weeks.menuProposed": "Proposed: this menu may change.",
   "account.history.title": "History",
   "account.history.intro": "Every week since your first pickup, newest first.",
   "account.history.signup": "Paid at signup",

@@ -255,6 +255,14 @@
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
 
+  /* Issue 243: a rolldown's summary (Disclosure): a 44px teal line with the same chevron, which turns over while the details is open. */
+  .disclosure-summary {
+    @apply flex min-h-touch items-center text-small text-teal;
+  }
+  details[open] > .disclosure-summary::after {
+    @apply rotate-180;
+  }
+
   /*
    * The drawer (MenuDrawer): the hamburger shut, a panel from the right over a dimmed page open. The tiers: the
    * backdrop at 100, the panel at 110, the ✕ above the panel at 120. The ✕ is the <summary> itself, pinned to the

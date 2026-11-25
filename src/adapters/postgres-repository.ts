@@ -944,17 +944,17 @@ export class PostgresRepository implements Repository {
     );
   }
 
-  /** The menus (all, or the one with `id`) with their texts keyed by option id, newest `updated_at` first. */
-  private async readMenus(id: string | null): Promise<Menu[]> {
+  /** The menus (all, or those with `ids`) with their texts keyed by option id, newest `updated_at` first. */
+  private async readMenus(ids: string[] | null): Promise<Menu[]> {
     const { rows } = await this.db.query<{ id: string; name: string; updated_at: Date; texts: Record<string, string> }>(
       `select m.id, m.name, m.updated_at,
               coalesce(jsonb_object_agg(t.option_id, t.text) filter (where t.option_id is not null), '{}'::jsonb) as texts
          from menus m
          left join menu_texts t on t.menu_id = m.id
-        where $1::uuid is null or m.id = $1::uuid
+        where $1::uuid[] is null or m.id = any($1::uuid[])
         group by m.id
         order by m.updated_at desc, m.id`,
-      [id],
+      [ids],
     );
     return rows.map((row) => ({ id: row.id, name: row.name, texts: row.texts, updatedAt: row.updated_at }));
   }
@@ -966,7 +966,7 @@ export class PostgresRepository implements Repository {
 
   async findMenu(id: string): Promise<Menu | null> {
     if (!UUID_SHAPE.test(id)) return null;
-    return (await this.readMenus(id))[0] ?? null;
+    return (await this.readMenus([id]))[0] ?? null;
   }
 
   /** The menu row and a row per text, in one transaction. */
@@ -1029,16 +1029,26 @@ export class PostgresRepository implements Repository {
     return rowCount === 1;
   }
 
+  /** Issue 243: the menu of each of the product's `weekOfs` as it is now, and when its email went out, in two trips; a week with none is absent. */
+  async findWeekMenus(productId: string, weekOfs: string[]): Promise<Map<string, { menu: Menu; sentAt: Date | null }>> {
+    const found = new Map<string, { menu: Menu; sentAt: Date | null }>();
+    if (!UUID_SHAPE.test(productId) || weekOfs.length === 0) return found;
+    const { rows } = await this.db.query<{ week_of: string; menu_id: string; sent_at: Date | null }>(
+      "select to_char(week_of, 'YYYY-MM-DD') as week_of, menu_id, sent_at from week_menus where product_id = $1 and week_of = any($2::date[])",
+      [productId, weekOfs],
+    );
+    if (rows.length === 0) return found;
+    const menus = new Map((await this.readMenus(rows.map((row) => row.menu_id))).map((menu) => [menu.id, menu]));
+    for (const row of rows) {
+      const menu = menus.get(row.menu_id);
+      if (menu) found.set(row.week_of, { menu, sentAt: row.sent_at });
+    }
+    return found;
+  }
+
   /** Issue 141: the week's menu as it is now, and when its email went out; null for a week with none. */
   async findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null> {
-    if (!UUID_SHAPE.test(productId)) return null;
-    const { rows } = await this.db.query<{ menu_id: string; sent_at: Date | null }>(
-      "select menu_id, sent_at from week_menus where product_id = $1 and week_of = $2::date",
-      [productId, weekOf],
-    );
-    const found = rows[0];
-    const menu = found ? (await this.readMenus(found.menu_id))[0] : undefined;
-    return found && menu ? { menu, sentAt: found.sent_at } : null;
+    return (await this.findWeekMenus(productId, [weekOf])).get(weekOf) ?? null;
   }
 
   /** Issue 141: stamps the week's menu sent at `now`; true only when it held a menu not yet stamped. */
@@ -1490,18 +1500,29 @@ export class PostgresRepository implements Repository {
     return rowCount === 1;
   }
 
-  async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
-    if (!UUID_SHAPE.test(subscriptionId)) return [];
-    const { rows } = await this.db.query<{ type_name: string; option_name: string }>(
-      `select t.name as type_name, o.name as option_name
-         from subscription_options so
+  /** Issue 243: the set in effect (`inEffectFor`) for each of `weekOfs`, in one trip; a week no set starts on or before is absent. */
+  async findOptionsForWeeks(subscriptionId: string, weekOfs: string[]): Promise<Map<string, { typeName: string; optionName: string }[]>> {
+    const found = new Map<string, { typeName: string; optionName: string }[]>();
+    if (!UUID_SHAPE.test(subscriptionId) || weekOfs.length === 0) return found;
+    const { rows } = await this.db.query<{ week_of: string; type_name: string; option_name: string }>(
+      `select to_char(w.week_of, 'YYYY-MM-DD') as week_of, t.name as type_name, o.name as option_name
+         from unnest($2::date[]) as w(week_of)
+         join subscription_options so on so.subscription_id = $1 and ${inEffectFor("w.week_of")}
          join option_types t on t.id = so.option_type_id
          join options o on o.id = so.option_id
-        where so.subscription_id = $1 and ${inEffectFor("$2::date")}
-        order by t.position, t.name`,
-      [subscriptionId, weekOf],
+        order by w.week_of, t.position, t.name`,
+      [subscriptionId, weekOfs],
     );
-    return rows.map((row) => ({ typeName: row.type_name, optionName: row.option_name }));
+    for (const row of rows) {
+      const picks = found.get(row.week_of) ?? [];
+      picks.push({ typeName: row.type_name, optionName: row.option_name });
+      found.set(row.week_of, picks);
+    }
+    return found;
+  }
+
+  async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
+    return (await this.findOptionsForWeeks(subscriptionId, [weekOf])).get(weekOf) ?? [];
   }
 
   /**

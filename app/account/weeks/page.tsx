@@ -3,22 +3,26 @@ import { lockedWeek, type UpcomingRow } from "@core/account-weeks.js";
 import type { Language, Translator } from "@core/i18n.js";
 import { formatPickupDate, listedWeekTitle } from "@core/pickup-week.js";
 import { Badge } from "../../../components/ui/badge";
+import { BulletList } from "../../../components/ui/bullet-list";
 import { Button } from "../../../components/ui/button";
 import { Card } from "../../../components/ui/card";
+import { Disclosure } from "../../../components/ui/disclosure";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
 import { Shell } from "../../../components/ui/shell";
+import { TwoColumns } from "../../../components/ui/two-columns";
 import { WeekList } from "../../../components/ui/week-list";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
-import { ACCOUNT_WEEKS_CUTOFF_ERROR } from "../../paths";
+import { ACCOUNT_HISTORY_ID, ACCOUNT_WEEKS_CUTOFF_ERROR } from "../../paths";
 import { SiteHeader } from "../../site-header";
 import { CutoffNotice } from "../cutoff-notice";
 import { declinedNotice } from "../declined-notice";
 import { requireSubscriber } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
 import { skipWeek, unskipWeek } from "./actions";
-import { loadNextPickup, loadUpcomingRows } from "./rows";
+import { History } from "./history";
+import { loadHistoryRows, loadNextPickup, loadUpcomingRows, loadWeekMenus } from "./rows";
 
 export const generateMetadata = titled("account.weeks.title");
 
@@ -58,6 +62,11 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
  * week, each marked Paid, Closed, Week credit, Skipped, Locked or Card declined (issue 198), or coming with no badge, with a Skip or Unskip button before its cutoff
  * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with. The meal card and its
  * Switch are on the account page (issue 219).
+ *
+ * Issue 243: History is the page's second list, in the right column (`ACCOUNT_HISTORY_ID`, which the menu's History link goes to), and
+ * under Upcoming weeks below 1024px. A week with a menu that has dishes for the member's choice holds a rolldown named by the menu, the
+ * first listed one open on load, headed Proposed until the week's menu email has gone out (DEC-054). A cancelled member with no paid
+ * week to come has no Upcoming card.
  */
 export default async function UpcomingWeeks(): Promise<ReactElement>;
 // Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
@@ -67,22 +76,34 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
   const { confirmation } = subscribed;
   const now = new Date();
   const locked = lockedWeek(confirmation);
-  const [t, language, upcoming, query, next] = await Promise.all([
+  const [t, language, upcoming, history, query, next] = await Promise.all([
     getTranslator(),
     getLanguage(),
     loadUpcomingRows(subscribed, now),
+    loadHistoryRows(subscribed.product, confirmation.subscriptionId, confirmation.pickupDate, now),
     searchParams,
     locked === null ? null : loadNextPickup(subscribed, now),
   ]);
-  const { notice } = await declinedNotice(subscribed, next, t, language);
-  const rows = upcoming.map((row) => ({
-    id: row.week.weekOf,
-    title: listedWeekTitle(t, row.week, language),
-    lines: [lineOf(row, t, language, locked)],
-    // Issue 230: a Skipped week with Unskip takes no badge: its line says Skipped, and its Unskip is the strong button.
-    badge: row.marker === "coming" || (row.marker === "skipped" && row.action === "unskip") ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
-    action: actionOf(row, t, language),
-  }));
+  const [{ notice }, menus] = await Promise.all([declinedNotice(subscribed, next, t, language), loadWeekMenus(subscribed, upcoming, history.ledger)]);
+  // Issue 243: the first listed week with a rolldown is the one open when the page loads.
+  const openWeek = upcoming.find((row) => menus.has(row.week.weekOf))?.week.weekOf;
+  const rows = upcoming.map((row) => {
+    const menu = menus.get(row.week.weekOf);
+    return {
+      id: row.week.weekOf,
+      title: listedWeekTitle(t, row.week, language),
+      lines: [lineOf(row, t, language, locked)],
+      // Issue 230: a Skipped week with Unskip takes no badge: its line says Skipped, and its Unskip is the strong button.
+      badge: row.marker === "coming" || (row.marker === "skipped" && row.action === "unskip") ? undefined : <Badge kind={MARKER_BADGES[row.marker].kind}>{t(MARKER_BADGES[row.marker].key)}</Badge>,
+      action: actionOf(row, t, language),
+      below: menu && (
+        <Disclosure summary={t("account.weeks.menu", { name: menu.name })} open={row.week.weekOf === openWeek}>
+          {menu.proposed && <Hint>{t("account.weeks.menuProposed")}</Hint>}
+          <BulletList items={menu.dishes} />
+        </Disclosure>
+      ),
+    };
+  });
 
   // Nothing more is charged once cancelled, so the intro line, which says when a week is charged, is left out.
   const cancelled = confirmation.status === "cancelled";
@@ -91,14 +112,24 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     <>
       {await SiteHeader({ account: "none", current: "weeks" })}
       <Shell>
-        <div className="flex w-full max-w-page flex-col gap-5">
-          <Heading>{t("account.weeks.title")}</Heading>
-          {notice}
-          {!cancelled && locked === null && <Hint>{t("account.weeks.intro")}</Hint>}
-          {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
-          <Card width="fill">
-            <WeekList rows={rows} />
-          </Card>
+        <div className="w-full max-w-page">
+          {TwoColumns({
+            left: (
+              <>
+                <Heading>{t("account.weeks.title")}</Heading>
+                {notice}
+                {!cancelled && locked === null && <Hint>{t("account.weeks.intro")}</Hint>}
+                {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
+                {rows.length > 0 && (
+                  <Card width="fill">
+                    <WeekList rows={rows} />
+                  </Card>
+                )}
+              </>
+            ),
+            right: History({ past: history.rows, ledger: history.ledger, t, language }),
+            rightId: ACCOUNT_HISTORY_ID,
+          })}
         </div>
       </Shell>
     </>

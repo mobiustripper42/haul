@@ -53,7 +53,8 @@ beforeEach(() => {
 
 const SIGN_IN_PATH = "/supper-club/sign-in";
 const WEEKS_PATH = "/account/weeks";
-const HISTORY_PATH = "/account/history";
+/** Issue 243: History is a part of the Upcoming weeks page. */
+const HISTORY_PATH = "/account/weeks#history";
 /** The account links' destinations, in order: the bar's and the drawer's. Issue 219: Your details went into Your account. */
 const LINKS = [ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH];
 /** Issue 159, AC2: the admin links' destinations, in order: Members, Menus, Weeks, Weekly lists. */
@@ -63,7 +64,7 @@ const SIGN_OUT = "submit";
 const LANGUAGE_NAMES: string[] = Object.values(LANGUAGES).map((language) => language.name);
 
 type Account = "none" | "sign-in" | "sign-in-current";
-type Current = "account" | "weeks" | "history" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
+type Current = "account" | "weeks" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
 
 /**
  * Components read as themselves; every other function component is called through, so what it draws is read too.
@@ -281,7 +282,7 @@ describe("AC5 (issue 136) — the Your account link", () => {
 });
 
 describe("AC9 (issue 155) — the account nav", () => {
-  it("AC9: signed in, the bar's account links are menu links: Your account to /account, Upcoming weeks to /account/weeks, History to /account/history", async () => {
+  it("AC9: signed in, the bar's account links are menu links: Your account to /account, Upcoming weeks to /account/weeks, History to /account/weeks#history", async () => {
     session.member = { role: "member" };
     const { buttons } = await header("none");
     expect(buttons.filter((button) => button.props.href !== undefined).map((button) => button.props)).toEqual([
@@ -318,7 +319,6 @@ describe("AC9 (issue 155) — the account nav", () => {
   it.each([
     ["account", ACCOUNT_PATH],
     ["weeks", WEEKS_PATH],
-    ["history", HISTORY_PATH],
     ["admin-members", ADMIN_PATH],
   ] as const)('AC9: with current "%s", that link alone is marked as the page showing, in the bar and in the drawer', async (current, href) => {
     session.member = { role: "admin" };
@@ -332,11 +332,23 @@ describe("AC9 (issue 155) — the account nav", () => {
 // Issue 219, AC8: Your details went into Your account, so the menu has three member links; the account, card and cancel
 // pages pass current "account" (their own tests).
 describe("AC8 (issue 219) — three member links", () => {
-  it.each(["member", "admin"] as const)("AC8: signed in as %s, the member links are /account, /account/weeks and /account/history, in that order, in the bar and in the drawer", async (role) => {
+  it.each(["member", "admin"] as const)("AC8: signed in as %s, the member links are /account, /account/weeks and /account/weeks#history, in that order, in the bar and in the drawer", async (role) => {
     session.member = { role };
     const { buttons, drawer } = await header("none");
     const memberLinks = (found: Buttons) => found.map((button) => button.props.href).filter((href) => typeof href === "string" && !String(href).startsWith("/admin"));
     for (const found of [buttons, drawer.buttons]) expect(memberLinks(found)).toEqual(LINKS);
+  });
+});
+
+// Issue 243: History is the second list of the Upcoming weeks page, and the server never sees the part of a link after
+// `#`. The three links and their order are AC8 (issue 219) above.
+describe("AC4 (issue 243) — the History link", () => {
+  it.each([undefined, "account", "weeks"] as const)("AC4 (issue 243): with current %s, History's one link goes to /account/weeks#history and is not marked as the page showing, in the bar and in the drawer", async (current) => {
+    session.member = { role: "member" };
+    const { buttons, drawer } = await header("none", current);
+    for (const found of [buttons, drawer.buttons]) {
+      expect(found.filter((button) => String(button.props.href).includes("history")).map((button) => [button.props.href, Boolean(button.props.current)])).toEqual([["/account/weeks#history", false]]);
+    }
   });
 });
 
@@ -386,7 +398,7 @@ describe("AC1 (issue 159) — a member's header", () => {
     session.member = { role: "member" };
   });
 
-  it.each([undefined, "account", "weeks", "history"] as const)(
+  it.each([undefined, "account", "weeks"] as const)(
     "AC1: with current %s, the bar holds Your account, Upcoming weeks, History in that order, then the Sign out form, and no Admin group",
     async (current) => {
       const { buttons, forms, groups } = await header("none", current);
@@ -435,7 +447,6 @@ describe("AC3 (issue 159) — the page showing is marked", () => {
     [undefined, false],
     ["account", false],
     ["weeks", false],
-    ["history", false],
     ["admin-members", true],
     ["admin-menus", true],
     ["admin-weeks", true],

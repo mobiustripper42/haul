@@ -627,6 +627,26 @@ export function runWeekCreditContract(
           expect(await repo.findOptionsForWeek(subscriptionId, "2027-01-10")).toEqual([]);
         });
       });
+
+      // Issue 243: the sets in effect for several weeks in one read. The rule's edges are findOptionsForWeek's, above, its
+      // one-week case.
+      describe("issue 243 — findOptionsForWeeks", () => {
+        it("AC9 (issue 243): each week asked for reads the set in effect for it, before and after a switch, in option-type position order; a week before any set starts is absent; another subscription's is its own", async () => {
+          const ada = await subscribed();
+          const grace = await subscribed();
+          await switchTo(ada.subscriptionId, 1, 1, FEB_7, 8000);
+          const weeks = ["2027-01-10", EARLIER, WEEK, FEB_7, "2027-03-07"];
+          expect(await repo.findOptionsForWeeks(ada.subscriptionId, weeks)).toEqual(
+            new Map([
+              [EARLIER, meal(0, 0)],
+              [WEEK, meal(0, 0)],
+              [FEB_7, meal(1, 1)],
+              ["2027-03-07", meal(1, 1)],
+            ]),
+          );
+          expect(await repo.findOptionsForWeeks(grace.subscriptionId, [FEB_7])).toEqual(new Map([[FEB_7, meal(0, 0)]]));
+        });
+      });
     });
 
     // Issue 139: a cancel touches no ledger row, so a week charged before it is still made; and a refund is owed only

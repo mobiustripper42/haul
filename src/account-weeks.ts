@@ -25,6 +25,11 @@ export type UpcomingRow = {
   weekCreditUsed: boolean;
   chargeDate: string | null;
   action: "skip" | "unskip" | null;
+  /**
+   * Issue 243: the week whose picks this row's meal comes from (DEC-033): the `grantedForWeek` of the unspent week credit that
+   * lands on the week, otherwise the week's own `weekOf`.
+   */
+  picksWeek: string;
 };
 
 /** One History week: its marker, the amount charged (0 for a closed week with no charge), and its line. */
@@ -61,35 +66,37 @@ export function upcomingRows(
       .filter((week) => week.closedAt === null && paid.has(week.weekOf))
       .map((week) => {
         const used = creditPaid.has(week.weekOf);
-        return { week, marker: used ? "weekCredit" : "paid", closedPaid: false, weekCreditUsed: used, chargeDate: null, action: null };
+        return { week, marker: used ? "weekCredit" : "paid", closedPaid: false, weekCreditUsed: used, chargeDate: null, action: null, picksWeek: week.weekOf };
       });
   }
   const skipped = new Set(member.skipped);
   const lockedRows = new Set(member.locked);
   const locking = (weekOf: string): boolean => lockedRows.has(weekOf) || (declinedWeek !== null && weekOf >= declinedWeek);
-  const landed = new Set<string>();
-  const grantedFor = member.weekCredits.map((credit) => credit.grantedForWeek).sort();
-  for (const granted of grantedFor) {
+  const landed = new Map<string, string>();
+  const grantedForWeeks = member.weekCredits.map((credit) => credit.grantedForWeek).sort();
+  for (const granted of grantedForWeeks) {
     const lands = weeks.find(
       (week) => week.weekOf > granted && week.closedAt === null && !paid.has(week.weekOf) && !skipped.has(week.weekOf) && !landed.has(week.weekOf) && !locking(week.weekOf),
     );
-    if (lands) landed.add(lands.weekOf);
+    if (lands) landed.set(lands.weekOf, granted);
   }
 
-  return weeks.map((week) => {
+  return weeks.map((week): UpcomingRow => {
+    const picksWeek = week.weekOf;
     const weekPaid = paid.has(week.weekOf);
     const used = creditPaid.has(week.weekOf);
-    if (week.closedAt !== null) return { week, marker: "closed", closedPaid: weekPaid, weekCreditUsed: used, chargeDate: null, action: null };
-    if (weekPaid) return { week, marker: used ? "weekCredit" : "paid", closedPaid: false, weekCreditUsed: used, chargeDate: null, action: null };
+    if (week.closedAt !== null) return { week, marker: "closed", closedPaid: weekPaid, weekCreditUsed: used, chargeDate: null, action: null, picksWeek };
+    if (weekPaid) return { week, marker: used ? "weekCredit" : "paid", closedPaid: false, weekCreditUsed: used, chargeDate: null, action: null, picksWeek };
     const noButton = week.cutoffPassed || declinedWeek !== null;
-    if (skipped.has(week.weekOf)) return { week, marker: "skipped", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: noButton ? null : "unskip" };
+    if (skipped.has(week.weekOf)) return { week, marker: "skipped", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: noButton ? null : "unskip", picksWeek };
     if (lockedRows.has(week.weekOf) || (declinedWeek !== null && week.weekOf > declinedWeek)) {
-      return { week, marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null };
+      return { week, marker: "locked", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek };
     }
-    if (week.weekOf === declinedWeek) return { week, marker: "declined", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null };
+    if (week.weekOf === declinedWeek) return { week, marker: "declined", closedPaid: false, weekCreditUsed: false, chargeDate: null, action: null, picksWeek };
     const action = noButton ? null : "skip";
-    if (landed.has(week.weekOf)) return { week, marker: "weekCredit", closedPaid: false, weekCreditUsed: false, chargeDate: null, action };
-    return { week, marker: "coming", closedPaid: false, weekCreditUsed: false, chargeDate: cutoffDate(product, week.weekOf), action };
+    const grantedFor = landed.get(week.weekOf);
+    if (grantedFor !== undefined) return { week, marker: "weekCredit", closedPaid: false, weekCreditUsed: false, chargeDate: null, action, picksWeek: grantedFor };
+    return { week, marker: "coming", closedPaid: false, weekCreditUsed: false, chargeDate: cutoffDate(product, week.weekOf), action, picksWeek };
   });
 }
 

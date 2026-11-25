@@ -7,7 +7,7 @@ import type { Page } from "@playwright/test";
 import { expect, headerSignOut, signIn, test } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
-const LINKS = ["/account", "/account/weeks", "/account/history"];
+const LINKS = ["/account", "/account/weeks", "/account/weeks#history"];
 
 const menuButton = (page: Page) => page.getByRole("banner").locator("summary");
 const shownLinks = (page: Page, href: string) => page.getByRole("banner").locator(`a[href="${href}"]`).filter({ visible: true });

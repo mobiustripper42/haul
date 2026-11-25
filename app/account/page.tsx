@@ -16,6 +16,7 @@ import { Heading } from "../../components/ui/heading";
 import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
 import { Shell } from "../../components/ui/shell";
+import { TwoColumns } from "../../components/ui/two-columns";
 import { AccountFields, readDraft } from "../account-fields";
 import { getLanguage, getTranslator } from "../language";
 import { MealPickers } from "../meal-pickers";
@@ -108,77 +109,79 @@ export default async function Account({ searchParams }: { searchParams?: Promise
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
           {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice, and the cancelled one (issue 238), are the first thing in the left column, so they stand above the Supper Club card at both widths. */}
-          <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-            <div className="flex min-w-0 flex-1 flex-col gap-5">
-              {cancelled && (
-                <Notice
-                  icon="info"
-                  lead={t("account.cancelledNotice")}
-                  action={
-                    <Button kind="secondary" href={SUPPER_CLUB_PATH}>
-                      {t("account.cancel.joinAgainLink")}
-                    </Button>
-                  }
-                >
-                  {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
-                </Notice>
-              )}
-              {notice}
-              <Card width="fill">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <p className="font-semibold">{meal}</p>
-                  <Badge kind={badge.kind}>{t(badge.key)}</Badge>
-                </div>
-                {next && (
-                  <>
-                    <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
-                    <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
-                  </>
+          {TwoColumns({
+            left: (
+              <>
+                {cancelled && (
+                  <Notice
+                    icon="info"
+                    lead={t("account.cancelledNotice")}
+                    action={
+                      <Button kind="secondary" href={SUPPER_CLUB_PATH}>
+                        {t("account.cancel.joinAgainLink")}
+                      </Button>
+                    }
+                  >
+                    {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+                  </Notice>
                 )}
-                {locked && <p>{t("account.noPickupLocked")}</p>}
-                {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
-                {startsAt && (
-                  <Hint>
-                    <BoldValue line={(value) => t("account.pendingSwitch", { meal: value, week: listedWeekTitle(t, startsAt.week, language) })} value={mealLabel(confirmation.options)} />
-                  </Hint>
-                )}
-                {!cancelled &&
-                  (open ? (
-                    <form action={switchMeal} className="flex flex-col gap-5">
-                      <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
-                      {MealPickers({ product, selected: confirmation.choices, t })}
-                      <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
-                      <ButtonRow>
-                        <Button kind="primary" type="submit">
-                          {t("account.weeks.switchSave")}
-                        </Button>
-                        <Button kind="secondary" href={ACCOUNT_PATH}>
-                          {t("account.weeks.switchCancel")}
-                        </Button>
-                      </ButtonRow>
-                    </form>
-                  ) : (
+                {notice}
+                <Card width="fill">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <p className="font-semibold">{meal}</p>
+                    <Badge kind={badge.kind}>{t(badge.key)}</Badge>
+                  </div>
+                  {next && (
                     <>
-                      <ButtonRow>
-                        {switchesFrom !== undefined && (
-                          <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
-                            {t("account.weeks.switch")}
-                          </Button>
-                        )}
-                        <Button kind="secondary" href={ACCOUNT_CARD_PATH}>
-                          {t("account.card.title")}
-                        </Button>
-                      </ButtonRow>
-                      <div className="flex">
-                        <Button kind="quiet" href={ACCOUNT_CANCEL_PATH} flush>
-                          {t("account.cancelLink")}
-                        </Button>
-                      </div>
+                      <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
+                      <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
                     </>
-                  ))}
-              </Card>
-            </div>
-            <div className="min-w-0 flex-1">
+                  )}
+                  {locked && <p>{t("account.noPickupLocked")}</p>}
+                  {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+                  {startsAt && (
+                    <Hint>
+                      <BoldValue line={(value) => t("account.pendingSwitch", { meal: value, week: listedWeekTitle(t, startsAt.week, language) })} value={mealLabel(confirmation.options)} />
+                    </Hint>
+                  )}
+                  {!cancelled &&
+                    (open ? (
+                      <form action={switchMeal} className="flex flex-col gap-5">
+                        <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
+                        {MealPickers({ product, selected: confirmation.choices, t })}
+                        <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
+                        <ButtonRow>
+                          <Button kind="primary" type="submit">
+                            {t("account.weeks.switchSave")}
+                          </Button>
+                          <Button kind="secondary" href={ACCOUNT_PATH}>
+                            {t("account.weeks.switchCancel")}
+                          </Button>
+                        </ButtonRow>
+                      </form>
+                    ) : (
+                      <>
+                        <ButtonRow>
+                          {switchesFrom !== undefined && (
+                            <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
+                              {t("account.weeks.switch")}
+                            </Button>
+                          )}
+                          <Button kind="secondary" href={ACCOUNT_CARD_PATH}>
+                            {t("account.card.title")}
+                          </Button>
+                        </ButtonRow>
+                        <div className="flex">
+                          <Button kind="quiet" href={ACCOUNT_CANCEL_PATH} flush>
+                            {t("account.cancelLink")}
+                          </Button>
+                        </div>
+                      </>
+                    ))}
+                </Card>
+              </>
+            ),
+            right: (
               <Card width="fill">
                 {codeStep ? (
                   await CodeStep({
@@ -217,8 +220,8 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                   </>
                 )}
               </Card>
-            </div>
-          </div>
+            ),
+          })}
         </div>
       </Shell>
     </>

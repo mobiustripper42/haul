@@ -3,7 +3,7 @@
 // (`assignedWeeks`), the search (`filterMenus`) and a row's one-line text (`menuLine`). The actions, pages and
 // adapters that use them check one accepted and one refused case through them.
 import { describe, expect, it } from "vitest";
-import { assignedWeeks, checkMenu, filterMenus, menuLine, menuLines, menuOptions, menuSections, menuText, type Menu } from "./menus.js";
+import { assignedWeeks, checkMenu, filterMenus, memberMenuLines, menuLine, menuLines, menuOptions, menuSections, menuText, type Menu } from "./menus.js";
 import { upcomingWeeks, type ChangedWeek } from "./pickup-week.js";
 import type { ProductOption, ProductWithOptions } from "./products.js";
 
@@ -241,5 +241,46 @@ describe("AC5, AC7 (issue 141) — menuSections", () => {
       "Standard",
       "Vegan",
     ]);
+  });
+});
+
+// Issue 243: one member's dishes on a menu, the one home the week list's rolldown reads. How a text splits into lines is
+// menuLines' (above); the page takes one case of each through it.
+describe("AC8, AC10 (issue 243) — memberMenuLines", () => {
+  const AUTUMN: Menu = {
+    id: "autumn",
+    name: "Autumn harvest",
+    texts: { [STANDARD.id]: "Squash soup\n\n  Rye bread ", [VEGAN.id]: "Lentil soup\nRye bread" },
+    updatedAt: new Date("2027-02-01T12:00:00.000Z"),
+  };
+  const picks = (menu: string, size = "Portioned for 2") => [
+    { typeName: "How many people", optionName: size },
+    { typeName: "Which menu", optionName: menu },
+  ];
+
+  it("AC8: the lines of the text for the member's menu choice, and no other choice's", () => {
+    expect(memberMenuLines(product(), AUTUMN, picks("Standard"))).toEqual(["Squash soup", "Rye bread"]);
+    expect(memberMenuLines(product(), AUTUMN, picks("Vegan"))).toEqual(["Lentil soup", "Rye bread"]);
+  });
+
+  it("AC8: the choice is the pick of the type marked menuTexts: another type's pick of the same name is not it", () => {
+    const named = product();
+    const sizes = named.optionTypes[0];
+    if (sizes) sizes.options = [{ id: "option-size-vegan", name: "Vegan", priceCents: 0, position: 1 }];
+    expect(memberMenuLines(named, AUTUMN, picks("Standard", "Vegan"))).toEqual(["Squash soup", "Rye bread"]);
+    expect(memberMenuLines(named, AUTUMN, [{ typeName: "How many people", optionName: "Vegan" }])).toEqual([]);
+  });
+
+  it("AC10: none when the menu has no text for the choice, though it has one for another", () => {
+    const standardOnly: Menu = { ...AUTUMN, texts: { [STANDARD.id]: "Squash soup" } };
+    expect(memberMenuLines(product(), standardOnly, picks("Standard"))).toEqual(["Squash soup"]);
+    expect(memberMenuLines(product(), standardOnly, picks("Vegan"))).toEqual([]);
+  });
+
+  it("AC10: none when the member has no pick of the marked type, and none when no type is marked; guards the cases above", () => {
+    expect(memberMenuLines(product(), AUTUMN, [])).toEqual([]);
+    const unmarked = product();
+    for (const type of unmarked.optionTypes) type.menuTexts = false;
+    expect(memberMenuLines(unmarked, AUTUMN, picks("Standard"))).toEqual([]);
   });
 });

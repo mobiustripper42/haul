@@ -208,6 +208,31 @@ export function runMenuContract(
         expect(await repo.findWeekMenu(product.id, FEB_14)).toBeNull();
       });
 
+      // Issue 243: the menus of several weeks in one read. findWeekMenu, above, is its one-week case.
+      it("AC8, AC12 (issue 243): findWeekMenus is the menu of each week asked for, with when that week's was emailed, one menu on two weeks among them; a week with no menu and a week not asked for are absent", async () => {
+        const [first, second] = [await autumn(), await winter()];
+        for (const week of [FEB_7, FEB_21, "2027-03-07"]) await repo.assignWeekMenu(product.id, week, first.id);
+        await repo.assignWeekMenu(product.id, FEB_14, second.id);
+        const sentAt = new Date("2027-02-04T20:00:00.000Z");
+        await repo.markWeekMenuSent(product.id, FEB_7, sentAt);
+        expect(await repo.findWeekMenus(product.id, [FEB_7, FEB_14, FEB_21, FEB_28])).toEqual(
+          new Map([
+            [FEB_7, { menu: first, sentAt }],
+            [FEB_14, { menu: second, sentAt: null }],
+            [FEB_21, { menu: first, sentAt: null }],
+          ]),
+        );
+      });
+
+      it("AC8 (issue 243): findWeekMenus holds no other product's weeks", async () => {
+        const crate = await addProduct({ ...MARKED_BOX, name: "Crate" });
+        const menu = await autumn();
+        await repo.assignWeekMenu(product.id, FEB_7, menu.id);
+        await repo.assignWeekMenu(crate.id, FEB_14, menu.id);
+        expect(await repo.findWeekMenus(product.id, [FEB_7, FEB_14])).toEqual(new Map([[FEB_7, { menu, sentAt: null }]]));
+        expect(await repo.findWeekMenus(crate.id, [FEB_7, FEB_14])).toEqual(new Map([[FEB_14, { menu, sentAt: null }]]));
+      });
+
       it("AC3, AC4 (issue 141): markWeekMenuSent stamps the week at now and is true; a second stamp is false and keeps the first", async () => {
         const menu = await autumn();
         await repo.assignWeekMenu(product.id, FEB_14, menu.id);

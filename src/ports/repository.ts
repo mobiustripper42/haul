@@ -446,6 +446,7 @@ export interface Repository extends SignInStore, RateLimitStore {
    * no set starts on or before the week.
    */
   findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]>;
+  findOptionsForWeeks(subscriptionId: string, weekOfs: string[]): Promise<Map<string, { typeName: string; optionName: string }[]>>;
   /** Issue 142: the week's meals and skips, as of `cutoff`, the week's cutoff instant. */
   listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes>;
   /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */
@@ -463,6 +464,7 @@ export interface Repository extends SignInStore, RateLimitStore {
   assignWeekMenu(productId: string, weekOf: string, menuId: string | null): Promise<boolean>;
   // Issue 141: a week's menu and the stamp that sends its email once, the boxes a week makes, the admins, the event dated, the preference.
   findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null>;
+  findWeekMenus(productId: string, weekOfs: string[]): Promise<Map<string, { menu: Menu; sentAt: Date | null }>>;
   markWeekMenuSent(productId: string, weekOf: string, now: Date): Promise<boolean>;
   listWeekMade(productId: string, weekOf: string): Promise<WeekMade[]>;
   listAdmins(): Promise<Member[]>;

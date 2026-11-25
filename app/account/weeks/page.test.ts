@@ -5,26 +5,29 @@
 // values, forms and links in each row and card, and a row's line and badge, which the page picks by its marker, by
 // their catalog lines (issue 211). The header is faked, so what is read
 // of it is the call the page makes.
+// Issue 243: History is the page's second list. Its rows are ./history.test.ts's, so a test that reads every row here reads the
+// Upcoming column's.
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { createTranslator, type MessageKey } from "@core/i18n.js";
 import type { Member } from "@core/members.js";
-import { formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import { cutoffInstant, formatPickupDate, pickupWeek, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
 import type { Card } from "@core/ports/payments.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Badge, type BadgeKind } from "../../../components/ui/badge";
 import { Button } from "../../../components/ui/button";
-import { addSupperClub } from "../../admin/subscribers-fixture";
+import { addSupperClub, MENUS, SIZES } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { ACCOUNT_CARD_PATH } from "../../paths";
 import { alertTexts, attributesOf, redirectOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
 import { payDeclinedWeek } from "../declined-fixture";
+import { historyColumn, listItems, upcomingColumn } from "./columns-fixture";
 import UpcomingWeeks from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
@@ -118,10 +121,10 @@ const close = (weekOf: string) => services.repo.closePickupWeek(product.id, week
 /** The week's title with its ordinary days, as the page's language writes it. */
 const titleOf = (weekOf: string, changed: ChangedWeek | null = null): string => weekTitle(t, pickupWeek(weekOf, changed), "en");
 
-/** The page's markup, and each list row's runs of text, in order. */
+/** The page's markup, and each Upcoming row's runs of text, in order. */
 const render = async (): Promise<{ html: string; rows: string[][] }> => {
   const html = renderToStaticMarkup(await UpcomingWeeks());
-  const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
+  const rows = listItems(upcomingColumn(html)).map(textsOf);
   return { html, rows };
 };
 
@@ -295,7 +298,7 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
     await services.repo.cancelSubscription(subscriptionId, NOW);
     for (const query of [{}, { switch: "1" }]) {
       const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
-      const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
+      const rows = listItems(upcomingColumn(html)).map(textsOf);
       expect(rows.map((row) => row[0])).toEqual([titleOf("2027-02-07"), titleOf("2027-03-07")]);
       // A paid week: Paid, as its line and its badge.
       expect(rows[0]).toEqual([titleOf("2027-02-07"), t("account.marker.paid"), t("account.marker.paid")]);
@@ -323,11 +326,11 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
 // Issue 219: the meal card and its Switch moved to the account page (app/account/page.test.ts). The intro, the Notices
 // and the week list stay, and are the tests above and below.
 describe("AC7 (issue 219) — Upcoming weeks has no meal card", () => {
-  it("AC7: the meal is not shown, and there is no Switch size or menu and no switch form, even at ?switch=1 with a switch week listed", async () => {
+  it("AC7: the meal is not shown in the Upcoming column, and there is no Switch size or menu and no switch form, even at ?switch=1 with a switch week listed", async () => {
     await subscribedAda();
     for (const query of [{}, { switch: "1" }]) {
       const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
-      expect(textsOf(html).join(" ")).not.toContain("3–4 people · Standard");
+      expect(textsOf(upcomingColumn(html)).join(" ")).not.toContain("3–4 people · Standard");
       expect(attributesOf(html, "a").map((link) => link.href ?? "").filter((href) => href.includes("switch="))).toEqual([]);
       // The mocked switchMeal names itself in the markup of any form posting to it.
       expect(html).not.toContain("switchMeal");
@@ -366,10 +369,10 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     await payDeclinedWeek(services.repo, memberId, subscriptionId, NOW);
   };
 
-  /** The page drawn with `query`: its markup and each row's runs. */
+  /** The page drawn with `query`: its markup and each Upcoming row's runs. */
   const renderLocked = async (query: { switch?: string } = {}): Promise<{ html: string; rows: string[][] }> => {
     const html = renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve(query) }));
-    const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
+    const rows = listItems(upcomingColumn(html)).map(textsOf);
     return { html, rows };
   };
 
@@ -495,5 +498,255 @@ describe("AC17 (issue 254) — the no-card Notice on Upcoming weeks", () => {
     const { html } = await render();
     expect(noticeAsksForACard(html)).toBe(false);
     expect(alertTexts(html)).toEqual([]);
+  });
+});
+
+// Issue 243: Upcoming weeks and History on one page. The columns side by side, and where the History link scrolls, are the
+// browser's (e2e/account-weeks.spec.ts); what each list's rows hold is the tests above and ./history.test.ts's.
+describe("AC1 (issue 243) — the Upcoming list, then the History list", () => {
+  it("AC1: the page lists the 12 upcoming weeks, then in the History column the past weeks, newest first", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.addLedgerRow(subscriptionId, "2027-01-10", "paid", 4500);
+    const { html } = await render();
+    const titles = (markup: string) => listItems(markup).map((row) => textsOf(row)[0]);
+    const past = ["2027-01-10", "2027-01-03"].map((weekOf) => titleOf(weekOf));
+    expect(titles(html)).toEqual([...sundaysFrom("2027-02-07", 12).map((weekOf) => titleOf(weekOf)), ...past]);
+    expect(titles(historyColumn(html))).toEqual(past);
+  });
+
+  it("AC1: with no past weeks the History column has its h2 and no card", async () => {
+    await subscribedAda("2027-02-07");
+    const history = historyColumn((await render()).html);
+    expect(attributesOf(history, "h2")).toHaveLength(1);
+    // A Card is a <section>.
+    expect(attributesOf(history, "section")).toEqual([]);
+  });
+});
+
+// Which Notice shows when is declinedNotice's and the tests above; here where each stands, one case of each.
+describe("AC3 (issue 243) — the notices and the intro line are in the Upcoming column, above its card", () => {
+  /** The Upcoming column's markup before its one card. */
+  const aboveCard = (html: string): string => {
+    const column = upcomingColumn(html);
+    expect(attributesOf(column, "section")).toHaveLength(1);
+    return column.slice(0, column.indexOf("<section"));
+  };
+
+  it.each<[string, () => Promise<string>]>([
+    [
+      "declined",
+      async () => {
+        await services.repo.addLedgerRow(await subscribedAda(), "2027-02-07", "declined", 4500);
+        return (await render()).html;
+      },
+    ],
+    [
+      "no-card",
+      async () => {
+        await subscribedAda("2027-01-03", null);
+        return (await render()).html;
+      },
+    ],
+    [
+      "cutoff",
+      async () => {
+        await subscribedAda();
+        return renderWith({ error: "cutoff" });
+      },
+    ],
+  ])("AC3: the %s Notice", async (_which, arrange) => {
+    const html = await arrange();
+    expect(alertTexts(historyColumn(html))).toEqual([]);
+    expect(alertTexts(aboveCard(html))).toHaveLength(1);
+  });
+
+  it("AC3: the intro line", async () => {
+    await subscribedAda();
+    const { html } = await render();
+    expect(textsOf(historyColumn(html))).not.toContain(t("account.weeks.intro"));
+    expect(textsOf(aboveCard(html))).toContain(t("account.weeks.intro"));
+  });
+});
+
+// With a paid week to come the card stands, with that week: AC5 (issue 139) above.
+describe("AC7 (issue 243) — a cancelled member with no paid week to come", () => {
+  it("AC7: there is no Upcoming card and no row, and History still has its card", async () => {
+    const subscriptionId = await subscribedAda();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { html, rows } = await render();
+    expect(rows).toEqual([]);
+    expect(attributesOf(upcomingColumn(html), "section")).toEqual([]);
+    expect(attributesOf(historyColumn(html), "section")).toHaveLength(1);
+  });
+});
+
+// Issue 243, from issue 244: a week's menu in its row. One member's dishes on a menu are memberMenuLines' (src/menus.test.ts),
+// the set in effect for a week findOptionsForWeeks' (src/adapters/week-credit-contract.ts), the week a credit's meal reads
+// upcomingRows' (src/account-weeks.test.ts) and the element Disclosure's; here each goes through the page.
+describe("issue 243 — the menus on the weeks", () => {
+  const FEB_7 = "2027-02-07";
+  const FEB_14 = "2027-02-14";
+  const FEB_21 = "2027-02-21";
+  const FEB_28 = "2027-02-28";
+  const SENT_AT = new Date("2027-02-03T15:00:00.000Z");
+  const STANDARD_DISHES = ["Squash soup", "Rye bread"];
+  const VEGAN_DISHES = ["Lentil soup", "Corn bread"];
+
+  beforeEach(() => {
+    services.repo = new InMemoryRepository();
+    product = addSupperClub(services.repo, { optionTypes: [SIZES, { ...MENUS, menuTexts: true }] });
+  });
+
+  /** The id of the option called `name`. */
+  const optionId = (name: string): string => product.optionTypes.flatMap((type) => type.options).find((option) => option.name === name)?.id ?? "no such option";
+
+  /** A menu called `name` with a text for each choice given, put on `weeks`. */
+  const putMenu = async (weeks: string[], name = "Autumn harvest", dishes: Record<string, string[]> = { Standard: STANDARD_DISHES, Vegan: VEGAN_DISHES }): Promise<void> => {
+    const menu = await services.repo.createMenu({ name, texts: Object.fromEntries(Object.entries(dishes).map(([choice, lines]) => [optionId(choice), lines.join("\n")])) });
+    for (const weekOf of weeks) expect(await services.repo.assignWeekMenu(product.id, weekOf, menu.id)).toBe(true);
+  };
+
+  /** Ada, who picked 3–4 people, Standard, switched to Vegan from `fromWeek` on. */
+  const switchToVegan = async (subscriptionId: string, fromWeek: string): Promise<void> => {
+    const choices = Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options.find((option) => ["3–4 people", "Vegan"].includes(option.name))?.id ?? "no such option"]));
+    expect(await services.repo.switchPicks(subscriptionId, choices, fromWeek, 8000)).toBe("switched");
+  };
+
+  type Rolldown = { week: string; line: string | undefined; name: string; open: boolean; lines: string[]; dishes: string[] };
+
+  /** Each Upcoming row's rolldown, in order: its week's title and line, its name, whether it is open, its lines of text and the dishes it lists. */
+  const rolldowns = async (): Promise<Rolldown[]> =>
+    listItems(upcomingColumn((await render()).html)).flatMap((row) => {
+      const [week = "", line] = textsOf(row);
+      return [...row.matchAll(/(<details\b[^>]*>)\s*<summary\b[^>]*>([\s\S]*?)<\/summary>([\s\S]*?)<\/details>/g)].map(([, tag = "", summary = "", body = ""]) => ({
+        week,
+        line,
+        name: textsOf(summary).join(" "),
+        open: attributesOf(tag, "details").some((details) => "open" in details),
+        lines: textsOf(body),
+        dishes: listItems(body).map((dish) => textsOf(dish).join(" ")),
+      }));
+    });
+
+  /** Each rolldown as its week's title and its dishes. */
+  const dishesByWeek = async () => (await rolldowns()).map(({ week, dishes }) => [week, dishes]);
+
+  describe("AC8 — a week's rolldown", () => {
+    it.each([
+      ["before its menu email has gone out", null],
+      ["after its menu email has gone out", SENT_AT],
+    ])("AC8: a week with a menu has one rolldown, named by the menu and holding the dishes of the member's own choice, %s; no other choice's dishes are on the page", async (_when, sentAt) => {
+      await subscribedAda();
+      await putMenu([FEB_7]);
+      if (sentAt) expect(await services.repo.markWeekMenuSent(product.id, FEB_7, sentAt)).toBe(true);
+      expect(await rolldowns()).toEqual([expect.objectContaining({ week: titleOf(FEB_7), name: expect.stringContaining("Autumn harvest"), dishes: STANDARD_DISHES })]);
+      expect(textsOf((await render()).html).filter((text) => VEGAN_DISHES.includes(text))).toEqual([]);
+    });
+  });
+
+  describe("AC9 — the choice in effect for the week", () => {
+    it("AC9: after a switch, a week before it starts shows the old choice's dishes, and the weeks from it on the new one's", async () => {
+      await switchToVegan(await subscribedAda(), FEB_21);
+      await putMenu([FEB_14, FEB_21, FEB_28]);
+      expect(await dishesByWeek()).toEqual([
+        [titleOf(FEB_14), STANDARD_DISHES],
+        [titleOf(FEB_21), VEGAN_DISHES],
+        [titleOf(FEB_28), VEGAN_DISHES],
+      ]);
+    });
+
+    it("AC9: a week an unspent week credit lands on shows the dishes of the picks for the week it was granted for, not those switched to since", async () => {
+      const subscriptionId = await subscribedAda();
+      await services.repo.addLedgerRow(subscriptionId, FEB_14, "paid", 4500);
+      await close(FEB_14);
+      await switchToVegan(subscriptionId, FEB_21);
+      await putMenu([FEB_21, FEB_28]);
+      expect((await rolldowns()).map(({ week, line, dishes }) => [week, line === t("account.weeks.weekCredit"), dishes])).toEqual([
+        [titleOf(FEB_21), true, STANDARD_DISHES],
+        [titleOf(FEB_28), false, VEGAN_DISHES],
+      ]);
+    });
+
+    it("AC9: a week a week credit has already paid shows the dishes of the paid row's own picks, not those switched to since", async () => {
+      const subscriptionId = await subscribedAda();
+      await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
+      await close(FEB_7);
+      await switchToVegan(subscriptionId, FEB_14);
+      expect((await services.repo.enrolWeek(product.id, FEB_14, cutoffInstant(product, FEB_14))).byWeekCredit).toHaveLength(1);
+      await putMenu([FEB_14, FEB_21]);
+      expect((await rolldowns()).map(({ week, line, dishes }) => [week, line === t("account.weeks.weekCredit"), dishes])).toEqual([
+        [titleOf(FEB_14), true, STANDARD_DISHES],
+        [titleOf(FEB_21), false, VEGAN_DISHES],
+      ]);
+    });
+  });
+
+  describe("AC10 — which weeks have a rolldown", () => {
+    it("AC10: Paid, Week credit, Skipped and Coming weeks with a menu have one; a closed week with a menu and a week with none do not", async () => {
+      // February 14 paid, then closed: its week credit lands on February 21. March 14 has no menu.
+      const subscriptionId = await subscribedAda();
+      await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 4500);
+      await services.repo.addLedgerRow(subscriptionId, FEB_14, "paid", 4500);
+      await close(FEB_14);
+      await services.repo.skipWeek(subscriptionId, FEB_28);
+      await putMenu([FEB_7, FEB_14, FEB_21, FEB_28, MAR_7]);
+      expect((await rolldowns()).map(({ week, line }) => [week, line])).toEqual([
+        [titleOf(FEB_7), t("account.marker.paid")],
+        [titleOf(FEB_21), t("account.weeks.weekCredit")],
+        [titleOf(FEB_28), t("account.weeks.skipped")],
+        [titleOf(MAR_7), t("account.weeks.charged", { date: formatPickupDate("2027-03-01", "en", "short") })],
+      ]);
+    });
+
+    it("AC10: Declined and Locked weeks with a menu have one", async () => {
+      await services.repo.addLedgerRow(await subscribedAda(), FEB_7, "declined", 4500);
+      await putMenu([FEB_7, FEB_14]);
+      expect((await rolldowns()).map(({ week, line }) => [week, line])).toEqual([
+        [titleOf(FEB_7), t("account.weeks.declined")],
+        [titleOf(FEB_14), t("account.noPickupLocked")],
+      ]);
+    });
+
+    it("AC10: a menu with no text for the member's choice gives no rolldown, and the first one after it is open", async () => {
+      await subscribedAda();
+      await putMenu([FEB_7], "Vegan week", { Vegan: VEGAN_DISHES });
+      await putMenu([FEB_14]);
+      expect((await rolldowns()).map(({ week, open }) => [week, open])).toEqual([[titleOf(FEB_14), true]]);
+    });
+  });
+
+  describe("AC11 — the one open when the page loads", () => {
+    it("AC11: the current week's rolldown is open and every other is closed", async () => {
+      await subscribedAda();
+      await putMenu([FEB_7, FEB_14, FEB_21]);
+      expect((await rolldowns()).map(({ week, open }) => [week, open])).toEqual([
+        [titleOf(FEB_7), true],
+        [titleOf(FEB_14), false],
+        [titleOf(FEB_21), false],
+      ]);
+    });
+
+    it("AC11: with the current week closed, its menu kept, and the next with no menu, the first listed week with a rolldown is open and the other closed", async () => {
+      await subscribedAda();
+      await close(FEB_7);
+      await putMenu([FEB_7, FEB_21, FEB_28]);
+      expect((await rolldowns()).map(({ week, open }) => [week, open])).toEqual([
+        [titleOf(FEB_21), true],
+        [titleOf(FEB_28), false],
+      ]);
+    });
+  });
+
+  describe("AC12 — the Proposed line", () => {
+    // February 7's cutoff, the end of Monday, February 1, has passed, and February 14's is to come: the line ends at the email.
+    it("AC12: a menu's first line is the Proposed line while that week's menu email has not gone out, and it has no such line once it has, one menu on both weeks", async () => {
+      await subscribedAda();
+      await putMenu([FEB_7, FEB_14]);
+      expect(await services.repo.markWeekMenuSent(product.id, FEB_14, SENT_AT)).toBe(true);
+      expect((await rolldowns()).map(({ week, lines }) => [week, lines])).toEqual([
+        [titleOf(FEB_7), [t("account.weeks.menuProposed"), ...STANDARD_DISHES]],
+        [titleOf(FEB_14), STANDARD_DISHES],
+      ]);
+    });
   });
 });
