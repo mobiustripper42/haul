@@ -1,4 +1,5 @@
 import { historyRows, lastPickup, lockedWeek, upcomingRows, type HistoryRow, type UpcomingRow } from "@core/account-weeks.js";
+import { memberMenuLines } from "@core/menus.js";
 import { nextPickup, pastWeeks, upcomingWeeks, weeksFrom, type AdminWeek, type ChangedWeek } from "@core/pickup-week.js";
 import type { MemberWeeks } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
@@ -43,6 +44,33 @@ function historyOf(product: ProductWithOptions, now: Date, changed: ChangedWeek[
 export async function loadHistoryRows(product: ProductWithOptions, subscriptionId: string, firstWeek: string, now: Date): Promise<{ rows: HistoryRow[]; ledger: MemberWeeks }> {
   const [changed, ledger] = await readWeeks(product, subscriptionId);
   return { rows: historyOf(product, now, changed, ledger, firstWeek), ledger };
+}
+
+/** A listed week's menu as its rolldown draws it (issue 243): the menu's name, whether its email has yet to go out, and the member's own dishes. */
+export type WeekMenu = { name: string; proposed: boolean; dishes: string[] };
+
+/**
+ * The menus of the Upcoming `rows` that have a rolldown (issue 243): an open week with a menu that has dishes for the member's
+ * choice, keyed by its week. A paid week shows the picks of its own paid row in `ledger` (which already count a spent week
+ * credit); any other, those in effect for the week its row says its meal comes from (`picksWeek`). Two reads, one trip each.
+ */
+export async function loadWeekMenus({ product, confirmation }: Subscribed, rows: UpcomingRow[], ledger: MemberWeeks): Promise<Map<string, WeekMenu>> {
+  const repo = getRepository();
+  const open = rows.filter((row) => row.week.closedAt === null);
+  const paidPicks = new Map(ledger.paid.map((row) => [row.weekOf, row.options]));
+  const unpaid = new Set(open.filter((row) => !paidPicks.has(row.week.weekOf)).map((row) => row.picksWeek));
+  const [menus, picked] = await Promise.all([
+    repo.findWeekMenus(product.id, open.map((row) => row.week.weekOf)),
+    repo.findOptionsForWeeks(confirmation.subscriptionId, [...unpaid]),
+  ]);
+  const found = new Map<string, WeekMenu>();
+  for (const row of open) {
+    const assigned = menus.get(row.week.weekOf);
+    if (assigned === undefined) continue;
+    const dishes = memberMenuLines(product, assigned.menu, paidPicks.get(row.week.weekOf) ?? picked.get(row.picksWeek) ?? []);
+    if (dishes.length > 0) found.set(row.week.weekOf, { name: assigned.menu.name, proposed: assigned.sentAt === null, dishes });
+  }
+  return found;
 }
 
 /**

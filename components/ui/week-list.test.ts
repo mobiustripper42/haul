@@ -56,4 +56,26 @@ describe("AC2, AC7 (issue 155) — WeekList", () => {
     const row: WeekListRow = { id: "2027-03-07", title: "March 7 and 8", lines: ["Charged at the end of Monday, March 1"] };
     expect(rowsOf([row])).toEqual([["March 7 and 8", "Charged at the end of Monday, March 1"]]);
   });
+
+  it("AC8 (issue 243): a row's `below` is in its list item, read after its last line", () => {
+    const row: WeekListRow = {
+      id: "2027-03-14",
+      title: "March 14 and 15",
+      lines: ["2 people · Standard", "Paid"],
+      action: createElement("a", { href: "/skip" }, "Skip"),
+      below: createElement("p", null, "Autumn harvest"),
+    };
+    const plain: WeekListRow = { id: "2027-03-21", title: "March 21 and 22", lines: ["Paid"] };
+    expect(rowsOf([row, plain])).toEqual([
+      ["March 14 and 15", "2 people · Standard", "Skip", "Paid", "Autumn harvest"],
+      ["March 21 and 22", "Paid"],
+    ]);
+  });
+
+  it("AC1, AC7 (issue 243): with no rows it is the `empty` line and no list; with a row the line is not drawn", () => {
+    const draw = (rows: WeekListRow[]): string => renderToStaticMarkup(createElement(WeekList, { rows, empty: "Nothing here" }));
+    expect(textsOf(draw([]))).toEqual(["Nothing here"]);
+    expect(draw([])).not.toContain("<ul");
+    expect(textsOf(draw([{ id: "2027-03-21", title: "March 21 and 22", lines: ["Paid"] }]))).toEqual(["March 21 and 22", "Paid"]);
+  });
 });

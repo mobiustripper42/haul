@@ -1,7 +1,7 @@
 // Issue 140: the menu library's rules, one home for the actions, the pages and the client lists.
 import { SEPARATOR } from "./member-list.js";
 import type { AdminWeek } from "./pickup-week.js";
-import type { ProductOption, ProductWithOptions } from "./products.js";
+import type { ProductOption, ProductOptionType, ProductWithOptions } from "./products.js";
 
 /** A menu: its name and a text for each menu option, keyed by option id. */
 export type Menu = { id: string; name: string; texts: Record<string, string>; updatedAt: Date };
@@ -13,9 +13,14 @@ export type MenuErrors = { name?: "required" | "tooLong"; texts: Record<string, 
 /** The longest name and the longest text, in characters. */
 export const MENU_LIMITS = { name: 100, text: 4000 };
 
+/** The product's option type marked `menuTexts`, the one a menu has a text for each option of (issue 243). */
+function menuTextsType(product: ProductWithOptions): ProductOptionType | undefined {
+  return product.optionTypes.find((candidate) => candidate.menuTexts === true);
+}
+
 /** The options of the product's option type marked `menuTexts`, in position order; `[]` when none is marked. */
 export function menuOptions(product: ProductWithOptions): ProductOption[] {
-  const type = product.optionTypes.find((candidate) => candidate.menuTexts === true);
+  const type = menuTextsType(product);
   return type ? [...type.options].sort((a, b) => a.position - b.position) : [];
 }
 
@@ -61,6 +66,17 @@ export function menuLines(text: string): string[] {
 /** The menu as the email and the page draw it (issue 141): one section per menu option, in position order, its name and its text's lines. */
 export function menuSections(product: ProductWithOptions, menu: Menu): { name: string; lines: string[] }[] {
   return menuOptions(product).map((option) => ({ name: option.name, lines: menuLines(menu.texts[option.id] ?? "") }));
+}
+
+/**
+ * One member's dishes on a menu (issue 243): the lines of the menu's text for the pick whose type is the one marked
+ * `menuTexts`, those of `menuSections`' section of that option's name; `[]` when the member has no such pick, or the menu no
+ * text for it.
+ */
+export function memberMenuLines(product: ProductWithOptions, menu: Menu, picks: { typeName: string; optionName: string }[]): string[] {
+  const type = menuTextsType(product);
+  const pick = type && picks.find((candidate) => candidate.typeName === type.name);
+  return menuSections(product, menu).find((section) => section.name === pick?.optionName)?.lines ?? [];
 }
 
 /** The text's non-blank lines, each trimmed, joined with `SEPARATOR`. */

@@ -97,10 +97,10 @@ export async function signOut(page: Page): Promise<void> {
 }
 
 /**
- * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands: `/account`,
- * which sends a member with no Supper Club subscription on to /supper-club, signed in.
+ * Signs `email` in at /sign-in with the code the outbox receives, and waits for where that lands, signed in: `/account`
+ * for a subscriber, given as `landing`; a member with no Supper Club subscription is sent on from it to /supper-club.
  */
-export async function signIn(page: Page, request: APIRequestContext, email: string): Promise<void> {
+export async function signIn(page: Page, request: APIRequestContext, email: string, landing = "/supper-club"): Promise<void> {
   const before = await outboxCount(request, email);
   await page.goto("/sign-in");
   await page.getByLabel(en["signIn.emailLabel"]).fill(email);
@@ -108,7 +108,7 @@ export async function signIn(page: Page, request: APIRequestContext, email: stri
   const code = await waitForSignInCode(request, email, before);
   await page.getByLabel(en["signIn.codeLabel"]).fill(code);
   await page.getByRole("button", { name: en["signIn.submitCode"], exact: true }).click();
-  await expect(page).toHaveURL((url) => url.pathname === "/supper-club");
+  await expect(page).toHaveURL((url) => url.pathname === landing);
   await expectSignedIn(page);
 }
 

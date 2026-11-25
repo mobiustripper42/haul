@@ -1,10 +1,9 @@
-// Issue 155: History, `await History()` with `next/headers` faked and the composition root mocked, as
-// app/account/page.test.ts renders /account. Who is let in is requireSubscriber's (app/account/subscriber.test.ts);
-// which weeks are past is pastWeeks' and each row's marker, amount and line historyRows' (src/pickup-week.test.ts,
+// Issue 155: History, which issue 243 made the second list of /account/weeks: `await UpcomingWeeks()` with `next/headers`
+// faked and the composition root mocked, as ./page.test.ts renders it, read in its History column. Who is let in and the
+// header are ./page.test.ts's; which weeks are past is pastWeeks' and each row's marker, amount and line historyRows' (src/pickup-week.test.ts,
 // src/account-weeks.test.ts). Here one case of each goes through the page, read by its row whole: the title, the meal
 // and the amount as values, and the status line and badge, which the page picks by the row's line and marker, by
-// their catalog lines (issue 211). The header is faked, so what is read of it is the
-// call the page makes.
+// their catalog lines (issue 211).
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,11 +18,11 @@ import { signSession } from "@core/sign-in/session.js";
 import { Badge, type BadgeKind } from "../../../components/ui/badge";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { redirectOf, textsOf } from "../../screen-test-helpers";
-import { SiteHeader } from "../../site-header";
+import { textsOf } from "../../screen-test-helpers";
 import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
 import { payDeclinedWeek } from "../declined-fixture";
-import History from "./page";
+import { historyColumn, listItems } from "./columns-fixture";
+import UpcomingWeeks from "./page";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -43,11 +42,13 @@ vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("../../services", () => ({
   getRepository: () => services.repo,
   getEmail: () => {
-    throw new Error("/account/history has no reason to send email");
+    throw new Error("/account/weeks has no reason to send email");
   },
   getSessionSecret: () => services.secret,
 }));
-vi.mock("../../site-header", () => ({ SiteHeader: vi.fn(async () => createElement("header", null, "the header")) }));
+vi.mock("../../site-header", () => ({ SiteHeader: async () => createElement("header", null, "the header") }));
+// The Upcoming rows' forms, which are ./page.test.ts's: each action stands in for a server reference.
+vi.mock("./actions", () => ({ skipWeek: async () => {}, unskipWeek: async () => {} }));
 
 // Wednesday, February 3, 2027, noon in Cleveland: January 31's pickup ended Monday, February 1; February 7's is to come.
 const NOW = new Date("2027-02-03T17:00:00.000Z");
@@ -62,7 +63,6 @@ beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"], now: NOW });
   request.current = emptyRequest();
   services.repo = new InMemoryRepository();
-  vi.mocked(SiteHeader).mockClear();
   product = addSupperClub(services.repo);
 });
 
@@ -107,26 +107,13 @@ const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null
 
 const MEAL = "2 people · Standard";
 
-/** The page's markup, its runs of text, and each list row's runs, in order. */
-const render = async (): Promise<{ html: string; runs: string[]; rows: string[][] }> => {
-  const html = renderToStaticMarkup(await History());
-  const rows = [...html.matchAll(/<li\b[^>]*>([\s\S]*?)<\/li>/g)].map((match) => textsOf(match[1] ?? ""));
-  return { html, runs: textsOf(html), rows };
+/** The History column's markup, and each of its rows' runs of text, in order. */
+const render = async (): Promise<{ html: string; rows: string[][] }> => {
+  const html = historyColumn(renderToStaticMarkup(await UpcomingWeeks()));
+  return { html, rows: listItems(html).map(textsOf) };
 };
 
 const rowTitled = (rows: string[][], title: string): string[] | undefined => rows.find((row) => row[0] === title);
-
-describe("AC1 (issue 155) — who gets in", () => {
-  it("AC1: a signed-in member with no active, paid subscription is sent to /supper-club", async () => {
-    signIn(await ada());
-    await expect(redirectOf(History())).resolves.toBe("/supper-club");
-  });
-
-  it("AC1: a subscribed member is let in: the page lists their first week", async () => {
-    await subscribedAda();
-    expect((await render()).rows.map((row) => row[0])).toContain(titleOf(JAN_3));
-  });
-});
 
 // One member's past weeks: January 3 paid at signup ($45); January 10 paid by the charge run ($50); January 17
 // closed with no charge; January 24 paid ($45) and then closed; January 31 neither, so not listed.
@@ -193,25 +180,6 @@ describe("AC4 (issue 138) — a paid week's picks, after a switch", () => {
     const { rows } = await render();
     expect(rowTitled(rows, titleOf(JAN_3))?.[1]).toBe(MEAL);
     expect(rowTitled(rows, titleOf("2027-01-10"))?.[1]).toBe("3–4 people · Vegan");
-  });
-});
-
-describe("AC8 (issue 155) — no past weeks", () => {
-  it("AC8: a member whose first week has not passed sees no card, no rows and no message", async () => {
-    await subscribedAda("2027-02-07");
-    const { html, rows } = await render();
-    // A Card is a <section>.
-    expect(html).not.toContain("<section");
-    expect(rows).toEqual([]);
-    expect(html).not.toContain('role="alert"');
-  });
-});
-
-describe("AC9 (issue 155) — the header on History", () => {
-  it('AC9: the page opens with the site header, History marked current: current "history"', async () => {
-    await subscribedAda();
-    await render();
-    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "history" }));
   });
 });
 

@@ -20,15 +20,16 @@ import { getSignedInMember } from "./session";
 import { signOut } from "./sign-in/actions";
 import { PANE_SIGN_IN_PAGES } from "./supper-club/paths";
 
-type Current = "account" | "weeks" | "history" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
+type Current = "account" | "weeks" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
 
-type NavLink = { current: Current; href: string; label: MessageKey };
+/** `current` is the page the link marks; History has none, for the server never sees the part of its address after `#` (issue 243). */
+type NavLink = { current?: Current; href: string; label: MessageKey };
 
 /** The member links in order, drawn twice from here: in the bar, and in the drawer. */
 const MEMBER_LINKS: readonly NavLink[] = [
   { current: "account", href: ACCOUNT_PATH, label: "header.yourAccount" },
   { current: "weeks", href: ACCOUNT_WEEKS_PATH, label: "header.weeks" },
-  { current: "history", href: ACCOUNT_HISTORY_PATH, label: "header.history" },
+  { href: ACCOUNT_HISTORY_PATH, label: "header.history" },
 ];
 
 /** The admin links in order, for admins only: in the bar's Admin group, and openly at the top of the drawer under an Admin heading, set off from the member links by a rule. */
@@ -78,7 +79,7 @@ export async function SiteHeader({
   );
   const links = (list: readonly NavLink[], full: boolean) =>
     list.map((link) => (
-      <Button key={link.current} kind="menu" nowrap full={full} href={link.href} current={current === link.current}>
+      <Button key={link.href} kind="menu" nowrap full={full} href={link.href} current={link.current !== undefined && current === link.current}>
         {t(link.label)}
       </Button>
     ));

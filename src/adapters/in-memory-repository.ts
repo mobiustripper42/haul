@@ -589,12 +589,21 @@ export class InMemoryRepository implements Repository {
     return true;
   }
 
+  /** Issue 243: the menu of each of the product's `weekOfs` as it is now, and when its email went out; a week with none is absent. */
+  async findWeekMenus(productId: string, weekOfs: string[]): Promise<Map<string, { menu: Menu; sentAt: Date | null }>> {
+    const found = new Map<string, { menu: Menu; sentAt: Date | null }>();
+    for (const weekOf of weekOfs) {
+      const key = weekKey(productId, weekOf);
+      const menu = this.menus.get(this.weekMenus.get(key) ?? "");
+      const sentAt = this.weekMenuSent.get(key);
+      if (menu) found.set(weekOf, { menu: copyMenu(menu), sentAt: sentAt ? new Date(sentAt) : null });
+    }
+    return found;
+  }
+
   /** Issue 141: the week's menu as it is now, and when its email went out; null for a week with none. */
   async findWeekMenu(productId: string, weekOf: string): Promise<{ menu: Menu; sentAt: Date | null } | null> {
-    const key = weekKey(productId, weekOf);
-    const menu = this.menus.get(this.weekMenus.get(key) ?? "");
-    const sentAt = this.weekMenuSent.get(key);
-    return menu ? { menu: copyMenu(menu), sentAt: sentAt ? new Date(sentAt) : null } : null;
+    return (await this.findWeekMenus(productId, [weekOf])).get(weekOf) ?? null;
   }
 
   /** Issue 141: stamps the week's menu sent at `now`; true only when it held a menu not yet stamped. */
@@ -947,9 +956,18 @@ export class InMemoryRepository implements Repository {
     return "switched";
   }
 
+  /** Issue 243: the set in effect for each of `weekOfs`; a week no set starts on or before is absent. */
+  async findOptionsForWeeks(subscriptionId: string, weekOfs: string[]): Promise<Map<string, { typeName: string; optionName: string }[]>> {
+    const found = new Map<string, { typeName: string; optionName: string }[]>();
+    for (const weekOf of weekOfs) {
+      const set = this.setInEffect(subscriptionId, weekOf);
+      if (set) found.set(weekOf, this.optionsNamed(this.subscriptions.get(subscriptionId), set.optionIds));
+    }
+    return found;
+  }
+
   async findOptionsForWeek(subscriptionId: string, weekOf: string): Promise<{ typeName: string; optionName: string }[]> {
-    const set = this.setInEffect(subscriptionId, weekOf);
-    return set ? this.optionsNamed(this.subscriptions.get(subscriptionId), set.optionIds) : [];
+    return (await this.findOptionsForWeeks(subscriptionId, [weekOf])).get(weekOf) ?? [];
   }
 
   /** Issue 194: a test seam on the fake only, not on `Repository`: marks the subscription comped, as `db:comp` sets the column. */
