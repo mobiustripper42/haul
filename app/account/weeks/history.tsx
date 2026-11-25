@@ -8,7 +8,6 @@ import type { MemberWeeks } from "@core/ports/repository.js";
 import { Badge } from "../../../components/ui/badge";
 import { Card } from "../../../components/ui/card";
 import { Heading } from "../../../components/ui/heading";
-import { Hint } from "../../../components/ui/hint";
 import { WeekList } from "../../../components/ui/week-list";
 import { MARKER_BADGES } from "../week-markers";
 
@@ -47,7 +46,6 @@ export function History({ past, ledger, t, language }: { past: HistoryRow[]; led
       <Heading level={2} look="title">
         {t("account.history.title")}
       </Heading>
-      <Hint>{t("account.history.intro")}</Hint>
       <Card width="fill">
         <WeekList rows={rows} empty={t("account.history.empty")} />
       </Card>

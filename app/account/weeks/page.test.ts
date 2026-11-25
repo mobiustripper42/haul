@@ -279,14 +279,6 @@ describe("AC3 (issue 137) — the cutoff Notice", () => {
   });
 });
 
-// The intro line is shown while active and left out once cancelled (issue 139, below): a choice, checked by its key.
-describe("AC8 (issue 137) — the intro line", () => {
-  it("AC8: an active subscription's page shows the intro line", async () => {
-    await subscribedAda();
-    expect(textsOf((await render()).html)).toContain(t("account.weeks.intro"));
-  });
-});
-
 // Issue 139: a cancelled subscription's Upcoming weeks. That only paid rows stay, with no button, is upcomingRows'
 // (src/account-weeks.test.ts); here one case goes through the page.
 describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
@@ -306,24 +298,9 @@ describe("AC5 (issue 139) — Upcoming weeks after a cancel", () => {
       expect(attributesOf(html, "a").map((link) => link.href)).not.toContain("/account/weeks?switch=1");
     }
   });
-
-  // Review route (@ui-reviewer): nothing more is charged, so the intro line, which says when a week is charged, is not
-  // shown.
-
-  /** Ada's subscription with February 7 paid, cancelled now; the page's markup. */
-  const renderCancelled = async (): Promise<string> => {
-    const subscriptionId = await subscribedAda();
-    await services.repo.addLedgerRow(subscriptionId, "2027-02-07", "paid", 4500);
-    await services.repo.cancelSubscription(subscriptionId, NOW);
-    return renderToStaticMarkup(await UpcomingWeeks({ searchParams: Promise.resolve({}) }));
-  };
-
-  it("AC5: the intro line, which says when a week is charged, is not shown", async () => {
-    expect(textsOf(await renderCancelled())).not.toContain(t("account.weeks.intro"));
-  });
 });
 
-// Issue 219: the meal card and its Switch moved to the account page (app/account/page.test.ts). The intro, the Notices
+// Issue 219: the meal card and its Switch moved to the account page (app/account/page.test.ts). The Notices
 // and the week list stay, and are the tests above and below.
 describe("AC7 (issue 219) — Upcoming weeks has no meal card", () => {
   it("AC7: the meal is not shown in the Upcoming column, and there is no Switch size or menu and no switch form, even at ?switch=1 with a switch week listed", async () => {
@@ -389,7 +366,7 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(html).not.toContain("<form");
   });
 
-  it("AC5: the one Notice sits above the weeks card, names the declined week whose pickup is to come, and ends with a primary Update your card to /account/card; the intro line is left out", async () => {
+  it("AC5: the one Notice sits above the weeks card, names the declined week whose pickup is to come, and ends with a primary Update your card to /account/card", async () => {
     await lockedAda();
     const { html } = await renderLocked();
     const alerts = alertTexts(html);
@@ -399,7 +376,6 @@ describe("issue 198 — Upcoming weeks while locked", () => {
     expect(notice).toContain(renderToStaticMarkup(createElement(Button, { kind: "primary", href: ACCOUNT_CARD_PATH, children: t("account.updateCard") })));
     expect(html.indexOf('role="alert"')).toBeGreaterThan(-1);
     expect(html.indexOf('role="alert"')).toBeLessThan(html.indexOf("<section"));
-    expect(textsOf(html)).not.toContain(t("account.weeks.intro"));
   });
 
   it("AC20 (issue 254): while a card update's charge is out on the declined week, it is still Card declined, the one Notice names it and the week after is Locked", async () => {
@@ -527,7 +503,7 @@ describe("AC1 (issue 243) — the Upcoming list, then the History list", () => {
 });
 
 // Which Notice shows when is declinedNotice's and the tests above; here where each stands, one case of each.
-describe("AC3 (issue 243) — the notices and the intro line are in the Upcoming column, above its card", () => {
+describe("AC3 (issue 243) — the notices are in the Upcoming column, above its card, and with none each card comes straight after its title", () => {
   /** The Upcoming column's markup before its one card. */
   const aboveCard = (html: string): string => {
     const column = upcomingColumn(html);
@@ -563,11 +539,12 @@ describe("AC3 (issue 243) — the notices and the intro line are in the Upcoming
     expect(alertTexts(aboveCard(html))).toHaveLength(1);
   });
 
-  it("AC3: the intro line", async () => {
+  it("AC3: with no notice, nothing is between a column's title and its card, so the two cards start level", async () => {
     await subscribedAda();
     const { html } = await render();
-    expect(textsOf(historyColumn(html))).not.toContain(t("account.weeks.intro"));
-    expect(textsOf(aboveCard(html))).toContain(t("account.weeks.intro"));
+    const history = historyColumn(html);
+    expect(textsOf(aboveCard(html).split("</h1>")[1] ?? "no title")).toEqual([]);
+    expect(textsOf(history.slice(0, history.indexOf("<section")).split("</h2>")[1] ?? "no title")).toEqual([]);
   });
 });
 

@@ -105,9 +105,6 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
     };
   });
 
-  // Nothing more is charged once cancelled, so the intro line, which says when a week is charged, is left out.
-  const cancelled = confirmation.status === "cancelled";
-
   return (
     <>
       {await SiteHeader({ account: "none", current: "weeks" })}
@@ -118,7 +115,6 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
               <>
                 <Heading>{t("account.weeks.title")}</Heading>
                 {notice}
-                {!cancelled && locked === null && <Hint>{t("account.weeks.intro")}</Hint>}
                 {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
                 <Card width="fill">
                   <WeekList rows={rows} empty={t("account.weeks.empty")} />
