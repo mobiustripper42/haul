@@ -29,7 +29,9 @@ import { hashCode } from "@core/sign-in/code.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { ButtonRow } from "../../components/ui/button-row";
 import { Card as CardBox } from "../../components/ui/card";
+import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, sentencesOf, textsOf } from "../screen-test-helpers";
@@ -182,6 +184,15 @@ const namesNoWeek = (text: string): boolean => [FEB_7, FEB_14].every((weekOf) =>
 
 /** The title of the week of `weekOf` as the page's language writes it, with its row's days. */
 const titleOf = (weekOf: string, changed: ChangedWeek | null = null): string => weekTitle(t, pickupWeek(weekOf, changed), "en");
+
+/** The page's two columns, left first: each outermost div holding exactly one Card. */
+const columnsOf = (element: ReactElement): ReactElement[] => {
+  const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
+  return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
+};
+
+/** Which of a Notice and a Card a column holds, in order. */
+const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
 
 /** Where each link in `markup` goes, as a path and query. */
 const linksOf = (markup: string): string[] =>
@@ -675,11 +686,13 @@ describe("AC1 (issue 219) — the Supper Club card's controls", () => {
 });
 
 describe("AC2 (issue 219) — the pickers open in the card", () => {
-  it("AC2: open, the Switch and Cancel row gives way to the pickers' form, and Update your card stays", async () => {
+  it("AC4 (issue 238): open, the pickers' form and its Cancel back to the page take the place of Switch, Update your card and Cancel the Supper Club, and all three are back once it closes", async () => {
     await activeAda();
     const card = (await render({ switch: "1" })).sections[0] ?? "";
     expect(actionsOf(card)).toEqual(["switchMeal"]);
-    expect(linksOf(card).sort()).toEqual(["/account", "/account/card"]);
+    expect(linksOf(card)).toEqual(["/account"]);
+    const closed = (await render()).sections[0] ?? "";
+    expect(linksOf(closed).sort()).toEqual(["/account/cancel", "/account/card", "/account?switch=1"].sort());
   });
 
   it("AC2: at ?switch=1 with no switch week, the card shows the closed row: Cancel and Update your card, with no Switch and no form", async () => {
@@ -1115,14 +1128,6 @@ describe("AC20 (issue 254) — account home while a card update's charge is out"
 // Issue 254: where the Notice sits. Which one shows is AC5's (issue 198) and AC17's above; here one of each, by its column.
 // Stacked below lg the left column is the first, so one order serves both widths.
 describe("AC24 (issue 254) — the card Notice is in the left column, above the Supper Club card", () => {
-  /** The page's two columns, left first: each outermost div holding exactly one Card. */
-  const columnsOf = (element: ReactElement): ReactElement[] => {
-    const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
-    return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
-  };
-  /** What of these two a column holds, in order. */
-  const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
-
   it.each<[string, () => Promise<unknown>]>([
     [
       "declined",
@@ -1148,5 +1153,80 @@ describe("AC24 (issue 254) — the card Notice is in the left column, above the 
     expect(orderIn(left)).toEqual(['role="alert"', "<section"]);
     expect(orderIn(right)).toEqual(["<section"]);
     expect(findAll(element, Notice)).toHaveLength(1);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 238: the Supper Club card's buttons, the cancelled Notice's way back, and the bold meal in the pending line. Which
+// week a switch starts from is switchWeek's (src/switch-meal.test.ts); how a Notice draws its action is
+// components/ui/notice.test.ts's and how a value is bolded components/ui/bold-value.test.ts's.
+describe("issue 238 — the Supper Club card's buttons", () => {
+  const SWITCH = "/account?switch=1";
+  const UPDATE_CARD = "/account/card";
+  const CANCEL = "/account/cancel";
+
+  it("AC1: with a switch week listed, the card holds exactly Switch, Update your card and Cancel, in that order", async () => {
+    await activeAda();
+    expect(linksOf((await render()).sections[0] ?? "")).toEqual([SWITCH, UPDATE_CARD, CANCEL]);
+  });
+
+  it("AC2: Switch and Update your card are secondary buttons in one row, and Cancel is a quiet button below the row", async () => {
+    await activeAda();
+    const card = findAll((await render()).element, CardBox)[0];
+    const buttonsIn = (node: ReactElement | undefined) => findAll(node, Button).map(({ props }) => ({ kind: props.kind, href: props.href }));
+    const row = [
+      { kind: "secondary", href: SWITCH },
+      { kind: "secondary", href: UPDATE_CARD },
+    ];
+    expect(findAll(card, ButtonRow).map(buttonsIn)).toEqual([row]);
+    expect(buttonsIn(card)).toEqual([...row, { kind: "quiet", href: CANCEL }]);
+  });
+
+  it("AC3: with no switch week listed, at any query, the card holds Update your card and then Cancel, and no Switch", async () => {
+    const { subscriptionId } = await activeAda();
+    for (const weekOf of sundaysFrom(FEB_7, 12)) await services.repo.addLedgerRow(subscriptionId, weekOf, "paid", 4500);
+    for (const query of [undefined, { switch: "1" }, { saved: "1" }]) {
+      expect(linksOf((await render(query)).sections[0] ?? "")).toEqual([UPDATE_CARD, CANCEL]);
+    }
+  });
+});
+
+describe("issue 238 — a cancelled member's way back", () => {
+  it("AC5: at any query, the cancelled Notice holds one link, to /supper-club, and the card holds none of Switch, Update your card and Cancel", async () => {
+    const { subscriptionId } = await activeAda();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    for (const query of [undefined, { switch: "1" }, { saved: "1" }]) {
+      const { html, sections } = await render(query);
+      const notices = [...html.matchAll(/<p\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/p>/g)].map(([, inner = ""]) => inner);
+      const cancelled = notices.filter((notice) => sentencesOf(notice).join(" ").includes(t("account.cancelledNotice")));
+      expect(cancelled).toHaveLength(1);
+      expect(linksOf(cancelled[0] ?? "")).toEqual(["/supper-club"]);
+      for (const link of ["/account?switch=1", "/account/card", "/account/cancel"]) expect(linksOf(sections[0] ?? "")).not.toContain(link);
+    }
+  });
+
+  it("AC9: the cancelled Notice, on the page exactly once, is the first thing in the left column, above the Supper Club card, and Your details' column holds none", async () => {
+    const { subscriptionId } = await activeAda();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { element, html } = await render();
+    expect(alertTexts(html)).toEqual([expect.stringContaining(t("account.cancelledNotice"))]);
+    const [left, right, ...more] = columnsOf(element);
+    expect(more).toEqual([]);
+    expect(orderIn(left)).toEqual(['role="alert"', "<section"]);
+    expect(orderIn(right)).toEqual(["<section"]);
+  });
+});
+
+describe("issue 238 — the pending-switch line", () => {
+  it("AC6: the meal's name is in a strong element, and the start week outside it", async () => {
+    const { subscriptionId } = await activeAda();
+    await services.repo.switchPicks(subscriptionId, choiceOf(["3–4 people", "Vegan"]), MAR_7, 8000);
+    const card = findAll((await render()).element, CardBox)[0];
+    const lines = findAll(card, Hint)
+      .map((hint) => renderToStaticMarkup(hint))
+      .filter((hint) => sentencesOf(hint).includes(pendingLine("3–4 people · Vegan", MAR_7)));
+    expect(lines).toHaveLength(1);
+    const bold = [...(lines[0] ?? "").matchAll(/<strong\b[^>]*>([\s\S]*?)<\/strong>/g)].map(([, inner = ""]) => textsOf(inner).join(" "));
+    expect(bold).toEqual(["3–4 people · Vegan"]);
   });
 });

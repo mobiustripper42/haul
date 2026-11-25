@@ -45,7 +45,7 @@ A screen still out of reach is named in the report as not reached — never revi
 
 Lint already enforces tokens, contrast pairs, translated strings and the components (DEC-020, DEC-015, DEC-024). These are what it can't see:
 
-- **One gold element per screen** (BRAND.md:34, :82).
+- **One gold button per card or notice** (BRAND.md:34, :83).
 - **Spacing on the named steps**, `space-1` to `space-12` (BRAND.md:64).
 - **Every control at least 40px tall** (BRAND.md:68).
 - **A state colour always with a word or icon** (BRAND.md:41).

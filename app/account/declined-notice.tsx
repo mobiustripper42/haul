@@ -12,13 +12,16 @@ import type { Subscribed } from "./subscriber";
 /** The Notice both cards draw (issue 254): an alert with a lead, a body line and the primary Update your card button. */
 function cardNotice(t: Translator, lead: string, text: string): ReactElement {
   return (
-    <Notice icon="alert" lead={lead}>
-      {text}
-      <span className="mt-3 block">
+    <Notice
+      icon="alert"
+      lead={lead}
+      action={
         <Button kind="primary" href={ACCOUNT_CARD_PATH}>
           {t("account.updateCard")}
         </Button>
-      </span>
+      }
+    >
+      {text}
     </Notice>
   );
 }

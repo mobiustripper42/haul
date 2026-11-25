@@ -7,6 +7,7 @@ import { listedWeekTitle, pickupWhereLine, weekTitle } from "@core/pickup-week.j
 import { CODE_TTL_MS } from "@core/sign-in/code.js";
 import { switchWeek } from "@core/switch-meal.js";
 import { Badge } from "../../components/ui/badge";
+import { BoldValue } from "../../components/ui/bold-value";
 import { Button } from "../../components/ui/button";
 import { ButtonRow } from "../../components/ui/button-row";
 import { Card } from "../../components/ui/card";
@@ -27,6 +28,7 @@ import { CodeStep } from "../sign-in/code-step";
 import { limitedNotice } from "../sign-in/limited-notice";
 import { limitedMinutes } from "../sign-in/shared";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
+import { SUPPER_CLUB_PATH } from "../supper-club/paths";
 import { CutoffNotice } from "./cutoff-notice";
 import { declinedNotice } from "./declined-notice";
 import { confirmEmailChange, keepOldEmail, resendEmailChange, saveDetails } from "./details-actions";
@@ -49,10 +51,11 @@ type Query = { switch?: string; switchError?: string; saved?: string; error?: st
  * subscription is sent to the Supper Club page. The meal is the set of picks in effect for the next pickup week, with
  * a pending-switch line when a newer set starts after it; with no next pickup it is the newest set, and no line shows.
  * The price is the one stored on the subscription, not the price of its picks today. An active card holds Switch (with
- * `?switch=1` and a switch week listed, the pickers in a form posting that week to `switchMeal`), Cancel and Update your
- * card (issue 139); a cancelled one shows the Notice, with the last pickup, and a Cancelled badge, and no next pickup, no
- * where line, no charge line and no buttons: no pickup or charge is coming from it, unless a paid week is still to come,
- * which the Notice names. An active one holding a declined row is locked (issue 196): its next pickup stands while the
+ * `?switch=1` and a switch week listed, the pickers in a form posting that week to `switchMeal`, and neither of the other
+ * two) and Update your card in a row, and a quiet Cancel below it (issue 238); a cancelled one shows the Notice
+ * above its card, in the left column, with the last pickup and a Join again button (issue 238), and a Cancelled badge, and
+ * no next pickup, no where line, no charge line and no buttons in the card: no pickup or charge is coming from it, unless
+ * a paid week is still to come, which the Notice names. An active one holding a declined row is locked (issue 196): its next pickup stands while the
  * declined week's is still to come, then one line says none is coming until the card is updated. Everything is in the
  * page's language (`getTranslator()`), never the member's email language.
  */
@@ -101,17 +104,25 @@ export default async function Account({ searchParams }: { searchParams?: Promise
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.title")}</Heading>
-          {cancelled && (
-            <Notice icon="info" lead={t("account.cancelledNotice")}>
-              {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
-            </Notice>
-          )}
           {switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
-          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice is the first thing in the left column, so it stands above the Supper Club card at both widths. */}
+          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice, and the cancelled one (issue 238), are the first thing in the left column, so they stand above the Supper Club card at both widths. */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
             <div className="flex min-w-0 flex-1 flex-col gap-5">
+              {cancelled && (
+                <Notice
+                  icon="info"
+                  lead={t("account.cancelledNotice")}
+                  action={
+                    <Button kind="secondary" href={SUPPER_CLUB_PATH}>
+                      {t("account.cancel.joinAgainLink")}
+                    </Button>
+                  }
+                >
+                  {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
+                </Notice>
+              )}
               {notice}
               <Card width="fill">
                 <div className="flex flex-wrap items-center justify-between gap-3">
@@ -126,7 +137,11 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                 )}
                 {locked && <p>{t("account.noPickupLocked")}</p>}
                 {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
-                {startsAt && <Hint>{t("account.pendingSwitch", { meal: mealLabel(confirmation.options), week: listedWeekTitle(t, startsAt.week, language) })}</Hint>}
+                {startsAt && (
+                  <Hint>
+                    <BoldValue line={(value) => t("account.pendingSwitch", { meal: value, week: listedWeekTitle(t, startsAt.week, language) })} value={mealLabel(confirmation.options)} />
+                  </Hint>
+                )}
                 {!cancelled &&
                   (open ? (
                     <form action={switchMeal} className="flex flex-col gap-5">
@@ -143,24 +158,24 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                       </ButtonRow>
                     </form>
                   ) : (
-                    <ButtonRow>
-                      {switchesFrom !== undefined && (
-                        <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
-                          {t("account.weeks.switch")}
+                    <>
+                      <ButtonRow>
+                        {switchesFrom !== undefined && (
+                          <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
+                            {t("account.weeks.switch")}
+                          </Button>
+                        )}
+                        <Button kind="secondary" href={ACCOUNT_CARD_PATH}>
+                          {t("account.card.title")}
                         </Button>
-                      )}
-                      <Button kind="secondary" href={ACCOUNT_CANCEL_PATH}>
-                        {t("account.cancelLink")}
-                      </Button>
-                    </ButtonRow>
+                      </ButtonRow>
+                      <div className="flex">
+                        <Button kind="quiet" href={ACCOUNT_CANCEL_PATH} flush>
+                          {t("account.cancelLink")}
+                        </Button>
+                      </div>
+                    </>
                   ))}
-                {!cancelled && (
-                  <div className="flex">
-                    <Button kind="quiet" href={ACCOUNT_CARD_PATH} flush>
-                      {t("account.card.title")}
-                    </Button>
-                  </div>
-                )}
               </Card>
             </div>
             <div className="min-w-0 flex-1">
