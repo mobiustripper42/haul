@@ -19,7 +19,7 @@
  */
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { IdempotencyKeyReusedError, type Customer, type PaymentsPort } from "../ports/payments.js";
+import { IdempotencyKeyReusedError, PaymentsError, type Customer, type PaymentsPort } from "../ports/payments.js";
 import { SQUARE_SANDBOX_VALUES } from "./square-payments.js";
 
 const freshEmail = (): string => `haul-sandbox-${randomUUID()}@example.com`;
@@ -160,7 +160,7 @@ export function runPaymentsContract(
     it("AC6: charge of 5000 cents on the card saveCard saved resolves to { outcome: \"paid\", paymentId }", { timeout }, async () => {
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);
-      const result = await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey() });
+      const result = await payments.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: freshKey(), customerInitiated: false });
       expect(result).toEqual({ outcome: "paid", paymentId: expect.any(String) });
       expect(result.paymentId).not.toBe("");
     });
@@ -173,9 +173,10 @@ export function runPaymentsContract(
         const customer = await payments.createCustomer({ email: freshEmail(), idempotencyKey: freshKey() });
         const result = await payments.charge({
           customerId: customer.id,
-          cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
+          sourceId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
           amountCents: 5000,
           idempotencyKey: freshKey(),
+          customerInitiated: false,
         });
         expect(result.outcome).toBe("declined");
         const code = result.outcome === "declined" ? result.code : undefined;
@@ -187,7 +188,7 @@ export function runPaymentsContract(
     it("AC8: charge retried with the same idempotencyKey and input resolves to the same paymentId", { timeout }, async () => {
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);
-      const input = { customerId, cardId, amountCents: 5000, idempotencyKey: freshKey() };
+      const input = { customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: freshKey(), customerInitiated: false };
       const first = await payments.charge({ ...input });
       const second = await payments.charge({ ...input });
       expect(first.outcome).toBe("paid");
@@ -202,8 +203,8 @@ export function runPaymentsContract(
         const payments = await make();
         const { customerId, cardId } = await customerWithCard(payments);
         const idempotencyKey = freshKey();
-        await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey });
-        const error = await rejectionOf(payments.charge({ customerId, cardId, amountCents: 5100, idempotencyKey }));
+        await payments.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey, customerInitiated: false });
+        const error = await rejectionOf(payments.charge({ customerId, sourceId: cardId, amountCents: 5100, idempotencyKey, customerInitiated: false }));
         expect(error).toBeInstanceOf(IdempotencyKeyReusedError);
       },
     );
@@ -245,7 +246,7 @@ export function runPaymentsContract(
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);
       const referenceId = randomUUID();
-      const paid = await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId });
+      const paid = await payments.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId, customerInitiated: false });
       expect(paid.outcome).toBe("paid");
       expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
     });
@@ -253,7 +254,7 @@ export function runPaymentsContract(
     it("AC10 (issue 56): findPaymentByReference returns null for a referenceId no payment has", { timeout }, async () => {
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);
-      await payments.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId: randomUUID() });
+      await payments.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: freshKey(), referenceId: randomUUID(), customerInitiated: false });
       const since = new Date(Date.now() - 5 * 60_000);
       expect(await payments.findPaymentByReference({ referenceId: randomUUID(), since })).toBeNull();
     });
@@ -264,10 +265,11 @@ export function runPaymentsContract(
       const referenceId = randomUUID();
       const declined = await payments.charge({
         customerId: customer.id,
-        cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
+        sourceId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
         amountCents: 5000,
         idempotencyKey: freshKey(),
         referenceId,
+        customerInitiated: false,
       });
       expect(declined.outcome).toBe("declined");
       const since = new Date(Date.now() - 5 * 60_000);
@@ -278,11 +280,49 @@ export function runPaymentsContract(
       const payments = await make();
       const { customerId, cardId } = await customerWithCard(payments);
       const referenceId = randomUUID();
-      const input = { customerId, cardId, amountCents: 5000, idempotencyKey: `${referenceId}:1`, referenceId };
+      const input = { customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: `${referenceId}:1`, referenceId, customerInitiated: false };
       const first = await payments.charge({ ...input });
       const second = await payments.charge({ ...input });
       expect(second).toEqual(first);
       expect(await paymentUntilFound(payments, referenceId)).toEqual({ paymentId: first.paymentId, amountCents: 5000 });
+    });
+
+    // Issue 254: the member-present order: the token charged, then the card saved from the payment.
+    const memberPays = async (payments: PaymentsPort, sourceId: string) => {
+      const customer = await payments.createCustomer({ email: freshEmail(), idempotencyKey: freshKey() });
+      const result = await payments.charge({ customerId: customer.id, sourceId, amountCents: 5000, idempotencyKey: freshKey(), customerInitiated: true });
+      return { customerId: customer.id, result };
+    };
+
+    it("AC16 (issue 254): a buyer-started charge on Square's ok nonce is paid", { timeout }, async () => {
+      const { result } = await memberPays(await make(), SQUARE_SANDBOX_VALUES.cardNonceOk);
+      expect(result).toEqual({ outcome: "paid", paymentId: expect.any(String) });
+      expect(result.paymentId).not.toBe("");
+    });
+
+    it("AC16 (issue 254): a buyer-started charge on Square's declining nonce resolves to declined with a non-empty code", { timeout }, async () => {
+      const { result } = await memberPays(await make(), SQUARE_SANDBOX_VALUES.cardNonceDeclined);
+      expect(result).toMatchObject({ outcome: "declined", code: expect.stringMatching(/./) });
+    });
+
+    it("AC16 (issue 254): saveCard with a paid token payment's id as its source saves the card to that customer, and a later seller-started charge on it is paid", { timeout }, async () => {
+      const payments = await make();
+      const { customerId, result } = await memberPays(payments, SQUARE_SANDBOX_VALUES.cardNonceOk);
+      const card = await payments.saveCard({ customerId, sourceId: result.paymentId ?? "no payment", idempotencyKey: freshKey() });
+      expect(card.id).not.toBe("");
+      expect(card.last4).toMatch(/^\d{4}$/);
+      const later = await payments.charge({ customerId, sourceId: card.id, amountCents: 5000, idempotencyKey: freshKey(), customerInitiated: false });
+      expect(later.outcome).toBe("paid");
+    });
+
+    it("AC16 (issue 254): a charge on a card id Square does not know rejects with PaymentsError NOT_FOUND", { timeout }, async () => {
+      const payments = await make();
+      const customer = await payments.createCustomer({ email: freshEmail(), idempotencyKey: freshKey() });
+      const error = await rejectionOf(
+        payments.charge({ customerId: customer.id, sourceId: "ccof:never-saved", amountCents: 5000, idempotencyKey: freshKey(), customerInitiated: true }),
+      );
+      expect(error).toBeInstanceOf(PaymentsError);
+      expect((error as PaymentsError).code).toBe("NOT_FOUND");
     });
   });
 }
@@ -300,9 +340,10 @@ export const VALID_PAYMENTS_INPUTS = {
   saveCard: { customerId: "CUSTOMER_1", sourceId: SQUARE_SANDBOX_VALUES.cardNonceOk, idempotencyKey: "key-1" },
   charge: {
     customerId: "CUSTOMER_1",
-    cardId: SQUARE_SANDBOX_VALUES.cardOnFileOk,
+    sourceId: SQUARE_SANDBOX_VALUES.cardOnFileOk,
     amountCents: 5000,
     idempotencyKey: "key-1",
+    customerInitiated: false,
   },
 } satisfies Record<PaymentsMethod, object>;
 
@@ -354,7 +395,7 @@ export const PAYMENTS_INPUT_BREACHES: InputBreach[] = [
   breach("saveCard", "sourceId", "source_id", "an empty sourceId", { sourceId: "" }),
 
   breach("charge", "customerId", "customer_id", "an empty customerId", { customerId: "" }),
-  breach("charge", "cardId", "source_id", "an empty cardId", { cardId: "" }),
+  breach("charge", "sourceId", "source_id", "an empty sourceId", { sourceId: "" }),
   breach("charge", "referenceId", "reference_id", "a 41-character referenceId", { referenceId: "r".repeat(41) }),
   breach("charge", "amountCents", "amount_money", "amountCents 0", { amountCents: 0 }),
   breach("charge", "amountCents", "amount_money", "amountCents -100", { amountCents: -100 }),

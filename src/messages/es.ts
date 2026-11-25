@@ -305,7 +305,6 @@ export const es = {
   "supperClub.payDeclined": "Su tarjeta fue rechazada. No se hizo ningún cobro. Revise los datos de la tarjeta o pruebe con otra tarjeta.",
   "supperClub.payError": "Algo salió mal y no se hizo ningún cobro. Intente de nuevo.",
   "supperClub.retryNotice": "No pudimos confirmar su pago. Intente de nuevo y no se le cobrará dos veces.",
-  "supperClub.tryAgain": "Intentar de nuevo",
   "supperClub.done.mark": "Listo",
   "supperClub.done.title": "Ya es parte del Supper Club",
   "supperClub.done.thanks": "Gracias, {firstName}. Enviamos una confirmación a {email}.",

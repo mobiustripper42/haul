@@ -39,9 +39,9 @@ describe("AC12 — the check on the real repo", () => {
   });
 });
 
-const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub", "app/supper-club/actions.ts#retrySupperClubPayment"];
+const ISSUE_56_ENTRIES = ["app/supper-club/actions.ts#joinSupperClub"];
 
-describe("AC13 — the list is exactly these forty entries, and issue 56's two", () => {
+describe("AC13 — the list is exactly these thirty-nine entries, and issue 56's one", () => {
   /** The entries with each `records` sorted, so the order a kind is listed in does not matter. */
   const normalized = (entries: AuditEntryPoints): AuditEntryPoints =>
     Object.fromEntries(
@@ -81,8 +81,7 @@ describe("AC13 — the list is exactly these forty entries, and issue 56's two",
         "app/account/cancel/actions.ts#cancelSubscription": { none: "writes subscriptions; audited by trigger" },
         "app/admin/members/[subscription]/actions.ts#cancelForMember": { none: "writes subscriptions; audited by trigger" },
         // Issue 145: a member's card save records a refused card or a declined retry, and a charge with no answer.
-        "app/account/card/actions.ts#saveCard": { records: ["card_declined", "charge_outcome_unknown"] },
-        "app/account/card/actions.ts#retryCard": { records: ["card_declined", "charge_outcome_unknown"] },
+        "app/account/card/actions.ts#saveCard": { records: ["card_declined", "charge_outcome_unknown", "card_not_saved"] },
         // Issue 156: Your details. A save and a resend count in sign-in's request limit; a confirm records the change;
         // Keep the old email records nothing (its reason is the entry's own). Issue 219 moved them to app/account/details-actions.ts.
         "app/account/details-actions.ts#saveDetails": { records: ["rate_limit_refusal"] },
@@ -94,7 +93,7 @@ describe("AC13 — the list is exactly these forty entries, and issue 56's two",
         "app/admin/menus/actions.ts#saveMenu": { none: "writes menus and menu_texts; audited by trigger" },
         "app/admin/weeks/actions.ts#assignMenu": { none: "writes week_menus; audited by trigger" },
         // Issue 135: the cron route fires the charge run, which records a decline and an outcome it cannot know.
-        "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown"] },
+        "app/api/charge-run/route.ts#GET": { records: ["card_declined", "charge_outcome_unknown", "card_not_saved"] },
         // Issue 142: the weekly lists' two downloads read the week's meals and skips, and record no event.
         "app/admin/lists/pick-list.csv/route.ts#GET": { none: "reads" },
         "app/admin/lists/skips.csv/route.ts#GET": { none: "reads" },
@@ -110,25 +109,22 @@ describe("AC13 — the list is exactly these forty entries, and issue 56's two",
   });
 });
 
-describe("issue 56 — the pay actions are declared", () => {
+describe("issue 56 — the pay action is declared", () => {
   const records = (key: string) => {
     const entry = AUDIT_ENTRY_POINTS[key];
     return entry && "records" in entry ? [...entry.records].sort() : entry;
   };
 
-  it("AC5, AC10 (issue 57): joinSupperClub records the six signup events", () => {
+  it("AC5, AC10 (issue 57): joinSupperClub records the seven signup events", () => {
     expect(records("app/supper-club/actions.ts#joinSupperClub")).toEqual([
       "already_subscribed",
       "card_declined",
+      "card_not_saved",
       "charge_outcome_unknown",
       "sold_out",
       "square_customer_duplicates",
       "square_customer_linked",
     ]);
-  });
-
-  it("AC10: retrySupperClubPayment declares at least the decline it can record", () => {
-    expect(records("app/supper-club/actions.ts#retrySupperClubPayment")).toEqual(expect.arrayContaining(["card_declined"]));
   });
 
   it("AC10 (issue 57): sold_out is claimed by joinSupperClub alone: \"Try again\" never meets the cap", () => {

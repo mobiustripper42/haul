@@ -2,25 +2,24 @@ import { redirect } from "next/navigation";
 import { resolveChoices } from "@core/choices.js";
 import type { Translator } from "@core/i18n.js";
 import { memberDisplayName, type Member } from "@core/members.js";
-import { formatUsdWhole } from "@core/money.js";
-import { clevelandDate, firstPickup } from "@core/pickup-week.js";
+import { clevelandDate, firstPickup, pickupWeek } from "@core/pickup-week.js";
 import { isSoldOut, requireSupperClub, type ProductWithOptions } from "@core/products.js";
+import { isChargeOut } from "@core/signup.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import { Button } from "../../components/ui/button";
 import { ButtonRow } from "../../components/ui/button-row";
 import { Card } from "../../components/ui/card";
 import { Hint } from "../../components/ui/hint";
 import { Notice } from "../../components/ui/notice";
-import { PricePanel } from "../../components/ui/price-panel";
 import { cardEntrySettings } from "../card-entry-settings";
 import { getLanguage, getTranslator } from "../language";
 import { MealPickers } from "../meal-pickers";
 import { getFarmContactEmail, getRepository } from "../services";
 import { getSignedInMember } from "../session";
-import { retrySupperClubPayment } from "./actions";
 import { JoinPage } from "./join-page";
 import { paymentWording } from "./payment-wording";
 import { PaymentSection } from "./payment-section";
+import { picksOf } from "./picks";
 import { PAY_ERROR_SOLD_OUT, SUPPER_CLUB_ALREADY_PATH } from "./paths";
 import { SoldOutCard } from "./sold-out-card";
 import { titled } from "../page-title";
@@ -53,37 +52,59 @@ function boxOf(product: ProductWithOptions, row: PendingSignup): string {
     .join(" · ");
 }
 
-/** Section 4: the words for every price the picks can come to, made here so what is shown is what is stored. */
+/**
+ * The first day of the pickup week a payment is for: the first week still open, or, over a charge that is out, the row's own
+ * week, though its cutoff has passed, by the days it has now (a moved week is named by its moved days).
+ */
+async function pickupDayOf(product: ProductWithOptions, out: PendingSignup | null): Promise<string> {
+  const repo = getRepository();
+  if (out) {
+    const changed = (await repo.listChangedWeeks(product.id, out.pickupDate)).find((week) => week.weekOf === out.pickupDate) ?? null;
+    return pickupWeek(out.pickupDate, changed).firstDay;
+  }
+  const now = new Date();
+  return firstPickup(product, now, await repo.listChangedWeeks(product.id, clevelandDate(now))).firstDay;
+}
+
+/**
+ * Section 4: the words for every price the picks can come to, made here so what is shown is what is stored. Over a charge
+ * that is out (`out`), the card form for that row: its picks, named in the price panel, its week, and no `payError=error`,
+ * which the retry notice above it has already said.
+ */
 async function paymentSection({
   t,
   product,
   member,
   choices,
   query,
+  out,
 }: {
   t: Translator;
   product: ProductWithOptions;
   member: Member;
   choices: Record<string, string>;
   query: Record<string, string | string[] | undefined>;
+  out: PendingSignup | null;
 }) {
   const language = await getLanguage();
-  const payError = PAY_ERRORS.find((known) => known === query.payError);
-  const now = new Date();
-  const pickup = firstPickup(product, now, await getRepository().listChangedWeeks(product.id, clevelandDate(now)));
+  const found = PAY_ERRORS.find((known) => known === query.payError);
+  const payError = out && found === "error" ? undefined : found;
+  const pickupDay = await pickupDayOf(product, out);
   return (
     <PaymentSection
+      summary={out ? boxOf(product, out) : undefined}
       prices={product.optionTypes.map((type) => ({
         typeId: type.id,
         options: type.options.map((option) => ({ id: option.id, priceCents: option.priceCents })),
       }))}
       choices={choices}
       wordings={Object.fromEntries(
-        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickup.firstDay, language })]),
+        pricesOf(product).map((priceCents) => [String(priceCents), paymentWording(t, { priceCents, firstPickup: pickupDay, language })]),
       )}
       payError={payError}
       text={{
-        legend: t("supperClub.paymentLegend", { n: product.optionTypes.length + 2 }),
+        // Over a charge that is out there are no pickers above, so the steps start at 1.
+        legend: t("supperClub.paymentLegend", { n: (out ? 0 : product.optionTypes.length) + 2 }),
         cardLabel: t("supperClub.cardLabel"),
         cardHint: t("supperClub.cardHint"),
         testCard: t("supperClub.testCard"),
@@ -108,8 +129,8 @@ async function paymentSection({
  * are one GET form to `/supper-club/continue`, which keeps the choices through sign-in; signed in, the form
  * is a GET to this page, so Enter on a radio keeps the choices and never reaches sign-in, and the payment
  * section is its own POST form after it. A member who already has a subscription goes to the already page, picks
- * discarded; one whose payment got no answer sees the retry state instead of the pickers and the payment
- * section, decided by their pending row and never by the URL. At the cap everyone else sees the sold-out card
+ * discarded; one whose payment got no answer sees the card form over the row's picks instead of the pickers, with the
+ * retry notice, decided by their pending row and never by the URL. At the cap everyone else sees the sold-out card
  * in the Join card's place, decided by the count and never by the URL.
  */
 export default async function SupperClub({
@@ -123,8 +144,8 @@ export default async function SupperClub({
 
   if (member && (await repo.findActiveSubscription(member.id, product.id))) redirect(SUPPER_CLUB_ALREADY_PATH);
   const pending = member ? await repo.findPendingSignup(member.id, product.id) : null;
-  // The charge went out on a saved card and no answer came back: only "Try again" is left to press.
-  const stranded = pending !== null && pending.ledgerStatus === "pending" && pending.squareCardId !== null ? pending : null;
+  // The charge went out and no answer came back: the member enters their card again, for the row's picks.
+  const stranded = pending !== null && isChargeOut(pending) ? pending : null;
 
   // The cap is read from the count, never the URL. A stranded payment holds its own spot, so it is never sold out.
   if (!stranded && isSoldOut(product, await repo.countHeldSpots(product.id))) {
@@ -136,7 +157,7 @@ export default async function SupperClub({
 
   const choices = resolveChoices(product, query);
   const accountLegend = (
-    <p className="font-display text-section text-teal">{t("supperClub.accountLegend", { n: product.optionTypes.length + 1 })}</p>
+    <p className="font-display text-section text-teal">{t("supperClub.accountLegend", { n: (stranded ? 0 : product.optionTypes.length) + 1 })}</p>
   );
 
   return await JoinPage({
@@ -149,16 +170,7 @@ export default async function SupperClub({
             {accountLegend}
             <p>{signedInText(t, member)}</p>
             <Notice icon="alert">{t("supperClub.retryNotice")}</Notice>
-            {query.payError === "error" && <Notice icon="alert">{t("supperClub.payError")}</Notice>}
-            <PricePanel
-              summary={boxOf(product, stranded)}
-              rows={[{ label: t("supperClub.todayLabel"), value: formatUsdWhole(stranded.amountCents) }]}
-            />
-            <form action={retrySupperClubPayment}>
-              <Button kind="primary" type="submit" full>
-                {t("supperClub.tryAgain")}
-              </Button>
-            </form>
+            {await paymentSection({ t, product, member, choices: (await picksOf(repo, member.id)) ?? choices, query, out: stranded })}
           </>
         ) : (
           <>
@@ -182,7 +194,8 @@ export default async function SupperClub({
                 </>
               )}
             </form>
-            {member && (await paymentSection({ t, product, member, choices, query }))}
+            {member && query.payError === "unknown" && <Notice icon="alert">{t("supperClub.retryNotice")}</Notice>}
+            {member && (await paymentSection({ t, product, member, choices, query, out: null }))}
           </>
         )}
       </Card>

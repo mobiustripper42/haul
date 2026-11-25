@@ -9,7 +9,7 @@ ruling: "A declined row whose week an admin closed is never retried; it still sh
 claims:
   - kind: "file"
     target: "src/update-card.ts"
-    note: "updateCard: a closed week's row is never charged; claimCardUpdate deletes it"
+    note: "updateCard: a closed week's row is never charged; a card on file deletes it"
   - kind: "test"
     target: "src/update-card.test.ts"
 revisit_if: "A closed week can be reopened after its cutoff, or the farm wants a closed week's decline charged after all"
@@ -23,4 +23,4 @@ the week is `declined`. Retrying that row would charge for a week with no meal a
 The row still counts as declined for the account home's Notice and badge: the member's card did decline. Nothing else
 would ever clear it, so a save that puts a new card on file deletes it, as the charge run deletes a closed week's unpaid
 row. A failed save deletes nothing. The delete cannot be wrong later: a declined row exists only after its week's cutoff,
-and a closed week cannot reopen past its cutoff. See also DEC-040.
+and a closed week cannot reopen past its cutoff. See also DEC-053.

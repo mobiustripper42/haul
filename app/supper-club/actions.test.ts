@@ -1,8 +1,8 @@
 // Issue 77, AC4, AC8 and AC9: the pane's server actions, each the action it mirrors with the pane's fixed
 // page set. As app/create-account/actions.test.ts: `next/headers` is faked, `redirect` throws as the real
 // one does, `after` collects its callback for the test to run, and the composition root hands out an
-// InMemoryRepository and a FakeEmail. Issue 56: the two pay actions, over a FakePayments; what signUp and
-// retrySignup do is src/signup.test.ts, and this holds the door: who gets in and where each outcome lands.
+// InMemoryRepository and a FakeEmail. Issue 56: the pay action, over a FakePayments, submitted once and again; what signUp
+// does is src/signup.test.ts, and this holds the door: who gets in and where each outcome lands.
 import { inspect } from "node:util";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { FakeEmail } from "@core/adapters/fake-email.js";
@@ -276,8 +276,9 @@ describe("resendPaneAccountCode", () => {
   });
 });
 
-describe("issue 56 — the pay actions", () => {
+describe("issue 56 — the pay action", () => {
   const SOURCE = "cnon:card-nonce-ok";
+  const OTHER_SOURCE = "cnon:another-card";
   const t = createTranslator("en");
   /** What the page renders for the $80 pick with its first pickup January 3, the consent the member saw. */
   const SHOWN_80 = paymentWording(t, { priceCents: 8000, firstPickup: "2027-01-03", language: "en" }).consentText;
@@ -342,7 +343,8 @@ describe("issue 56 — the pay actions", () => {
   };
 
   const join = async (fields: FormData) => redirectOf((await load()).joinSupperClub(fields));
-  const retry = async () => redirectOf((await load()).retrySupperClubPayment());
+  /** Pay again with another card, whatever picks the page's form holds. */
+  const payAgain = async (over: Record<string, string> = {}) => join(pay({ sourceId: OTHER_SOURCE, ...over }));
 
   /** The redirect's path and each query value, whatever order they come in. */
   const landed = (to: string) => {
@@ -354,13 +356,9 @@ describe("issue 56 — the pay actions", () => {
 
   const noAnswer = () => new DOMException("The operation timed out.", "TimeoutError");
 
+  /** The token `pay()` posts is one Square declines to charge. */
   const nextCardDeclines = () => {
-    const real = services.payments.saveCard.bind(services.payments);
-    vi.spyOn(services.payments, "saveCard").mockImplementationOnce(async (input) => {
-      const card = await real(input);
-      services.payments.declineCard(card.id, "GENERIC_DECLINE");
-      return card;
-    });
+    services.payments.declineCard(SOURCE, "GENERIC_DECLINE");
   };
 
   const stranded = async () => {
@@ -528,31 +526,85 @@ describe("issue 56 — the pay actions", () => {
     });
   });
 
-  describe("retrySupperClubPayment", () => {
-    it("AC10: a visitor with no session goes to the sign-in pane", async () => {
-      expect(await retry()).toBe(SIGN_IN);
-    });
-
+  describe("joinSupperClub, while a charge is out", () => {
     it("AC10: a paid result lands on /supper-club/done", async () => {
       await stranded();
-      expect(await retry()).toBe("/supper-club/done");
+      expect(await payAgain()).toBe("/supper-club/done");
       expect(await repo.findActiveSubscription(member.id, product.id)).not.toBeNull();
       expect(services.payments.charges).toHaveLength(1);
     });
 
     it("AC10: a decline goes back to the normal form with payError=declined, and records card_declined", async () => {
-      signIn();
-      nextCardDeclines();
-      vi.spyOn(services.payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(noAnswer());
-      await join(pay());
-      expect(landed(await retry())).toMatchObject({ path: "/supper-club", query: { payError: "declined" } });
+      await stranded();
+      services.payments.declineCard(OTHER_SOURCE, "GENERIC_DECLINE");
+      expect(landed(await payAgain())).toMatchObject({ path: "/supper-club", query: { payError: "declined" } });
       expect(repo.events().map((event) => event.kind)).toContain("card_declined");
     });
 
     it("AC10: still no answer goes back to the page with payError=unknown", async () => {
       await stranded();
       vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
-      expect(landed(await retry())).toMatchObject({ path: "/supper-club", query: { payError: "unknown" } });
+      expect(landed(await payAgain())).toMatchObject({ path: "/supper-club", query: { payError: "unknown" } });
+    });
+
+    const refused = () => new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "INVALID_VALUE", detail: "Refused." });
+
+    it.each<[string, () => unknown]>([
+      ["unknown", () => vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer())],
+      ["declined", () => services.payments.declineCard(OTHER_SOURCE, "GENERIC_DECLINE")],
+      ["error", () => vi.spyOn(services.payments, "charge").mockRejectedValueOnce(refused())],
+    ])("AC7 (issue 254): a landing with payError=%s carries the row's picks, not the ones submitted", async (payError, arrange) => {
+      await stranded();
+      arrange();
+      const to = await payAgain({ [sizeId]: optionIds.two, [menuId]: optionIds.standard });
+      expect(landed(to)).toEqual({ path: "/supper-club", query: { payError, ...picksKept() } });
+    });
+
+    it("AC21 (issue 254): a first charge Square refuses outright goes back to the page with payError=error, the picks kept, and no charge out", async () => {
+      signIn();
+      vi.spyOn(services.payments, "charge").mockRejectedValueOnce(refused());
+      expect(landed(await join(pay()))).toEqual({ path: "/supper-club", query: { payError: "error", ...picksKept() } });
+      expect(await repo.findPendingSignup(member.id, product.id)).toMatchObject({ ledgerStatus: "pending", chargeSentAt: null });
+    });
+  });
+
+  // Issue 254: what the action does with a paid signup whose card was not saved, and with a dead token; what each writes and
+  // records is src/signup.test.ts's. The email's values are the issue 58 cases' below.
+  describe("AC4, AC6, AC21 (issue 254) — a card not saved, and a dead token", () => {
+    const cardNotSaved = () => {
+      vi.spyOn(console, "error").mockImplementation(() => {});
+      vi.spyOn(services.payments, "saveCard").mockRejectedValueOnce(
+        new PaymentsError({ status: 402, category: "PAYMENT_METHOD_ERROR", code: "CVV_FAILURE", detail: "Refused." }),
+      );
+    };
+    const emailed = async () => {
+      await runScheduled();
+      return (services.email as FakeEmail).sent.map((message) => message.to);
+    };
+
+    it("AC4: Pay that is paid with its card not saved lands on done, records card_not_saved, and emails the member once", async () => {
+      signIn();
+      cardNotSaved();
+      expect(await join(pay())).toBe("/supper-club/done");
+      expect(repo.events().map((event) => event.kind)).toEqual(["card_not_saved"]);
+      expect(await emailed()).toEqual([ADA]);
+    });
+
+    it("AC6: a second Pay that is paid with its card not saved lands on done, records card_not_saved, and emails the member once", async () => {
+      await stranded();
+      cardNotSaved();
+      expect(await payAgain()).toBe("/supper-club/done");
+      expect(repo.events().map((event) => event.kind)).toEqual(["charge_outcome_unknown", "card_not_saved"]);
+      expect(await emailed()).toEqual([ADA]);
+    });
+
+    it("AC21: a second Pay on a dead token goes back to the page with payError=error, the picks kept", async () => {
+      await stranded();
+      vi.spyOn(services.payments, "charge").mockRejectedValueOnce(
+        new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "CARD_TOKEN_EXPIRED", detail: "Expired." }),
+      );
+      expect(landed(await payAgain())).toEqual({ path: "/supper-club", query: { payError: "error", ...picksKept() } });
+      expect(await emailed()).toEqual([]);
     });
   });
 
@@ -564,16 +616,10 @@ describe("issue 56 — the pay actions", () => {
       await join(pay());
       expect(landed(await join(pay({ sourceId: "cnon:second-tab" })))).toEqual({ path: SUPPER_CLUB_ALREADY_PATH, query: { from: SUPPER_CLUB_FROM_PAY } });
     });
-
-    it("AC5 (issue 221): Try again from a member who already has a subscription lands on /supper-club/already with the Pay mark", async () => {
-      signIn();
-      await join(pay());
-      expect(landed(await retry())).toEqual({ path: SUPPER_CLUB_ALREADY_PATH, query: { from: SUPPER_CLUB_FROM_PAY } });
-    });
   });
 
-  // Issue 102, AC1 and AC2: what signUp and retrySignup do with the clock is src/signup.test.ts; these hold that
-  // each action hands them one that reads the time when it is read, by moving the faked Date inside Square's answer.
+  // Issue 102, AC1 and AC2: what signUp does with the clock is src/signup.test.ts; these hold that the action hands it
+  // one that reads the time when it is read, by moving the faked Date inside Square's answer.
   describe("AC1, AC2 (issue 102) — paid_at is when the paid answer came back", () => {
     it("AC1: joinSupperClub confirms the rows at the time the charge came back, and consent_at stays the request's start", async () => {
       const answered = new Date("2026-10-28T14:25:33.000Z");
@@ -592,7 +638,7 @@ describe("issue 56 — the pay actions", () => {
       expect(save.mock.calls.map(([input]) => input.consentAt)).toEqual([T0]);
     });
 
-    it("AC2: retrySupperClubPayment, finding the payment Square took, confirms the rows at the time the lookup came back, not the retry's start", async () => {
+    it("AC2: a second joinSupperClub, finding the payment Square took, confirms the rows at the time the lookup came back, not the submit's start", async () => {
       const retried = new Date("2026-10-28T14:26:00.000Z");
       const found = new Date("2026-10-28T14:26:04.000Z");
       signIn();
@@ -614,7 +660,7 @@ describe("issue 56 — the pay actions", () => {
       });
       const confirm = vi.spyOn(repo, "confirmSignupRows");
 
-      expect(await retry()).toBe("/supper-club/done");
+      expect(await payAgain()).toBe("/supper-club/done");
       expect(services.payments.charges).toHaveLength(1);
       expect(confirm.mock.calls.map((call) => call[3])).toEqual([found]);
     });
@@ -668,10 +714,10 @@ describe("issue 56 — the pay actions", () => {
         arrange();
         return join(pay());
       },
-      retrySupperClubPayment: async (arrange: () => void = () => {}) => {
+      "a second joinSupperClub": async (arrange: () => void = () => {}) => {
         await stranded();
         arrange();
-        return retry();
+        return payAgain();
       },
     };
     const PATHS = Object.keys(PAID_BY) as (keyof typeof PAID_BY)[];
@@ -695,10 +741,10 @@ describe("issue 56 — the pay actions", () => {
       });
     });
 
-    describe("AC2 — Try again finishes the signup", () => {
+    describe("AC2 — a second Pay finishes the signup", () => {
       it("AC2: by charging, one email goes to the member's address", async () => {
         await stranded();
-        await retry();
+        await payAgain();
         await runScheduled();
         expect(services.payments.charges).toHaveLength(1);
         expect(sent().map((message) => message.to)).toEqual([ADA]);
@@ -716,7 +762,7 @@ describe("issue 56 — the pay actions", () => {
         await runScheduled();
         expect(sent()).toEqual([]);
 
-        expect(await retry()).toBe(DONE);
+        expect(await payAgain()).toBe(DONE);
         await runScheduled();
         expect(services.payments.charges).toHaveLength(1);
         expect(sent().map((message) => message.to)).toEqual([ADA]);
@@ -733,14 +779,6 @@ describe("issue 56 — the pay actions", () => {
         signIn();
         await join(pay());
         expect(landed(await join(pay({ sourceId: "cnon:second-tab" }))).path).toBe(SUPPER_CLUB_ALREADY_PATH);
-        await runScheduled();
-        expect(sent()).toHaveLength(1);
-      });
-
-      it("AC3: Try again from a member who has paid is already subscribed, and the member has one email", async () => {
-        signIn();
-        await join(pay());
-        expect(landed(await retry()).path).toBe(SUPPER_CLUB_ALREADY_PATH);
         await runScheduled();
         expect(sent()).toHaveLength(1);
       });
@@ -772,25 +810,24 @@ describe("issue 56 — the pay actions", () => {
         await expectNoEmail();
       });
 
-      it("AC3: retrySupperClubPayment, declined, sends nothing", async () => {
-        signIn();
-        nextCardDeclines();
-        vi.spyOn(services.payments, "charge").mockRejectedValueOnce(noAnswer()).mockRejectedValueOnce(noAnswer());
-        await join(pay());
-        expect(landed(await retry())).toMatchObject({ query: { payError: "declined" } });
+      it("AC3: a second joinSupperClub, declined, sends nothing", async () => {
+        await stranded();
+        services.payments.declineCard(OTHER_SOURCE, "GENERIC_DECLINE");
+        expect(landed(await payAgain())).toMatchObject({ query: { payError: "declined" } });
         await expectNoEmail();
       });
 
-      it("AC3: retrySupperClubPayment, with still no answer, sends nothing", async () => {
+      it("AC3: a second joinSupperClub, with still no answer, sends nothing", async () => {
         await stranded();
         vi.spyOn(services.payments, "findPaymentByReference").mockRejectedValueOnce(noAnswer());
-        expect(landed(await retry())).toMatchObject({ query: { payError: "unknown" } });
+        expect(landed(await payAgain())).toMatchObject({ query: { payError: "unknown" } });
         await expectNoEmail();
       });
 
-      it("AC3: retrySupperClubPayment, with an error, sends nothing", async () => {
-        signIn();
-        expect(landed(await retry())).toMatchObject({ query: { payError: "error" } });
+      it("AC3: a second joinSupperClub, with an error, sends nothing", async () => {
+        await stranded();
+        vi.spyOn(services.payments, "charge").mockRejectedValueOnce(new PaymentsError({ status: 400, category: "INVALID_REQUEST_ERROR", code: "INVALID_VALUE", detail: "Refused." }));
+        expect(landed(await payAgain())).toMatchObject({ query: { payError: "error" } });
         await expectNoEmail();
       });
     });
@@ -892,14 +929,14 @@ describe("issue 56 — the pay actions", () => {
         expect(logged(errors)).not.toContain(message?.text);
       });
 
-      it("AC7: nothing re-sends a lost email: Try again afterwards lands on already, and the one send stands", async () => {
+      it("AC7: nothing re-sends a lost email: a second Pay afterwards lands on already, and the one send stands", async () => {
         const send = await refusingSend();
         silenceErrors();
         signIn();
         await join(pay());
         await runScheduled();
 
-        expect(landed(await retry()).path).toBe(SUPPER_CLUB_ALREADY_PATH);
+        expect(landed(await payAgain()).path).toBe(SUPPER_CLUB_ALREADY_PATH);
         await runScheduled();
         expect(send).toHaveBeenCalledTimes(1);
       });

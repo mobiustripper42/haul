@@ -1,5 +1,15 @@
 import { renderEmail } from "./email-templates.js";
-import { logStepFailure, recordDecline, recordOutcomeUnknown, renderReceipt, sendCharge, sendMemberEmail as sendEmailTo, weekNamed } from "./ledger-charge.js";
+import {
+  logStepFailure,
+  recordDecline,
+  recordOutcomeUnknown,
+  renderReceipt,
+  RESEND_AFTER_MS,
+  sendCharge,
+  sendMemberEmail as sendEmailTo,
+  settlePaid,
+  weekNamed,
+} from "./ledger-charge.js";
 import { formatUsdWhole } from "./money.js";
 import { clevelandDate, cutoffInstant, latestCutoffWeek, pickupOver } from "./pickup-week.js";
 import type { Member } from "./members.js";
@@ -13,7 +23,8 @@ import { deliverSignupConfirmation } from "./signup-email.js";
  * The charge run (issue 134; DEC-003, DEC-004, DEC-034, DEC-035). Each firing writes a ledger row for every subscription
  * due the latest week whose cutoff has passed: `pending` to charge, or (issue 150) `paid` at 0 cents where a week credit
  * paid the week, which its member is emailed, or its picks sum to 0 cents. It then settles every `pending` row it can: a charge on the card on file, or,
- * where a charge must not be sent, a lookup of what Square already took. The ledger is the queue, so a firing over the
+ * where a charge must not be sent, a lookup of what Square already took; for an active subscription with no card on file, a
+ * `NO_CARD` decline through the decline path and email (issue 254; DEC-053). The ledger is the queue, so a firing over the
  * same state writes no second row, charges with the same key and emails once. Every write runs under
  * `CHARGE_RUN_ACTOR`, and the provider calls run between `withActor` commits, never inside one. One row's failure never
  * stops the rest.
@@ -108,9 +119,11 @@ function logFailure(step: string, error: unknown): void {
 }
 
 /**
- * One row. A stranded signup (its subscription still `pending`) and a closed week's row are looked up, never charged;
- * any other is charged. What Square took, however found, is confirmed; a decline is recorded; anything else leaves the row
- * `pending` and records that the outcome is unknown.
+ * One row. A stranded signup (its subscription still `pending`), a closed week's row and a row whose charge is out (a
+ * member's charge, which the run never sends) are looked up, never charged; an active subscription's row with
+ * no card on file is declined `NO_CARD`; any other is charged on the card on file. What Square took, however found, is
+ * confirmed, a found payment of a card the member entered saving its card as the member's own charge would; a decline is recorded; anything else
+ * leaves the row `pending` and records that the outcome is unknown.
  */
 async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge, report: ChargeRunReport): Promise<void> {
   const { repo, payments, clock } = deps;
@@ -118,32 +131,31 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
   try {
     let paymentId: string;
     let chargedCents: number;
-    if (stranded || row.closed) {
+    if (stranded || row.closed || row.chargeSentAt !== null) {
+      const lookupStartedAt = clock();
       const found = await payments.findPaymentByReference({ referenceId: row.ledgerId, since: row.createdAt });
       if (!found) {
-        // A closed week's row nobody paid for is deleted once the week's pickup is over: the week is not charged.
+        // A closed week's row nobody paid for is deleted once the week's pickup is over: the week is not charged. A row whose
+        // charge is out is never dropped: its member's charge may yet turn up as a payment, and the row stays as it is. A
+        // cancelled subscription's, sent ten minutes or more before this lookup started and not found, has no member to
+        // enter another card: its charge ends, by the stamp this run listed, so a charge taken over meanwhile is left alone.
         const last = { weekOf: row.pickupDate, firstDay: row.pickupDate, lastDay: row.lastPickupDay };
-        if (!stranded && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
+        if (!stranded && row.chargeSentAt === null && pickupOver(last, clevelandDate(deps.now)) && (await dropRow(repo, row.ledgerId))) report.dropped++;
+        const sentAt = row.chargeSentAt;
+        if (sentAt !== null && row.subscriptionStatus === "cancelled" && lookupStartedAt.getTime() - sentAt.getTime() >= RESEND_AFTER_MS) {
+          await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.abandonCharge(row.ledgerId, sentAt));
+        }
         return;
       }
       ({ paymentId, amountCents: chargedCents } = found);
+    } else if (row.cardId === null) {
+      // An active subscription whose member has no card on file: nothing to charge, and nothing is sent to Square.
+      await declineAndEmail(deps, productId, row, "NO_CARD", report);
+      return;
     } else {
-      const result = await sendCharge(payments, { row, cardId: row.cardId, customerId: row.customerId });
+      const result = await sendCharge(payments, { row, sourceId: row.cardId, customerId: row.customerId, customerInitiated: false });
       if (result.outcome === "declined") {
-        const flipped = await recordDecline(repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, result.code);
-        report.declined++;
-        // Only the firing that turned the row declined emails: a loser of the race has nothing to tell the member.
-        if (flipped) {
-          await sendMemberEmail(deps, row.memberId, async (member) => {
-            const week = await weekNamed(repo, productId, row.pickupDate, member.language);
-            return renderEmail(
-              "cardDeclined",
-              member.language,
-              { week, amount: formatUsdWhole(row.amountCents), link: deps.cardUrl },
-              deps.siteUrl,
-            );
-          });
-        }
+        await declineAndEmail(deps, productId, row, result.code, report);
         return;
       }
       ({ paymentId } = result);
@@ -151,7 +163,20 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
     }
     // The answer is back: this is the moment `paid_at` records.
     const paidAt = clock();
-    const confirmed = await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.confirmSignupRows(row.ledgerId, paymentId, chargedCents, paidAt));
+    // A payment made from a card the member entered is theirs: its card is saved from it. A saved card's charge has none to save.
+    const confirmed =
+      row.chargeSentAt === null
+        ? await repo.withActor(CHARGE_RUN_ACTOR, (scoped) => scoped.confirmSignupRows(row.ledgerId, paymentId, chargedCents, paidAt))
+        : (
+            await settlePaid(repo, payments, CHARGE_RUN_ACTOR, {
+              ledgerId: row.ledgerId,
+              paymentId,
+              amountCents: chargedCents,
+              customerId: row.customerId,
+              memberId: row.memberId,
+              paidAt,
+            })
+          ).confirmed;
     if (confirmed === "mismatch") {
       // What Square took is not the ledger's amount: nothing turns paid, and nothing is emailed.
       await recordUnknown(repo, row, report, { chargedCents, ledgerCents: row.amountCents });
@@ -165,6 +190,20 @@ async function settle(deps: ChargeRunDeps, productId: string, row: PendingCharge
     logFailure("charge", error);
     await recordUnknown(repo, row, report, error instanceof PaymentsError ? { code: error.code } : {});
   }
+}
+
+/**
+ * A charge's decline, or a `NO_CARD` one: the row declined and counted, and the `cardDeclined` email sent only by the
+ * firing that turned the row declined: a loser of the race has nothing to tell the member.
+ */
+async function declineAndEmail(deps: ChargeRunDeps, productId: string, row: PendingCharge, code: string, report: ChargeRunReport): Promise<void> {
+  const flipped = await recordDecline(deps.repo, CHARGE_RUN_ACTOR, row.memberId, row.ledgerId, code, row.attempt);
+  report.declined++;
+  if (!flipped) return;
+  await sendMemberEmail(deps, row.memberId, async (member) => {
+    const week = await weekNamed(deps.repo, productId, row.pickupDate, member.language);
+    return renderEmail("cardDeclined", member.language, { week, amount: formatUsdWhole(row.amountCents), link: deps.cardUrl }, deps.siteUrl);
+  });
 }
 
 /** Deletes a closed week's unpaid row; a throw is the caller's to treat as an unknown outcome. */

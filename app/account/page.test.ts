@@ -22,12 +22,14 @@ import { createTranslator, pluralKey, type Language, type MessageKey } from "@co
 import type { Member } from "@core/members.js";
 import { formatUsdWhole } from "@core/money.js";
 import { pickupWeek, pickupWhereLine, weekTitle, type ChangedWeek } from "@core/pickup-week.js";
+import type { Card } from "@core/ports/payments.js";
 import type { PendingSignup } from "@core/ports/repository.js";
 import type { ProductWithOptions } from "@core/products.js";
 import { hashCode } from "@core/sign-in/code.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { Card as CardBox } from "../../components/ui/card";
 import { Notice } from "../../components/ui/notice";
 import { emptyRequest } from "../next-headers-fake";
 import { alertTexts, attributesOf, findAll, redirectOf, screenMarkup, sentencesOf, textsOf } from "../screen-test-helpers";
@@ -131,17 +133,20 @@ const signup = (member: Member, { picks = ["2 people", "Standard"], firstWeek = 
     consentAt: new Date("2026-12-01T17:00:00.000Z"),
   });
 
-/** An active subscription: the signup's first charge paid. */
+/** The card Square saved, on file from the signup's confirm (issue 254). */
+const CARD: Card = { id: "ccof:card-1", brand: "VISA", last4: "1111", expMonth: 12, expYear: 2030 };
+
+/** An active subscription: the signup's first charge paid, with a card on file. */
 const subscribed = async (member: Member, options?: Parameters<typeof signup>[1]): Promise<void> => {
   const rows = await signup(member, options);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), CARD);
 };
 
-/** Ada, signed in, with an active subscription paid for January 3; her member and its id. */
+/** Ada, signed in, with an active subscription paid for January 3 and a card on file; her member and its id. */
 const activeAda = async (options?: Parameters<typeof signup>[1]): Promise<{ member: Member; subscriptionId: string }> => {
   const member = await ada();
   const rows = await signup(member, options);
-  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"), CARD);
   signIn(member);
   return { member, subscriptionId: rows.subscriptionId };
 };
@@ -442,7 +447,7 @@ describe("issue 139 — account home, cancelled and not", () => {
     const member = await services.repo.findMemberByEmail("ada@example.com");
     if (!member) throw new Error("Ada is gone");
     const again = await signup(member, { picks: ["2 people", "Vegan"] });
-    await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW);
+    await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, NOW, CARD);
     const { html, runs, badge, badgeText } = await render();
     expect(runs).toContain("2 people · Vegan");
     expect(badge).toBe(SUBSCRIPTION_BADGES.active.kind);
@@ -1031,5 +1036,117 @@ describe("issue 156 — Your details, on /account", () => {
       expect(codeStepShows(html)).toBe(false);
       expect(valuesOf(html)).toMatchObject({ email: OLD });
     });
+  });
+});
+
+// Issue 254: the no-card Notice. Whether a subscription needs a card is the repository's (needsCard, owned by
+// src/adapters/signup-contract.ts and postgres-product.test.ts); here one present and one absent case through the page.
+describe("AC17 (issue 254) — the no-card Notice on account home", () => {
+  /** Whether one of the page's Notices holds a primary link to /account/card; its words are not read. */
+  const noticeAsksForACard = (html: string): boolean => {
+    const primary = attributesOf(renderToStaticMarkup(createElement(Button, { kind: "primary", href: "/account/card", children: "x" })), "a")[0];
+    expect(primary?.class).toBeDefined();
+    return [...html.matchAll(/<(\w+)\b[^>]*\brole="alert"[^>]*>([\s\S]*?)<\/\1>/g)].some(([, , inner = ""]) =>
+      attributesOf(inner, "a").some((link) => link.href === "/account/card" && link.class === primary?.class),
+    );
+  };
+
+  it("AC17: an active subscription with no card on file and no declined row: a Notice holds a primary link to /account/card", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    expect(noticeAsksForACard((await render()).html)).toBe(true);
+  });
+
+  it("AC17: with a card on file whose brand and last four are not stored, there is none", async () => {
+    await activeAda();
+    vi.spyOn(services.repo, "findSubscriptionCard").mockResolvedValue(null);
+    const { html } = await render();
+    expect(noticeAsksForACard(html)).toBe(false);
+    expect(alertTexts(html)).toEqual([]);
+  });
+});
+
+// Issue 254: the charge line is shown in some states and not others: a choice, checked by its key, as AC15 (issue 198)'s.
+describe("AC22 (issue 254) — the charge line with no card on file", () => {
+  const CHARGE_LINE = t("supperClub.next.charge", { price: formatUsdWhole(4500) });
+
+  it("AC22: with the no-card Notice drawn, the charge line is not shown", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    signIn(member);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toHaveLength(1);
+    expect(runs).not.toContain(CHARGE_LINE);
+  });
+
+  it("AC22: a comped subscription with no card draws no Notice, and the line is shown; guards the case above", async () => {
+    const member = await ada();
+    const rows = await signup(member);
+    await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+    services.repo.markComped(rows.subscriptionId);
+    signIn(member);
+    const { html, runs } = await render();
+    expect(alertTexts(html)).toEqual([]);
+    expect(runs).toContain(CHARGE_LINE);
+  });
+});
+
+// Issue 254: while a card update's charge has no answer the week stays declined, so the page is the declined page. What the
+// claim writes is the repository's (src/adapters/charge-run-contract.ts).
+describe("AC20 (issue 254) — account home while a card update's charge is out", () => {
+  it("AC20: the declined Notice names the week and links to /account/card, the badge is Card declined's, and the charge line is not shown", async () => {
+    const { member, subscriptionId } = await activeAda();
+    await services.repo.setMemberSquareCustomer(member.id, "CUSTOMER_ADA");
+    await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
+    expect((await services.repo.claimCardUpdate(subscriptionId, NOW)).kind).toBe("claimed");
+    const { html, badge, runs } = await render();
+    const alerts = alertTexts(html);
+    expect(alerts).toHaveLength(1);
+    expect(alerts[0]).toContain(titleOf(FEB_7));
+    expect(attributesOf(html, "a").map((link) => link.href)).toContain("/account/card");
+    expect(badge).toBe(SUBSCRIPTION_BADGES.declined.kind);
+    expect(runs).not.toContain(t("supperClub.next.charge", { price: formatUsdWhole(4500) }));
+  });
+});
+
+// Issue 254: where the Notice sits. Which one shows is AC5's (issue 198) and AC17's above; here one of each, by its column.
+// Stacked below lg the left column is the first, so one order serves both widths.
+describe("AC24 (issue 254) — the card Notice is in the left column, above the Supper Club card", () => {
+  /** The page's two columns, left first: each outermost div holding exactly one Card. */
+  const columnsOf = (element: ReactElement): ReactElement[] => {
+    const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
+    return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
+  };
+  /** What of these two a column holds, in order. */
+  const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
+
+  it.each<[string, () => Promise<unknown>]>([
+    [
+      "declined",
+      async () => {
+        const { subscriptionId } = await activeAda();
+        await services.repo.addLedgerRow(subscriptionId, FEB_7, "declined", 4500);
+      },
+    ],
+    [
+      "no-card",
+      async () => {
+        const member = await ada();
+        const rows = await signup(member);
+        await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+        signIn(member);
+      },
+    ],
+  ])("AC24: the %s Notice is the first thing in the left column, above the Supper Club card, and Your details' column holds none", async (_which, arrange) => {
+    await arrange();
+    const { element } = await render();
+    const [left, right, ...more] = columnsOf(element);
+    expect(more).toEqual([]);
+    expect(orderIn(left)).toEqual(['role="alert"', "<section"]);
+    expect(orderIn(right)).toEqual(["<section"]);
+    expect(findAll(element, Notice)).toHaveLength(1);
   });
 });

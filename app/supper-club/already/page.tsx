@@ -16,7 +16,7 @@ export const generateMetadata = titled("supperClub.already.title");
 /**
  * What a member who already has a box is told, in the Supper Club page's right pane (no mockup: it is the
  * pane's card alone). A member with no active subscription, or a visitor, is sent to the Supper Club page.
- * "Nothing was charged." shows only with the Pay mark (`?from=pay`), which a refused Pay or Try again carries.
+ * "Nothing was charged." shows only with the Pay mark (`?from=pay`), which a refused Pay carries.
  * Viewing it records nothing: the event is `signUp`'s, when a pay is submitted anyway.
  */
 export default async function SupperClubAlready({ searchParams }: { searchParams: Promise<{ from?: string | string[] }> }) {

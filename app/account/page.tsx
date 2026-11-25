@@ -106,13 +106,13 @@ export default async function Account({ searchParams }: { searchParams?: Promise
               {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
             </Notice>
           )}
-          {notice}
           {switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
-          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. */}
+          {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice is the first thing in the left column, so it stands above the Supper Club card at both widths. */}
           <div className="flex flex-col gap-5 lg:flex-row lg:items-start">
-            <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 flex-1 flex-col gap-5">
+              {notice}
               <Card width="fill">
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <p className="font-semibold">{meal}</p>
@@ -125,7 +125,7 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                   </>
                 )}
                 {locked && <p>{t("account.noPickupLocked")}</p>}
-                {!cancelled && lockedWeek(confirmation) === null && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+                {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
                 {startsAt && <Hint>{t("account.pendingSwitch", { meal: mealLabel(confirmation.options), week: listedWeekTitle(t, startsAt.week, language) })}</Hint>}
                 {!cancelled &&
                   (open ? (

@@ -64,10 +64,10 @@ export const ACCOUNT_CANCEL_PATH = "/account/cancel";
 export { ACCOUNT_CARD_PATH };
 /** Issue 145: the query parameter naming a card save's outcome. */
 export const ACCOUNT_CARD_STATE_PARAM = "state";
-/** Issue 145: the query parameter naming the one ledger row a paid save or Try again charged. */
+/** Issue 145: the query parameter naming the one ledger row a paid save charged (`paid`, and issue 254's `paidNoCard`). */
 export const ACCOUNT_CARD_ROW_PARAM = "row";
-/** Issue 145: Update your card after a save or a Try again, with its outcome and, for a paid one, the row it paid. */
-export const accountCardPath = (state: "saved" | "paid" | "declined" | "unknown" | "error", ledgerId?: string): string => {
+/** Issue 145: Update your card after a save, with its outcome and, for a paid one, the row it paid. */
+export const accountCardPath = (state: "saved" | "paid" | "paidNoCard" | "declined" | "unknown" | "error", ledgerId?: string): string => {
   const query = new URLSearchParams({ [ACCOUNT_CARD_STATE_PARAM]: state });
   if (ledgerId !== undefined) query.set(ACCOUNT_CARD_ROW_PARAM, ledgerId);
   return `${ACCOUNT_CARD_PATH}?${query}`;

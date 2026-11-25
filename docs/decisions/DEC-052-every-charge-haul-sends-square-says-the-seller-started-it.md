@@ -3,7 +3,7 @@ schema: 1
 id: DEC-052
 title: "Every charge Haul sends Square says the seller started it"
 topic: "Payments"
-status: "active"
+status: "superseded"
 date: "2026-11-23"
 ruling: "Every charge sends customer_details with customer_initiated false, from Square's adapter alone; no caller chooses it, and the payments port and the fake do not change."
 claims:
@@ -12,6 +12,7 @@ claims:
     note: "charge: the field on the request that creates a payment"
   - kind: "test"
     target: "src/adapters/square-payments.test.ts"
+superseded_by: DEC-053
 revisit_if: "A charge is declined for verification in production, or the farm takes on a country where Square requires verification for a seller-started charge"
 ---
 

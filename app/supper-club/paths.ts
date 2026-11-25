@@ -12,10 +12,10 @@ export const SUPPER_CLUB_DONE_PATH = "/supper-club/done";
 /** What a member who already has a subscription is told, in the right pane. */
 export const SUPPER_CLUB_ALREADY_PATH = "/supper-club/already";
 
-/** The `from` value that marks the already page as reached from a refused Pay or Try again (issue 221). */
+/** The `from` value that marks the already page as reached from a refused Pay (issue 221). */
 export const SUPPER_CLUB_FROM_PAY = "pay";
 
-/** The already page with the Pay mark: where a refused Pay or Try again lands (issue 221). */
+/** The already page with the Pay mark: where a refused Pay lands (issue 221). */
 export const SUPPER_CLUB_ALREADY_FROM_PAY_PATH = `${SUPPER_CLUB_ALREADY_PATH}?from=${SUPPER_CLUB_FROM_PAY}`;
 
 /** The `payError` value a sold-out refusal lands on, and the only one the page reads as the sold-out notice. */

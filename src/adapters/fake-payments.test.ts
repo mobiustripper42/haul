@@ -47,7 +47,7 @@ describe("AC8 (issue 54) — FakePayments records a retried charge once", () => 
   it("AC8: a charge retried with the same idempotencyKey and input leaves one entry in charges", async () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
-    const input = { customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" };
+    const input = { customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false };
     const first = await fake.charge({ ...input });
     const second = await fake.charge({ ...input });
     expect(first.outcome).toBe("paid");
@@ -98,7 +98,7 @@ describe("AC16 (issue 54) — FakePayments refuses what Square refuses", () => {
     const { cardId } = await customerWithCard(fake, 1);
     const other = await fake.createCustomer({ email: "grace@example.com", idempotencyKey: "customer-other" });
     const error = await rejectionOf(
-      fake.charge({ customerId: other.id, cardId, amountCents: 5000, idempotencyKey: "charge-1" }),
+      fake.charge({ customerId: other.id, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false }),
     );
     expect(error).toBeInstanceOf(PaymentsError);
     expect(fake.charges).toHaveLength(0);
@@ -108,7 +108,7 @@ describe("AC16 (issue 54) — FakePayments refuses what Square refuses", () => {
     const fake = new FakePayments();
     const customer = await fake.createCustomer({ email: "ada@example.com", idempotencyKey: "customer-1" });
     const error = await rejectionOf(
-      fake.charge({ customerId: customer.id, cardId: "ccof:never-saved", amountCents: 5000, idempotencyKey: "charge-1" }),
+      fake.charge({ customerId: customer.id, sourceId: "ccof:never-saved", amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false }),
     );
     expect(error).toBeInstanceOf(PaymentsError);
   });
@@ -117,9 +117,10 @@ describe("AC16 (issue 54) — FakePayments refuses what Square refuses", () => {
     const fake = new FakePayments();
     const result = await fake.charge({
       customerId: "NEVER_MADE",
-      cardId: SQUARE_SANDBOX_VALUES.cardOnFileOk,
+      sourceId: SQUARE_SANDBOX_VALUES.cardOnFileOk,
       amountCents: 5000,
       idempotencyKey: "charge-1",
+      customerInitiated: false,
     });
     expect(result).toEqual({ outcome: "paid", paymentId: expect.any(String) });
     expect(result.paymentId).not.toBe("");
@@ -129,9 +130,10 @@ describe("AC16 (issue 54) — FakePayments refuses what Square refuses", () => {
     const fake = new FakePayments();
     const result = await fake.charge({
       customerId: "NEVER_MADE",
-      cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
+      sourceId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
       amountCents: 5000,
       idempotencyKey: "charge-1",
+      customerInitiated: false,
     });
     expect(result).toMatchObject({ outcome: "declined", code: "GENERIC_DECLINE" });
   });
@@ -232,9 +234,9 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
   it("AC17: charges holds one entry per distinct idempotency key, and changing what it returns changes nothing stored", async () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
-    await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" });
-    await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-2" });
-    await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" });
+    await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false });
+    await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-2", customerInitiated: false });
+    await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false });
     const returned = fake.charges;
     expect(returned).toHaveLength(2);
     returned.length = 0;
@@ -245,16 +247,17 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
     const fake = new FakePayments();
     const declined = await fake.charge({
       customerId: "NEVER_MADE",
-      cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
+      sourceId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined,
       amountCents: 5000,
       idempotencyKey: "charge-1",
+      customerInitiated: false,
     });
     expect(declined.outcome).toBe("declined");
     await rejectionOf(
-      fake.charge({ customerId: "NEVER_MADE", cardId: "ccof:never-saved", amountCents: 5000, idempotencyKey: "charge-2" }),
+      fake.charge({ customerId: "NEVER_MADE", sourceId: "ccof:never-saved", amountCents: 5000, idempotencyKey: "charge-2", customerInitiated: false }),
     );
     await rejectionOf(
-      fake.charge({ customerId: "NEVER_MADE", cardId: SQUARE_SANDBOX_VALUES.cardOnFileOk, amountCents: 0, idempotencyKey: "charge-3" }),
+      fake.charge({ customerId: "NEVER_MADE", sourceId: SQUARE_SANDBOX_VALUES.cardOnFileOk, amountCents: 0, idempotencyKey: "charge-3", customerInitiated: false }),
     );
     expect(fake.charges).toHaveLength(1);
   });
@@ -263,8 +266,8 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
     fake.declineCard(cardId, "INSUFFICIENT_FUNDS");
-    const first = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" });
-    const second = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-2" });
+    const first = await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false });
+    const second = await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-2", customerInitiated: false });
     expect(first).toMatchObject({ outcome: "declined", code: "INSUFFICIENT_FUNDS" });
     expect(second).toMatchObject({ outcome: "declined", code: "INSUFFICIENT_FUNDS" });
   });
@@ -274,7 +277,7 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
     const declining = await customerWithCard(fake, 1);
     const paying = await customerWithCard(fake, 2);
     fake.declineCard(declining.cardId, "INSUFFICIENT_FUNDS");
-    const result = await fake.charge({ ...paying, amountCents: 5000, idempotencyKey: "charge-1" });
+    const result = await fake.charge({ customerId: paying.customerId, sourceId: paying.cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false });
     expect(result.outcome).toBe("paid");
   });
 
@@ -302,9 +305,9 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
     fake.failNext(new Error("outage"));
-    await rejectionOf(fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" }));
+    await rejectionOf(fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false }));
     expect(fake.charges).toHaveLength(0);
-    const result = await fake.charge({ customerId, cardId, amountCents: 5100, idempotencyKey: "charge-1" });
+    const result = await fake.charge({ customerId, sourceId: cardId, amountCents: 5100, idempotencyKey: "charge-1", customerInitiated: false });
     expect(result.outcome).toBe("paid");
     expect(fake.charges).toHaveLength(1);
   });
@@ -312,8 +315,8 @@ describe("AC17 (issue 54) — FakePayments' test handles", () => {
   it("AC17: a charge rejected for its input stores no key", async () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
-    await rejectionOf(fake.charge({ customerId, cardId, amountCents: 0, idempotencyKey: "charge-1" }));
-    const result = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1" });
+    await rejectionOf(fake.charge({ customerId, sourceId: cardId, amountCents: 0, idempotencyKey: "charge-1", customerInitiated: false }));
+    const result = await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", customerInitiated: false });
     expect(result.outcome).toBe("paid");
   });
 });
@@ -348,7 +351,7 @@ describe("issue 56 — FakePayments' new methods", () => {
   it("AC10: findPaymentByReference ignores since, because FakeCharge has no time", async () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
-    const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1" });
+    const paid = await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1", customerInitiated: false });
     const found = await fake.findPaymentByReference({ referenceId: "ledger-1", since: new Date("2099-01-01T00:00:00.000Z") });
     expect(found).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
   });
@@ -356,8 +359,8 @@ describe("issue 56 — FakePayments' new methods", () => {
   it("AC10: of a declined attempt and a paid one under one referenceId, it finds the paid one", async () => {
     const fake = new FakePayments();
     const { customerId, cardId } = await customerWithCard(fake);
-    await fake.charge({ customerId, cardId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined, amountCents: 5000, idempotencyKey: "ledger-1:1", referenceId: "ledger-1" });
-    const paid = await fake.charge({ customerId, cardId, amountCents: 5000, idempotencyKey: "ledger-1:2", referenceId: "ledger-1" });
+    await fake.charge({ customerId, sourceId: SQUARE_SANDBOX_VALUES.cardOnFileDeclined, amountCents: 5000, idempotencyKey: "ledger-1:1", referenceId: "ledger-1", customerInitiated: false });
+    const paid = await fake.charge({ customerId, sourceId: cardId, amountCents: 5000, idempotencyKey: "ledger-1:2", referenceId: "ledger-1", customerInitiated: false });
     expect(await fake.findPaymentByReference({ referenceId: "ledger-1", since: CREATED })).toEqual({ paymentId: paid.paymentId, amountCents: 5000 });
   });
 
@@ -401,5 +404,71 @@ describe("issue 156 — FakePayments' setCustomerEmail", () => {
     const customer = fake.addCustomer({ email: "ada@example.com", createdAt: CREATED, updatedAt: UPDATED });
     await fake.setCustomerEmail({ customerId: customer.id, email: "ada.new@example.com" });
     expect(fake.customers[0]?.email).toBe("ada.new@example.com");
+  });
+});
+
+// Issue 254: the token, as the sandbox treats one, and the card saved from a paid payment. A token's being single-use is not
+// modelled.
+describe("issue 254 — FakePayments charges a token, and saves a card from its payment", () => {
+  const TOKEN = "cnon:any-token";
+  const customerOf = (fake: FakePayments, email = "ada@example.com") => fake.addCustomer({ email, createdAt: CREATED, updatedAt: UPDATED }).id;
+  const pay = (fake: FakePayments, customerId: string, over: { sourceId?: string; customerInitiated?: boolean; idempotencyKey?: string } = {}) =>
+    fake.charge({ customerId, sourceId: TOKEN, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1", customerInitiated: true, ...over });
+
+  it("AC16: any cnon: token pays, and charges holds it with its source and who started it", async () => {
+    const fake = new FakePayments();
+    const customerId = customerOf(fake);
+    const result = await pay(fake, customerId);
+    expect(result).toEqual({ outcome: "paid", paymentId: expect.any(String) });
+    expect(fake.charges).toEqual([{ customerId, sourceId: TOKEN, amountCents: 5000, idempotencyKey: "charge-1", referenceId: "ledger-1", customerInitiated: true, result }]);
+    expect(fake.cards).toEqual([]);
+  });
+
+  it("AC16: Square's declining nonce declines with GENERIC_DECLINE, and a token declineCard set declines with its code", async () => {
+    const fake = new FakePayments();
+    const customerId = customerOf(fake);
+    fake.declineCard(TOKEN, "INSUFFICIENT_FUNDS");
+    expect(await pay(fake, customerId, { sourceId: SQUARE_SANDBOX_VALUES.cardNonceDeclined })).toMatchObject({ outcome: "declined", code: "GENERIC_DECLINE" });
+    expect(await pay(fake, customerId, { idempotencyKey: "charge-2" })).toMatchObject({ outcome: "declined", code: "INSUFFICIENT_FUNDS" });
+  });
+
+  it("AC16: a charge on a source that is no token and no card of the customer's rejects with NOT_FOUND and records no charge", async () => {
+    const fake = new FakePayments();
+    const error = await rejectionOf(pay(fake, customerOf(fake), { sourceId: "PAYMENT_404" }));
+    expect(error).toBeInstanceOf(PaymentsError);
+    expect(error).toMatchObject({ code: "NOT_FOUND" });
+    expect(fake.charges).toEqual([]);
+  });
+
+  it("AC16: a key already used with another customerInitiated rejects with IdempotencyKeyReusedError", async () => {
+    const fake = new FakePayments();
+    const customerId = customerOf(fake);
+    await pay(fake, customerId);
+    expect(await rejectionOf(pay(fake, customerId, { customerInitiated: false }))).toBeInstanceOf(IdempotencyKeyReusedError);
+    expect(fake.charges).toHaveLength(1);
+  });
+
+  it("AC16: saveCard from a paid token payment's id makes a card the payment's customer can be charged on", async () => {
+    const fake = new FakePayments();
+    const customerId = customerOf(fake);
+    const paid = await pay(fake, customerId);
+    const card = await fake.saveCard({ customerId, sourceId: paid.paymentId ?? "no payment", idempotencyKey: "card-1" });
+    expect(fake.cards).toEqual([card]);
+    expect((await pay(fake, customerId, { sourceId: card.id, idempotencyKey: "charge-2", customerInitiated: false })).outcome).toBe("paid");
+  });
+
+  it("AC16: saveCard from an unknown source, a declined payment's, or a card-on-file payment's id rejects with NOT_FOUND and saves nothing", async () => {
+    const fake = new FakePayments();
+    const customerId = customerOf(fake);
+    const onFile = await pay(fake, customerId, { sourceId: SQUARE_SANDBOX_VALUES.cardOnFileOk, customerInitiated: false });
+    fake.declineCard("cnon:declines", "GENERIC_DECLINE");
+    const declined = await pay(fake, customerId, { sourceId: "cnon:declines", idempotencyKey: "charge-2" });
+    expect([onFile.outcome, declined.outcome]).toEqual(["paid", "declined"]);
+    for (const [at, sourceId] of ["not-a-source", "PAYMENT_404", onFile.paymentId ?? "no payment", declined.paymentId ?? "no payment"].entries()) {
+      const error = await rejectionOf(fake.saveCard({ customerId, sourceId, idempotencyKey: `card-${at}` }));
+      expect(error).toBeInstanceOf(PaymentsError);
+      expect(error).toMatchObject({ code: "NOT_FOUND" });
+    }
+    expect(fake.cards).toEqual([]);
   });
 });

@@ -30,12 +30,17 @@ export interface PaymentsPort {
     referenceId?: string;
   }): Promise<Customer>;
   saveCard(input: { customerId: string; sourceId: string; idempotencyKey: string; verificationToken?: string }): Promise<Card>;
+  /**
+   * `sourceId` is a card token or a saved card's id: Square takes both in the same field. `customerInitiated` says
+   * who started it: the member present (a token) or the seller (the run, a saved card).
+   */
   charge(input: {
     customerId: string;
-    cardId: string;
+    sourceId: string;
     amountCents: number;
     idempotencyKey: string;
     referenceId?: string;
+    customerInitiated: boolean;
   }): Promise<ChargeResult>;
   setCustomerReference(input: { customerId: string; referenceId: string }): Promise<void>;
   /** Issue 156: the customer's email, Haul's match key, set to `email`. */
@@ -74,12 +79,48 @@ export function isCardRefusal(error: unknown): error is PaymentsError {
   return error instanceof PaymentsError && error.category === "PAYMENT_METHOD_ERROR";
 }
 
+const DEAD_TOKEN_CODES = ["CARD_TOKEN_EXPIRED", "CARD_TOKEN_USED", "SOURCE_USED", "SOURCE_EXPIRED"];
+
+/** Whether `error` is Square saying the card token is no longer usable. Square gives these codes no category, so the code alone decides. */
+export function isDeadToken(error: unknown): error is PaymentsError {
+  return error instanceof PaymentsError && DEAD_TOKEN_CODES.includes(error.code);
+}
+
+/**
+ * Whether `error` is Square refusing a charge outright, as against an answer that never came and may have charged: a dead
+ * token, or an `INVALID_REQUEST_ERROR` with a client status that is not a conflict or a rate limit. A key already used
+ * (`IdempotencyKeyReusedError`) is never one: the first charge under it may have been taken.
+ */
+export function isRefusedCharge(error: unknown): error is PaymentsError {
+  if (isDeadToken(error)) return true;
+  return (
+    error instanceof PaymentsError &&
+    !(error instanceof IdempotencyKeyReusedError) &&
+    error.category === "INVALID_REQUEST_ERROR" &&
+    error.status >= 400 &&
+    error.status <= 499 &&
+    error.status !== 409 &&
+    error.status !== 429
+  );
+}
+
 export const IDEMPOTENCY_KEY_MAX = 45;
 export const REFERENCE_ID_MAX = 40;
 
 function requireText(field: string, value: unknown): void {
   if (typeof value !== "string" || value === "") {
     throw new RangeError(`${field} must be a non-empty string`);
+  }
+}
+
+/**
+ * A browser's card token for `sourceId`. Square's CreatePayment reads `CASH` and `EXTERNAL` as money received
+ * outside Square, so a member's request must never carry either: they are refused as a blank one is.
+ */
+export function requireCardToken(value: unknown): void {
+  requireText("sourceId", value);
+  if (value === "CASH" || value === "EXTERNAL") {
+    throw new RangeError("sourceId must be a card token");
   }
 }
 
@@ -138,7 +179,7 @@ export function checkPaymentsInput(method: keyof PaymentsPort, input: object): v
       break;
     case "charge":
       requireText("customerId", fields.customerId);
-      requireText("cardId", fields.cardId);
+      requireText("sourceId", fields.sourceId);
       requirePositiveCents(fields.amountCents);
       requireKey(fields.idempotencyKey);
       if (fields.referenceId !== undefined) requireReference(fields.referenceId);
