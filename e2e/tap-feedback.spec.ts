@@ -211,7 +211,7 @@ test.describe("AC4 — the page is locked while a form is being sent", () => {
 
   test("AC4: below 1024px, closing the drawer while its Sign out is being sent leaves the page locked", async ({ page, request }, testInfo) => {
     test.skip(testInfo.project.name !== "mobile", "the drawer is the phone width's");
-    await signIn(page, request, LENNY);
+    await signIn(page, request, LENNY, "/admin");
     await page.goto("/admin");
     const drawer = page.locator("details[data-menu-drawer]");
     await headerMenu(page).click();
@@ -503,7 +503,7 @@ test.describe("AC9 — the forms that load a whole page", () => {
 
   test("AC9: the weekly lists' Show gets the ring and the page locks, and the week picked opens", async ({ page, request }) => {
     await runSeed("week-lists", e2eDatabaseUrl());
-    await signIn(page, request, LENNY);
+    await signIn(page, request, LENNY, "/admin");
     await page.goto("/admin/lists");
     const form = 'form[action="/admin/lists"]';
     const select = page.locator(`${form} select[name="week"]`);
@@ -575,7 +575,7 @@ test.describe("AC10 — a tapped link", () => {
 
   test("AC10: TextLink: while its page is loading its label is busy and shows the ring, and it keeps its name", async ({ page, request }) => {
     await runSeed("subscribers", e2eDatabaseUrl());
-    await signIn(page, request, LENNY);
+    await signIn(page, request, LENNY, "/admin");
     await page.goto("/admin");
     const link = page.locator('main a[href^="/admin/members/"]').filter({ visible: true }).first();
     const name = await nameOf(link);
@@ -623,7 +623,7 @@ test("AC11: when a second link is tapped while the first's page is loading, the 
 });
 
 test("AC13: with an expired session, tapping a CSV button opens the sign-in page", async ({ page, request }) => {
-  await signIn(page, request, LENNY);
+  await signIn(page, request, LENNY, "/admin");
   await page.goto("/admin");
   const csv = page.locator('a[href="/admin/members.csv"]');
   await expect(csv).toBeVisible();

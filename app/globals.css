@@ -205,14 +205,12 @@
   /*
    * A menu entry (issue 159): a row of the signed-in header's bar or drawer, a text row in ink on no fill with no
    * border, 44px tall. The page showing is bold teal on the page's tint. Sign out is the one that is a <button>, and
-   * reads muted. The Admin group's summary is the same row.
+   * reads muted.
    */
-  .btn-menu,
-  .menu-group-summary {
+  .btn-menu {
     @apply inline-flex min-h-touch items-center justify-start gap-1 rounded-md px-3 text-left text-body text-ink hover:bg-surface-alt disabled:cursor-not-allowed disabled:opacity-50;
   }
-  .btn-menu[aria-current="page"],
-  .menu-group-summary[data-active] {
+  .btn-menu[aria-current="page"] {
     @apply bg-surface-alt text-body-strong text-teal;
   }
   /* Sign out reads muted; a form row inside a row's More (issue 220) is drawn like the link rows beside it. Sign out keeps its muted look only while it stays outside any `data-menu-group`. */
@@ -225,30 +223,16 @@
     @apply flex items-center gap-1;
   }
 
-  /*
-   * The Admin group: its summary is a menu row, with a chevron after the label in place of the disclosure triangle.
-   * A short divider rule before it sets the admin's menu off from the member links.
-   */
-  .menu-group {
-    @apply relative ml-1 pl-2;
-  }
-  .menu-group::before {
-    content: "";
-    @apply absolute top-1/2 left-0 h-6 w-px -translate-y-1/2 bg-divider;
-  }
-  /* The chevron is shared with a row's More (issue 220), a secondary button that carries .menu-chevron beside .btn-secondary. */
-  .menu-group-summary,
+  /* A row's More (issue 220): a secondary button that carries .menu-chevron beside .btn-secondary, a chevron after the label in place of the disclosure triangle. */
   .menu-chevron {
     list-style: none;
   }
   .menu-chevron {
     @apply gap-1;
   }
-  .menu-group-summary::-webkit-details-marker,
   .menu-chevron::-webkit-details-marker {
     display: none;
   }
-  .menu-group-summary::after,
   .menu-chevron::after {
     content: "";
     @apply size-4 flex-none bg-current;
@@ -396,7 +380,7 @@
   }
   /*
    * Issue 240: a select's arrow, drawn here so the select's markup does not change. The browser pins its own about 6px from
-   * the right border whatever the padding; this is the chevron the Admin group and More use (the path of `.menu-chevron::after`),
+   * the right border whatever the padding; this is the chevron a row's More uses (the path of `.menu-chevron::after`),
    * 16px, in ink (`--color-ink`, written out: a data URI cannot read a custom property). The drawn line ends 12px from the border,
    * as the text starts 12px from the left one, so the box is moved right by the space the path leaves on its right (5.125 of its
    * 24 units); the text stops about 12px before the line. The option list stays the browser's. Every width.

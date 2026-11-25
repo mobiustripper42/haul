@@ -1,9 +1,7 @@
 import type { MessageKey } from "@core/i18n.js";
 import { requireSupperClub } from "@core/products.js";
 import { Button } from "../components/ui/button";
-import { Eyebrow } from "../components/ui/eyebrow";
 import { MenuDrawer } from "../components/ui/menu-drawer";
-import { MenuGroup } from "../components/ui/menu-group";
 import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
 import { Wordmark } from "../components/ui/wordmark";
@@ -41,7 +39,7 @@ const MEMBER_LINKS: readonly NavLink[] = [
   { href: ACCOUNT_HISTORY_PATH, label: "header.history" },
 ];
 
-/** The admin links in order, for admins only: in the bar's Admin group, and openly at the top of the drawer under an Admin heading, set off from the member links by a rule. */
+/** The admin links in order: the Admin interface's links, in the bar and in the drawer (issue 266). */
 const ADMIN_LINKS: readonly NavLink[] = [
   { current: "admin-members", href: ADMIN_PATH, label: "admin.nav.members" },
   { current: "admin-menus", href: ADMIN_MENUS_PATH, label: "admin.nav.menus" },
@@ -49,10 +47,10 @@ const ADMIN_LINKS: readonly NavLink[] = [
   { current: "admin-lists", href: ADMIN_LISTS_PATH, label: "admin.nav.lists" },
 ];
 
-/** The Sign out form: a menu entry, the one that is a `<button>`, so it reads muted (issue 159). In the bar it is set apart from the links; at the drawer's foot it is a full row. */
-function SignOutButton({ label, inBar }: { label: string; inBar?: true }) {
+/** The Sign out form: a menu entry, the one that is a `<button>`, so it reads muted (issue 159). In the bar it is set apart from the links, by `apart`, unless the switch before it does that; at the drawer's foot it is a full row. */
+function SignOutButton({ label, inBar, apart }: { label: string; inBar?: true; apart?: true }) {
   return (
-    <form action={signOut} {...(inBar ? { className: "ml-2" } : {})}>
+    <form action={signOut} {...(inBar && apart ? { className: "ml-2" } : {})}>
       <Button kind="menu" nowrap type="submit" {...(inBar ? {} : { full: true })}>
         {label}
       </Button>
@@ -60,12 +58,24 @@ function SignOutButton({ label, inBar }: { label: string; inBar?: true }) {
   );
 }
 
+/** The switch between the two interfaces an admin has: a secondary link, drawn once and used in the bar and at the drawer's foot. In the bar it carries the `ml-2` that sets Sign out apart, and Sign out follows at the bar's own gap. Never marked as the page showing (issue 266). */
+function SwitchLink({ href, label, inBar }: { href: string; label: string; inBar?: true }) {
+  const button = (
+    <Button kind="secondary" nowrap href={href} {...(inBar ? {} : { full: true })}>
+      {label}
+    </Button>
+  );
+  return inBar ? <div className="ml-2">{button}</div> : button;
+}
+
 /**
  * The header every public page opens with: the farm's name. Signed in, the header reads the session
  * itself and is one bar (issue 159): at 1024px and wider the member links (Your account, Upcoming weeks,
- * History, and, for a member with no active subscription, Supper Club and This week's menu before them, issue 260), for an admin an Admin group (Members, Menus, Weeks, Weekly lists), and Sign out; below it all of
- * it is in a drawer from the right, with Sign out at its foot. `current` names the page showing: its link is marked
- * in both, and on an admin page so is the Admin group. Signed out, `account` adds
+ * History, and, for a member with no active subscription, Supper Club and This week's menu before them, issue 260), and Sign out; below it all of
+ * it is in a drawer from the right, with Sign out at its foot. An admin sees one interface at a time (issue 266): on a page whose
+ * `current` starts `admin-` the Admin interface, Members, Menus, Weeks and Weekly lists, and on every other page the member links,
+ * each followed by a switch to the other interface, right before Sign out. `current` names the page showing: its link is marked
+ * in both. Signed out, `account` adds
  * a link after the name: "sign-in" a secondary Sign in to the Supper Club's sign-in pane,
  * "sign-in-current" the same link marked as the page showing, "none" nothing. `wideOnly` hides a Sign in
  * at widths below `lg`, for a pane page whose card already is the sign-in. Called inline,
@@ -93,44 +103,42 @@ export async function SiteHeader({
       </Button>
     ));
   const admin = member?.role === "admin";
-  const wordmark = <Wordmark name={t("brand.name")} byline={t("brand.byline")} />;
+  // One value decides the interface: an admin on a page that marks itself an admin page (issue 266).
+  const adminInterface = member?.role === "admin" && current?.startsWith("admin-") === true;
+  const wordmark = <Wordmark name={t("brand.name")} byline={t("brand.byline")} href={adminInterface ? ADMIN_PATH : "/"} />;
   if (member) {
     const repo = getRepository();
     const product = await requireSupperClub(repo);
     // The read the Supper Club page uses to decide who is already a member, so the links show exactly when that page lets them join (issue 260).
     const active = await repo.findActiveSubscription(member.id, product.id);
     const memberLinks = active ? MEMBER_LINKS : [...NO_SUBSCRIPTION_LINKS, ...MEMBER_LINKS];
+    const pageLinks = adminInterface ? ADMIN_LINKS : memberLinks;
+    // The switch crosses to the other interface: from the Admin one to Your account, from the Member one to Members.
+    const switchTo = adminInterface ? { href: ACCOUNT_PATH, label: t("header.yourAccount") } : { href: ADMIN_PATH, label: t("header.admin") };
     return (
       <SiteBar as="header" wide>
         {wordmark}
         <div className="menu-bar ml-auto">
           <nav aria-label={t("header.account")} className="flex items-center gap-1">
-            {links(memberLinks, false)}
-            {admin ? (
-              <MenuGroup label={t("header.admin")} active={current?.startsWith("admin-") === true}>
-                {links(ADMIN_LINKS, true)}
-              </MenuGroup>
-            ) : null}
+            {links(pageLinks, false)}
           </nav>
-          <SignOutButton label={t("home.signOut")} inBar />
+          {admin ? <SwitchLink {...switchTo} inBar /> : null}
+          <SignOutButton label={t("home.signOut")} inBar apart={admin ? undefined : true} />
         </div>
         <div className="menu-drawer-slot ml-auto">
           <MenuDrawer
             label={t("header.menu")}
             closeLabel={t("header.closeMenu")}
             heading={<span className="font-display text-wordmark text-teal uppercase">{t("brand.name")}</span>}
-            foot={<SignOutButton label={t("home.signOut")} />}
+            foot={
+              <>
+                {admin ? <SwitchLink {...switchTo} /> : null}
+                <SignOutButton label={t("home.signOut")} />
+              </>
+            }
           >
             <nav aria-label={t("header.account")} className="flex flex-col gap-1">
-              {admin ? (
-                <div className="mb-1 flex flex-col gap-1 border-b border-divider pb-2">
-                  <div className="px-3">
-                    <Eyebrow tone="muted">{t("header.admin")}</Eyebrow>
-                  </div>
-                  {links(ADMIN_LINKS, true)}
-                </div>
-              ) : null}
-              {links(memberLinks, true)}
+              {links(pageLinks, true)}
             </nav>
           </MenuDrawer>
         </div>

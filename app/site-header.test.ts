@@ -2,20 +2,20 @@
 // as the tree it returns, and as markup for the order of its words, with `next/headers` faked.
 // Issue 77, AC4 and AC5: the link goes to the sign-in pane and can be marked current.
 // Issue 97, AC3–AC6: the header reads the session itself. Signed out it is as each page sets it with
-// `account`; signed in it shows the account links and Sign out (and the Admin group for admins), whatever `account` says.
+// `account`; signed in it shows the account links and Sign out (and, for admins, issue 266's switch), whatever `account` says.
 // Issue 159 (which replaces issue 155's row and Menu): signed in, the links are drawn twice from one list: in the bar,
 // shown at 1024px and wider, and in the MenuDrawer, shown below it. "The bar" is the tree with the MenuDrawer taken out;
-// "the drawer" is the MenuDrawer's `children` and its `foot`, which the header builds. The admin links sit in the bar's
-// MenuGroup, and in the drawer openly under an Eyebrow. Which one a width shows is measured in the browser
-// (e2e/account-nav.spec.ts); `aria-current` is Button's (components/ui/button.test.ts) and `data-active` MenuGroup's
-// (components/ui/menu-group.test.ts), so here it is what the header hands them.
+// "the drawer" is the MenuDrawer's `children` and its `foot`, which the header builds. Which one a width shows is measured
+// in the browser (e2e/account-nav.spec.ts); `aria-current` is Button's (components/ui/button.test.ts), so here it is what
+// the header hands it. Issue 266: an admin sees one interface at a time, the Admin interface on a page whose `current`
+// starts `admin-` and the Member interface on every other, each with a switch to the other; its tests are at the end.
 // Issue 187, AC3: the header has no language switch, signed in or out, on any page. The session is faked as a
 // member or an admin; who counts as signed in is app/session.test.ts's. The wide-only wrapper for issue 77's
 // AC11 ("below `lg`") is measured in the browser, e2e/supper-club.spec.ts.
 // Issue 260: a signed-in member is one with an active, paid subscription unless a test names another; the links of one with
 // none are the AC1 to AC3 (issue 260) tests at the end. Which subscription is active is findActiveSubscription's
 // (src/adapters/signup-contract.ts).
-import { cloneElement, createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
+import { Children, cloneElement, createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
@@ -30,6 +30,7 @@ import { MenuDrawer } from "../components/ui/menu-drawer";
 import { MenuGroup } from "../components/ui/menu-group";
 import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
+import { Wordmark } from "../components/ui/wordmark";
 import { addSupperClub } from "./admin/subscribers-fixture";
 import { emptyRequest } from "./next-headers-fake";
 import { ACCOUNT_PATH, ADMIN_LISTS_PATH, ADMIN_MENUS_PATH, ADMIN_PATH, ADMIN_WEEKS_PATH } from "./paths";
@@ -158,22 +159,6 @@ type Buttons = ReactElement<Record<string, unknown>>[];
 const linkTo = (buttons: Buttons, href: string) => buttons.find((button) => button.props.href === href);
 /** The buttons in order, each as its destination, or its type for one that submits. */
 const sequence = (buttons: Buttons) => buttons.map((button) => button.props.href ?? button.props.type);
-/** The Buttons inside a MenuGroup, in order. */
-const inGroup = (group: ReactElement<Record<string, unknown>> | undefined): Buttons => findAll(group?.props.children as ReactNode, Button);
-
-/** Every element in document order. */
-const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] => {
-  if (Array.isArray(node)) return node.flatMap((child) => elementsOf(child as ReactNode));
-  if (!isValidElement<Record<string, unknown>>(node)) return [];
-  return [node, ...elementsOf(node.props.children as ReactNode)];
-};
-/** In document order: each Button as its destination (or type), each Eyebrow as "heading", each MenuGroup as "group". */
-const marks = (node: ReactNode): unknown[] =>
-  elementsOf(node)
-    .map((element) =>
-      element.type === Button ? (element.props.href ?? element.props.type) : element.type === Eyebrow ? "heading" : element.type === MenuGroup ? "group" : null,
-    )
-    .filter((mark) => mark !== null);
 
 describe("AC18 — SiteHeader, account none, is the header the sign-in screens had", () => {
   // Issue 245: the wordmark is drawn by Wordmark, a next/link, so its link is read in the markup, not the tree.
@@ -251,33 +236,29 @@ describe("AC5 (issue 97) — signed in as an admin", () => {
     session.member = { role: "admin" };
   });
 
-  it("AC5: after the account links the header shows the Admin group's links, then Sign out", async () => {
+  it("AC5: after the account links the header shows the switch to the admin's page, then Sign out, and no group", async () => {
     const { buttons, forms, groups } = await header("sign-in");
-    expect(sequence(buttons)).toEqual([...LINKS, ...ADMIN_LINKS, SIGN_OUT]);
-    expect(groups).toHaveLength(1);
+    expect(sequence(buttons)).toEqual([...LINKS, ADMIN_PATH, SIGN_OUT]);
+    expect(groups).toEqual([]);
     expect(forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
-  it("AC5: the Admin group holds menu links to Members, Menus, Weeks and Weekly lists, and is not active when `current` is not given", async () => {
-    const { buttons, groups } = await header("none");
-    expect(groups).toHaveLength(1);
-    const admin = inGroup(groups[0]);
-    expect(admin.map((button) => [button.props.kind, button.props.href])).toEqual(ADMIN_LINKS.map((href) => ["menu", href]));
-    expect(admin.filter((button) => button.props.current)).toEqual([]);
-    expect(groups[0]?.props.active).toBe(false);
-    expect(sequence(buttons.filter((button) => !admin.includes(button)))).toEqual([...LINKS, SIGN_OUT]);
+  it("AC5: on an admin page the bar holds menu links to Members, Menus, Weeks and Weekly lists, outside any group", async () => {
+    const { buttons, groups } = await header("none", "admin-menus");
+    expect(groups).toEqual([]);
+    expect(buttons.slice(0, ADMIN_LINKS.length).map((button) => [button.props.kind, button.props.href])).toEqual(ADMIN_LINKS.map((href) => ["menu", href]));
   });
 
-  it('AC5: with current "admin-members", the Admin group is active and Members is marked as the page showing', async () => {
+  it('AC5: with current "admin-members", Members is marked as the page showing, and no group is drawn', async () => {
     const { buttons, groups } = await header("none", "admin-members");
-    expect(groups.map((group) => group.props.active)).toEqual([true]);
-    expect(linkTo(buttons, ADMIN_PATH)?.props).toMatchObject({ href: ADMIN_PATH, current: true });
+    expect(groups).toEqual([]);
+    expect(linkTo(buttons, ADMIN_PATH)?.props).toMatchObject({ kind: "menu", href: ADMIN_PATH, current: true });
   });
 
-  it('AC6 (issue 97): with account "sign-in-current" the header still shows the Admin group, then Sign out', async () => {
+  it('AC6 (issue 97): with account "sign-in-current" the header still shows the account links, the switch, then Sign out', async () => {
     const { buttons, forms, groups } = await header("sign-in-current");
-    expect(sequence(buttons)).toEqual([...LINKS, ...ADMIN_LINKS, SIGN_OUT]);
-    expect(groups).toHaveLength(1);
+    expect(sequence(buttons)).toEqual([...LINKS, ADMIN_PATH, SIGN_OUT]);
+    expect(groups).toEqual([]);
     expect(forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 });
@@ -294,10 +275,10 @@ describe("AC5 (issue 136) — the Your account link", () => {
     expect(linkTo(buttons, ACCOUNT_PATH)?.props.current).toBeFalsy();
   });
 
-  it("AC5: signed in as an admin, the buttons are Your account, Upcoming weeks, History, Members, Menus, Weeks, Weekly lists, Sign out, in that order", async () => {
+  it("AC5: signed in as an admin, the buttons are Your account, Upcoming weeks, History, the switch to the admin's page, Sign out, in that order", async () => {
     session.member = { role: "admin" };
     const { buttons } = await header("none");
-    expect(sequence(buttons)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, ADMIN_PATH, ADMIN_MENUS_PATH, ADMIN_WEEKS_PATH, ADMIN_LISTS_PATH, SIGN_OUT]);
+    expect(sequence(buttons)).toEqual([ACCOUNT_PATH, WEEKS_PATH, HISTORY_PATH, ADMIN_PATH, SIGN_OUT]);
   });
 
   it.each(["member", "admin"] as const)('AC5: signed in as %s, with current "account", Your account is marked as the page showing', async (role) => {
@@ -305,12 +286,11 @@ describe("AC5 (issue 136) — the Your account link", () => {
     expect(linkTo((await header("none", "account")).buttons, ACCOUNT_PATH)?.props).toMatchObject({ href: ACCOUNT_PATH, current: true });
   });
 
-  it('AC5: with current "account", no admin link is marked and the Admin group is not active; with current "admin-members", Your account is not marked', async () => {
+  it('AC5: with current "account", the switch to the admin\'s page is not marked; with current "admin-members", the switch to Your account is not marked', async () => {
     session.member = { role: "admin" };
-    const onAccount = await header("none", "account");
-    expect(onAccount.groups).toHaveLength(1);
-    expect(inGroup(onAccount.groups[0]).filter((button) => button.props.current)).toEqual([]);
-    expect(onAccount.groups[0]?.props.active).toBe(false);
+    const onAccount = (await header("none", "account")).buttons;
+    expect(linkTo(onAccount, ADMIN_PATH)).toBeDefined();
+    expect(linkTo(onAccount, ADMIN_PATH)?.props.current).toBeFalsy();
     const onAdmin = (await header("none", "admin-members")).buttons;
     expect(linkTo(onAdmin, ACCOUNT_PATH)).toBeDefined();
     expect(linkTo(onAdmin, ACCOUNT_PATH)?.props.current).toBeFalsy();
@@ -329,27 +309,26 @@ describe("AC9 (issue 155) — the account nav", () => {
   });
 
   it.each([
-    ["member", [...LINKS]],
-    ["admin", [...ADMIN_LINKS, ...LINKS]],
-  ] as const)("AC9: signed in as %s, the header has one drawer holding the same links, an admin's admin links first, then Sign out at its foot", async (role, expected) => {
+    ["member", [SIGN_OUT]],
+    ["admin", [ADMIN_PATH, SIGN_OUT]],
+  ] as const)("AC9: signed in as %s, the header has one drawer holding the same links, then at its foot, for an admin, the switch, then Sign out", async (role, foot) => {
     session.member = { role };
     const { drawers, drawer } = await header("none");
     expect(drawers).toHaveLength(1);
-    expect(sequence(drawer.links.buttons)).toEqual(expected);
-    expect(sequence(drawer.foot.buttons)).toEqual([SIGN_OUT]);
+    expect(sequence(drawer.links.buttons)).toEqual(LINKS);
+    expect(sequence(drawer.foot.buttons)).toEqual(foot);
     expect(drawer.foot.forms.map((form) => form.props.action)).toEqual([signOut]);
   });
 
-  it("AC9: the drawer's links are the bar's: the same kind and destination, order aside", async () => {
+  it.each([undefined, "admin-members"] as const)("AC9: signed in as an admin, with current %s, the drawer's links are the bar's: the same kind and destination, order aside", async (current) => {
     session.member = { role: "admin" };
-    const { buttons, drawer } = await header("none");
+    const { buttons, drawer } = await header("none", current);
     const links = (found: Buttons) =>
       found
         .filter((button) => button.props.href !== undefined)
         .map(({ props }) => [props.kind, props.href])
         .sort(([, a], [, b]) => String(a).localeCompare(String(b)));
     expect(links(drawer.buttons)).toEqual(links(buttons));
-    expect(links(drawer.buttons)).toHaveLength(7);
   });
 
   it.each([
@@ -450,13 +429,17 @@ describe("AC2 (issue 159) — an admin's header", () => {
     session.member = { role: "admin" };
   });
 
-  it.each([undefined, "account", "admin-members", "admin-lists"] as const)(
-    "AC2: with current %s, the bar holds the account links, then one Admin group of Members, Menus, Weeks, Weekly lists in that order, then the Sign out form",
-    async (current) => {
+  it.each([
+    [undefined, [...LINKS, ADMIN_PATH]],
+    ["account", [...LINKS, ADMIN_PATH]],
+    ["admin-members", [...ADMIN_LINKS, ACCOUNT_PATH]],
+    ["admin-lists", [...ADMIN_LINKS, ACCOUNT_PATH]],
+  ] as const)(
+    "AC2: with current %s, the bar holds the page's interface's links, then the switch to the other, then the Sign out form, and no group",
+    async (current, expected) => {
       const { buttons, forms, groups } = await header("none", current);
-      expect(sequence(buttons)).toEqual([...LINKS, ...ADMIN_LINKS, SIGN_OUT]);
-      expect(groups).toHaveLength(1);
-      expect(sequence(inGroup(groups[0]))).toEqual(ADMIN_LINKS);
+      expect(sequence(buttons)).toEqual([...expected, SIGN_OUT]);
+      expect(groups).toEqual([]);
       expect(forms.map((form) => form.props.action)).toEqual([signOut]);
     },
   );
@@ -478,30 +461,15 @@ describe("AC3 (issue 159) — the page showing is marked", () => {
       expect(found.filter((button) => button.props.current).map((button) => button.props.href)).toEqual([href]);
     }
   });
-
-  it.each([
-    [undefined, false],
-    ["account", false],
-    ["weeks", false],
-    ["admin-members", true],
-    ["admin-menus", true],
-    ["admin-weeks", true],
-    ["admin-lists", true],
-  ] as const)("AC3: with current %s, the Admin group's active is %s", async (current, active) => {
-    const { groups } = await header("none", current);
-    expect(groups.map((group) => group.props.active)).toEqual([active]);
-  });
 });
 
 describe("AC4 (issue 159) — the drawer", () => {
-  it.each([
-    ["member", [...LINKS]],
-    ["admin", ["heading", ...ADMIN_LINKS, ...LINKS]],
-  ] as const)("AC4: signed in as %s, the drawer lists, for an admin, an Admin heading and the admin links first, openly, then the member links, with no form among them", async (role, expected) => {
+  it.each(["member", "admin"] as const)("AC4: signed in as %s, the drawer lists the member links openly, with no heading and no form among them", async (role) => {
     session.member = { role };
     const { drawers, drawer } = await header("none");
     expect(drawers).toHaveLength(1);
-    expect(marks(drawer.links.node)).toEqual(expected);
+    expect(sequence(drawer.links.buttons)).toEqual(LINKS);
+    expect(findAll(drawer.links.node, Eyebrow)).toEqual([]);
     expect(findAll(drawer.links.node, "details")).toEqual([]);
     expect(drawer.links.forms).toEqual([]);
   });
@@ -554,22 +522,23 @@ describe("issue 260 — the header links of a member with no active subscription
     ["a member who never joined", "member", neverJoined],
     ["a cancelled member", "member", cancelled],
     ["an admin who never joined", "admin", neverJoined],
-  ] as const)("AC1: %s: the bar's member links are /supper-club, /menu, /account, /account/weeks and /account/weeks#history, in that order, each a menu link, then, for an admin, the Admin group, then Sign out", async (_who, role, who) => {
+  ] as const)("AC1: %s: the bar's member links are /supper-club, /menu, /account, /account/weeks and /account/weeks#history, in that order, each a menu link, then, for an admin, the switch to the admin's page, then Sign out", async (_who, role, who) => {
     session.member = { ...(await who()), role };
     const { buttons, groups } = await header("none");
-    expect(sequence(buttons)).toEqual([...FIVE, ...(role === "admin" ? ADMIN_LINKS : []), SIGN_OUT]);
+    expect(sequence(buttons)).toEqual([...FIVE, ...(role === "admin" ? [ADMIN_PATH] : []), SIGN_OUT]);
     expect(buttons.slice(0, FIVE.length).map((button) => button.props.kind)).toEqual(FIVE.map(() => "menu"));
-    expect(groups.map((group) => sequence(inGroup(group)))).toEqual(role === "admin" ? [ADMIN_LINKS] : []);
+    expect(groups).toEqual([]);
   });
 
   it.each([
-    ["a member who never joined", "member", neverJoined, FIVE],
-    ["a cancelled member", "member", cancelled, FIVE],
-    ["an admin who never joined", "admin", neverJoined, ["heading", ...ADMIN_LINKS, ...FIVE]],
-  ] as const)("AC1: %s: the drawer holds the same five links in the same order, as full menu rows, after an admin's Admin block", async (_who, role, who, expected) => {
+    ["a member who never joined", "member", neverJoined],
+    ["a cancelled member", "member", cancelled],
+    ["an admin who never joined", "admin", neverJoined],
+  ] as const)("AC1: %s: the drawer holds the same five links in the same order, as full menu rows, and no heading", async (_who, role, who) => {
     session.member = { ...(await who()), role };
     const { drawer } = await header("none");
-    expect(marks(drawer.links.node)).toEqual(expected);
+    expect(sequence(drawer.links.buttons)).toEqual(FIVE);
+    expect(findAll(drawer.links.node, Eyebrow)).toEqual([]);
     expect(drawer.links.buttons.map((button) => [button.props.kind, button.props.full])).toEqual(drawer.links.buttons.map(() => ["menu", true]));
   });
 
@@ -592,14 +561,197 @@ describe("issue 260 — the header links of a member with no active subscription
     ["menu", MENU],
   ] as const)('AC3: with current "%s", that link alone is marked as the page showing, in the bar and in the drawer', async (current, href) => {
     session.member = { ...(await neverJoined()), role: "admin" };
-    const { buttons, drawer, groups } = await header("sign-in", current);
+    const { buttons, drawer } = await header("sign-in", current);
     for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([href]);
-    expect(groups.map((group) => group.props.active)).toEqual([false]);
   });
 
   it("AC3: with no current page, a pane's page, no link is marked", async () => {
     session.member = { ...(await neverJoined()), role: "member" };
     const { buttons, drawer } = await header("sign-in");
     for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 266: an admin sees one interface at a time. The page's `current` decides: one starting `admin-` shows an admin the
+// Admin interface (the four admin links, then a switch to Your account); any other, or none, the Member interface (the
+// member links as issue 260 left them, then a switch to the admin's page). The switch is read by where it goes, never its
+// words (the `Proof` slot); in the bar it is the link just before Sign out, in the drawer the link at its foot.
+describe("issue 266 — an admin's two interfaces", () => {
+  const SUPPER_CLUB = "/supper-club";
+  const MENU = "/menu";
+  const FIVE = [SUPPER_CLUB, MENU, ...LINKS];
+  const ADMIN_MARKS = ["admin-members", "admin-menus", "admin-weeks", "admin-lists"] as const;
+  const MEMBER_MARKS = [undefined, "supper-club", "menu", "account", "weeks"] as const;
+  /** The member pages' links an admin page's bar must not hold. */
+  const MEMBER_PAGES = [WEEKS_PATH, HISTORY_PATH, SUPPER_CLUB, MENU];
+
+  /** An admin with no subscription: the widest Member interface. */
+  const adminWithoutSubscription = async () => {
+    session.member = { ...(await services.repo.createMember({ email: "lenny@example.com" })), role: "admin" };
+  };
+  const admin = () => {
+    session.member = { role: "admin" };
+  };
+  const marked = (found: Buttons) => found.filter((button) => button.props.current).map((button) => button.props.href);
+  /** The bar's switch: the button just before Sign out. */
+  const barSwitch = (buttons: Buttons) => buttons[buttons.length - 2];
+  /** The rows of the drawer's nav: every child it holds, null and false aside. */
+  const navRows = (node: ReactNode) => {
+    const navs = findAll(node, "nav");
+    expect(navs).toHaveLength(1);
+    return Children.toArray(navs[0]?.props.children as ReactNode) as ReactElement<Record<string, unknown>>[];
+  };
+  /** Where the farm's name goes: the one link the Wordmark the header draws renders. */
+  const wordmarkHref = (element: ReactNode) => {
+    const wordmarks = findAll(element, Wordmark);
+    expect(wordmarks).toHaveLength(1);
+    return attributesOf(renderToStaticMarkup(wordmarks[0] as ReactElement), "a").map((link) => link.href);
+  };
+
+  describe("AC1 — the Admin interface's bar", () => {
+    it.each(ADMIN_MARKS)("AC1: an admin, with current %s: the bar holds Members, Menus, Weeks, Weekly lists, then the switch to ACCOUNT_PATH, then the Sign out form", async (current) => {
+      admin();
+      const { buttons, forms } = await header("none", current);
+      expect(sequence(buttons)).toEqual([...ADMIN_LINKS, ACCOUNT_PATH, SIGN_OUT]);
+      expect(forms.map((form) => form.props.action)).toEqual([signOut]);
+    });
+
+    it.each(ADMIN_MARKS)("AC1: an admin, with current %s: the four admin links are menu Buttons, and the bar has no MenuGroup", async (current) => {
+      admin();
+      const { buttons, groups } = await header("none", current);
+      expect(buttons.slice(0, ADMIN_LINKS.length).map((button) => [button.props.kind, button.props.href])).toEqual(ADMIN_LINKS.map((href) => ["menu", href]));
+      expect(groups).toEqual([]);
+    });
+
+    it("AC1: an admin with no active subscription, on an admin page, has no link to a member page in the bar", async () => {
+      await adminWithoutSubscription();
+      const { buttons } = await header("none", "admin-members");
+      expect(sequence(buttons)).toEqual([...ADMIN_LINKS, ACCOUNT_PATH, SIGN_OUT]);
+      expect(buttons.filter((button) => MEMBER_PAGES.includes(String(button.props.href)))).toEqual([]);
+    });
+  });
+
+  describe("AC2 — the Member interface's bar, for an admin", () => {
+    it.each(MEMBER_MARKS)("AC2: an admin with an active subscription, with current %s: the bar holds the member links, then the switch to ADMIN_PATH, then the Sign out form, and no MenuGroup", async (current) => {
+      admin();
+      const { buttons, forms, groups } = await header("none", current);
+      expect(sequence(buttons)).toEqual([...LINKS, ADMIN_PATH, SIGN_OUT]);
+      expect(forms.map((form) => form.props.action)).toEqual([signOut]);
+      expect(groups).toEqual([]);
+    });
+
+    it.each(MEMBER_MARKS)("AC2: an admin with no active subscription, with current %s: the bar holds /supper-club and /menu first, then the member links, then the switch to ADMIN_PATH, then the Sign out form, and no MenuGroup", async (current) => {
+      await adminWithoutSubscription();
+      const { buttons, forms, groups } = await header("none", current);
+      expect(sequence(buttons)).toEqual([...FIVE, ADMIN_PATH, SIGN_OUT]);
+      expect(forms.map((form) => form.props.action)).toEqual([signOut]);
+      expect(groups).toEqual([]);
+    });
+  });
+
+  describe("AC3 — the page showing is marked, and the switch never is", () => {
+    it.each([
+      ["admin-members", ADMIN_PATH, ACCOUNT_PATH],
+      ["admin-menus", ADMIN_MENUS_PATH, ACCOUNT_PATH],
+      ["admin-weeks", ADMIN_WEEKS_PATH, ACCOUNT_PATH],
+      ["admin-lists", ADMIN_LISTS_PATH, ACCOUNT_PATH],
+      ["account", ACCOUNT_PATH, ADMIN_PATH],
+      ["weeks", WEEKS_PATH, ADMIN_PATH],
+      ["supper-club", SUPPER_CLUB, ADMIN_PATH],
+      ["menu", MENU, ADMIN_PATH],
+    ] as const)("AC3: an admin, with current %s: %s alone is marked, in the bar and in the drawer, and the switch to %s is not", async (current, href, switchTo) => {
+      await adminWithoutSubscription();
+      const { buttons, drawer } = await header("none", current);
+      for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([href]);
+      expect([barSwitch(buttons)?.props.href, Boolean(barSwitch(buttons)?.props.current)]).toEqual([switchTo, false]);
+      expect(drawer.foot.buttons.filter((button) => button.props.href !== undefined).map((button) => [button.props.href, Boolean(button.props.current)])).toEqual([[switchTo, false]]);
+    });
+
+    it("AC3: an admin, with no current page: no link is marked, in the bar or in the drawer", async () => {
+      await adminWithoutSubscription();
+      const { buttons, drawer } = await header("none");
+      expect(barSwitch(buttons)?.props.href).toBe(ADMIN_PATH);
+      for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([]);
+    });
+  });
+
+  describe("AC4 — the drawer", () => {
+    it.each([
+      ["admin-members", "an active subscription", ADMIN_LINKS],
+      ["admin-lists", "an active subscription", ADMIN_LINKS],
+      [undefined, "an active subscription", LINKS],
+      ["account", "an active subscription", LINKS],
+      ["admin-members", "no subscription", ADMIN_LINKS],
+      [undefined, "no subscription", FIVE],
+    ] as const)("AC4: an admin, with current %s and %s: the drawer's nav holds the bar's links in the same order, each a full menu Button, and nothing else", async (current, subscription, expected) => {
+      if (subscription === "no subscription") await adminWithoutSubscription();
+      else admin();
+      const { buttons, drawer } = await header("none", current);
+      const rows = navRows(drawer.links.node);
+      expect(rows.map((row) => row.type === Button)).toEqual(expected.map(() => true));
+      expect(rows.map((row) => [row.props.kind, row.props.href, row.props.full])).toEqual(expected.map((href) => ["menu", href, true]));
+      expect(sequence(buttons).slice(0, -2)).toEqual(sequence(rows));
+    });
+
+    it.each([
+      ["admin-members", ACCOUNT_PATH],
+      ["admin-weeks", ACCOUNT_PATH],
+      [undefined, ADMIN_PATH],
+      ["weeks", ADMIN_PATH],
+    ] as const)("AC4: an admin, with current %s: the drawer's foot holds the switch to %s, full width, then the Sign out form", async (current, switchTo) => {
+      admin();
+      const { drawer } = await header("none", current);
+      expect(sequence(drawer.foot.buttons)).toEqual([switchTo, SIGN_OUT]);
+      expect(drawer.foot.buttons[0]?.props.full).toBe(true);
+      expect(drawer.foot.forms.map((form) => form.props.action)).toEqual([signOut]);
+      expect(findAll(drawer.foot.forms[0], Button)).toEqual([drawer.foot.buttons[1]]);
+    });
+  });
+
+  describe("AC5 — a member who is not an admin, and nobody signed in", () => {
+    it.each([...ADMIN_MARKS, ...MEMBER_MARKS])("AC5: a member who is not an admin, with current %s: the member links, then Sign out, in the bar and the drawer, and no switch", async (current) => {
+      session.member = { role: "member" };
+      const { buttons, groups, drawer } = await header("none", current);
+      expect(sequence(buttons)).toEqual([...LINKS, SIGN_OUT]);
+      expect(groups).toEqual([]);
+      expect(sequence(drawer.links.buttons)).toEqual(LINKS);
+      expect(sequence(drawer.foot.buttons)).toEqual([SIGN_OUT]);
+    });
+
+    it("AC5: a member who is not an admin, with no active subscription and current admin-members: the five member links, then Sign out, in the bar and the drawer, and no switch", async () => {
+      session.member = { ...(await services.repo.createMember({ email: "grace@example.com" })), role: "member" };
+      const { buttons, drawer } = await header("none", "admin-members");
+      expect(sequence(buttons)).toEqual([...FIVE, SIGN_OUT]);
+      expect(sequence(drawer.links.buttons)).toEqual(FIVE);
+      expect(sequence(drawer.foot.buttons)).toEqual([SIGN_OUT]);
+    });
+
+    it.each(["sign-in", "none"] as const)('AC5: signed out, with account "%s" and current admin-members: the header is the signed-out one, with no drawer', async (account) => {
+      const { buttons, drawers } = await header(account, "admin-members");
+      expect(sequence(buttons)).toEqual(account === "sign-in" ? [SIGN_IN_PATH] : []);
+      expect(drawers).toEqual([]);
+    });
+  });
+
+  describe("AC6 — where the farm's name goes", () => {
+    it.each(ADMIN_MARKS)(`AC6: an admin, with current %s: the farm's name links to ${ADMIN_PATH}`, async (current) => {
+      admin();
+      expect(wordmarkHref((await header("none", current)).element)).toEqual([ADMIN_PATH]);
+    });
+
+    it.each(MEMBER_MARKS)("AC6: an admin, with current %s: the farm's name links to /", async (current) => {
+      admin();
+      expect(wordmarkHref((await header("none", current)).element)).toEqual(["/"]);
+    });
+
+    it.each(["admin-members", "account"] as const)("AC6: a member who is not an admin, with current %s: the farm's name links to /", async (current) => {
+      session.member = { role: "member" };
+      expect(wordmarkHref((await header("none", current)).element)).toEqual(["/"]);
+    });
+
+    it("AC6: signed out, with current admin-members: the farm's name links to /", async () => {
+      expect(wordmarkHref((await header("sign-in", "admin-members")).element)).toEqual(["/"]);
+    });
   });
 });

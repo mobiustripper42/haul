@@ -176,6 +176,37 @@ describe.each(VERIFY)("%s — a confirmed code", (name) => {
   });
 });
 
+// Issue 266, AC8: an admin who signs in on the Supper Club's sign-in lands where a member does: the pane's pages carry no
+// admin landing (pinned by "the pane's page sets" above). The Sign in page's admin landing is app/sign-in/actions.test.ts's.
+describe("AC8 (issue 266) — an admin signing in on the Supper Club's sign-in", () => {
+  /** An admin with a live code, and the email cookie the code step reads. */
+  const adminAtCodeStep = async (): Promise<Member> => {
+    const admin = await repo.createMember({ email: ADA, role: "admin" });
+    const createdAt = new Date();
+    await repo.saveSignInCode({
+      subjectId: admin.id,
+      codeHash: hashCode(RIGHT_CODE),
+      createdAt,
+      expiresAt: new Date(createdAt.getTime() + 10 * MINUTE),
+    });
+    request.current.cookies = { [SIGN_IN_EMAIL]: ADA };
+    return admin;
+  };
+
+  it(`AC8: verifyPaneCode for an admin with no return path held lands on ${ACCOUNT_PATH}, signed in`, async () => {
+    const admin = await adminAtCodeStep();
+    expect(await redirectOf((await load()).verifyPaneCode(form({ code: RIGHT_CODE })))).toBe(ACCOUNT_PATH);
+    expect(verifySession(setsNamed(SESSION)[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: admin.id } });
+  });
+
+  it("AC8: verifyPaneCode for an admin with a return path held lands on it", async () => {
+    await adminAtCodeStep();
+    request.current.cookies[RETURN_TO] = PICKS;
+    expect(await redirectOf((await load()).verifyPaneCode(form({ code: RIGHT_CODE })))).toBe(PICKS);
+    expect(cookieGone(RETURN_TO)).toBe(true);
+  });
+});
+
 describe.each(VERIFY)("%s — a code that fails stays in the pane", (name, pane) => {
   const verify = async (fields: Record<string, string>) => (await load())[name](form(fields));
 

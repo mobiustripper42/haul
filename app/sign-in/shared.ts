@@ -29,8 +29,9 @@ const FLOW_COOKIE_MAX_AGE_SECONDS = 600;
 /**
  * The pages of a flow: where its first step lives, where its code step lives, and where a confirmed code
  * lands when no return path is held (`/` for the full pages, `/supper-club` for the Supper Club's panes).
+ * `adminDone` is where an admin lands instead, for the one flow that has one (issue 266).
  */
-export type FlowPages = { start: string; code: string; done: string };
+export type FlowPages = { start: string; code: string; done: string; adminDone?: string };
 
 export const textField = (formData: FormData, name: string): string => {
   const value = formData.get(name);
@@ -115,13 +116,16 @@ export function sendAfterResponse<T>(
 /**
  * The end of every sign-in and every account confirmation, by code or by link: the email is confirmed
  * if it was not, the session starts, the flow's cookies go, and the person lands where they came from:
- * `done` when no return path was held, `/` when the one held is unsafe.
+ * with no return path held, an admin on `adminDone` when the flow has one and everyone else on `done`;
+ * `/` when the one held is unsafe.
  */
-export async function finishSignIn(subjectId: string, done: string): Promise<never> {
-  await getRepository().withActor({ member: subjectId }, (scoped) => scoped.confirmMemberEmail(subjectId, new Date()));
+export async function finishSignIn(subjectId: string, pages: Pick<FlowPages, "done" | "adminDone">): Promise<never> {
+  const repo = getRepository();
+  await repo.withActor({ member: subjectId }, (scoped) => scoped.confirmMemberEmail(subjectId, new Date()));
   await startSession(subjectId);
+  const landing = pages.adminDone !== undefined && (await repo.findMemberById(subjectId))?.role === "admin" ? pages.adminDone : pages.done;
   const cookieStore = await cookies();
-  const returnTo = returnToOr(cookieStore.get(RETURN_TO_COOKIE)?.value, done);
+  const returnTo = returnToOr(cookieStore.get(RETURN_TO_COOKIE)?.value, landing);
   cookieStore.delete(SIGN_IN_EMAIL_COOKIE);
   cookieStore.delete(RETURN_TO_COOKIE);
   redirect(returnTo);
@@ -203,5 +207,5 @@ export async function verifyCodeFor(formData: FormData, pages: FlowPages): Promi
   }
 
   await recordEventAs(repo, { member: result.subjectId }, { kind: "sign_in_by_code", memberId: result.subjectId });
-  await finishSignIn(result.subjectId, pages.done);
+  await finishSignIn(result.subjectId, pages);
 }

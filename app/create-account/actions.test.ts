@@ -11,6 +11,7 @@ import type { Member } from "@core/members.js";
 import { hashCode, redeemSignInLink } from "@core/sign-in/code.js";
 import { SESSION_TTL_MS, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
+import { ACCOUNT_PATH, CREATE_ACCOUNT_PAGES } from "../paths";
 import { loggedText, redirectOf } from "../screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -710,5 +711,13 @@ describe("AC6 (issue 136) — Create Account lands on /account", () => {
     await runScheduled();
     const code = codeIn(email.last()?.text);
     expect(await redirectOf(verifyAccountCode(form({ code })))).toBe("/account");
+  });
+});
+
+// Issue 266, AC8: only the Sign in page's flow lands an admin on Members. Create Account's pages carry no admin landing,
+// pinned here beside the actions that use them, as the Supper Club's panes are in app/supper-club/actions.test.ts.
+describe("AC8 (issue 266) — Create Account's pages", () => {
+  it("AC8: CREATE_ACCOUNT_PAGES is Create Account, its code step, and ACCOUNT_PATH when no return path is held, with no admin landing", () => {
+    expect(CREATE_ACCOUNT_PAGES).toEqual({ start: "/create-account", code: "/create-account/code", done: ACCOUNT_PATH });
   });
 });
