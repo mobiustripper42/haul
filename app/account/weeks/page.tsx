@@ -2,6 +2,7 @@ import type { ReactElement } from "react";
 import { lockedWeek, type UpcomingRow } from "@core/account-weeks.js";
 import type { Language, Translator } from "@core/i18n.js";
 import { formatPickupDate, listedWeekTitle } from "@core/pickup-week.js";
+import type { MemberWeeks } from "@core/ports/repository.js";
 import { Badge } from "../../../components/ui/badge";
 import { BulletList } from "../../../components/ui/bullet-list";
 import { Button } from "../../../components/ui/button";
@@ -18,7 +19,7 @@ import { ACCOUNT_HISTORY_ID, ACCOUNT_WEEKS_CUTOFF_ERROR } from "../../paths";
 import { SiteHeader } from "../../site-header";
 import { CutoffNotice } from "../cutoff-notice";
 import { declinedNotice } from "../declined-notice";
-import { requireSubscriber } from "../subscriber";
+import { requireAccount, type Subscribed } from "../subscriber";
 import { MARKER_BADGES } from "../week-markers";
 import { skipWeek, unskipWeek } from "./actions";
 import { History } from "./history";
@@ -57,31 +58,13 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
   );
 }
 
-/**
- * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
- * week, each marked Paid, Closed, Week credit, Skipped, Locked or Card declined (issue 198), or coming with no badge, with a Skip or Unskip button before its cutoff
- * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with. The meal card and its
- * Switch are on the account page (issue 219).
- *
- * Issue 243: History is the page's second list, in the right column (`ACCOUNT_HISTORY_ID`, which the menu's History link goes to), and
- * under Upcoming weeks below 1024px. A week with a menu that has dishes for the member's choice holds a rolldown named by the menu, the
- * first listed one open on load, headed Proposed until the week's menu email has gone out (DEC-054). For a cancelled member with no paid
- * week to come the Upcoming card holds one line saying so.
- */
-export default async function UpcomingWeeks(): Promise<ReactElement>;
-// Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
-export default async function UpcomingWeeks(props: { searchParams?: Promise<Query> }): Promise<ReactElement>;
-export default async function UpcomingWeeks({ searchParams }: { searchParams?: Promise<Query> } = {}): Promise<ReactElement> {
-  const subscribed = await requireSubscriber();
+/** The rows, the declined Notice and the History of a member holding a subscription: the page's reads, once the member is known to have one. */
+async function subscribedWeeks(subscribed: Subscribed, now: Date, t: Translator, language: Language) {
   const { confirmation } = subscribed;
-  const now = new Date();
   const locked = lockedWeek(confirmation);
-  const [t, language, upcoming, history, query, next] = await Promise.all([
-    getTranslator(),
-    getLanguage(),
+  const [upcoming, history, next] = await Promise.all([
     loadUpcomingRows(subscribed, now),
     loadHistoryRows(subscribed.product, confirmation.subscriptionId, confirmation.pickupDate, now),
-    searchParams,
     locked === null ? null : loadNextPickup(subscribed, now),
   ]);
   const [{ notice }, menus] = await Promise.all([declinedNotice(subscribed, next, t, language), loadWeekMenus(subscribed, upcoming, history.ledger)]);
@@ -104,6 +87,35 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
       ),
     };
   });
+  return { rows, notice, history };
+}
+
+/** What a member who never joined has to list (issue 260): no week, so neither card holds a row. */
+const NO_WEEKS: MemberWeeks = { paid: [], weekCredits: [], skipped: [], locked: [], declined: [] };
+
+/**
+ * A member's Upcoming weeks (issue 155): 12 weeks from the later of their first week and the calendar's current
+ * week, each marked Paid, Closed, Week credit, Skipped, Locked or Card declined (issue 198), or coming with no badge, with a Skip or Unskip button before its cutoff
+ * (issue 137). `?error=cutoff` shows the Notice a refused request sends the member back with. The meal card and its
+ * Switch are on the account page (issue 219).
+ *
+ * Issue 243: History is the page's second list, in the right column (`ACCOUNT_HISTORY_ID`, which the menu's History link goes to), and
+ * under Upcoming weeks below 1024px. A week with a menu that has dishes for the member's choice holds a rolldown named by the menu, the
+ * first listed one open on load, headed Proposed until the week's menu email has gone out (DEC-054). For a cancelled member with no paid
+ * week to come the Upcoming card holds one line saying so. Issue 260: a member who never joined stays on the page, each card holding
+ * its empty line, with no Notice and no form (DEC-055).
+ */
+export default async function UpcomingWeeks(): Promise<ReactElement>;
+// Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
+export default async function UpcomingWeeks(props: { searchParams?: Promise<Query> }): Promise<ReactElement>;
+export default async function UpcomingWeeks({ searchParams }: { searchParams?: Promise<Query> } = {}): Promise<ReactElement> {
+  const account = await requireAccount();
+  const { member, product, confirmation } = account;
+  const now = new Date();
+  const [t, language, query] = await Promise.all([getTranslator(), getLanguage(), searchParams]);
+  const { rows, notice, history } = confirmation
+    ? await subscribedWeeks({ member, product, confirmation }, now, t, language)
+    : { rows: [], notice: null, history: { rows: [], ledger: NO_WEEKS } };
 
   return (
     <>

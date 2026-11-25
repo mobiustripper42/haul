@@ -63,13 +63,13 @@ test.describe("AC1 — through the real redirects", () => {
   });
 
   // Issue 97, AC2: they are still sent to /, which sends a signed-in member to /account (issue 136, AC6c),
-  // and a member with no Supper Club subscription goes on from there to /supper-club (issue 136, AC2).
-  test("AC1, AC2 (issue 97): a signed-in member whose role is not admin ends on /supper-club from both", async ({ page, request }) => {
+  // and a member with no Supper Club subscription stays there (issue 260, AC10).
+  test("AC1, AC10 (issue 260): a signed-in member whose role is not admin ends on /account from both", async ({ page, request }) => {
     await signIn(page, request, ERIC);
     await page.goto("/admin");
-    await expect(page).toHaveURL(onPath("/supper-club"));
+    await expect(page).toHaveURL(onPath("/account"));
     await page.goto("/admin/members.csv");
-    await expect(page).toHaveURL(onPath("/supper-club"));
+    await expect(page).toHaveURL(onPath("/account"));
   });
 });
 

@@ -29,13 +29,13 @@ import { CodeStep } from "../sign-in/code-step";
 import { limitedNotice } from "../sign-in/limited-notice";
 import { limitedMinutes } from "../sign-in/shared";
 import { SUBSCRIPTION_BADGES } from "../subscription-badges";
-import { SUPPER_CLUB_PATH } from "../supper-club/paths";
 import { CutoffNotice } from "./cutoff-notice";
 import { declinedNotice } from "./declined-notice";
 import { confirmEmailChange, keepOldEmail, resendEmailChange, saveDetails } from "./details-actions";
-import { requireSubscriber } from "./subscriber";
+import { noSupperClubNotice } from "./no-supper-club-notice";
+import { requireAccount, type Subscribed } from "./subscriber";
 import { switchMeal } from "./weeks/actions";
-import { loadLastPickup, loadNextPickup, loadUpcomingRows } from "./weeks/rows";
+import { loadNextPickup, loadUpcomingRows } from "./weeks/rows";
 
 export const generateMetadata = titled("account.title");
 
@@ -49,12 +49,12 @@ type Query = { switch?: string; switchError?: string; saved?: string; error?: st
 /**
  * A member's Your account (issue 219): their Supper Club, its next pickup and weekly price, and below it Your details,
  * the form, or, while an email change is pending and unexpired, the code step in its place. A member with no paid
- * subscription is sent to the Supper Club page. The meal is the set of picks in effect for the next pickup week, with
+ * subscription stays on the page (issue 260, DEC-055): the Notice from `noSupperClubNotice` and no Supper Club card, Your details as a subscriber sees it. The meal is the set of picks in effect for the next pickup week, with
  * a pending-switch line when a newer set starts after it; with no next pickup it is the newest set, and no line shows.
  * The price is the one stored on the subscription, not the price of its picks today. An active card holds Switch (with
  * `?switch=1` and a switch week listed, the pickers in a form posting that week to `switchMeal`, and neither of the other
  * two) and Update your card in a row, and a quiet Cancel below it (issue 238); a cancelled one shows the Notice
- * above its card, in the left column, with the last pickup and a Join again button (issue 238), and a Cancelled badge, and
+ * above its card, in the left column, with the last pickup and a Join again button (issue 238, now `noSupperClubNotice`'s), and a Cancelled badge, and
  * no next pickup, no where line, no charge line and no buttons in the card: no pickup or charge is coming from it, unless
  * a paid week is still to come, which the Notice names. An active one holding a declined row is locked (issue 196): its next pickup stands while the
  * declined week's is still to come, then one line says none is coming until the card is updated. Everything is in the
@@ -64,9 +64,10 @@ export default async function Account(): Promise<ReactElement>;
 // Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
 export default async function Account(props: { searchParams?: Promise<Query> }): Promise<ReactElement>;
 export default async function Account({ searchParams }: { searchParams?: Promise<Query> } = {}): Promise<ReactElement> {
-  const subscribed = await requireSubscriber();
-  const { member, product, confirmation } = subscribed;
-  const cancelled = confirmation.status === "cancelled";
+  const account = await requireAccount();
+  const { member, confirmation } = account;
+  const subscribed = confirmation && { member, product: account.product, confirmation };
+  const cancelled = confirmation?.status === "cancelled";
   const repo = getRepository();
   const now = new Date();
   const [t, language, query, cookieStore, pendingChange, upcoming] = await Promise.all([
@@ -75,29 +76,13 @@ export default async function Account({ searchParams }: { searchParams?: Promise
     searchParams,
     cookies(),
     repo.findEmailChange(member.id),
-    // A cancelled subscription has no switch week and no pending line, so its weeks are not read.
-    cancelled ? [] : loadUpcomingRows(subscribed, now),
+    // A cancelled subscription has no switch week and no pending line, so its weeks are not read, nor are a member's who never joined.
+    subscribed === null || cancelled ? [] : loadUpcomingRows(subscribed, now),
   ]);
   const { switch: switchQuery, switchError, saved, error, sent, limited } = query ?? {};
-  const next = cancelled ? null : await loadNextPickup(subscribed, now);
-  // Issue 196: a subscription holding a declined row is locked once no week on or before the declined week is still coming.
-  const locked = lockedWeek(confirmation) !== null && next === null;
-  const last = cancelled ? await loadLastPickup(product, confirmation.subscriptionId, now) : null;
-  // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
-  const { declined, notice } = await declinedNotice(subscribed, next, t, language);
-  const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
-  const lastLine = last && t(last.passed ? "account.lastPickupWas" : "account.lastPickupIs", { week: listedWeekTitle(t, last.week, language) });
-
-  // The meal is what the next pickup is made of; with no next pickup, the newest set, as it was before a switch could be pending.
-  const meal = mealLabel(next === null ? confirmation.options : await repo.findOptionsForWeek(confirmation.subscriptionId, next.weekOf));
-  // Issue 219, AC4: the newest set starts after the next pickup: it is pending, from the upcoming week it starts at.
-  const startsAt = next !== null && confirmation.optionsFromWeek > next.weekOf ? upcoming.find((row) => row.week.weekOf === confirmation.optionsFromWeek) : undefined;
-
-  const switchOn = switchWeek(upcoming, lockedWeek(confirmation));
-  const switchesFrom = cancelled ? undefined : upcoming.find((row) => row.week.weekOf === switchOn);
-  const open = switchQuery === ACCOUNT_SWITCH_OPEN && switchesFrom !== undefined;
   const minutes = limitedMinutes(limited);
   const codeStep = pendingChange !== null && pendingChange.expiresAt.getTime() > Date.now();
+  const noSupperClub = await noSupperClubNotice(account, t, language, now);
 
   return (
     <>
@@ -105,80 +90,15 @@ export default async function Account({ searchParams }: { searchParams?: Promise
       <Shell>
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.title")}</Heading>
-          {switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
+          {subscribed && switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
           {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
           {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice, and the cancelled one (issue 238), are the first thing in the left column, so they stand above the Supper Club card at both widths. */}
           {TwoColumns({
             left: (
               <>
-                {cancelled && (
-                  <Notice
-                    icon="info"
-                    lead={t("account.cancelledNotice")}
-                    action={
-                      <Button kind="secondary" href={SUPPER_CLUB_PATH}>
-                        {t("account.cancel.joinAgainLink")}
-                      </Button>
-                    }
-                  >
-                    {[lastLine, t("account.cancel.nothingMore"), t("account.cancel.joinAgain")].filter(Boolean).join(" ")}
-                  </Notice>
-                )}
-                {notice}
-                <Card width="fill">
-                  <div className="flex flex-wrap items-center justify-between gap-3">
-                    <p className="font-semibold">{meal}</p>
-                    <Badge kind={badge.kind}>{t(badge.key)}</Badge>
-                  </div>
-                  {next && (
-                    <>
-                      <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
-                      <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
-                    </>
-                  )}
-                  {locked && <p>{t("account.noPickupLocked")}</p>}
-                  {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
-                  {startsAt && (
-                    <Hint>
-                      <BoldValue line={(value) => t("account.pendingSwitch", { meal: value, week: listedWeekTitle(t, startsAt.week, language) })} value={mealLabel(confirmation.options)} />
-                    </Hint>
-                  )}
-                  {!cancelled &&
-                    (open ? (
-                      <form action={switchMeal} className="flex flex-col gap-5">
-                        <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
-                        {MealPickers({ product, selected: confirmation.choices, t })}
-                        <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
-                        <ButtonRow>
-                          <Button kind="primary" type="submit">
-                            {t("account.weeks.switchSave")}
-                          </Button>
-                          <Button kind="secondary" href={ACCOUNT_PATH}>
-                            {t("account.weeks.switchCancel")}
-                          </Button>
-                        </ButtonRow>
-                      </form>
-                    ) : (
-                      <>
-                        <ButtonRow>
-                          {switchesFrom !== undefined && (
-                            <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
-                              {t("account.weeks.switch")}
-                            </Button>
-                          )}
-                          <Button kind="secondary" href={ACCOUNT_CARD_PATH}>
-                            {t("account.card.title")}
-                          </Button>
-                        </ButtonRow>
-                        <div className="flex">
-                          <Button kind="quiet" href={ACCOUNT_CANCEL_PATH} flush>
-                            {t("account.cancelLink")}
-                          </Button>
-                        </div>
-                      </>
-                    ))}
-                </Card>
+                {noSupperClub}
+                {subscribed && (await supperClubCard(subscribed))}
               </>
             ),
             right: (
@@ -226,6 +146,88 @@ export default async function Account({ searchParams }: { searchParams?: Promise
       </Shell>
     </>
   );
+
+  /**
+   * The Supper Club card and the declined Notice before it, for a member holding a subscription: everything about its next
+   * pickup, meal and Switch. A member who never joined has neither (issue 260).
+   */
+  async function supperClubCard(subscribed: Subscribed): Promise<ReactElement> {
+    const { product, confirmation } = subscribed;
+    const next = cancelled ? null : await loadNextPickup(subscribed, now);
+    // Issue 196: a subscription holding a declined row is locked once no week on or before the declined week is still coming.
+    const locked = lockedWeek(confirmation) !== null && next === null;
+    // Issue 145: an active subscription holding a declined row. Its week is still made while its pickup is to come, unless an admin closed it.
+    const { declined, notice } = await declinedNotice(subscribed, next, t, language);
+    const badge = SUBSCRIPTION_BADGES[declined ? "declined" : confirmation.status];
+
+    // The meal is what the next pickup is made of; with no next pickup, the newest set, as it was before a switch could be pending.
+    const meal = mealLabel(next === null ? confirmation.options : await repo.findOptionsForWeek(confirmation.subscriptionId, next.weekOf));
+    // Issue 219, AC4: the newest set starts after the next pickup: it is pending, from the upcoming week it starts at.
+    const startsAt = next !== null && confirmation.optionsFromWeek > next.weekOf ? upcoming.find((row) => row.week.weekOf === confirmation.optionsFromWeek) : undefined;
+
+    const switchOn = switchWeek(upcoming, lockedWeek(confirmation));
+    const switchesFrom = cancelled ? undefined : upcoming.find((row) => row.week.weekOf === switchOn);
+    const open = switchQuery === ACCOUNT_SWITCH_OPEN && switchesFrom !== undefined;
+
+    return (
+      <>
+        {notice}
+        <Card width="fill">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="font-semibold">{meal}</p>
+            <Badge kind={badge.kind}>{t(badge.key)}</Badge>
+          </div>
+          {next && (
+            <>
+              <p>{t("account.nextPickup", { week: weekTitle(t, next, language) })}</p>
+              <p className="text-ink-muted">{pickupWhereLine(t, next, language)}</p>
+            </>
+          )}
+          {locked && <p>{t("account.noPickupLocked")}</p>}
+          {!cancelled && lockedWeek(confirmation) === null && !confirmation.needsCard && <p className="text-ink-muted">{t("supperClub.next.charge", { price: formatUsdWhole(confirmation.weeklyCents) })}</p>}
+          {startsAt && (
+            <Hint>
+              <BoldValue line={(value) => t("account.pendingSwitch", { meal: value, week: listedWeekTitle(t, startsAt.week, language) })} value={mealLabel(confirmation.options)} />
+            </Hint>
+          )}
+          {!cancelled &&
+            (open ? (
+              <form action={switchMeal} className="flex flex-col gap-5">
+                <input type="hidden" name="week" value={switchesFrom.week.weekOf} />
+                {MealPickers({ product, selected: confirmation.choices, t })}
+                <Hint>{t("account.weeks.switchApplies", { week: listedWeekTitle(t, switchesFrom.week, language) })}</Hint>
+                <ButtonRow>
+                  <Button kind="primary" type="submit">
+                    {t("account.weeks.switchSave")}
+                  </Button>
+                  <Button kind="secondary" href={ACCOUNT_PATH}>
+                    {t("account.weeks.switchCancel")}
+                  </Button>
+                </ButtonRow>
+              </form>
+            ) : (
+              <>
+                <ButtonRow>
+                  {switchesFrom !== undefined && (
+                    <Button kind="secondary" href={`${ACCOUNT_PATH}?switch=${ACCOUNT_SWITCH_OPEN}`}>
+                      {t("account.weeks.switch")}
+                    </Button>
+                  )}
+                  <Button kind="secondary" href={ACCOUNT_CARD_PATH}>
+                    {t("account.card.title")}
+                  </Button>
+                </ButtonRow>
+                <div className="flex">
+                  <Button kind="quiet" href={ACCOUNT_CANCEL_PATH} flush>
+                    {t("account.cancelLink")}
+                  </Button>
+                </div>
+              </>
+            ))}
+        </Card>
+      </>
+    );
+  }
 
   /** The form refills only after a save that broke a rule: `error` names its fields. */
   function failingFields(): Set<string> {

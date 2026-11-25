@@ -221,21 +221,76 @@ describe("AC1 (issue 136) — /account, signed out", () => {
   });
 });
 
-describe("AC2 (issue 136) — /account, signed in with no active, paid subscription", () => {
-  it.each([
-    ["no subscription at all", async () => {}],
-    ["a pending signup", async (member: Member) => void (await signup(member))],
-    [
-      "a declined first charge",
-      async (member: Member) => {
-        await services.repo.recordSignupDecline((await signup(member)).ledgerId);
-      },
-    ],
-  ])("AC2: a member with %s is redirected to /supper-club", async (_what, arrange) => {
+// Issue 260: a member who never joined stays on the page. Who counts as never joined is requireAccount's
+// (./subscriber.test.ts), so here it is one with no subscription; what the Notice is is noSupperClubNotice's
+// (./no-supper-club-notice.test.ts), so here it is read by its lead's catalog line. Which Notice shows, or none, is a choice.
+describe("AC4 (issue 260) — /account, a member who never joined", () => {
+  const NEVER_JOINED = t("account.noSupperClub");
+
+  /** Ada, signed in, with no subscription. */
+  const neverAda = async (): Promise<Member> => {
     const member = await ada();
-    await arrange(member);
     signIn(member);
-    await expect(redirectOf(Account())).resolves.toBe("/supper-club");
+    return member;
+  };
+
+  /** The page drawn with `query`, sending nobody anywhere. */
+  const stays = async (query: Query = {}) => {
+    await expect(Account({ searchParams: Promise.resolve(query) })).resolves.toBeDefined();
+    return render(query);
+  };
+
+  const pending = (member: Member) =>
+    services.repo.startEmailChange({ memberId: member.id, newEmail: "ada.new@example.com", codeHash: hashCode("123456"), now: new Date(NOW.getTime() - MINUTE) });
+
+  it("AC4: the page renders, and the left column, the first, holds the one Notice, the never-joined one, and no card", async () => {
+    await neverAda();
+    const { element, html } = await stays();
+    expect(findAll(element, Notice).map(({ props }) => props.lead)).toEqual([NEVER_JOINED]);
+    expect(orderIn(element)).toEqual(['role="alert"', "<section"]);
+    // The Notice and the page's one card are each in a column of their own.
+    const holding = (notices: number, cards: number) => findAll(element, "div").filter((div) => findAll(div, Notice).length === notices && findAll(div, CardBox).length === cards);
+    expect(holding(1, 0)).not.toEqual([]);
+    expect(holding(0, 1)).not.toEqual([]);
+    expect(alertTexts(html)).toHaveLength(1);
+  });
+
+  it("AC4: there is no Supper Club card: no badge, no Switch, no Update your card and no Cancel; the one link in the columns is the Notice's", async () => {
+    await neverAda();
+    const { element, html } = await stays();
+    expect(findAll(element, CardBox)).toHaveLength(1);
+    expect(findAll(element, Badge)).toEqual([]);
+    expect(linksOf(html)).toEqual(["/supper-club"]);
+    expect(actionsOf(html)).toEqual(["saveDetails"]);
+  });
+
+  // Your details is read against the same member's page once they have subscribed: the subscriber's own tests are below.
+  it.each<[string, Query, boolean]>([
+    ["no query", {}, false],
+    ["saved=1", { saved: "1" }, false],
+    ["limited=5", { limited: "5" }, false],
+    ["error=firstName", { error: "firstName" }, false],
+    ["no query and an email change pending", {}, true],
+    ["sent=1 and an email change pending", { sent: "1" }, true],
+    ["error=invalid and an email change pending", { error: "invalid" }, true],
+  ])("AC4: with %s, Your details, and the Notices beside the never-joined one, are a subscriber's", async (_what, query, changing) => {
+    const member = await neverAda();
+    if (changing) await pending(member);
+    const never = await stays(query);
+    await subscribed(member);
+    const subscriber = await render(query);
+    const icons = (element: ReactElement) => findAll(element, Notice).filter((notice) => notice.props.lead !== NEVER_JOINED).map((notice) => notice.props.icon);
+    expect(never.sections).toEqual([subscriber.sections[1]]);
+    expect(icons(never.element)).toEqual(icons(subscriber.element));
+    expect(findAll(never.element, Notice)).toHaveLength(findAll(subscriber.element, Notice).length + 1);
+  });
+
+  it.each<[string, Query]>([
+    ["switch=1", { switch: "1" }],
+    ["switchError=cutoff", { switchError: "cutoff" }],
+  ])("AC4: %s draws nothing: the page is the page with no query", async (_what, query) => {
+    await neverAda();
+    expect((await stays(query)).html).toBe((await stays()).html);
   });
 });
 
@@ -388,7 +443,7 @@ describe("AC5 (issue 136) — the header on /account", () => {
   });
 });
 
-// Issue 139: account home after a cancel. Who is let in is requireSubscriber's (app/account/subscriber.test.ts) and
+// Issue 139: account home after a cancel. Who is let in is requireAccount's (app/account/subscriber.test.ts) and
 // which week is the last pickup lastPickup's (src/account-weeks.test.ts); here each of the Notice's three pickup
 // cases goes through the page once, by the week it names and, for is or was, the key of the line it picks.
 describe("issue 139 — account home, cancelled and not", () => {
@@ -817,7 +872,7 @@ describe("AC8 (issue 219) — /account/details is gone", () => {
 
 // ---------------------------------------------------------------------------------------------
 // Issue 156, moved from /account/details (issue 219): Your details. The form and the code step share the page: the code
-// step shows while the member has a pending change that has not expired. Who is let in is requireSubscriber's; what the
+// step shows while the member has a pending change that has not expired. Who is let in is requireAccount's; what the
 // forms do is ./details-actions.test.ts's; the code step's own parts are app/sign-in/code-step.test.ts's. Here each of
 // the branches goes through once, by the forms, fields, notices and values it shows, a notice it picks by its catalog
 // line, never its words (issue 211). The page's language is getLanguage's, app/language.test.ts's.

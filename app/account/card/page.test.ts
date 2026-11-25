@@ -1,5 +1,5 @@
 // Issue 145: Update your card, `await UpdateCard(props)` with `next/headers` faked and the composition root mocked, as
-// app/account/cancel/page.test.ts renders the cancel confirm. Who is let in is requireSubscriber's
+// app/account/cancel/page.test.ts renders the cancel confirm. Who is let in is requireAccount's
 // (app/account/subscriber.test.ts). What a save does is src/update-card.test.ts's; which paid row the page may name is
 // findPaidCharge's, and which row has a charge out is findPendingCharge's (src/adapters/charge-run-contract.ts): the page
 // maps the outcome in the URL to its message, and the data to the form or none, so each state goes through it once, with the
@@ -21,7 +21,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
 import { Notice } from "../../../components/ui/notice";
-import { alertTexts, attributesOf, findAll, redirectOf, sentencesOf } from "../../screen-test-helpers";
+import { alertTexts, attributesOf, findAll, sentencesOf, textsOf } from "../../screen-test-helpers";
 import { SiteHeader } from "../../site-header";
 import { CardForm } from "./card-form";
 import UpdateCard from "./page";
@@ -166,10 +166,43 @@ describe("AC8 (issue 219) — the header on /account/card", () => {
 });
 
 describe("AC2 — who reaches /account/card, and what it shows", () => {
-  it("AC2: a member whose subscription is cancelled is sent to /account", async () => {
+  // Issue 260: a member with no active subscription stays here. What the Notice is is noSupperClubNotice's
+  // (../no-supper-club-notice.test.ts), so here it is which one, by its lead's catalog line, and where its button goes.
+  /** The page drawn with `query` sends nobody anywhere and holds the back link, then the heading, then the one Notice with `lead` and its link to /supper-club, and no card, card-on-file line or form. Its markup. */
+  const expectNoticePage = async (query: Parameters<typeof render>[0], lead: string): Promise<string> => {
+    await expect(UpdateCard({ searchParams: Promise.resolve(query ?? {}) })).resolves.toBeDefined();
+    const { element, html, sentences } = await render(query);
+    expect(findAll(element, Notice).map(({ props }) => props.lead)).toEqual([lead]);
+    expect(hrefsOf(html)).toEqual(["/account", "/supper-club"]);
+    const at = ['href="/account"', "<h1", 'role="alert"', 'href="/supper-club"'].map((mark) => html.indexOf(mark));
+    expect(at.every((n, i) => n >= 0 && (i === 0 || n > (at[i - 1] ?? -1)))).toBe(true);
+    expect(html).not.toMatch(/<section\b|<form\b|<button\b/);
+    expect(sentences.some((sentence) => sentence.startsWith(ON_FILE_OPENS))).toBe(false);
+    expect(cardFormOf(element)).toBeUndefined();
+    return html;
+  };
+  /** The page's one h1's words. */
+  const headingOf = (html: string): string => [...html.matchAll(/<h1\b[^>]*>([\s\S]*?)<\/h1>/g)].map(([, inner = ""]) => textsOf(inner).join(" ")).join(" | ");
+
+  it("AC8 (issue 260): a cancelled member gets the back link to /account, the heading an active member sees, and the cancelled Notice; no card on file, no card form", async () => {
     const { subscriptionId } = await subscribedAda();
+    const heading = headingOf((await render()).html);
     await services.repo.cancelSubscription(subscriptionId, NOW);
-    await expect(redirectOf(UpdateCard({ searchParams: Promise.resolve({}) }))).resolves.toBe("/account");
+    vi.mocked(SiteHeader).mockClear();
+    expect(headingOf(await expectNoticePage({}, t("account.cancelledNotice")))).toBe(heading);
+    expect(SiteHeader).toHaveBeenCalledWith(expect.objectContaining({ current: "account" }));
+  });
+
+  it("AC8 (issue 260): whatever the query says, and whatever row the cancelled subscription holds, the page is the same", async () => {
+    const { member, subscriptionId } = await subscribedAda();
+    const paid = await services.repo.addLedgerRow(subscriptionId, JAN_24, "paid", 4500);
+    await services.repo.addLedgerRow(subscriptionId, JAN_31, "declined", 4500);
+    await runsRow(member, subscriptionId);
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const html = await expectNoticePage({}, t("account.cancelledNotice"));
+    for (const query of [{ state: "saved" }, { state: "paid", row: paid }, { state: "paidNoCard", row: paid }, { state: "declined" }, { state: "unknown" }, { state: "error" }]) {
+      expect(await expectNoticePage(query, t("account.cancelledNotice"))).toBe(html);
+    }
   });
 
   it("AC2: in order, the back link to /account, the heading, and the card's last four; no Notice", async () => {
@@ -181,9 +214,9 @@ describe("AC2 — who reaches /account/card, and what it shows", () => {
     expect(alertTexts(html)).toEqual([]);
   });
 
-  it("AC2: a member with no subscription is sent to /supper-club", async () => {
+  it("AC8 (issue 260): a member who never joined gets the back link to /account, the heading and the never-joined Notice, whatever the query says; no card form", async () => {
     signIn(await services.repo.saveAccount({ email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "(216) 555-0134", language: "en" }));
-    await expect(redirectOf(UpdateCard({ searchParams: Promise.resolve({}) }))).resolves.toBe("/supper-club");
+    for (const query of [{}, { state: "saved" }, { state: "error" }, { state: "unknown" }]) await expectNoticePage(query, t("account.noSupperClub"));
   });
 
   it("AC2: with no card's brand stored, the On file now line is left out; the rest of the page stays", async () => {

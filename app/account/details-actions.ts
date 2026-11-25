@@ -1,8 +1,8 @@
 "use server";
 
 // Your details' four actions (issue 156), moved here from app/account/details/ by issue 219: each lands on the account
-// page. Each acts on the member `requireSubscriber` gives, never on an id the form
-// posts. The code rules are `requestEmailChange`'s and `verifyEmailChange`'s; what lives here is what is stored, what
+// page. Each acts on the member `requireMember` gives, never on an id the form posts, and none reads the subscription,
+// so a member with none uses them too (issue 260). The code rules are `requestEmailChange`'s and `verifyEmailChange`'s; what lives here is what is stored, what
 // is emailed after the response and to whom, what is recorded, what is counted in sign-in's request limit, and where
 // the member lands.
 import { cookies } from "next/headers";
@@ -16,9 +16,8 @@ import { deliverEmailChangeCode, deliverEmailChangedNotice } from "@core/sign-in
 import { entered, keepDraft } from "../create-account/shared";
 import { ACCOUNT_PATH } from "../paths";
 import { getEmail, getPayments, getRepository, getSiteUrl } from "../services";
-import { ACCOUNT_DRAFT_COOKIE } from "../session";
+import { ACCOUNT_DRAFT_COOKIE, requireMember } from "../session";
 import { sendAfterResponse, takeRequestLimit, textField } from "../sign-in/shared";
-import { requireSubscriber } from "./subscriber";
 
 /**
  * Saves the form. Name, phone, language and the menu email checkbox are stored at once, with the email changed or not (AC8); an email that
@@ -26,7 +25,7 @@ import { requireSubscriber } from "./subscriber";
  * to the new address after the response. A rule broken stores nothing and refills the form.
  */
 export async function saveDetails(formData: FormData): Promise<void> {
-  const { member } = await requireSubscriber();
+  const member = await requireMember();
   const draft = {
     firstName: entered(formData, "firstName"),
     lastName: entered(formData, "lastName"),
@@ -82,7 +81,7 @@ export async function saveDetails(formData: FormData): Promise<void> {
  * wrong guesses here lock nothing and email no link.
  */
 export async function confirmEmailChange(formData: FormData): Promise<void> {
-  const { member } = await requireSubscriber();
+  const member = await requireMember();
   const siteUrl = getSiteUrl();
   const repo = getRepository();
   const payments = getPayments();
@@ -110,7 +109,7 @@ export async function confirmEmailChange(formData: FormData): Promise<void> {
 /** "Send a new code": a new code for the address already pending, counted in sign-in's request limit. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- a form action's signature: this one reads nothing the form posts
 export async function resendEmailChange(_formData: FormData): Promise<void> {
-  const { member } = await requireSubscriber();
+  const member = await requireMember();
   const siteUrl = getSiteUrl();
   const repo = getRepository();
   const pending = await repo.findEmailChange(member.id);
@@ -138,7 +137,7 @@ export async function resendEmailChange(_formData: FormData): Promise<void> {
 /** "Keep the old email": drops the pending change, so its code no longer works. */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars -- a form action's signature: this one reads nothing the form posts
 export async function keepOldEmail(_formData: FormData): Promise<void> {
-  const { member } = await requireSubscriber();
+  const member = await requireMember();
   await getRepository().dropEmailChange(member.id);
   redirect(ACCOUNT_PATH);
 }

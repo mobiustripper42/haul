@@ -76,7 +76,7 @@ describe("AC7 (issue 19) — /sign-in in its card", () => {
 
 // A signed-out visitor's form is AC33 and AC7 above, run signed out.
 describe("AC9 (issue 219) — /sign-in while signed in", () => {
-  /** A signed-in member, with `role`; whether they hold a subscription is no matter here (requireSubscriber's, on /account). */
+  /** A signed-in member, with `role`; whether they hold a subscription is no matter here (requireAccount's, on /account). */
   const member = (role: "member" | "admin"): import("@core/members.js").Member => ({
     id: "00000000-0000-4000-8000-000000000001",
     email: "ada@example.com",

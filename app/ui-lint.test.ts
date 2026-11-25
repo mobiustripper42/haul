@@ -7,6 +7,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { signSession } from "@core/sign-in/session.js";
+import { addSupperClub } from "./admin/subscribers-fixture";
 import { emptyRequest } from "./next-headers-fake";
 import { attributesOf, escapeRegExp, screenMarkup } from "./screen-test-helpers";
 import { SiteHeader } from "./site-header";
@@ -612,6 +613,7 @@ describe("AC17 — every .tsx file in the repo passes lint", () => {
 
   // Issue 97: the sign-out button moved from the home page to the header; issue 159 made it a menu entry.
   it("AC4 (issue 97): the header's sign-out button carries btn-menu", async () => {
+    addSupperClub(services.repo);
     const member = await services.repo.createMember({ email: "ada@example.com" });
     const expiresAt = new Date(Date.now() + 24 * 60 * 60_000).toISOString();
     request.current.cookies.ocf_session = signSession({ subjectId: member.id, expiresAt }, services.secret);

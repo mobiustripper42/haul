@@ -1,7 +1,7 @@
 // Issue 145: the member's card save, `saveCard`, saved once and again, through an InMemoryRepository and
 // FakePayments with `next/headers` faked and `redirect` throwing as the real one does, as
 // app/account/cancel/actions.test.ts drives the cancel. What a save charges, keeps and records is
-// src/update-card.test.ts's; who is let in is requireSubscriber's. These hold what the action does with it: the
+// src/update-card.test.ts's; who is let in is requireAccount's. These hold what the action does with it: the
 // subscription and the card it acts on, the outcome it carries to the page, and the events each entry is declared to
 // record (app/audit-entry-points.ts): "card_declined" and "charge_outcome_unknown".
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -272,5 +272,22 @@ describe("AC2 — who can save", () => {
     await expect(redirectOf(saveCard(form({ sourceId: "cnon:new-card" })))).resolves.toBe("/account");
     expect(save).not.toHaveBeenCalled();
     expect(services.payments.charges).toEqual([]);
+  });
+});
+
+// Issue 260: who counts as never joined is requireAccount's (../subscriber.test.ts); the cancelled member is AC2's above.
+describe("AC9 (issue 260) — a member who never joined", () => {
+  it("AC9: never joined, saveCard lands on /account with no error: nothing is written and nothing reaches Square", async () => {
+    const member = await services.repo.createMember({ email: "ada@example.com" });
+    signIn(member.id);
+    const withActor = vi.spyOn(services.repo, "withActor");
+    const save = vi.spyOn(services.payments, "saveCard");
+    await expect(redirectOf(saveCard(form({ sourceId: "cnon:new-card" })))).resolves.toBe("/account");
+    expect(withActor).not.toHaveBeenCalled();
+    expect(save).not.toHaveBeenCalled();
+    expect(services.payments.charges).toEqual([]);
+    expect(services.payments.customers).toEqual([]);
+    expect(services.repo.events()).toEqual([]);
+    expect(services.email.sent).toEqual([]);
   });
 });

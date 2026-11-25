@@ -1,7 +1,7 @@
 "use server";
 
 // Skip, Unskip (issue 137) and Switch (issue 138) on Upcoming weeks; Switch's form is on the account page (issue 219) and
-// lands back there. Each calls `requireSubscriber` first, reads the
+// lands back there. Each calls `requireAccount` first, writes nothing for a member who never joined (issue 260), reads the
 // cutoff from the clock at the request, rebuilds the member's rows from the database and acts only when the named
 // week is the one its rule names (the week's button, or the switch week), and writes under `withActor` so the audit
 // trigger names the member. A passed cutoff goes back with the Notice; every other refusal comes from a stale or
@@ -15,7 +15,7 @@ import { strictChoices, switchWeek } from "@core/switch-meal.js";
 import { getRepository } from "../../services";
 import { textField } from "../../sign-in/shared";
 import { ACCOUNT_PATH, ACCOUNT_SWITCH_ERROR_PARAM, ACCOUNT_WEEKS_CUTOFF_ERROR, ACCOUNT_WEEKS_PATH } from "../../paths";
-import { requireSubscriber, type Subscribed } from "../subscriber";
+import { requireAccount, type Subscribed } from "../subscriber";
 import { loadUpcomingRows } from "./rows";
 
 /** Where a request refused at its cutoff lands, by where the action returns to: a Switch on the account page, the rest on Upcoming weeks. */
@@ -27,8 +27,10 @@ type Change = (context: { subscribed: Subscribed; rows: UpcomingRow[]; week: str
 
 /** The one flow of every action, returning to `back`: only `change` differs. */
 async function changeWeek(formData: FormData, change: Change, back: string): Promise<never> {
-  const subscribed = await requireSubscriber();
-  const { member, product } = subscribed;
+  const { member, product, confirmation } = await requireAccount();
+  // A member who never joined has no week to change: back to where the form was, with nothing written and no error.
+  if (confirmation === null) return redirect(back);
+  const subscribed = { member, product, confirmation };
   const now = new Date();
   const week = textField(formData, "week");
   if (isDate(week)) {

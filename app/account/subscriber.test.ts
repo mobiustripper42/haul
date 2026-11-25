@@ -1,8 +1,8 @@
 // Issue 155, AC1: the gate the account pages share, with `next/headers` faked and the composition root mocked, as
 // app/account/page.test.ts renders /account. A signed-in request is an ocf_session cookie for a member in an
 // InMemoryRepository; a subscription is the rows a paid signup leaves. Who counts as signed in is
-// app/session.test.ts's; which subscription is found is findSignupConfirmation's. Each page's test checks one case
-// let in and one sent away.
+// app/session.test.ts's; which subscription is found is findMemberSubscription's. Issue 260: nobody is sent away for having
+// none, so the three states of a member who never joined are run here, and each page's and action's test checks one.
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import type { Member } from "@core/members.js";
@@ -12,7 +12,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { addSupperClub } from "../admin/subscribers-fixture";
 import { emptyRequest } from "../next-headers-fake";
 import { redirectOf } from "../screen-test-helpers";
-import { requireSubscriber } from "./subscriber";
+import { requireAccount } from "./subscriber";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
 const services = vi.hoisted(() => ({
@@ -71,20 +71,20 @@ const signup = (member: Member): Promise<PendingSignup> =>
     consentAt: new Date("2026-12-01T17:00:00.000Z"),
   });
 
-describe("AC1 (issue 155) — requireSubscriber", () => {
+describe("AC1 (issue 155) — requireAccount", () => {
   it("AC1: a signed-out visitor is sent to /sign-in", async () => {
-    await expect(redirectOf(requireSubscriber())).resolves.toBe("/sign-in");
+    await expect(redirectOf(requireAccount())).resolves.toBe("/sign-in");
   });
 
   it.each([
     ["no subscription at all", async () => {}],
     ["a pending signup", async (member: Member) => void (await signup(member))],
     ["a declined first charge", async (member: Member) => services.repo.recordSignupDecline((await signup(member)).ledgerId)],
-  ])("AC1: a signed-in member with %s is sent to /supper-club", async (_what, arrange) => {
+  ])("AC4, AC7, AC8, AC9 (issue 260): a signed-in member with %s is let in, with the member, the Supper Club and no subscription", async (_what, arrange) => {
     const member = await ada();
     await arrange(member);
     signIn(member);
-    await expect(redirectOf(requireSubscriber())).resolves.toBe("/supper-club");
+    expect(await requireAccount()).toMatchObject({ member: { id: member.id }, product: { id: product.id }, confirmation: null });
   });
 
   it("AC1: a member with an active, paid subscription is let in, with the member, the Supper Club and the subscription", async () => {
@@ -92,7 +92,7 @@ describe("AC1 (issue 155) — requireSubscriber", () => {
     const rows = await signup(member);
     await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
     signIn(member);
-    expect(await requireSubscriber()).toMatchObject({
+    expect(await requireAccount()).toMatchObject({
       member: { id: member.id },
       product: { id: product.id },
       confirmation: { subscriptionId: rows.subscriptionId, pickupDate: "2027-01-03" },
@@ -102,7 +102,7 @@ describe("AC1 (issue 155) — requireSubscriber", () => {
 
 // Issue 139: the gate lets in the member's newest subscription, active or cancelled, so a paid week still to come stays
 // in reach after a cancel. Which subscription is newest is findMemberSubscription's (src/adapters/signup-contract.ts).
-describe("issue 139 — requireSubscriber after a cancel", () => {
+describe("issue 139 — requireAccount after a cancel", () => {
   /** The member's signup, paid. */
   const paid = async (member: Member): Promise<PendingSignup> => {
     const rows = await signup(member);
@@ -115,7 +115,7 @@ describe("issue 139 — requireSubscriber after a cancel", () => {
     const rows = await paid(member);
     await services.repo.cancelSubscription(rows.subscriptionId, NOW);
     signIn(member);
-    expect(await requireSubscriber()).toMatchObject({
+    expect(await requireAccount()).toMatchObject({
       member: { id: member.id },
       confirmation: { subscriptionId: rows.subscriptionId, status: "cancelled", cancelledAt: NOW },
     });
@@ -128,6 +128,6 @@ describe("issue 139 — requireSubscriber after a cancel", () => {
     vi.setSystemTime(new Date(NOW.getTime() + 60_000));
     const again = await paid(member);
     signIn(member);
-    expect(await requireSubscriber()).toMatchObject({ confirmation: { subscriptionId: again.subscriptionId, status: "active", cancelledAt: null } });
+    expect(await requireAccount()).toMatchObject({ confirmation: { subscriptionId: again.subscriptionId, status: "active", cancelledAt: null } });
   });
 });

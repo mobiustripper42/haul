@@ -59,7 +59,7 @@ const render = async (pane: "none" | "create-account" | "sign-in" | "done" | "al
 describe("no pane: the Supper Club page", () => {
   it('AC4: signed out it opens with the header asked for with account "sign-in", at every width', async () => {
     const { html } = await render("none");
-    expect(SiteHeader).toHaveBeenCalledWith({ account: "sign-in", wideOnly: false });
+    expect(SiteHeader).toHaveBeenCalledWith({ account: "sign-in", wideOnly: false, current: "supper-club" });
     expect(textsOf(html)[0]).toBe("the header");
   });
 
@@ -67,7 +67,7 @@ describe("no pane: the Supper Club page", () => {
   it("AC4 (issue 97): signed in it redirects nowhere, and asks for the same header", async () => {
     await signIn();
     const { html } = await render("none");
-    expect(SiteHeader).toHaveBeenCalledWith({ account: "sign-in", wideOnly: false });
+    expect(SiteHeader).toHaveBeenCalledWith({ account: "sign-in", wideOnly: false, current: "supper-club" });
     expect(textsOf(html).slice(-1)).toEqual(["child"]);
   });
 
@@ -174,5 +174,14 @@ describe("AC17 — the page's cards fill their columns", () => {
     if (pane === "done" || pane === "already") await signIn();
     const { element } = await render(pane);
     expect(findAll(element, Card).map((card) => card.props.width)).toEqual(["fill"]);
+  });
+});
+
+// Issue 260: the header marks the Supper Club page's link on that page (the two calls above), and no link on a pane's page.
+describe("AC3 (issue 260) — the pane pages mark no link", () => {
+  it.each(["create-account", "sign-in", "done", "already"] as const)("AC3: on pane %s the header is asked for with no current page", async (pane) => {
+    if (pane === "done" || pane === "already") await signIn();
+    await render(pane);
+    expect(vi.mocked(SiteHeader).mock.calls.map(([props]) => props.current)).toEqual([undefined]);
   });
 });

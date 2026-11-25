@@ -12,10 +12,17 @@
 // Issue 187, AC3: the header has no language switch, signed in or out, on any page. The session is faked as a
 // member or an admin; who counts as signed in is app/session.test.ts's. The wide-only wrapper for issue 77's
 // AC11 ("below `lg`") is measured in the browser, e2e/supper-club.spec.ts.
+// Issue 260: a signed-in member is one with an active, paid subscription unless a test names another; the links of one with
+// none are the AC1 to AC3 (issue 260) tests at the end. Which subscription is active is findActiveSubscription's
+// (src/adapters/signup-contract.ts).
 import { cloneElement, createElement, Fragment, isValidElement, type ReactElement, type ReactNode } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
 import { LANGUAGES } from "@core/i18n.js";
+import type { Member } from "@core/members.js";
+import type { PendingSignup } from "@core/ports/repository.js";
+import type { ProductWithOptions } from "@core/products.js";
 import { Button } from "../components/ui/button";
 import { Eyebrow } from "../components/ui/eyebrow";
 import { LinkLabel } from "../components/ui/link-label";
@@ -23,6 +30,7 @@ import { MenuDrawer } from "../components/ui/menu-drawer";
 import { MenuGroup } from "../components/ui/menu-group";
 import { MenuScript } from "../components/ui/menu-script";
 import { SiteBar } from "../components/ui/site-bar";
+import { addSupperClub } from "./admin/subscribers-fixture";
 import { emptyRequest } from "./next-headers-fake";
 import { ACCOUNT_PATH, ADMIN_LISTS_PATH, ADMIN_MENUS_PATH, ADMIN_PATH, ADMIN_WEEKS_PATH } from "./paths";
 import { attributesOf, findAll, textsOf } from "./screen-test-helpers";
@@ -30,7 +38,13 @@ import { SiteHeader } from "./site-header";
 import { signOut } from "./sign-in/actions";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("./next-headers-fake").RequestState }));
-const session = vi.hoisted(() => ({ member: null as null | { role: "member" | "admin" } }));
+const session = vi.hoisted(() => ({
+  /** Who is signed in: the `subscriber`, with what is given here changed. */
+  member: null as null | Partial<import("@core/members.js").Member>,
+  /** A member with an active, paid subscription. */
+  subscriber: undefined as unknown as import("@core/members.js").Member,
+}));
+const services = vi.hoisted(() => ({ repo: undefined as unknown as import("@core/adapters/in-memory-repository.js").InMemoryRepository }));
 vi.mock("next/headers", async () => {
   const { fakeNextHeaders } = await import("./next-headers-fake");
   return {
@@ -40,16 +54,38 @@ vi.mock("next/headers", async () => {
 });
 vi.mock("next/navigation", async () => ({ redirect: (await import("./screen-test-helpers")).throwingRedirect }));
 vi.mock("next/server", () => ({ after: () => {} }));
-vi.mock("./services", () => ({ getRepository: () => undefined, getSessionSecret: () => "test-session-secret-that-is-long-enough-0123456789" }));
+vi.mock("./services", () => ({ getRepository: () => services.repo, getSessionSecret: () => "test-session-secret-that-is-long-enough-0123456789" }));
 vi.mock("./session", async (importOriginal) => ({
   ...(await importOriginal<typeof import("./session")>()),
-  getSignedInMember: async () => session.member,
+  getSignedInMember: async () => session.member && { ...session.subscriber, ...session.member },
 }));
 
-beforeEach(() => {
+let product: ProductWithOptions;
+
+beforeEach(async () => {
   request.current = emptyRequest();
   session.member = null;
+  services.repo = new InMemoryRepository();
+  product = addSupperClub(services.repo);
+  session.subscriber = await services.repo.createMember({ email: "ada@example.com" });
+  await paidSignup(session.subscriber);
 });
+
+/** The member's signup, paid: an active subscription. */
+const paidSignup = async (member: Member): Promise<PendingSignup> => {
+  const rows = await services.repo.savePendingSignup({
+    memberId: member.id,
+    productId: product.id,
+    choices: Object.fromEntries(product.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"])),
+    firstChargeCents: 8000,
+    weeklyCents: 8000,
+    pickupDate: "2027-01-03",
+    consentText: "I agree to a weekly charge of $80.",
+    consentAt: new Date("2026-12-01T17:00:00.000Z"),
+  });
+  await services.repo.confirmSignupRows(rows.ledgerId, `PAYMENT_${rows.ledgerId}`, rows.amountCents, new Date("2026-12-01T17:00:05.000Z"));
+  return rows;
+};
 
 const SIGN_IN_PATH = "/supper-club/sign-in";
 const WEEKS_PATH = "/account/weeks";
@@ -64,7 +100,7 @@ const SIGN_OUT = "submit";
 const LANGUAGE_NAMES: string[] = Object.values(LANGUAGES).map((language) => language.name);
 
 type Account = "none" | "sign-in" | "sign-in-current";
-type Current = "account" | "weeks" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
+type Current = "supper-club" | "menu" | "account" | "weeks" | "admin-members" | "admin-menus" | "admin-weeks" | "admin-lists";
 
 /**
  * Components read as themselves; every other function component is called through, so what it draws is read too.
@@ -491,5 +527,79 @@ describe("AC6 (issue 159) — the signed-out header is unchanged", () => {
     const { tree } = await header(account, undefined, wideOnly);
     expect(findAll(tree, MenuDrawer)).toEqual([]);
     expect(findAll(tree, MenuGroup)).toEqual([]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 260: a signed-in member with no active subscription, never joined or cancelled, an admin or not, gets Supper Club and
+// This week's menu before the member links. The links are read by where they go, never their words.
+describe("issue 260 — the header links of a member with no active subscription", () => {
+  const SUPPER_CLUB = "/supper-club";
+  const MENU = "/menu";
+  const FIVE = [SUPPER_CLUB, MENU, ...LINKS];
+
+  /** Grace, with no subscription. */
+  const neverJoined = (): Promise<Member> => services.repo.createMember({ email: "grace@example.com" });
+  /** Grace, whose one subscription is cancelled. */
+  const cancelled = async (): Promise<Member> => {
+    const member = await neverJoined();
+    const { subscriptionId } = await paidSignup(member);
+    await services.repo.cancelSubscription(subscriptionId, new Date("2027-02-03T17:00:00.000Z"));
+    return member;
+  };
+  const marked = (found: Buttons) => found.filter((button) => button.props.current).map((button) => button.props.href);
+  const newLinks = (found: Buttons) => found.map((button) => button.props.href).filter((href) => href === SUPPER_CLUB || href === MENU);
+
+  it.each([
+    ["a member who never joined", "member", neverJoined],
+    ["a cancelled member", "member", cancelled],
+    ["an admin who never joined", "admin", neverJoined],
+  ] as const)("AC1: %s: the bar's member links are /supper-club, /menu, /account, /account/weeks and /account/weeks#history, in that order, each a menu link, then, for an admin, the Admin group, then Sign out", async (_who, role, who) => {
+    session.member = { ...(await who()), role };
+    const { buttons, groups } = await header("none");
+    expect(sequence(buttons)).toEqual([...FIVE, ...(role === "admin" ? ADMIN_LINKS : []), SIGN_OUT]);
+    expect(buttons.slice(0, FIVE.length).map((button) => button.props.kind)).toEqual(FIVE.map(() => "menu"));
+    expect(groups.map((group) => sequence(inGroup(group)))).toEqual(role === "admin" ? [ADMIN_LINKS] : []);
+  });
+
+  it.each([
+    ["a member who never joined", "member", neverJoined, FIVE],
+    ["a cancelled member", "member", cancelled, FIVE],
+    ["an admin who never joined", "admin", neverJoined, ["heading", ...ADMIN_LINKS, ...FIVE]],
+  ] as const)("AC1: %s: the drawer holds the same five links in the same order, as full menu rows, after an admin's Admin block", async (_who, role, who, expected) => {
+    session.member = { ...(await who()), role };
+    const { drawer } = await header("none");
+    expect(marks(drawer.links.node)).toEqual(expected);
+    expect(drawer.links.buttons.map((button) => [button.props.kind, button.props.full])).toEqual(drawer.links.buttons.map(() => ["menu", true]));
+  });
+
+  it.each(["member", "admin"] as const)("AC2: signed in as %s, with an active subscription, the header has neither new link, in the bar or the drawer", async (role) => {
+    session.member = { role };
+    const { buttons, drawer } = await header("none");
+    expect(newLinks(buttons)).toEqual([]);
+    expect(newLinks(drawer.buttons)).toEqual([]);
+  });
+
+  it.each([undefined, "supper-club", "menu"] as const)("AC2: signed out, with current %s, the header is the Sign in button alone, not marked as the page showing", async (current) => {
+    const { buttons, drawers } = await header("sign-in", current);
+    expect(sequence(buttons)).toEqual([SIGN_IN_PATH]);
+    expect(marked(buttons)).toEqual([]);
+    expect(drawers).toEqual([]);
+  });
+
+  it.each([
+    ["supper-club", SUPPER_CLUB],
+    ["menu", MENU],
+  ] as const)('AC3: with current "%s", that link alone is marked as the page showing, in the bar and in the drawer', async (current, href) => {
+    session.member = { ...(await neverJoined()), role: "admin" };
+    const { buttons, drawer, groups } = await header("sign-in", current);
+    for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([href]);
+    expect(groups.map((group) => group.props.active)).toEqual([false]);
+  });
+
+  it("AC3: with no current page, a pane's page, no link is marked", async () => {
+    session.member = { ...(await neverJoined()), role: "member" };
+    const { buttons, drawer } = await header("sign-in");
+    for (const found of [buttons, drawer.buttons]) expect(marked(found)).toEqual([]);
   });
 });

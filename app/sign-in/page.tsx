@@ -14,7 +14,7 @@ export default async function SignIn({
 }: {
   searchParams: Promise<{ limited?: string; error?: string }>;
 }) {
-  // Issue 219: a member already signed in has no use for the form; requireSubscriber sends one with no subscription on.
+  // Issue 219: a member already signed in has no use for the form; the account page is where one lands whether or not they have a subscription (issue 260).
   if (await getSignedInMember()) redirect(ACCOUNT_PATH);
   const { limited, error } = await searchParams;
   return (
