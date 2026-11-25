@@ -185,6 +185,15 @@ const namesNoWeek = (text: string): boolean => [FEB_7, FEB_14].every((weekOf) =>
 /** The title of the week of `weekOf` as the page's language writes it, with its row's days. */
 const titleOf = (weekOf: string, changed: ChangedWeek | null = null): string => weekTitle(t, pickupWeek(weekOf, changed), "en");
 
+/** The page's two columns, left first: each outermost div holding exactly one Card. */
+const columnsOf = (element: ReactElement): ReactElement[] => {
+  const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
+  return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
+};
+
+/** Which of a Notice and a Card a column holds, in order. */
+const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
+
 /** Where each link in `markup` goes, as a path and query. */
 const linksOf = (markup: string): string[] =>
   attributesOf(markup, "a").map((link) => {
@@ -1119,14 +1128,6 @@ describe("AC20 (issue 254) — account home while a card update's charge is out"
 // Issue 254: where the Notice sits. Which one shows is AC5's (issue 198) and AC17's above; here one of each, by its column.
 // Stacked below lg the left column is the first, so one order serves both widths.
 describe("AC24 (issue 254) — the card Notice is in the left column, above the Supper Club card", () => {
-  /** The page's two columns, left first: each outermost div holding exactly one Card. */
-  const columnsOf = (element: ReactElement): ReactElement[] => {
-    const single = findAll(element, "div").filter((div) => findAll(div, CardBox).length === 1);
-    return single.filter((div) => !single.some((outer) => outer !== div && findAll(outer, "div").includes(div)));
-  };
-  /** What of these two a column holds, in order. */
-  const orderIn = (column: ReactElement | undefined) => [...renderToStaticMarkup(column).matchAll(/role="alert"|<section\b/g)].map(([mark]) => mark);
-
   it.each<[string, () => Promise<unknown>]>([
     [
       "declined",
@@ -1202,6 +1203,17 @@ describe("issue 238 — a cancelled member's way back", () => {
       expect(linksOf(cancelled[0] ?? "")).toEqual(["/supper-club"]);
       for (const link of ["/account?switch=1", "/account/card", "/account/cancel"]) expect(linksOf(sections[0] ?? "")).not.toContain(link);
     }
+  });
+
+  it("AC9: the cancelled Notice, on the page exactly once, is the first thing in the left column, above the Supper Club card, and Your details' column holds none", async () => {
+    const { subscriptionId } = await activeAda();
+    await services.repo.cancelSubscription(subscriptionId, NOW);
+    const { element, html } = await render();
+    expect(alertTexts(html)).toEqual([expect.stringContaining(t("account.cancelledNotice"))]);
+    const [left, right, ...more] = columnsOf(element);
+    expect(more).toEqual([]);
+    expect(orderIn(left)).toEqual(['role="alert"', "<section"]);
+    expect(orderIn(right)).toEqual(["<section"]);
   });
 });
 
