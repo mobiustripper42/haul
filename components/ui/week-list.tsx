@@ -9,8 +9,10 @@ export type WeekListRow = { id: string; title: string; lines: string[]; amount?:
  * any, then an optional action (issues 137, 230). Every later line runs the row's full width below, so a long status
  * line is not squeezed beside the badge on a phone (issue 230), and then `below`, full width too (issue 243: a week's
  * rolldown). One column at every width: `RowList` does not fit, for it hides at 720px and wider.
+ * With no rows it is the `empty` line, when given, in place of the list (issue 243).
  */
-export function WeekList({ rows }: { rows: WeekListRow[] }) {
+export function WeekList({ rows, empty }: { rows: WeekListRow[]; empty?: string }) {
+  if (rows.length === 0 && empty !== undefined) return <Hint>{empty}</Hint>;
   return (
     <ul className="flex flex-col">
       {rows.map((row) => {

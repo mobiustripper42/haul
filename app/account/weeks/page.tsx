@@ -65,8 +65,8 @@ function actionOf(row: UpcomingRow, t: Translator, language: Language) {
  *
  * Issue 243: History is the page's second list, in the right column (`ACCOUNT_HISTORY_ID`, which the menu's History link goes to), and
  * under Upcoming weeks below 1024px. A week with a menu that has dishes for the member's choice holds a rolldown named by the menu, the
- * first listed one open on load, headed Proposed until the week's menu email has gone out (DEC-054). A cancelled member with no paid
- * week to come has no Upcoming card.
+ * first listed one open on load, headed Proposed until the week's menu email has gone out (DEC-054). For a cancelled member with no paid
+ * week to come the Upcoming card holds one line saying so.
  */
 export default async function UpcomingWeeks(): Promise<ReactElement>;
 // Next reads a page's props from its last signature, which cannot be optional there, so the one without is first.
@@ -120,11 +120,9 @@ export default async function UpcomingWeeks({ searchParams }: { searchParams?: P
                 {notice}
                 {!cancelled && locked === null && <Hint>{t("account.weeks.intro")}</Hint>}
                 {query?.error === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
-                {rows.length > 0 && (
-                  <Card width="fill">
-                    <WeekList rows={rows} />
-                  </Card>
-                )}
+                <Card width="fill">
+                  <WeekList rows={rows} empty={t("account.weeks.empty")} />
+                </Card>
               </>
             ),
             right: History({ past: history.rows, ledger: history.ledger, t, language }),

@@ -18,7 +18,7 @@ import { signSession } from "@core/sign-in/session.js";
 import { Badge, type BadgeKind } from "../../../components/ui/badge";
 import { addSupperClub } from "../../admin/subscribers-fixture";
 import { emptyRequest } from "../../next-headers-fake";
-import { alertTexts, textsOf } from "../../screen-test-helpers";
+import { textsOf } from "../../screen-test-helpers";
 import { SUBSCRIPTION_BADGES } from "../../subscription-badges";
 import { payDeclinedWeek } from "../declined-fixture";
 import { historyColumn, listItems } from "./columns-fixture";
@@ -180,17 +180,6 @@ describe("AC4 (issue 138) — a paid week's picks, after a switch", () => {
     const { rows } = await render();
     expect(rowTitled(rows, titleOf(JAN_3))?.[1]).toBe(MEAL);
     expect(rowTitled(rows, titleOf("2027-01-10"))?.[1]).toBe("3–4 people · Vegan");
-  });
-});
-
-describe("AC8 (issue 155) — no past weeks", () => {
-  it("AC8: a member whose first week has not passed sees no card, no rows and no message", async () => {
-    await subscribedAda("2027-02-07");
-    const { html, rows } = await render();
-    // A Card is a <section>.
-    expect(html).not.toContain("<section");
-    expect(rows).toEqual([]);
-    expect(alertTexts(html)).toEqual([]);
   });
 });
 

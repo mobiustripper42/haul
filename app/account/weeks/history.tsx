@@ -26,7 +26,7 @@ const LINES = {
 
 /**
  * A member's History (issue 155), the right column of Upcoming weeks (issue 243): their past weeks, newest first, from the
- * ledger. Read only. With no past week it is the title and the intro line alone. Called inline, `{History({ ... })}`.
+ * ledger. Read only. With no past week its card holds one line saying so. Called inline, `{History({ ... })}`.
  */
 export function History({ past, ledger, t, language }: { past: HistoryRow[]; ledger: MemberWeeks; t: Translator; language: Language }): ReactNode {
   // Each paid week shows the picks it was charged for: the set in effect for that week (issue 138), never the newest.
@@ -48,11 +48,9 @@ export function History({ past, ledger, t, language }: { past: HistoryRow[]; led
         {t("account.history.title")}
       </Heading>
       <Hint>{t("account.history.intro")}</Hint>
-      {rows.length > 0 && (
-        <Card width="fill">
-          <WeekList rows={rows} />
-        </Card>
-      )}
+      <Card width="fill">
+        <WeekList rows={rows} empty={t("account.history.empty")} />
+      </Card>
     </>
   );
 }

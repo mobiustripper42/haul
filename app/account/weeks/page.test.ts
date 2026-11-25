@@ -503,6 +503,9 @@ describe("AC17 (issue 254) — the no-card Notice on Upcoming weeks", () => {
 
 // Issue 243: Upcoming weeks and History on one page. The columns side by side, and where the History link scrolls, are the
 // browser's (e2e/account-weeks.spec.ts); what each list's rows hold is the tests above and ./history.test.ts's.
+/** Each card's runs of text, in order. A Card is a <section>, and none holds another. */
+const cardTexts = (markup: string): string[][] => [...markup.matchAll(/<section\b[^>]*>([\s\S]*?)<\/section>/g)].map((match) => textsOf(match[1] ?? ""));
+
 describe("AC1 (issue 243) — the Upcoming list, then the History list", () => {
   it("AC1: the page lists the 12 upcoming weeks, then in the History column the past weeks, newest first", async () => {
     const subscriptionId = await subscribedAda();
@@ -514,12 +517,12 @@ describe("AC1 (issue 243) — the Upcoming list, then the History list", () => {
     expect(titles(historyColumn(html))).toEqual(past);
   });
 
-  it("AC1: with no past weeks the History column has its h2 and no card", async () => {
+  it("AC1: with no past weeks the History column has its h2, and one card with no list that holds the empty line", async () => {
     await subscribedAda("2027-02-07");
     const history = historyColumn((await render()).html);
     expect(attributesOf(history, "h2")).toHaveLength(1);
-    // A Card is a <section>.
-    expect(attributesOf(history, "section")).toEqual([]);
+    expect(cardTexts(history)).toEqual([[t("account.history.empty")]]);
+    expect(attributesOf(history, "ul")).toEqual([]);
   });
 });
 
@@ -570,12 +573,13 @@ describe("AC3 (issue 243) — the notices and the intro line are in the Upcoming
 
 // With a paid week to come the card stands, with that week: AC5 (issue 139) above.
 describe("AC7 (issue 243) — a cancelled member with no paid week to come", () => {
-  it("AC7: there is no Upcoming card and no row, and History still has its card", async () => {
+  it("AC7: the Upcoming card holds the empty line and no list, and History still has its card", async () => {
     const subscriptionId = await subscribedAda();
     await services.repo.cancelSubscription(subscriptionId, NOW);
     const { html, rows } = await render();
     expect(rows).toEqual([]);
-    expect(attributesOf(upcomingColumn(html), "section")).toEqual([]);
+    expect(cardTexts(upcomingColumn(html))).toEqual([[t("account.weeks.empty")]]);
+    expect(attributesOf(upcomingColumn(html), "ul")).toEqual([]);
     expect(attributesOf(historyColumn(html), "section")).toHaveLength(1);
   });
 });

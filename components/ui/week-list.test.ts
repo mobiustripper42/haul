@@ -71,4 +71,11 @@ describe("AC2, AC7 (issue 155) — WeekList", () => {
       ["March 21 and 22", "Paid"],
     ]);
   });
+
+  it("AC1, AC7 (issue 243): with no rows it is the `empty` line and no list; with a row the line is not drawn", () => {
+    const draw = (rows: WeekListRow[]): string => renderToStaticMarkup(createElement(WeekList, { rows, empty: "Nothing here" }));
+    expect(textsOf(draw([]))).toEqual(["Nothing here"]);
+    expect(draw([])).not.toContain("<ul");
+    expect(textsOf(draw([{ id: "2027-03-21", title: "March 21 and 22", lines: ["Paid"] }]))).toEqual(["March 21 and 22", "Paid"]);
+  });
 });
