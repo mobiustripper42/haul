@@ -93,11 +93,13 @@ export async function SiteHeader({
       </Button>
     ));
   const admin = member?.role === "admin";
-  // The read the Supper Club page uses to decide who is already a member, so the links show exactly when that page lets them join (issue 260).
-  const subscribed = member ? (await getRepository().findActiveSubscription(member.id, (await requireSupperClub(getRepository())).id)) !== null : false;
-  const memberLinks = subscribed ? MEMBER_LINKS : [...NO_SUBSCRIPTION_LINKS, ...MEMBER_LINKS];
   const wordmark = <Wordmark name={t("brand.name")} byline={t("brand.byline")} />;
   if (member) {
+    const repo = getRepository();
+    const product = await requireSupperClub(repo);
+    // The read the Supper Club page uses to decide who is already a member, so the links show exactly when that page lets them join (issue 260).
+    const active = await repo.findActiveSubscription(member.id, product.id);
+    const memberLinks = active ? MEMBER_LINKS : [...NO_SUBSCRIPTION_LINKS, ...MEMBER_LINKS];
     return (
       <SiteBar as="header" wide>
         {wordmark}
