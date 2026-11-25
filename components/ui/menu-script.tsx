@@ -18,6 +18,10 @@ import { holdInert, siblingsAround } from "./inert";
  *   on the first change to the page after the address has changed, since a query-only step keeps this header mounted
  *   (issue 245). A menu opened while that page loads stays open, and so does one after a link that opens elsewhere (a ctrl,
  *   cmd or shift click, or a new tab), which leaves this page where it is (issue 240). Back and Forward close every menu.
+ * - A link in the header to exactly the address already showing, hash and all (History, once the address ends in `#history`),
+ *   closes its menu and scrolls to the element the hash names, at that element's scroll margin: the browser makes no scroll
+ *   of its own for an address that has not changed. A bar link too, not only a menu's. Another hash on the page is the
+ *   browser's to scroll to.
  * - A drawer left open when the window grows to 1024px, where it is not drawn, is closed: the page would stay inert.
  *
  * Renders nothing.
@@ -77,16 +81,35 @@ export function MenuScript() {
       if (e.button !== 0 || e.ctrlKey || e.metaKey || e.shiftKey || e.altKey) return;
       if ((link.target !== "" && link.target !== "_self") || link.hasAttribute("download")) return;
       const group = link.closest<HTMLDetailsElement>("details[data-menu-group]");
-      if (!group && !drawer?.contains(link)) return;
+      const inMenu = group !== null || drawer?.contains(link) === true;
+      if (!inMenu && link.closest("header") === null) return;
       const url = new URL(link.href, location.href);
       if (url.origin !== location.origin) return;
-      if (url.pathname !== location.pathname || url.search !== location.search) {
+      const samePage = url.pathname === location.pathname && url.search === location.search;
+      // A link to exactly this address, hash and all, changes nothing, so the browser has no scroll of its own to make:
+      // the target is scrolled to here, after the menu is closed. A bar link is not in a menu, so this is all it does.
+      if (samePage && url.hash !== "" && url.hash === location.hash) {
+        if (drawer?.contains(link)) closeDrawer(false);
+        if (group) group.open = false;
+        scrollToHash(url.hash);
+        return;
+      }
+      if (!inMenu) return;
+      if (!samePage) {
         // Its own menu only: one opened while the page loads is the person's, and stays.
         closeOnArrival(group ? () => (group.open = false) : () => closeDrawer(false));
         return;
       }
       if (drawer?.contains(link)) closeDrawer(false);
       if (group) group.open = false;
+    };
+    // The element a `#hash` names, scrolled into view at its own scroll margin (a column's, for the History list).
+    const scrollToHash = (hash: string) => {
+      try {
+        document.getElementById(decodeURIComponent(hash.slice(1)))?.scrollIntoView();
+      } catch {
+        // A malformed hash names nothing.
+      }
     };
     // A page that keeps this header mounted (a row's Note on /admin/weeks changes only the query) leaves its open menu in
     // the DOM when the new body arrives. The address changes when the page does, so the next change to the page after it has

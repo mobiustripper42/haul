@@ -130,6 +130,12 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
 // The shape Postgres accepts for a uuid parameter, any version.
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** A menu's texts keyed by option id, aggregated from `menu_texts t` over `menus m` grouped by `m.id`: the one home of it, for every read of a menu. */
+const MENU_TEXTS_SQL = "coalesce(jsonb_object_agg(t.option_id, t.text) filter (where t.option_id is not null), '{}'::jsonb)";
+
+type MenuRow = { id: string; name: string; updated_at: Date; texts: Record<string, string> };
+const menuOf = (row: MenuRow): Menu => ({ id: row.id, name: row.name, texts: row.texts, updatedAt: row.updated_at });
+
 /** A timestamptz column as its day in Cleveland, `YYYY-MM-DD`. Only ever given a column name written in this file. */
 const clevelandDay = (column: string): string => `to_char(${column} at time zone 'America/New_York', 'YYYY-MM-DD')`;
 
@@ -944,19 +950,18 @@ export class PostgresRepository implements Repository {
     );
   }
 
-  /** The menus (all, or those with `ids`) with their texts keyed by option id, newest `updated_at` first. */
-  private async readMenus(ids: string[] | null): Promise<Menu[]> {
-    const { rows } = await this.db.query<{ id: string; name: string; updated_at: Date; texts: Record<string, string> }>(
-      `select m.id, m.name, m.updated_at,
-              coalesce(jsonb_object_agg(t.option_id, t.text) filter (where t.option_id is not null), '{}'::jsonb) as texts
+  /** The menus (all, or the one with `id`) with their texts keyed by option id, newest `updated_at` first. */
+  private async readMenus(id: string | null): Promise<Menu[]> {
+    const { rows } = await this.db.query<MenuRow>(
+      `select m.id, m.name, m.updated_at, ${MENU_TEXTS_SQL} as texts
          from menus m
          left join menu_texts t on t.menu_id = m.id
-        where $1::uuid[] is null or m.id = any($1::uuid[])
+        where $1::uuid is null or m.id = $1::uuid
         group by m.id
         order by m.updated_at desc, m.id`,
-      [ids],
+      [id],
     );
-    return rows.map((row) => ({ id: row.id, name: row.name, texts: row.texts, updatedAt: row.updated_at }));
+    return rows.map(menuOf);
   }
 
   /** Issue 140: every menu, newest `updated_at` first. */
@@ -966,7 +971,7 @@ export class PostgresRepository implements Repository {
 
   async findMenu(id: string): Promise<Menu | null> {
     if (!UUID_SHAPE.test(id)) return null;
-    return (await this.readMenus([id]))[0] ?? null;
+    return (await this.readMenus(id))[0] ?? null;
   }
 
   /** The menu row and a row per text, in one transaction. */
@@ -1029,20 +1034,20 @@ export class PostgresRepository implements Repository {
     return rowCount === 1;
   }
 
-  /** Issue 243: the menu of each of the product's `weekOfs` as it is now, and when its email went out, in two trips; a week with none is absent. */
+  /** Issue 243: the menu of each of the product's `weekOfs` as it is now, and when its email went out, in one trip; a week with none is absent. */
   async findWeekMenus(productId: string, weekOfs: string[]): Promise<Map<string, { menu: Menu; sentAt: Date | null }>> {
     const found = new Map<string, { menu: Menu; sentAt: Date | null }>();
     if (!UUID_SHAPE.test(productId) || weekOfs.length === 0) return found;
-    const { rows } = await this.db.query<{ week_of: string; menu_id: string; sent_at: Date | null }>(
-      "select to_char(week_of, 'YYYY-MM-DD') as week_of, menu_id, sent_at from week_menus where product_id = $1 and week_of = any($2::date[])",
+    const { rows } = await this.db.query<MenuRow & { week_of: string; sent_at: Date | null }>(
+      `select to_char(w.week_of, 'YYYY-MM-DD') as week_of, w.sent_at, m.id, m.name, m.updated_at, ${MENU_TEXTS_SQL} as texts
+         from week_menus w
+         join menus m on m.id = w.menu_id
+         left join menu_texts t on t.menu_id = m.id
+        where w.product_id = $1 and w.week_of = any($2::date[])
+        group by w.week_of, w.sent_at, m.id`,
       [productId, weekOfs],
     );
-    if (rows.length === 0) return found;
-    const menus = new Map((await this.readMenus(rows.map((row) => row.menu_id))).map((menu) => [menu.id, menu]));
-    for (const row of rows) {
-      const menu = menus.get(row.menu_id);
-      if (menu) found.set(row.week_of, { menu, sentAt: row.sent_at });
-    }
+    for (const row of rows) found.set(row.week_of, { menu: menuOf(row), sentAt: row.sent_at });
     return found;
   }
 

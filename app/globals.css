@@ -255,9 +255,13 @@
     mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='1.75' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
   }
 
-  /* Issue 243: a rolldown's summary (Disclosure): a 44px teal line with the same chevron, which turns over while the details is open. */
+  /*
+   * Issue 243: a rolldown's summary (Disclosure): a 44px teal line with the same chevron, which turns over while the details is open.
+   * A name with no spaces wraps inside the card (`wrap-anywhere`), the chevron staying; the 4px of padding, taken back by the
+   * margin, keep the keyboard focus ring off the first letter without moving the text.
+   */
   .disclosure-summary {
-    @apply flex min-h-touch items-center text-small text-teal;
+    @apply -mx-1 flex min-h-touch items-center px-1 text-small text-teal wrap-anywhere;
   }
   details[open] > .disclosure-summary::after {
     @apply rotate-180;
