@@ -10,7 +10,7 @@ import type { Locator, Page, Request } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
 import { e2eDatabaseUrl } from "./database";
-import { expect, headerMenu, headerSignOut, outboxCount, signIn, test } from "./fixtures";
+import { expect, headerMenu, headerSignOut, outboxCount, scriptHasRun, signIn, test } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const LENNY = "lenny@ocf.xx";
@@ -501,30 +501,6 @@ test.describe("AC9 — the forms that load a whole page", () => {
     });
   }
 
-  test("AC9: the weekly lists' Show gets the ring and the page locks, and the week picked opens", async ({ page, request }) => {
-    await runSeed("week-lists", e2eDatabaseUrl());
-    await signIn(page, request, LENNY, "/admin");
-    await page.goto("/admin/lists");
-    const form = 'form[action="/admin/lists"]';
-    const select = page.locator(`${form} select[name="week"]`);
-    const week = (await select.locator("option").last().getAttribute("value")) ?? "";
-    expect(await select.inputValue(), "the last week is the one already showing").not.toBe(week);
-    await select.selectOption(week);
-    const button = page.locator(submitIn(form));
-    const words = await wordsOf(button);
-    const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, submitIn(form));
-
-    await button.click({ noWaitAfter: true });
-    await expectHeld(held);
-
-    await expect.poll(() => reports.at(-1)).toMatchObject(sending(words));
-    held.release();
-    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === week);
-    await expect(select).toHaveValue(week);
-    await expectUnlocked(page);
-  });
-
   test("AC9: coming Back to the page finds it unlocked with no ring", async ({ page }) => {
     await page.goto("/supper-club");
     const selector = 'button[name="next"][value="create-account"]';
@@ -541,6 +517,72 @@ test.describe("AC9 — the forms that load a whole page", () => {
     expect(reports.at(-1)?.reachable).toContain("button next");
     held.release();
     await expect(page).toHaveURL(onPath("/supper-club/create-account"));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 235: a pick in Weekly lists' week dropdown shows that week in place, as an in-app link does. What it shows, and
+// Back, are e2e/form-changes.spec.ts's; here, the lock and the ring while the week loads.
+
+/**
+ * Lenny on Weekly lists, two weeks with lists, the page's script running: the week dropdown, the week its list is for and
+ * another week. A value is left on `window`, which a full page load would lose.
+ */
+async function onWeeklyLists(page: Page, request: Parameters<typeof signIn>[1]) {
+  await runSeed("week-lists", e2eDatabaseUrl());
+  await signIn(page, request, LENNY, "/admin");
+  await page.goto("/admin/lists");
+  const select = page.locator('select[name="week"]');
+  const shown = await select.inputValue();
+  const other = (await select.locator("option").last().getAttribute("value")) ?? "";
+  expect(other, "the last week is the one already showing").not.toBe(shown);
+  await scriptHasRun(select);
+  await page.evaluate(() => Object.assign(window, { haulSamePage: true }));
+  return { select, shown, other };
+}
+
+const samePage = (page: Page) => page.evaluate(() => (window as unknown as { haulSamePage?: boolean }).haulSamePage === true);
+/** The ring beside `select`, in the box that holds it. */
+const ringBeside = (select: Locator) => select.locator("xpath=..").locator('[aria-hidden="true"]');
+const drawsArrow = (select: Locator) => select.evaluate((el) => getComputedStyle(el).backgroundImage !== "none");
+
+test.describe("AC4 (issue 235) — the week dropdown while its week loads", () => {
+  test("AC4: while the picked week loads the dropdown is off and the rest of the page locked; when it arrives both end, on the same page", async ({ page, request }) => {
+    const { select, other } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+
+    await select.selectOption(other);
+
+    await expectHeld(held);
+    await expect(select).toBeDisabled();
+    await expectLocked(page);
+    held.release();
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+    await expect(select).toBeEnabled();
+    await expect(select).toHaveValue(other);
+    await expectUnlocked(page);
+    expect(held.count(), "one pick asked for one page").toBe(1);
+    expect(await samePage(page), "the pick loaded a whole page").toBe(true);
+  });
+});
+
+test.describe("AC17 (issue 235) — the ring while a picked week loads", () => {
+  test("AC17: while the picked week loads the ring stands where the dropdown's arrow was, the dropdown keeping its size; when it arrives the arrow is back", async ({ page, request }) => {
+    const { select, other } = await onWeeklyLists(page, request);
+    const box = await select.boundingBox();
+    const held = await holdPages(page, "/admin/lists");
+
+    await select.selectOption(other);
+
+    await expectHeld(held);
+    await expect(ringBeside(select)).toHaveCount(1);
+    await expect(ringBeside(select)).toBeVisible();
+    expect(await drawsArrow(select), "the arrow is still drawn under the ring").toBe(false);
+    expect(await select.boundingBox()).toEqual(box);
+    held.release();
+    await expect(page).toHaveURL((url) => url.searchParams.get("week") === other);
+    await expect(ringBeside(select)).toHaveCount(0);
+    expect(await drawsArrow(select)).toBe(true);
   });
 });
 

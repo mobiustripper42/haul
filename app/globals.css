@@ -393,6 +393,10 @@
     background-position: right calc(0.75rem - 1rem * 5.125 / 24) center;
     background-size: 1rem;
   }
+  /* Issue 235, AC17: a dropdown whose pick is loading gives its arrow's place to the ring (`SelectThatApplies`). */
+  select.field[aria-busy="true"] {
+    background-image: none;
+  }
   .field-code {
     @apply h-code-field text-center text-code;
   }

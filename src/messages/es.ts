@@ -113,7 +113,6 @@ export const es = {
   "admin.lists.hint": "Los conteos son definitivos después de la fecha límite de la semana. Antes, cambian cuando los miembros omiten o cambian su comida.",
   "admin.lists.week": "Semana",
   "admin.lists.weekPassed": "{title} · fecha límite pasada",
-  "admin.lists.show": "Mostrar semana",
   "admin.lists.heading": "Lista de preparación · {days}",
   "admin.lists.final": "Definitiva",
   "admin.lists.meals": "Comidas",

@@ -33,7 +33,8 @@ vi.mock("next/headers", async () => {
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
-vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect }));
+// `useRouter` is the week dropdown's (`SelectThatApplies`, issue 235), which renders here but is never picked.
+vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect, useRouter: () => ({ push: () => {} }) }));
 vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("../../services", () => ({
   getRepository: () => services.repo,
@@ -130,6 +131,12 @@ describe("signed in as an admin", () => {
       const markup = await render();
       const form = [...markup.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].find(([, , inner = ""]) => /<select\b[^>]*\bname="week"/.test(inner));
       expect(form?.[1] ?? "no form holds the week select").toMatch(/\bmethod="get"/i);
+    });
+
+    it("AC2 (issue 235): the week form is sent with no button: a pick applies itself", async () => {
+      const markup = await render();
+      const form = [...markup.matchAll(/<form\b([^>]*)>([\s\S]*?)<\/form>/g)].find(([, , inner = ""]) => /<select\b[^>]*\bname="week"/.test(inner));
+      expect(form?.[2] ?? "no form holds the week select").not.toMatch(/<button\b/);
     });
 
     it("AC8: a week the select does not offer falls back to the first upcoming week", async () => {

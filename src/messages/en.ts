@@ -130,7 +130,6 @@ export const en = {
   "admin.lists.hint": "Counts are final after the week's cutoff. Before it, they change as members skip and switch.",
   "admin.lists.week": "Week",
   "admin.lists.weekPassed": "{title} · cutoff passed",
-  "admin.lists.show": "Show week",
   "admin.lists.heading": "Pick list · {days}",
   "admin.lists.final": "Final",
   "admin.lists.meals": "Meals",
@@ -376,8 +375,8 @@ export const en = {
   "createAccount.spam": "No email? Check your spam folder.",
   "details.emailHelp":
     "This is how you sign in. Changing it sends a 6-digit code to the new address, and it becomes your sign-in email once confirmed.",
-  "details.save": "Save",
-  "details.saved": "Saved. Your details are up to date.",
+  "details.save": "Save changes",
+  "details.saved": "Saved",
   "details.keepOldEmail": "Keep the old email",
   "details.codeTitle": "Check your new email",
   "details.codeSent":

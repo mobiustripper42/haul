@@ -41,8 +41,8 @@ export const generateMetadata = titled("account.title");
 
 /**
  * The page's query (issue 219): `switch` opens the Supper Club card's pickers, `switchError` is the refusal a Switch sends
- * the member back with, and the rest is Your details' (issue 156): `saved`, `error` naming the fields a save broke or the
- * code step's refusal, `sent` and `limited`.
+ * the member back with, and the rest is Your details' (issue 156): `error` naming the fields a save broke or the code
+ * step's refusal, `sent` and `limited`. A save that works lands on `saved`, which the page no longer reads (issue 235).
  */
 type Query = { switch?: string; switchError?: string; saved?: string; error?: string; sent?: string; limited?: string };
 
@@ -79,7 +79,7 @@ export default async function Account({ searchParams }: { searchParams?: Promise
     // A cancelled subscription has no switch week and no pending line, so its weeks are not read, nor are a member's who never joined.
     subscribed === null || cancelled ? [] : loadUpcomingRows(subscribed, now),
   ]);
-  const { switch: switchQuery, switchError, saved, error, sent, limited } = query ?? {};
+  const { switch: switchQuery, switchError, error, sent, limited } = query ?? {};
   const minutes = limitedMinutes(limited);
   const codeStep = pendingChange !== null && pendingChange.expiresAt.getTime() > Date.now();
   const noSupperClub = await noSupperClubNotice(account, t, language, now);
@@ -91,7 +91,6 @@ export default async function Account({ searchParams }: { searchParams?: Promise
         <div className="flex w-full max-w-page flex-col gap-5">
           <Heading>{t("account.title")}</Heading>
           {subscribed && switchError === ACCOUNT_WEEKS_CUTOFF_ERROR && <CutoffNotice t={t} />}
-          {saved === "1" && <Notice icon="check">{t("details.saved")}</Notice>}
           {minutes !== null && limitedNotice(language, minutes)}
           {/* Issue 230: side by side at lg and wider, Supper Club on the left; stacked below, Supper Club first. Issue 254: the card Notice, and the cancelled one (issue 238), are the first thing in the left column, so they stand above the Supper Club card at both widths. */}
           {TwoColumns({
@@ -128,14 +127,21 @@ export default async function Account({ searchParams }: { searchParams?: Promise
                 ) : (
                   <>
                     <Heading level={2}>{t("account.details")}</Heading>
-                    <form action={saveDetails} noValidate className="flex flex-col gap-6">
+                    <form key={detailsFormKey()} action={saveDetails} noValidate className="flex flex-col gap-6">
                       {await AccountFields({ values: detailsValues(), failing: failingFields(), emailHelp: "details.emailHelp" })}
                       <Checkbox name="menuEmails" defaultChecked={member.menuEmails} hint={t("details.menuEmailsHint")}>
                         {t("details.menuEmails")}
                       </Checkbox>
-                      <Button kind="primary" full type="submit">
-                        {t("details.save")}
-                      </Button>
+                      {/* Issue 235: a refilled form holds what was not saved, so its Save is on from the start. */}
+                      {failingFields().size > 0 ? (
+                        <Button kind="primary" full type="submit">
+                          {t("details.save")}
+                        </Button>
+                      ) : (
+                        <Button kind="primary" full type="submit" untilChanged={t("details.saved")}>
+                          {t("details.save")}
+                        </Button>
+                      )}
                     </form>
                   </>
                 )}
@@ -232,6 +238,14 @@ export default async function Account({ searchParams }: { searchParams?: Promise
   /** The form refills only after a save that broke a rule: `error` names its fields. */
   function failingFields(): Set<string> {
     return new Set(error === undefined || error === "invalid" || error === "square" ? [] : error.split(","));
+  }
+
+  /**
+   * Your details' form is remounted by a save that lands, so its Save reads the new saved values as the baseline (issue 235):
+   * two good saves in a row land on the same address, and nothing else would mount it again. A refilled form is another key from a saved one.
+   */
+  function detailsFormKey(): string {
+    return JSON.stringify([failingFields().size > 0, member.menuEmails, detailsValues()]);
   }
 
   function detailsValues() {

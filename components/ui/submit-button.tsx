@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState, type ButtonHTMLAttributes, type MouseEvent } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore, type ButtonHTMLAttributes, type MouseEvent } from "react";
 import { useFormStatus } from "react-dom";
+import { formState, sentFormState } from "./form-state";
 import { lockPage } from "./page-lock";
+import { useCacheRestore } from "./use-cache-restore";
 import { useHeld } from "./use-held";
 import { WaitingLabel } from "./waiting-label";
 
@@ -15,11 +17,22 @@ import { WaitingLabel } from "./waiting-label";
  *
  * `loadsPage` is for a form that loads a whole page (a GET, or a POST to a route): it has no pending state to follow. It
  * turns off just after the browser has collected the form, since turning off sooner drops which button was tapped, and
- * comes back on when the page is restored from the browser's cache.
+ * comes back on when the page is restored from the browser's cache (`useCacheRestore`).
+ *
+ * `untilChanged` is a Save that is off until its form changes (issue 235): its label is that text while the form holds what
+ * the server sent, read once when the button mounts, and its children once it holds anything else. The server sends it off,
+ * as the script keeps it: the page assumes its script runs (DEC-057).
  *
  * At rest it is a `<button>` with the attributes it was given, and its children alone.
  */
-export function SubmitButton({ loadsPage, children, disabled, onClick, ...rest }: ButtonHTMLAttributes<HTMLButtonElement> & { loadsPage?: boolean }) {
+export function SubmitButton({
+  loadsPage,
+  untilChanged,
+  children,
+  disabled,
+  onClick,
+  ...rest
+}: ButtonHTMLAttributes<HTMLButtonElement> & { loadsPage?: boolean; untilChanged?: string }) {
   const { pending } = useFormStatus();
   const button = useRef<HTMLButtonElement>(null);
   const [tapped, setTapped] = useState(false);
@@ -33,6 +46,37 @@ export function SubmitButton({ loadsPage, children, disabled, onClick, ...rest }
   const held = useHeld(sending);
   const busy = held || loading;
   const locked = sending || loading;
+
+  // The server's values, read the first time the form is watched, which is when the script starts. Nothing watches a button that is not `untilChanged`.
+  const sent = useRef<string | null>(null);
+  const watching = untilChanged !== undefined;
+  const watchForm = useCallback(
+    (notify: () => void) => {
+      const form = button.current?.form;
+      if (!watching || !form) return () => {};
+      sent.current ??= sentFormState(form);
+      // On the document, which hears an event after React has: a box React formats as it is typed (app/phone-input.tsx) holds its typed text until then.
+      const changed = (event: Event) => event.target instanceof Node && form.contains(event.target) && notify();
+      document.addEventListener("input", changed);
+      document.addEventListener("change", changed);
+      return () => {
+        document.removeEventListener("input", changed);
+        document.removeEventListener("change", changed);
+      };
+    },
+    [watching],
+  );
+  const unchanged = useSyncExternalStore(
+    watchForm,
+    () => {
+      if (!watching) return false;
+      const form = button.current?.form;
+      // Off until the form is watched: the server's page, and a form a save remounted, start as sent.
+      if (!form || sent.current === null) return true;
+      return formState(form) === sent.current;
+    },
+    () => watching,
+  );
 
   const hadFocus = useRef(false);
   useEffect(() => {
@@ -51,16 +95,10 @@ export function SubmitButton({ loadsPage, children, disabled, onClick, ...rest }
     return () => form.removeEventListener("submit", onSubmit);
   }, [loadsPage]);
 
-  useEffect(() => {
-    if (!loadsPage) return;
-    const onShow = (event: PageTransitionEvent) => {
-      if (!event.persisted) return;
-      setLoading(false);
-      setTapped(false);
-    };
-    window.addEventListener("pageshow", onShow);
-    return () => window.removeEventListener("pageshow", onShow);
-  }, [loadsPage]);
+  useCacheRestore(!!loadsPage, () => {
+    setLoading(false);
+    setTapped(false);
+  });
 
   useEffect(() => {
     if (!locked || !button.current) return;
@@ -90,8 +128,8 @@ export function SubmitButton({ loadsPage, children, disabled, onClick, ...rest }
   };
 
   return (
-    <button {...rest} ref={button} onClick={tap} disabled={busy ? true : disabled} aria-busy={busy ? true : undefined}>
-      <WaitingLabel busy={busy}>{children}</WaitingLabel>
+    <button {...rest} ref={button} onClick={tap} disabled={busy || unchanged ? true : disabled} aria-busy={busy ? true : undefined}>
+      <WaitingLabel busy={busy}>{unchanged ? untilChanged : children}</WaitingLabel>
     </button>
   );
 }
