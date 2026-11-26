@@ -33,7 +33,8 @@ vi.mock("next/headers", async () => {
     headers: () => fakeNextHeaders(request.current).headers(),
   };
 });
-vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect }));
+// `useRouter` is the week dropdown's (`SelectThatApplies`, issue 235), which renders here but is never picked.
+vi.mock("next/navigation", async () => ({ redirect: (await import("../../screen-test-helpers")).throwingRedirect, useRouter: () => ({ push: () => {} }) }));
 vi.mock("next/server", () => ({ after: () => {} }));
 vi.mock("../../services", () => ({
   getRepository: () => services.repo,

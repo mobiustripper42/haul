@@ -423,23 +423,21 @@ test.describe("AC8 — the card box is locked with the rest of the page", () => 
 });
 
 /** A form that loads a whole page, as the page itself reports it while the new page is held. */
-type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; value: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[]; ringsBeside: number; arrow: boolean; size: string };
+type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[] };
 
 /**
  * Chromium runs no script from out here while a whole page is on its way, so the page watches itself: from its form's
  * submit on, it reports what it finds to the console. `restore`, when given, is how long after the submit the page is told
- * it was restored from the back-forward cache, which Playwright turns off. `startOn` "change" starts the watch at a pick
- * in a dropdown instead (issue 235), whose control is then `button`; `value` is the control's. `ringsBeside` counts the rings in
- * the control's parent, `arrow` is whether the control draws its arrow, and `size` is its width by its height (issue 235, AC17).
+ * it was restored from the back-forward cache, which Playwright turns off.
  */
-async function watchSend(page: Page, button: string, restore?: number, startOn: "submit" | "change" = "submit"): Promise<Report[]> {
+async function watchSend(page: Page, button: string, restore?: number): Promise<Report[]> {
   const reports: Report[] = [];
   page.on("console", (message) => {
     const [, report] = /^haul-report (.*)$/.exec(message.text()) ?? [];
     if (report) reports.push(JSON.parse(report) as Report);
   });
   await page.evaluate(
-    ({ buttonIs, controls, restoreAfter, startOn }) => {
+    ({ buttonIs, controls, restoreAfter }) => {
       const reachableNow = new Function(`return (${controls})()`) as () => string[];
       let restored = false;
       const report = () => {
@@ -450,14 +448,10 @@ async function watchSend(page: Page, button: string, restore?: number, startOn: 
           busy: el.getAttribute("aria-busy") === "true",
           inert: el.closest("[inert]") !== null,
           words: (el.textContent ?? "").trim(),
-          value: el.value,
           busyButtons: document.querySelectorAll('button[aria-busy="true"]').length,
           rings: document.querySelectorAll('button [aria-hidden="true"]').length,
           inertOnPage: document.querySelectorAll("[inert]").length,
           reachable: reachableNow(),
-          ringsBeside: el.parentElement?.querySelectorAll('[aria-hidden="true"]').length ?? 0,
-          arrow: getComputedStyle(el).backgroundImage !== "none",
-          size: `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`,
         };
         console.log(`haul-report ${JSON.stringify(found)}`);
       };
@@ -469,9 +463,9 @@ async function watchSend(page: Page, button: string, restore?: number, startOn: 
           window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
         }, restoreAfter);
       };
-      document.addEventListener(startOn, start, { capture: true, once: true });
+      document.addEventListener("submit", start, { capture: true, once: true });
     },
-    { buttonIs: button, controls: reachableControls.toString(), restoreAfter: restore, startOn },
+    { buttonIs: button, controls: reachableControls.toString(), restoreAfter: restore },
   );
   return reports;
 }
@@ -507,21 +501,6 @@ test.describe("AC9 — the forms that load a whole page", () => {
     });
   }
 
-  test("AC9: a pick in the weekly lists' week dropdown locks the page, and the week picked opens", async ({ page, request }) => {
-    const { select, selectIs, other } = await onWeeklyLists(page, request);
-    const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, selectIs, undefined, "change");
-
-    await select.selectOption(other);
-    await expectHeld(held);
-
-    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: false, inert: false, reachable: [] });
-    held.release();
-    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
-    await expect(select).toHaveValue(other);
-    await expectUnlocked(page);
-  });
-
   test("AC9: coming Back to the page finds it unlocked with no ring", async ({ page }) => {
     await page.goto("/supper-club");
     const selector = 'button[name="next"][value="create-account"]';
@@ -542,95 +521,68 @@ test.describe("AC9 — the forms that load a whole page", () => {
 });
 
 // ---------------------------------------------------------------------------------------------
-// Issue 235: Weekly lists' week dropdown loads the week picked. What it loads, and Back that reloads the page, are
-// e2e/form-changes.spec.ts's; here, the lock while the week loads and Back from the browser's cache.
+// Issue 235: a pick in Weekly lists' week dropdown shows that week in place, as an in-app link does. What it shows, and
+// Back, are e2e/form-changes.spec.ts's; here, the lock and the ring while the week loads.
 
 /**
- * Lenny on Weekly lists, two weeks with lists, the page's script running: the week dropdown, its selector, the week its
- * list is for and another week.
+ * Lenny on Weekly lists, two weeks with lists, the page's script running: the week dropdown, the week its list is for and
+ * another week. A value is left on `window`, which a full page load would lose.
  */
 async function onWeeklyLists(page: Page, request: Parameters<typeof signIn>[1]) {
   await runSeed("week-lists", e2eDatabaseUrl());
   await signIn(page, request, LENNY, "/admin");
   await page.goto("/admin/lists");
-  const selectIs = 'form[action="/admin/lists"] select[name="week"]';
-  const select = page.locator(selectIs);
+  const select = page.locator('select[name="week"]');
   const shown = await select.inputValue();
   const other = (await select.locator("option").last().getAttribute("value")) ?? "";
   expect(other, "the last week is the one already showing").not.toBe(shown);
   await scriptHasRun(select);
-  return { select, selectIs, shown, other };
+  await page.evaluate(() => Object.assign(window, { haulSamePage: true }));
+  return { select, shown, other };
 }
 
-test.describe("AC4 (issue 235) — the week dropdown while its week loads", () => {
-  test("AC4: while the picked week loads the dropdown is off and the rest of the page locked, and a second pick starts no second load", async ({ page, request }) => {
-    const { select, selectIs, other } = await onWeeklyLists(page, request);
-    const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, selectIs, undefined, "change");
+const samePage = (page: Page) => page.evaluate(() => (window as unknown as { haulSamePage?: boolean }).haulSamePage === true);
+/** The ring beside `select`, in the box that holds it. */
+const ringBeside = (select: Locator) => select.locator("xpath=..").locator('[aria-hidden="true"]');
+const drawsArrow = (select: Locator) => select.evaluate((el) => getComputedStyle(el).backgroundImage !== "none");
 
-    await select.focus();
+test.describe("AC4 (issue 235) — the week dropdown while its week loads", () => {
+  test("AC4: while the picked week loads the dropdown is off and the rest of the page locked; when it arrives both end, on the same page", async ({ page, request }) => {
+    const { select, other } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+
     await select.selectOption(other);
 
-    await expect.poll(() => reports.at(-1), { message: "the dropdown stayed on, or the page unlocked" }).toMatchObject({ off: true, inert: false, reachable: [] });
     await expectHeld(held);
-    // A second pick, from the keyboard: the dropdown that had the focus would move up a week.
-    await page.keyboard.press("ArrowUp");
-    const seen = reports.length;
-    await expect.poll(() => reports.length).toBeGreaterThan(seen + 3);
-    expect(held.count(), "the second pick started a second load").toBe(1);
-    expect(reports.at(-1)).toMatchObject({ off: true, reachable: [] });
-
+    await expect(select).toBeDisabled();
+    await expectLocked(page);
     held.release();
     await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+    await expect(select).toBeEnabled();
     await expect(select).toHaveValue(other);
     await expectUnlocked(page);
-  });
-});
-
-test.describe("AC5 (issue 235) — Back from the browser's cache while a picked week loads", () => {
-  test("AC5: the dropdown shows the week the page's list is for again, on, and the page is unlocked", async ({ page, request }) => {
-    const { select, selectIs, shown, other } = await onWeeklyLists(page, request);
-    const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, selectIs, 1500, "change");
-
-    await select.selectOption(other);
-
-    await expect.poll(() => reports.some((report) => report.restored), { message: "the page was not told it was restored" }).toBe(true);
-    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: true, off: false, inert: false, value: shown, inertOnPage: 0 });
-    expect(reports.at(-1)?.reachable).toContain("select week");
-    // The pick had started the load the cache's page stands in for.
-    await expectHeld(held);
-    held.release();
-    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+    expect(held.count(), "one pick asked for one page").toBe(1);
+    expect(await samePage(page), "the pick loaded a whole page").toBe(true);
   });
 });
 
 test.describe("AC17 (issue 235) — the ring while a picked week loads", () => {
-  test("AC17: while the picked week loads, the ring stands where the dropdown's arrow was, and the dropdown keeps its size", async ({ page, request }) => {
-    const { select, selectIs, other } = await onWeeklyLists(page, request);
+  test("AC17: while the picked week loads the ring stands where the dropdown's arrow was, the dropdown keeping its size; when it arrives the arrow is back", async ({ page, request }) => {
+    const { select, other } = await onWeeklyLists(page, request);
     const box = await select.boundingBox();
     const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, selectIs, undefined, "change");
 
     await select.selectOption(other);
 
     await expectHeld(held);
-    await expect.poll(() => reports.at(-1), { message: "no ring in the dropdown's place, or the arrow still drawn" }).toMatchObject({ ringsBeside: 1, arrow: false });
-    expect(reports.at(-1)?.size).toBe(`${Math.round(box?.width ?? 0)}x${Math.round(box?.height ?? 0)}`);
+    await expect(ringBeside(select)).toHaveCount(1);
+    await expect(ringBeside(select)).toBeVisible();
+    expect(await drawsArrow(select), "the arrow is still drawn under the ring").toBe(false);
+    expect(await select.boundingBox()).toEqual(box);
     held.release();
-    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
-  });
-
-  test("AC17: when Back brings the page back from the cache, the arrow is back and the ring gone", async ({ page, request }) => {
-    const { select, selectIs } = await onWeeklyLists(page, request);
-    const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, selectIs, 1500, "change");
-
-    await select.selectOption((await select.locator("option").last().getAttribute("value")) ?? "");
-
-    await expect.poll(() => reports.some((report) => !report.restored && report.ringsBeside === 1), { message: "the ring never showed" }).toBe(true);
-    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: true, ringsBeside: 0, arrow: true });
-    held.release();
+    await expect(page).toHaveURL((url) => url.searchParams.get("week") === other);
+    await expect(ringBeside(select)).toHaveCount(0);
+    expect(await drawsArrow(select)).toBe(true);
   });
 });
 

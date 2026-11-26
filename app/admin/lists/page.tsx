@@ -28,8 +28,8 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 /**
  * Weekly lists (issue 142): the chosen week's pick list as a table of meals per combination with a total, a line counting
  * the week's members, skips and week credits, and the three actions: the two downloads and the printable pickup list. The
- * week is chosen with a GET form, which a pick in the dropdown sends: it loads that week (issue 235). There is no Show week
- * button: the page assumes its script runs (DEC-057).
+ * week is chosen with a GET form that names the page: a pick in the dropdown shows that week in place, as an in-app link
+ * does (issue 235, `SelectThatApplies`). There is no Show week button: the page assumes its script runs (DEC-057).
  */
 export default async function AdminLists({ searchParams }: { searchParams: Promise<Query> }) {
   await requireAdmin();

@@ -42,15 +42,17 @@ async function onWeeklyLists(page: Page, request: Parameters<typeof signIn>[1]):
 }
 
 test.describe("AC1 (issue 235) — a pick loads its week", () => {
-  test("AC1: with the script running, picking another week loads /admin/lists?week=<that week> with that week's list", async ({ page, request }) => {
+  test("AC1: with the script running, picking another week shows /admin/lists?week=<that week> with that week's list, without a full page load", async ({ page, request }) => {
     const { other, heading } = await onWeeklyLists(page, request);
     await scriptHasRun(weekSelect(page));
+    await page.evaluate(() => Object.assign(window, { haulSamePage: true }));
 
     await weekSelect(page).selectOption(other);
 
     await expect(page).toHaveURL(onWeek(other));
     await expect(listHeading(page)).not.toHaveText(heading);
     await expect(weekSelect(page)).toHaveValue(other);
+    expect(await page.evaluate(() => (window as unknown as { haulSamePage?: boolean }).haulSamePage), "the pick loaded a whole page").toBe(true);
   });
 });
 
@@ -63,21 +65,18 @@ test.describe("AC2 (issue 235) — Show week, with the script running", () => {
   });
 });
 
-test.describe("AC5 (issue 235) — Back that reloads the page", () => {
-  test("AC5: when Back reloads the earlier page, the script puts the dropdown back to the week its list is for, whatever the browser put in it", async ({ page, request }) => {
-    const { shown, other } = await onWeeklyLists(page, request);
+test.describe("AC5 (issue 235) — Back after a pick", () => {
+  test("AC5: Back after a pick shows the earlier week's list, and the dropdown shows that week", async ({ page, request }) => {
+    const { shown, other, heading } = await onWeeklyLists(page, request);
     await scriptHasRun(weekSelect(page));
-    // The week is sent by the form itself, not by the dropdown's pick, so what Back puts in the dropdown is the browser's alone.
-    await weekSelect(page).evaluate((select: HTMLSelectElement, week) => {
-      select.value = week;
-      select.form?.requestSubmit();
-    }, other);
+    await weekSelect(page).selectOption(other);
     await expect(page).toHaveURL(onWeek(other));
+    await expect(listHeading(page)).not.toHaveText(heading);
 
     await page.goBack();
 
     await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && !url.searchParams.has("week"));
-    await scriptHasRun(weekSelect(page));
+    await expect(listHeading(page)).toHaveText(heading);
     await expect(weekSelect(page)).toHaveValue(shown);
   });
 });
