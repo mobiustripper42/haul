@@ -41,8 +41,8 @@ export const generateMetadata = titled("account.title");
 
 /**
  * The page's query (issue 219): `switch` opens the Supper Club card's pickers, `switchError` is the refusal a Switch sends
- * the member back with, and the rest is Your details' (issue 156): `saved`, which the page does not read (a save that works shows no Notice, issue 235; Save reading Saved is the confirmation), `error` naming the fields a save broke or the
- * code step's refusal, `sent` and `limited`.
+ * the member back with, and the rest is Your details' (issue 156): `error` naming the fields a save broke or the code
+ * step's refusal, `sent` and `limited`. A save that works lands on `saved`, which the page no longer reads (issue 235).
  */
 type Query = { switch?: string; switchError?: string; saved?: string; error?: string; sent?: string; limited?: string };
 

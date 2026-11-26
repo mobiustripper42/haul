@@ -16,12 +16,14 @@ export function SelectThatApplies({ defaultValue, ...rest }: Omit<ComponentProps
   const select = useRef<HTMLSelectElement>(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
+  const showShown = () => {
     if (select.current && defaultValue !== undefined) select.current.value = defaultValue;
-  }, [defaultValue]);
+  };
+
+  useEffect(showShown, [defaultValue]);
 
   useCacheRestore(true, () => {
-    if (select.current && defaultValue !== undefined) select.current.value = defaultValue;
+    showShown();
     setLoading(false);
   });
 
