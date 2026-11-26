@@ -3,7 +3,7 @@ schema: 1
 id: DEC-047
 title: "The signed-in header is one bar: links inline from 1024px, a drawer below"
 topic: "Interface"
-status: "active"
+status: "superseded"
 date: "2026-11-18"
 ruling: "The signed-in header is one bar: from 1024px the links and Sign out sit inline in a row wider than the page column, below it in a drawer. The drawer and the Admin group are details elements, plus a small script."
 claims:
@@ -15,6 +15,7 @@ claims:
     note: "Escape, backdrop tap, inert; no test, its criterion is by hand"
   - kind: "test"
     target: "app/site-header.test.ts"
+superseded_by: DEC-056
 revisit_if: "A page needs a header taller than one row, or the drawer must work without details"
 ---
 

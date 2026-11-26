@@ -3,9 +3,9 @@
 // (components/ui/*.test.ts); that a tap keeps the page, and where the menus end, only a browser can show.
 // "Without a full page load" is read as a value set on `window` before the tap still being there after it. Each test
 // visits the pages it taps to once first: `next dev` compiles a route on its first visit, which can reload the page.
-// Lenny, the `members` seed's admin, is used throughout: the admin pages need no subscription, and an admin's header holds
-// the Admin group at 1024px and wider and the admin links in the drawer below it. Links are found by where they go, the
-// menus by the attributes the header gives them.
+// Lenny, the `members` seed's admin, is used throughout: the admin pages need no subscription, and on an admin page an
+// admin's header holds the admin links in the bar at 1024px and wider and in the drawer below it (issue 266). Links are
+// found by where they go, the menus by the attributes the header gives them.
 // Issue 240, AC14–AC16 (below, each named for it): which menus a page's arrival closes, on a step that keeps the header
 // mounted: one between two weeks' panels on /admin/weeks, which changes only the query.
 import type { Locator, Page, TestInfo } from "@playwright/test";
@@ -18,19 +18,18 @@ const WEEKS = "/admin/weeks";
 
 const onPath = (path: string) => (url: URL) => url.pathname === path && url.search === "";
 
-const desktopOnly = (testInfo: TestInfo) => test.skip(testInfo.project.name !== "desktop", "the Admin group is the desktop width's");
 const mobileOnly = (testInfo: TestInfo) => test.skip(testInfo.project.name !== "mobile", "the drawer is the phone width's");
 
 /** The signed-in header's drawer, drawn below 1024px. */
 const drawer = (page: Page) => page.locator("details[data-menu-drawer]");
-/** The header's Admin group, drawn at 1024px and wider. */
-const adminGroup = (page: Page) => page.getByRole("banner").locator("details[data-menu-group]");
+/** The signed-in header: at 1024px and wider its bar is the part the width shows. */
+const banner = (page: Page) => page.getByRole("banner");
 /** The link to `href` inside `scope` that the width shows. */
 const linkIn = (scope: ReturnType<Page["locator"]>, href: string) => scope.locator(`a[href="${href}"]`).filter({ visible: true });
 
 /** Signs Lenny in, visits each of `paths` once, and ends on `start`. */
 async function signedInOn(page: Page, request: Parameters<typeof signIn>[1], start: string, paths: string[]): Promise<void> {
-  await signIn(page, request, LENNY);
+  await signIn(page, request, LENNY, "/admin");
   for (const path of paths) {
     await page.goto(path);
     await expect(page).toHaveURL(onPath(path));
@@ -44,11 +43,6 @@ async function openDrawer(page: Page): Promise<void> {
   await expect(drawer(page)).toHaveJSProperty("open", true);
 }
 
-async function openAdminGroup(page: Page): Promise<void> {
-  await adminGroup(page).locator("summary").click();
-  await expect(adminGroup(page)).toHaveJSProperty("open", true);
-}
-
 const MARK = "issue-245-kept";
 const markWindow = (page: Page) => page.evaluate((mark) => Object.assign(window, { haulMark: mark }), MARK);
 const windowMark = (page: Page) => page.evaluate(() => (window as unknown as { haulMark?: string }).haulMark);
@@ -60,8 +54,7 @@ test.describe("AC6 — a tap in the header keeps the page", () => {
 
     const mobile = testInfo.project.name === "mobile";
     if (mobile) await openDrawer(page);
-    else await openAdminGroup(page);
-    await linkIn(mobile ? drawer(page) : adminGroup(page), MENUS).click();
+    await linkIn(mobile ? drawer(page) : banner(page), MENUS).click();
 
     await expect(page).toHaveURL(onPath(MENUS));
     await page.waitForLoadState("load");
@@ -69,7 +62,7 @@ test.describe("AC6 — a tap in the header keeps the page", () => {
   });
 });
 
-test.describe("AC7, AC8 — a menu a tap leaves from is closed on the new page", () => {
+test.describe("AC7 — a menu a tap leaves from is closed on the new page", () => {
   test("AC7: below 1024px, tapping a drawer link to another page leaves the new page with the drawer closed", async ({ page, request }, testInfo) => {
     mobileOnly(testInfo);
     await signedInOn(page, request, MEMBERS, [MENUS]);
@@ -79,17 +72,6 @@ test.describe("AC7, AC8 — a menu a tap leaves from is closed on the new page",
 
     await expect(page).toHaveURL(onPath(MENUS));
     await expect(drawer(page)).toHaveJSProperty("open", false);
-  });
-
-  test("AC8: at 1024px and wider, tapping an Admin group link to another page leaves the new page with the group closed", async ({ page, request }, testInfo) => {
-    desktopOnly(testInfo);
-    await signedInOn(page, request, MEMBERS, [MENUS]);
-    await openAdminGroup(page);
-
-    await linkIn(adminGroup(page), MENUS).click();
-
-    await expect(page).toHaveURL(onPath(MENUS));
-    await expect(adminGroup(page)).toHaveJSProperty("open", false);
   });
 });
 
@@ -128,17 +110,6 @@ test.describe("AC10 — a tap to the page already showing closes its menu", () =
     await linkIn(drawer(page), MEMBERS).click();
 
     await expect(drawer(page)).toHaveJSProperty("open", false);
-    await expect(page).toHaveURL(onPath(MEMBERS));
-  });
-
-  test("AC10: at 1024px and wider, with the Admin group open, tapping its link to the URL showing closes the group", async ({ page, request }, testInfo) => {
-    desktopOnly(testInfo);
-    await signedInOn(page, request, MEMBERS, []);
-    await openAdminGroup(page);
-
-    await linkIn(adminGroup(page), MEMBERS).click();
-
-    await expect(adminGroup(page)).toHaveJSProperty("open", false);
     await expect(page).toHaveURL(onPath(MEMBERS));
   });
 });
@@ -308,12 +279,6 @@ test.describe("AC15 (issue 240) — Back and Forward close an open menu", () => 
     await expectBackAndForwardClose(page, weeks, moreOf(row), () => openMore(row));
   });
 
-  test("AC15 (issue 240): at 1024px and wider, so does an open Admin group", async ({ page, request }, testInfo) => {
-    desktopOnly(testInfo);
-    const weeks = await twoPanelsDeep(page, request);
-    await expectBackAndForwardClose(page, weeks, adminGroup(page), () => openAdminGroup(page));
-  });
-
   test("AC15 (issue 240): below 1024px, so does an open drawer", async ({ page, request }, testInfo) => {
     mobileOnly(testInfo);
     const weeks = await twoPanelsDeep(page, request);
@@ -343,11 +308,6 @@ test.describe("AC16 (issue 240) — a menu opened while a page loads stays open 
   test("AC16 (issue 240): another row's More stays open, and the More the link was tapped in is closed", async ({ page, request }) => {
     const other = weekRow(page, B);
     await openWhileLoading(page, request, moreOf(other), () => openMore(other));
-  });
-
-  test("AC16 (issue 240): at 1024px and wider, so does the Admin group", async ({ page, request }, testInfo) => {
-    desktopOnly(testInfo);
-    await openWhileLoading(page, request, adminGroup(page), () => openAdminGroup(page));
   });
 
   test("AC16 (issue 240): below 1024px, so does the drawer", async ({ page, request }, testInfo) => {

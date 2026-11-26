@@ -41,7 +41,7 @@ const onWeek = (week: string) => (url: URL) => url.pathname === "/admin/lists" &
 /** Lenny on Weekly lists, two weeks with lists: the week its list is for, another week, and the list's heading. */
 async function onWeeklyLists(page: Page, request: Parameters<typeof signIn>[1]): Promise<{ shown: string; other: string; heading: string }> {
   await runSeed("week-lists", e2eDatabaseUrl());
-  await signIn(page, request, LENNY);
+  await signIn(page, request, LENNY, "/admin");
   await page.goto("/admin/lists");
   const shown = await weekSelect(page).inputValue();
   const other = (await weekSelect(page).locator("option").last().getAttribute("value")) ?? "";
