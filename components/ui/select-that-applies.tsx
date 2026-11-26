@@ -7,8 +7,8 @@ import { useCacheRestore } from "./use-cache-restore";
 
 /**
  * A `Select` that applies on a pick (issue 235): it sends its form, turns itself off and locks the rest of the page, as a
- * tapped `SubmitButton` does, so a second pick cannot start a second load. For a form that loads a whole page, a GET: its
- * Show button is there only for a page with no script (`withoutScript`). The dropdown shows `defaultValue`, the value the
+ * tapped `SubmitButton` does, so a second pick cannot start a second load. For a form that loads a whole page, a GET, with
+ * no button of its own: the page assumes its script runs (DEC-057). The dropdown shows `defaultValue`, the value the
  * page's content is for, whatever the browser put in it: when the script starts, which is after Back reloaded the page, and
  * when Back brings the page back from the browser's cache, where it also comes back on and the page unlocked.
  */

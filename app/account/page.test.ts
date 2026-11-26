@@ -932,21 +932,19 @@ describe("issue 156 — Your details, on /account", () => {
     });
   });
 
-  describe("AC11 (issue 235) — with no script, Save is on", () => {
-    /** Your details' buttons, each as its attributes and its runs of text. */
-    const detailsButtons = (section: string) =>
-      [...section.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(([markup]) => ({ attributes: attributesOf(markup, "button")[0] ?? {}, texts: textsOf(markup) }));
+  describe("AC6 (issue 235) — the server sends Save off", () => {
+    /** Your details' buttons, each as its attributes. */
+    const detailsButtons = (section: string) => [...section.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(([markup]) => attributesOf(markup, "button")[0] ?? {});
 
     it.each([
       ["the page as it opens", {}],
       ["the page a save that works lands on", { saved: "1" }],
-    ])("AC11: %s sends Your details' one button on, reading its on line", async (_what, query) => {
+    ])("AC6: %s sends Your details' one button off", async (_what, query) => {
       await detailsAda();
       const buttons = detailsButtons((await render(query)).sections[1] ?? "");
       expect(buttons).toHaveLength(1);
-      expect(buttons[0]?.attributes).toMatchObject({ type: "submit" });
-      expect(buttons[0]?.attributes).not.toHaveProperty("disabled");
-      expect(buttons[0]?.texts).toEqual([t("details.save")]);
+      expect(buttons[0]).toMatchObject({ type: "submit" });
+      expect(buttons[0]).toHaveProperty("disabled");
     });
   });
 

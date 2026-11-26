@@ -20,20 +20,19 @@ import { WaitingLabel } from "./waiting-label";
  * comes back on when the page is restored from the browser's cache (`useCacheRestore`).
  *
  * `untilChanged` is a Save that is off until its form changes (issue 235): its label is that text while the form holds what
- * the server sent, read once when the button mounts, and its children once it holds anything else. A page with no script
- * gets the button on, with its children. `withoutScript` is a button that is on the page only until the script runs.
+ * the server sent, read once when the button mounts, and its children once it holds anything else. The server sends it off,
+ * as the script keeps it: the page assumes its script runs (DEC-057).
  *
  * At rest it is a `<button>` with the attributes it was given, and its children alone.
  */
 export function SubmitButton({
   loadsPage,
   untilChanged,
-  withoutScript,
   children,
   disabled,
   onClick,
   ...rest
-}: ButtonHTMLAttributes<HTMLButtonElement> & { loadsPage?: boolean; untilChanged?: string; withoutScript?: boolean }) {
+}: ButtonHTMLAttributes<HTMLButtonElement> & { loadsPage?: boolean; untilChanged?: string }) {
   const { pending } = useFormStatus();
   const button = useRef<HTMLButtonElement>(null);
   const [tapped, setTapped] = useState(false);
@@ -70,15 +69,13 @@ export function SubmitButton({
   const unchanged = useSyncExternalStore(
     watchForm,
     () => {
+      if (!watching) return false;
       const form = button.current?.form;
-      return watching && !!form && sent.current !== null && formState(form) === sent.current;
+      // Off until the form is watched: the server's page, and a form a save remounted, start as sent.
+      if (!form || sent.current === null) return true;
+      return formState(form) === sent.current;
     },
-    () => false,
-  );
-  const scripted = useSyncExternalStore(
-    () => () => {},
-    () => true,
-    () => false,
+    () => watching,
   );
 
   const hadFocus = useRef(false);
@@ -130,7 +127,6 @@ export function SubmitButton({
     setTapped(true);
   };
 
-  if (withoutScript && scripted) return null;
   return (
     <button {...rest} ref={button} onClick={tap} disabled={busy || unchanged ? true : disabled} aria-busy={busy ? true : undefined}>
       <WaitingLabel busy={busy}>{unchanged ? untilChanged : children}</WaitingLabel>

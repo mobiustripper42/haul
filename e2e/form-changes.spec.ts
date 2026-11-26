@@ -6,7 +6,7 @@
 // on Your account, and that a save that works shows no Notice, are app/account/page.test.ts's. Each week's table and summary
 // are app/admin/lists/page.test.ts's, so a loaded week is shown here by its URL and its list's heading changing.
 // Save's two lines are a choice between lines, so they are read by their catalog keys; a control is found by its element.
-import type { Browser, Page } from "@playwright/test";
+import type { Page } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { en } from "../src/messages/en.js";
 import { e2eDatabaseUrl } from "./database";
@@ -17,16 +17,6 @@ const LENNY = "lenny@ocf.xx";
 
 // `next dev` compiles a route on its first visit, and most of these visit several.
 test.describe.configure({ timeout: 90_000 });
-
-/** A page in a context of its own that runs no script, signed in as `page` is. Its context is closed with `done`. */
-async function withoutScript(browser: Browser, page: Page): Promise<{ bare: Page; done: () => Promise<void> }> {
-  const context = await browser.newContext({
-    javaScriptEnabled: false,
-    storageState: await page.context().storageState(),
-    baseURL: test.info().project.use.baseURL,
-  });
-  return { bare: await context.newPage(), done: () => context.close() };
-}
 
 // ---------------------------------------------------------------------------------------------
 // Weekly lists.
@@ -70,23 +60,6 @@ test.describe("AC2 (issue 235) — Show week, with the script running", () => {
     await scriptHasRun(weekSelect(page));
 
     await expect(showWeek(page)).toBeHidden();
-  });
-});
-
-test.describe("AC3 (issue 235) — Weekly lists with no script", () => {
-  test("AC3: with no script Show week is on the page, and a week picked then Show week pressed loads that week", async ({ browser, page, request }) => {
-    const { other, heading } = await onWeeklyLists(page, request);
-    const { bare, done } = await withoutScript(browser, page);
-    await bare.goto("/admin/lists");
-    await expect(showWeek(bare)).toBeVisible();
-
-    await weekSelect(bare).selectOption(other);
-    await showWeek(bare).click();
-
-    await expect(bare).toHaveURL(onWeek(other));
-    await expect(listHeading(bare)).not.toHaveText(heading);
-    await expect(weekSelect(bare)).toHaveValue(other);
-    await done();
   });
 });
 

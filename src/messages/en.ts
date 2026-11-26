@@ -130,7 +130,6 @@ export const en = {
   "admin.lists.hint": "Counts are final after the week's cutoff. Before it, they change as members skip and switch.",
   "admin.lists.week": "Week",
   "admin.lists.weekPassed": "{title} · cutoff passed",
-  "admin.lists.show": "Show week",
   "admin.lists.heading": "Pick list · {days}",
   "admin.lists.final": "Final",
   "admin.lists.meals": "Meals",
