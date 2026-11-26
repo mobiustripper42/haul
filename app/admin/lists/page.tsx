@@ -9,7 +9,7 @@ import { DataTable } from "../../../components/ui/data-table";
 import { Field } from "../../../components/ui/field";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
-import { Select } from "../../../components/ui/select";
+import { SelectThatApplies } from "../../../components/ui/select-that-applies";
 import { Shell } from "../../../components/ui/shell";
 import { getLanguage, getTranslator } from "../../language";
 import { titled } from "../../page-title";
@@ -28,7 +28,8 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 /**
  * Weekly lists (issue 142): the chosen week's pick list as a table of meals per combination with a total, a line counting
  * the week's members, skips and week credits, and the three actions: the two downloads and the printable pickup list. The
- * week is chosen with a GET form, so the screen runs no client script.
+ * week is chosen with a GET form: a pick in the dropdown loads that week (issue 235), and the Show week button is there only
+ * for a page whose script has not run.
  */
 export default async function AdminLists({ searchParams }: { searchParams: Promise<Query> }) {
   await requireAdmin();
@@ -57,7 +58,7 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
           <form method="get" action={ADMIN_LISTS_PATH} className="flex flex-wrap items-end gap-x-3 gap-y-3">
             <div className="max-w-card flex-1 basis-64">
               <Field label={t("admin.lists.week")} htmlFor="week">
-                <Select
+                <SelectThatApplies
                   id="week"
                   name={WEEK_PARAM}
                   defaultValue={week.weekOf}
@@ -68,7 +69,7 @@ export default async function AdminLists({ searchParams }: { searchParams: Promi
                 />
               </Field>
             </div>
-            <Button kind="secondary" type="submit" loadsPage>
+            <Button kind="secondary" type="submit" loadsPage withoutScript>
               {t("admin.lists.show")}
             </Button>
           </form>

@@ -1,5 +1,5 @@
 import { expect, test as base } from "@playwright/test";
-import type { APIRequestContext, Page } from "@playwright/test";
+import type { APIRequestContext, Locator, Page } from "@playwright/test";
 import { resetDev } from "../db/reset-dev.js";
 import { runSeed } from "../db/seed.js";
 import { en } from "../src/messages/en.js";
@@ -98,6 +98,18 @@ export async function expectOnAccount(page: Page): Promise<void> {
   await expect(page.getByRole("main").locator('input[name="firstName"]')).toBeVisible();
   await expect(page).toHaveURL((url) => url.pathname === "/account");
   await expectSignedIn(page);
+}
+
+/**
+ * Waits until the page's script is running on `control` (issue 235): React has hydrated it, which writes its props onto the
+ * element, and a frame or two has passed for its effects. A page can be used before then, as the server sent it, so a test
+ * of what the script does to a page waits for this before it reads or uses the page.
+ */
+export async function scriptHasRun(control: Locator): Promise<void> {
+  await expect
+    .poll(() => control.evaluate((el) => Object.keys(el).some((key) => key.startsWith("__reactProps$"))), { message: "the page's script never ran" })
+    .toBe(true);
+  await control.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => setTimeout(resolve, 0)))));
 }
 
 /** Signs out through the header (issue 155): the Menu opened where Sign out sits in it, then Sign out submitted. */

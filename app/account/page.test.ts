@@ -921,18 +921,32 @@ describe("issue 156 — Your details, on /account", () => {
     });
   });
 
-  describe("AC3 (issue 156) — the Saved notice", () => {
-    it("AC3: with saved=1 the page shows a check Notice at the top, above the Supper Club card and the form", async () => {
+  // Issue 235: Save reading Saved is the confirmation, so a save that lands shows no Notice; what Save does once the page's
+  // script runs is the browser's (e2e/form-changes.spec.ts). Here, what the server sends a browser with no script.
+  describe("AC15 (issue 235) — a save that works shows no Notice", () => {
+    it("AC15: with saved=1 the page shows no Notice", async () => {
       await detailsAda();
       const { element, html } = await render({ saved: "1" });
-      expect(noticeIcons(element)).toEqual(["check"]);
-      expect(ascending(positions(html, ["<h1", 'role="alert"', "<section", "<form"]))).toBe(true);
-    });
-
-    it("AC3: without saved there is no notice, which guards the one above", async () => {
-      await detailsAda();
-      const { html } = await render({});
+      expect(noticeIcons(element)).toEqual([]);
       expect(alertTexts(html)).toEqual([]);
+    });
+  });
+
+  describe("AC11 (issue 235) — with no script, Save is on", () => {
+    /** Your details' buttons, each as its attributes and its runs of text. */
+    const detailsButtons = (section: string) =>
+      [...section.matchAll(/<button\b[^>]*>[\s\S]*?<\/button>/g)].map(([markup]) => ({ attributes: attributesOf(markup, "button")[0] ?? {}, texts: textsOf(markup) }));
+
+    it.each([
+      ["the page as it opens", {}],
+      ["the page a save that works lands on", { saved: "1" }],
+    ])("AC11: %s sends Your details' one button on, reading its on line", async (_what, query) => {
+      await detailsAda();
+      const buttons = detailsButtons((await render(query)).sections[1] ?? "");
+      expect(buttons).toHaveLength(1);
+      expect(buttons[0]?.attributes).toMatchObject({ type: "submit" });
+      expect(buttons[0]?.attributes).not.toHaveProperty("disabled");
+      expect(buttons[0]?.texts).toEqual([t("details.save")]);
     });
   });
 

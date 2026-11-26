@@ -10,7 +10,7 @@ import type { Locator, Page, Request } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
 import { e2eDatabaseUrl } from "./database";
-import { expect, headerMenu, headerSignOut, outboxCount, signIn, test } from "./fixtures";
+import { expect, headerMenu, headerSignOut, outboxCount, scriptHasRun, signIn, test } from "./fixtures";
 
 const ERIC = "eric@ocf.xx";
 const LENNY = "lenny@ocf.xx";
@@ -423,21 +423,22 @@ test.describe("AC8 — the card box is locked with the rest of the page", () => 
 });
 
 /** A form that loads a whole page, as the page itself reports it while the new page is held. */
-type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[] };
+type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; value: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[] };
 
 /**
  * Chromium runs no script from out here while a whole page is on its way, so the page watches itself: from its form's
  * submit on, it reports what it finds to the console. `restore`, when given, is how long after the submit the page is told
- * it was restored from the back-forward cache, which Playwright turns off.
+ * it was restored from the back-forward cache, which Playwright turns off. `startOn` "change" starts the watch at a pick
+ * in a dropdown instead (issue 235), whose control is then `button`; `value` is the control's.
  */
-async function watchSend(page: Page, button: string, restore?: number): Promise<Report[]> {
+async function watchSend(page: Page, button: string, restore?: number, startOn: "submit" | "change" = "submit"): Promise<Report[]> {
   const reports: Report[] = [];
   page.on("console", (message) => {
     const [, report] = /^haul-report (.*)$/.exec(message.text()) ?? [];
     if (report) reports.push(JSON.parse(report) as Report);
   });
   await page.evaluate(
-    ({ buttonIs, controls, restoreAfter }) => {
+    ({ buttonIs, controls, restoreAfter, startOn }) => {
       const reachableNow = new Function(`return (${controls})()`) as () => string[];
       let restored = false;
       const report = () => {
@@ -448,6 +449,7 @@ async function watchSend(page: Page, button: string, restore?: number): Promise<
           busy: el.getAttribute("aria-busy") === "true",
           inert: el.closest("[inert]") !== null,
           words: (el.textContent ?? "").trim(),
+          value: el.value,
           busyButtons: document.querySelectorAll('button[aria-busy="true"]').length,
           rings: document.querySelectorAll('button [aria-hidden="true"]').length,
           inertOnPage: document.querySelectorAll("[inert]").length,
@@ -463,9 +465,9 @@ async function watchSend(page: Page, button: string, restore?: number): Promise<
           window.dispatchEvent(new PageTransitionEvent("pageshow", { persisted: true }));
         }, restoreAfter);
       };
-      document.addEventListener("submit", start, { capture: true, once: true });
+      document.addEventListener(startOn, start, { capture: true, once: true });
     },
-    { buttonIs: button, controls: reachableControls.toString(), restoreAfter: restore },
+    { buttonIs: button, controls: reachableControls.toString(), restoreAfter: restore, startOn },
   );
   return reports;
 }
@@ -501,27 +503,18 @@ test.describe("AC9 — the forms that load a whole page", () => {
     });
   }
 
-  test("AC9: the weekly lists' Show gets the ring and the page locks, and the week picked opens", async ({ page, request }) => {
-    await runSeed("week-lists", e2eDatabaseUrl());
-    await signIn(page, request, LENNY);
-    await page.goto("/admin/lists");
-    const form = 'form[action="/admin/lists"]';
-    const select = page.locator(`${form} select[name="week"]`);
-    const week = (await select.locator("option").last().getAttribute("value")) ?? "";
-    expect(await select.inputValue(), "the last week is the one already showing").not.toBe(week);
-    await select.selectOption(week);
-    const button = page.locator(submitIn(form));
-    const words = await wordsOf(button);
+  test("AC9: a pick in the weekly lists' week dropdown locks the page, and the week picked opens", async ({ page, request }) => {
+    const { select, selectIs, other } = await onWeeklyLists(page, request);
     const held = await holdPages(page, "/admin/lists");
-    const reports = await watchSend(page, submitIn(form));
+    const reports = await watchSend(page, selectIs, undefined, "change");
 
-    await button.click({ noWaitAfter: true });
+    await select.selectOption(other);
     await expectHeld(held);
 
-    await expect.poll(() => reports.at(-1)).toMatchObject(sending(words));
+    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: false, inert: false, reachable: [] });
     held.release();
-    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === week);
-    await expect(select).toHaveValue(week);
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+    await expect(select).toHaveValue(other);
     await expectUnlocked(page);
   });
 
@@ -541,6 +534,70 @@ test.describe("AC9 — the forms that load a whole page", () => {
     expect(reports.at(-1)?.reachable).toContain("button next");
     held.release();
     await expect(page).toHaveURL(onPath("/supper-club/create-account"));
+  });
+});
+
+// ---------------------------------------------------------------------------------------------
+// Issue 235: Weekly lists' week dropdown loads the week picked. What it loads, and Back that reloads the page, are
+// e2e/form-changes.spec.ts's; here, the lock while the week loads and Back from the browser's cache.
+
+/**
+ * Lenny on Weekly lists, two weeks with lists, the page's script running: the week dropdown, its selector, the week its
+ * list is for and another week.
+ */
+async function onWeeklyLists(page: Page, request: Parameters<typeof signIn>[1]) {
+  await runSeed("week-lists", e2eDatabaseUrl());
+  await signIn(page, request, LENNY);
+  await page.goto("/admin/lists");
+  const selectIs = 'form[action="/admin/lists"] select[name="week"]';
+  const select = page.locator(selectIs);
+  const shown = await select.inputValue();
+  const other = (await select.locator("option").last().getAttribute("value")) ?? "";
+  expect(other, "the last week is the one already showing").not.toBe(shown);
+  await scriptHasRun(select);
+  return { select, selectIs, shown, other };
+}
+
+test.describe("AC4 (issue 235) — the week dropdown while its week loads", () => {
+  test("AC4: while the picked week loads the dropdown is off and the rest of the page locked, and a second pick starts no second load", async ({ page, request }) => {
+    const { select, selectIs, other } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+    const reports = await watchSend(page, selectIs, undefined, "change");
+
+    await select.focus();
+    await select.selectOption(other);
+
+    await expect.poll(() => reports.at(-1), { message: "the dropdown stayed on, or the page unlocked" }).toMatchObject({ off: true, inert: false, reachable: [] });
+    await expectHeld(held);
+    // A second pick, from the keyboard: the dropdown that had the focus would move up a week.
+    await page.keyboard.press("ArrowUp");
+    const seen = reports.length;
+    await expect.poll(() => reports.length).toBeGreaterThan(seen + 3);
+    expect(held.count(), "the second pick started a second load").toBe(1);
+    expect(reports.at(-1)).toMatchObject({ off: true, reachable: [] });
+
+    held.release();
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+    await expect(select).toHaveValue(other);
+    await expectUnlocked(page);
+  });
+});
+
+test.describe("AC5 (issue 235) — Back from the browser's cache while a picked week loads", () => {
+  test("AC5: the dropdown shows the week the page's list is for again, on, and the page is unlocked", async ({ page, request }) => {
+    const { select, selectIs, shown, other } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+    const reports = await watchSend(page, selectIs, 1500, "change");
+
+    await select.selectOption(other);
+
+    await expect.poll(() => reports.some((report) => report.restored), { message: "the page was not told it was restored" }).toBe(true);
+    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: true, off: false, inert: false, value: shown, inertOnPage: 0 });
+    expect(reports.at(-1)?.reachable).toContain("select week");
+    // The pick had started the load the cache's page stands in for.
+    await expectHeld(held);
+    held.release();
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
   });
 });
 
