@@ -294,6 +294,19 @@ test.describe("AC14 (issue 235) — a save that works is the new baseline", () =
     await expectSaveOff(page);
   });
 
+  test("AC14: a good save the server stores as the values the page already held leaves Save off", async ({ page, request }) => {
+    await onDetails(page, request);
+    const first = await field(page, "firstName").inputValue();
+    // The save trims what was typed (src/create-account.ts), so the stored values come back as they were.
+    await field(page, "firstName").fill(`${first} `);
+    await expectSaveOn(page);
+
+    await saveAndLand(page);
+
+    await expect(page).toHaveURL((url) => url.pathname === "/account" && url.searchParams.get("saved") === "1");
+    await expectSaveOff(page);
+  });
+
   test("AC14: a good save after one that broke a rule leaves Save off", async ({ page, request }) => {
     await onDetails(page, request);
     const email = await field(page, "email").inputValue();
