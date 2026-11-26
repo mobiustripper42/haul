@@ -13,7 +13,7 @@ import { holdInert, siblingsAround } from "./inert";
  *   since the backdrop blocks the pointer and not the keyboard. Inerting is per sibling along the path from the
  *   drawer up, because `inert` cannot be lifted from a subtree once an ancestor sets it (`holdInert`, which a page
  *   that is sending a form shares, so closing the drawer cannot unlock it: issue 240).
- * - The Admin group, and a row's More (issue 220): an outside click, focus moving outside it, or Escape closes it.
+ * - A row's More (issue 220): an outside click, focus moving outside it, or Escape closes it.
  * - A link in a menu closes it at once when it opens the page already showing; a link to another page closes its own menu
  *   on the first change to the page after the address has changed, since a query-only step keeps this header mounted
  *   (issue 245). A menu opened while that page loads stays open, and so does one after a link that opens elsewhere (a ctrl,

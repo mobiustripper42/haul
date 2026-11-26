@@ -82,6 +82,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-050 — In-app links are next/link, drawn only in components/ui/
 - DEC-051 — Every tap shows it landed, and a sending form locks the page
 - DEC-055 — A signed-in member is never sent to another page for lacking a subscription
+- DEC-056 — An admin sees one interface at a time; the page picks it and a switch crosses
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a

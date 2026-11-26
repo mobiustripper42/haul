@@ -8,7 +8,11 @@ import type { FlowPages } from "./sign-in/shared";
 /** A member's account home. */
 export const ACCOUNT_PATH = "/account";
 
-export const SIGN_IN_PAGES: FlowPages = { start: "/sign-in", code: "/sign-in/code", done: ACCOUNT_PATH };
+/** The admin's page, where an admin lands from the Sign in page and the header's Admin interface starts. */
+export const ADMIN_PATH = "/admin";
+
+/** The Sign in page's flow, the only one with a landing for an admin (issue 266). */
+export const SIGN_IN_PAGES: FlowPages = { start: "/sign-in", code: "/sign-in/code", done: ACCOUNT_PATH, adminDone: ADMIN_PATH };
 
 export const CREATE_ACCOUNT_PAGES: FlowPages = { start: "/create-account", code: "/create-account/code", done: ACCOUNT_PATH };
 
@@ -26,9 +30,6 @@ export const ACCOUNT_SWITCH_ERROR_PARAM = "switchError";
 export const ACCOUNT_HISTORY_ID = "history";
 /** A member's History: the second list of Upcoming weeks (issue 243). The server never sees the part after `#`, so the menu never marks it. */
 export const ACCOUNT_HISTORY_PATH = `${ACCOUNT_WEEKS_PATH}#${ACCOUNT_HISTORY_ID}`;
-
-/** The admin's page, the header's Admin button. */
-export const ADMIN_PATH = "/admin";
 
 /** The admin's weeks screen: close, reopen and move pickup weeks. */
 export const ADMIN_WEEKS_PATH = "/admin/weeks";

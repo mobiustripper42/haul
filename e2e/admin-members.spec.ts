@@ -79,7 +79,7 @@ test.describe("the members list", () => {
   test.beforeEach(async ({ page, request }) => {
     rows = await seededSubscribers();
     expect(rows).toHaveLength(12);
-    await signIn(page, request, LENNY);
+    await signIn(page, request, LENNY, "/admin");
     await page.goto("/admin");
   });
 

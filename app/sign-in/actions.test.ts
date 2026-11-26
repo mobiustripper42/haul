@@ -13,6 +13,7 @@ import type { Repository } from "@core/ports/repository.js";
 import { hashCode, issueSignInCode, issueSignInLink, redeemSignInLink, verifySignInCode } from "@core/sign-in/code.js";
 import { SESSION_TTL_MS, verifySession } from "@core/sign-in/session.js";
 import { emptyRequest, type CookieSet } from "../next-headers-fake";
+import { ACCOUNT_PATH, ADMIN_PATH } from "../paths";
 import { loggedText, redirectOf } from "../screen-test-helpers";
 
 const request = vi.hoisted(() => ({ current: { cookies: {}, headers: {}, sets: [] } as import("../next-headers-fake").RequestState }));
@@ -1357,5 +1358,73 @@ describe("AC6 (issue 136) — a sign-in lands on /account", () => {
     await plantLink();
     const { signInWithLink } = await load();
     expect(await redirectOf(signInWithLink(form({ token: LINK_TOKEN })))).toBe("/account");
+  });
+});
+
+// Issue 266, AC7 and AC8: a sign-in on the Sign in page lands an admin on Members when no return path is held, and the
+// emailed link counts as the Sign in page. A member who is not an admin still lands on /account (AC6 of issue 136, above).
+// The Supper Club's sign-in, which carries no admin landing, is app/supper-club/actions.test.ts's.
+describe("AC7 (issue 266) — an admin signing in on the Sign in page", () => {
+  const LENNY = "lenny@example.com";
+  let lenny: Member;
+
+  beforeEach(async () => {
+    lenny = await repo.createMember({ email: LENNY, role: "admin" });
+  });
+
+  /** Lenny's code, saved straight through the store at the current time, with no hold, and the email cookie the code step reads. */
+  const lennyAtCodeStep = async () => {
+    const createdAt = new Date();
+    await repo.saveSignInCode({ subjectId: lenny.id, codeHash: hashCode(RIGHT_CODE), createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+    request.current.cookies[SIGN_IN_EMAIL] = LENNY;
+  };
+  /** Lenny's code and, straight after it with no hold, a live link for LINK_TOKEN. */
+  const lennyLink = async () => {
+    const createdAt = new Date();
+    await repo.saveSignInCode({ subjectId: lenny.id, codeHash: hashCode(RIGHT_CODE), createdAt, expiresAt: new Date(createdAt.getTime() + 10 * MINUTE) });
+    await issueSignInLink(repo, lenny, { now: new Date(), mintLinkToken: () => LINK_TOKEN, hold: false });
+  };
+
+  type Actions = Awaited<ReturnType<typeof load>>;
+  const SIGN_INS: Array<[string, (actions: Actions) => Promise<unknown>]> = [
+    [
+      "verifyCode",
+      async ({ verifyCode }) => {
+        await lennyAtCodeStep();
+        return verifyCode(form({ code: RIGHT_CODE }));
+      },
+    ],
+    [
+      "signInWithLink",
+      async ({ signInWithLink }) => {
+        await lennyLink();
+        return signInWithLink(form({ token: LINK_TOKEN }));
+      },
+    ],
+  ];
+
+  it.each(SIGN_INS)(`AC7: an admin signed in by %s with no return path held lands on ${ADMIN_PATH}, signed in`, async (_how, signIn) => {
+    const actions = await load();
+    expect(await redirectOf(signIn(actions))).toBe(ADMIN_PATH);
+    expect(verifySession(setsNamed(SESSION)[0]?.value ?? "", services.secret, new Date())).toMatchObject({ ok: true, session: { subjectId: lenny.id } });
+  });
+
+  it.each(SIGN_INS)("AC7: an admin signed in by %s with a safe return path held lands on it", async (_how, signIn) => {
+    request.current.cookies[RETURN_TO] = BACK_TO_SUPPER_CLUB;
+    const actions = await load();
+    expect(await redirectOf(signIn(actions))).toBe(BACK_TO_SUPPER_CLUB);
+    expect(cookieGone(RETURN_TO)).toBe(true);
+  });
+
+  it.each(SIGN_INS)(`AC7: a member who is not an admin, signed in by %s with no return path held, lands on ${ACCOUNT_PATH}`, async (how) => {
+    const actions = await load();
+    if (how === "verifyCode") {
+      await plantCode();
+      request.current.cookies[SIGN_IN_EMAIL] = ada.email;
+      expect(await redirectOf(actions.verifyCode(form({ code: RIGHT_CODE })))).toBe(ACCOUNT_PATH);
+    } else {
+      await plantLink();
+      expect(await redirectOf(actions.signInWithLink(form({ token: LINK_TOKEN })))).toBe(ACCOUNT_PATH);
+    }
   });
 });
