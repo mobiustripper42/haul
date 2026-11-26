@@ -423,13 +423,14 @@ test.describe("AC8 — the card box is locked with the rest of the page", () => 
 });
 
 /** A form that loads a whole page, as the page itself reports it while the new page is held. */
-type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; value: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[] };
+type Report = { restored: boolean; off: boolean; busy: boolean; inert: boolean; words: string; value: string; busyButtons: number; rings: number; inertOnPage: number; reachable: string[]; ringsBeside: number; arrow: boolean; size: string };
 
 /**
  * Chromium runs no script from out here while a whole page is on its way, so the page watches itself: from its form's
  * submit on, it reports what it finds to the console. `restore`, when given, is how long after the submit the page is told
  * it was restored from the back-forward cache, which Playwright turns off. `startOn` "change" starts the watch at a pick
- * in a dropdown instead (issue 235), whose control is then `button`; `value` is the control's.
+ * in a dropdown instead (issue 235), whose control is then `button`; `value` is the control's. `ringsBeside` counts the rings in
+ * the control's parent, `arrow` is whether the control draws its arrow, and `size` is its width by its height (issue 235, AC17).
  */
 async function watchSend(page: Page, button: string, restore?: number, startOn: "submit" | "change" = "submit"): Promise<Report[]> {
   const reports: Report[] = [];
@@ -454,6 +455,9 @@ async function watchSend(page: Page, button: string, restore?: number, startOn: 
           rings: document.querySelectorAll('button [aria-hidden="true"]').length,
           inertOnPage: document.querySelectorAll("[inert]").length,
           reachable: reachableNow(),
+          ringsBeside: el.parentElement?.querySelectorAll('[aria-hidden="true"]').length ?? 0,
+          arrow: getComputedStyle(el).backgroundImage !== "none",
+          size: `${Math.round(el.getBoundingClientRect().width)}x${Math.round(el.getBoundingClientRect().height)}`,
         };
         console.log(`haul-report ${JSON.stringify(found)}`);
       };
@@ -598,6 +602,35 @@ test.describe("AC5 (issue 235) — Back from the browser's cache while a picked 
     await expectHeld(held);
     held.release();
     await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+  });
+});
+
+test.describe("AC17 (issue 235) — the ring while a picked week loads", () => {
+  test("AC17: while the picked week loads, the ring stands where the dropdown's arrow was, and the dropdown keeps its size", async ({ page, request }) => {
+    const { select, selectIs, other } = await onWeeklyLists(page, request);
+    const box = await select.boundingBox();
+    const held = await holdPages(page, "/admin/lists");
+    const reports = await watchSend(page, selectIs, undefined, "change");
+
+    await select.selectOption(other);
+
+    await expectHeld(held);
+    await expect.poll(() => reports.at(-1), { message: "no ring in the dropdown's place, or the arrow still drawn" }).toMatchObject({ ringsBeside: 1, arrow: false });
+    expect(reports.at(-1)?.size).toBe(`${Math.round(box?.width ?? 0)}x${Math.round(box?.height ?? 0)}`);
+    held.release();
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.get("week") === other);
+  });
+
+  test("AC17: when Back brings the page back from the cache, the arrow is back and the ring gone", async ({ page, request }) => {
+    const { select, selectIs } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+    const reports = await watchSend(page, selectIs, 1500, "change");
+
+    await select.selectOption((await select.locator("option").last().getAttribute("value")) ?? "");
+
+    await expect.poll(() => reports.some((report) => !report.restored && report.ringsBeside === 1), { message: "the ring never showed" }).toBe(true);
+    await expect.poll(() => reports.at(-1)).toMatchObject({ restored: true, ringsBeside: 0, arrow: true });
+    held.release();
   });
 });
 

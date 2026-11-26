@@ -1,6 +1,6 @@
 // Issue 235: two forms that react to what is in them, once the page's script runs. On Weekly lists a pick in the week
-// dropdown loads that week, and the Show week button is there only for a page with no script; on Your account, Your details'
-// Save is off, reading its off line, until the form holds something other than what the server sent. The comparison's edge
+// dropdown loads that week, with no Show week button; on Your account, Your details' Save is off, reading its off line, until
+// the form holds something other than what the server sent. Both pages assume their script runs (DEC-057). The comparison's edge
 // cases are components/ui/form-state.test.ts's, so here each kind of control is changed and put back once; the lock while a
 // week loads and Back from the browser's cache are e2e/tap-feedback.spec.ts's; what the server sends a page with no script
 // on Your account, and that a save that works shows no Notice, are app/account/page.test.ts's. Each week's table and summary
@@ -79,6 +79,30 @@ test.describe("AC5 (issue 235) — Back that reloads the page", () => {
     await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && !url.searchParams.has("week"));
     await scriptHasRun(weekSelect(page));
     await expect(weekSelect(page)).toHaveValue(shown);
+  });
+});
+
+test.describe("AC16 (issue 235) — a pick made before the script starts", () => {
+  test("AC16: a week picked before the page's script starts loads once the script starts", async ({ page, request }) => {
+    const { other, heading } = await onWeeklyLists(page, request);
+    // The page's scripts are held, so the pick lands on the page as the server sent it.
+    let release = () => {};
+    const released = new Promise<void>((resolve) => (release = resolve));
+    await page.route("**/_next/static/**/*.js", async (route) => {
+      await released;
+      await route.continue();
+    });
+    await page.goto("/admin/lists", { waitUntil: "commit" });
+    await weekSelect(page).waitFor();
+    const running = await weekSelect(page).evaluate((el) => Object.keys(el).some((key) => key.startsWith("__reactProps$")));
+    expect(running, "the script ran before the pick").toBe(false);
+
+    await weekSelect(page).selectOption(other);
+    release();
+
+    await expect(page).toHaveURL(onWeek(other));
+    await expect(listHeading(page)).not.toHaveText(heading);
+    await expect(weekSelect(page)).toHaveValue(other);
   });
 });
 
