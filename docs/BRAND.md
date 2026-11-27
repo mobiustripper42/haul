@@ -36,7 +36,7 @@ teal is the brand and carries headings, links and focus. gold is the one accent 
 - Primary button: `gold` fill, `on-gold` text (teal, 5.5:1), `radius-md`. Hover `gold-hover`. Never white text on gold (2.1:1); the Wix site does this and it is hard to read.
 - Secondary button: `surface` fill, `teal` text and 1px `teal` border.
 - Strong button: `teal` fill, `surface` text (about 11:1), the inverse of secondary; hover `teal-muted` (about 5:1). For emphasis where gold is already in the card or would repeat, such as a row's Unskip in a list of weeks (Eric, 2026-11-22). Never beside a gold button for the same action.
-- Quiet button: no fill, `teal` text, for in-line actions and the language switch.
+- Quiet button: no fill, `teal` text, always underlined, for in-line actions and the language switch. It has no hover change; the pointer cursor is its hover (issue 262).
 - Text: `ink` for body, `ink-muted` for help, `teal` for headings and links, `teal-muted` for nav at 14px and up.
 - Fields: a `border` (3.2:1 on `surface`) around inputs; `divider` (sage) only between rows and sections.
 - States: `success` for paid and confirmed, `danger` for declined and errors, with `danger-soft` as an alert's fill. Always pair a state colour with a word or icon: success green and teal are close in lightness.
@@ -64,7 +64,7 @@ Two faces, both already on ohiocityfarm.com. The site's third face, Adobe Caslon
 
 Every screen has a desktop and a mobile design; tablets use mobile (DEC-008). Spacing steps are `space-1` 4px to `space-12` 48px, and Tailwind's own 4px step is kept.
 
-- **Cards have 28px by 20px padding** (28px above and below, 20px at the sides), with 20px between their children, at every width. The README gave 16px on phones.
+- **Cards have the same padding on every side**: 16px below 1024px and 20px at 1024px and wider (`card-padding`, one token the card and the data table's pull to its edge both read), with 20px between their children. Provisional: Eric settles the sizes by eye (issue 262). The README gave 16px on phones.
 - **The page has a 16px gutter at every width.** The README gave 24px on desktop. Content is at most `page` (960px) wide; a focused card is at most `card` (376px).
 - **Every control is at least 40px tall:** `field` 40px; `button`, `touch` and the language switcher 44px; `code-field` 52px. The README's 44px floor is lowered to 40px so the field stays 40 (Eric, 2026-10-31); the frame's switcher, at 40px, did not reach 44. A link inside a sentence is exempt and takes the line's height, as WCAG 2.5.8 exempts inline targets (Eric, 2026-11-07).
 

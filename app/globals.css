@@ -114,10 +114,18 @@
   --spacing-button: 2.75rem;
   --spacing-code-field: 3.25rem;
   --spacing-touch: 2.75rem;
+  --spacing-card-padding: 1rem;
   --container-card: 23.5rem;
   --container-page: 60rem;
   --container-bar: 72rem;
   --container-reading: 40rem;
+}
+
+/* The card's padding is wider from 1024px (docs/BRAND.md): outside @theme, so the token keeps its phone value there and the rule moves it for the card and the data table at once. */
+@media (min-width: 1024px) {
+  :root {
+    --spacing-card-padding: 1.25rem;
+  }
 }
 
 /* Base: the page, the one focus ring, the pointer. Components below own their own states. */
@@ -191,11 +199,15 @@
     @apply inline-flex min-h-button items-center justify-center rounded-md border border-teal bg-teal px-6 text-center text-button text-surface hover:border-teal-muted hover:bg-teal-muted disabled:cursor-not-allowed disabled:opacity-50;
   }
   .btn-quiet {
-    @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal hover:underline disabled:cursor-not-allowed disabled:opacity-50;
+    @apply inline-flex min-h-touch items-center justify-center gap-1 px-2 text-center text-small text-teal underline disabled:cursor-not-allowed disabled:opacity-50;
   }
   /* Issue 240: a button whose form is being sent is off, and not faded like an off one, so the ring over its words stays clear. */
   button[aria-busy="true"]:disabled {
     opacity: 1;
+  }
+  /* Issue 258: a Save that is off because nothing has changed reads as the confirmation (DEC-058): no fill, not faded, its teal text. Under the pointer too, which would bring the gold back. */
+  .btn-primary[data-unchanged] {
+    @apply cursor-default bg-transparent opacity-100 hover:bg-transparent;
   }
   /* A link to the page that is showing: the header's Sign in on the sign-in pane. */
   .btn-secondary[aria-current="page"] {
@@ -245,7 +257,7 @@
    * margin, keep the keyboard focus ring off the first letter without moving the text.
    */
   .disclosure-summary {
-    @apply -mx-1 flex min-h-touch items-center px-1 text-small text-teal wrap-anywhere;
+    @apply -mx-1 flex min-h-touch items-center px-1 text-small text-teal underline wrap-anywhere;
   }
   details[open] > .disclosure-summary::after {
     @apply rotate-180;
@@ -321,7 +333,7 @@
   .card-pane,
   .card-reading,
   .pane-box {
-    @apply flex w-full flex-col gap-5 rounded-md bg-surface px-5 py-7 shadow-card;
+    @apply flex w-full flex-col gap-5 rounded-md bg-surface p-card-padding shadow-card;
   }
   .card {
     @apply max-w-card;
@@ -339,7 +351,7 @@
    * are sections under a hairline.
    */
   .pane-done {
-    @apply mx-auto flex w-full max-w-card flex-col gap-5 lg:mx-0 lg:max-w-none lg:rounded-md lg:bg-surface lg:px-5 lg:py-7 lg:shadow-card;
+    @apply mx-auto flex w-full max-w-card flex-col gap-5 lg:mx-0 lg:max-w-none lg:rounded-md lg:bg-surface lg:p-card-padding lg:shadow-card;
   }
   .pane-box {
     @apply lg:rounded-none lg:border-t lg:border-divider lg:bg-transparent lg:p-0 lg:pt-5 lg:shadow-none;
@@ -436,6 +448,11 @@
   th[aria-sort="none"] .sort-button::after {
     content: "\2191";
     visibility: hidden;
+  }
+
+  /* Issue 262: a divided list's row (ListRow): no space above the first row or below the last. */
+  .list-row {
+    @apply border-t border-divider py-4 first:border-t-0 first:pt-0 last:pb-0;
   }
 
   /* The stacked rows: shown below 720px only (see the media query after the layers). */

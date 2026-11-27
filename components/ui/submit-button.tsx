@@ -128,7 +128,7 @@ export function SubmitButton({
   };
 
   return (
-    <button {...rest} ref={button} onClick={tap} disabled={busy || unchanged ? true : disabled} aria-busy={busy ? true : undefined}>
+    <button {...rest} ref={button} onClick={tap} disabled={busy || unchanged ? true : disabled} aria-busy={busy ? true : undefined} data-unchanged={unchanged ? "" : undefined}>
       <WaitingLabel busy={busy}>{unchanged ? untilChanged : children}</WaitingLabel>
     </button>
   );

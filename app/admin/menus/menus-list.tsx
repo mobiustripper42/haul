@@ -5,6 +5,7 @@ import { useState } from "react";
 import { filterMenus, menuLine, type Menu } from "@core/menus.js";
 import { Button } from "../../../components/ui/button";
 import { Hint } from "../../../components/ui/hint";
+import { ListRow } from "../../../components/ui/list-row";
 import { SearchField } from "../../../components/ui/search-field";
 import { fill } from "../../fill";
 import { adminMenuPath, duplicateMenuPath } from "../../paths";
@@ -42,7 +43,7 @@ export function MenusList({
         {shown.map((menu) => {
           const line = firstOption === null ? "" : menuLine(menu.texts[firstOption] ?? "");
           return (
-            <li key={menu.id} className="flex flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0">
+            <ListRow key={menu.id} className="flex flex-wrap items-start gap-x-4 gap-y-2">
               <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
                 <span className="font-semibold">{menu.name}</span>
                 {line !== "" && <Hint>{line}</Hint>}
@@ -56,7 +57,7 @@ export function MenusList({
                   {text.duplicate}
                 </Button>
               </div>
-            </li>
+            </ListRow>
           );
         })}
       </ul>

@@ -29,7 +29,7 @@ export function DataTable({
 }) {
   const align = (at: number): string => (columns[at]?.numeric ? "text-right" : "text-left");
   return (
-    <div className={`${always ? "" : "data-table "}-mx-5 overflow-x-auto px-5`}>
+    <div className={`${always ? "" : "data-table "}-mx-card-padding overflow-x-auto px-card-padding`}>
       <table className="w-full border-collapse text-small">
         <thead>
           <tr className="border-b border-divider">

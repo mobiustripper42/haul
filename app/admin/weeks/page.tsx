@@ -11,6 +11,7 @@ import { FieldError } from "../../../components/ui/field-error";
 import { Heading } from "../../../components/ui/heading";
 import { Hint } from "../../../components/ui/hint";
 import { Input } from "../../../components/ui/input";
+import { ListRow } from "../../../components/ui/list-row";
 import { RowActions, type RowAction } from "../../../components/ui/row-actions";
 import { Shell } from "../../../components/ui/shell";
 import { Textarea } from "../../../components/ui/textarea";
@@ -242,10 +243,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
   const moveOpen = !closed && one(query.move) === week.weekOf;
   // Issue 230: the row with an open panel carries the fragment's id, so the page lands on its title, the panel below it.
   return (
-    <li
-      id={noteOpen || menuOpen || moveOpen ? OPEN_PANEL : undefined}
-      className="flex scroll-mt-4 flex-wrap items-start gap-x-4 gap-y-2 border-t border-divider py-4 first:border-t-0"
-    >
+    <ListRow id={noteOpen || menuOpen || moveOpen ? OPEN_PANEL : undefined} className="flex scroll-mt-4 flex-wrap items-start gap-x-4 gap-y-2">
       <div className="flex min-w-0 flex-1 basis-72 flex-col gap-1">
         <div className="flex flex-wrap items-center gap-x-2.5 gap-y-1">
           <span className="font-semibold">{title}</span>
@@ -265,7 +263,7 @@ function WeekRow({ week, wording, query }: { week: AdminWeek; wording: Wording; 
       {noteOpen && <NotePanel week={week} wording={wording} />}
       {menuOpen && <MenuPanel week={week} t={t} language={language} menus={menus} current={weekMenus.get(week.weekOf) ?? null} />}
       {moveOpen && <MovePanel week={week} wording={wording} query={query} />}
-    </li>
+    </ListRow>
   );
 }
 

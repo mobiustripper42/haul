@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Hint } from "./hint";
+import { ListRow } from "./list-row";
 
 export type WeekListRow = { id: string; title: string; lines: string[]; amount?: string; badge?: ReactNode; action?: ReactNode; below?: ReactNode };
 
@@ -18,7 +19,7 @@ export function WeekList({ rows, empty }: { rows: WeekListRow[]; empty?: string 
       {rows.map((row) => {
         const [first, ...rest] = row.lines;
         return (
-          <li key={row.id} className="flex flex-col gap-1 border-t border-divider py-4 first:border-t-0">
+          <ListRow key={row.id} className="flex flex-col gap-1">
             <div className="flex items-start gap-4">
               <div className="flex min-w-0 flex-1 flex-col gap-1">
                 <span className="font-semibold">{row.title}</span>
@@ -34,7 +35,7 @@ export function WeekList({ rows, empty }: { rows: WeekListRow[]; empty?: string 
               <Hint key={line}>{line}</Hint>
             ))}
             {row.below}
-          </li>
+          </ListRow>
         );
       })}
     </ul>
