@@ -15,7 +15,8 @@ import { useHeld } from "./use-held";
  *
  * The browser keeps no value of its to put back (`autocomplete="off"`), so a dropdown the script finds holding something
  * other than `defaultValue` when it starts holds a pick made before then, which is shown (AC16). When the page changes
- * under it, Back included, it shows `defaultValue`, the value the page's content is for (AC5).
+ * under it, Back included, it shows `defaultValue`, the value the page's content is for (AC5). A pick made with the focus on
+ * it leaves the focus on it once the page arrives, as a tapped `SubmitButton` does (AC18).
  */
 export function SelectThatApplies({ defaultValue, ...rest }: Omit<ComponentProps<typeof Select>, "value" | "onChange" | "disabled" | "ref" | "busy" | "autoComplete">) {
   const select = useRef<HTMLSelectElement>(null);
@@ -23,9 +24,12 @@ export function SelectThatApplies({ defaultValue, ...rest }: Omit<ComponentProps
   const [loading, startLoading] = useTransition();
   const busy = useHeld(loading);
 
+  // Whether the dropdown had the focus when its load began: off while loading, it loses it, and gets it back after (AC18).
+  const hadFocus = useRef(false);
   const show = (control: HTMLSelectElement) => {
     const form = control.form;
     if (!form) return;
+    hadFocus.current = document.activeElement === control;
     const url = new URL(form.action);
     url.search = new URLSearchParams([...new FormData(form)].map(([key, value]) => [key, String(value)])).toString();
     startLoading(() => router.push(`${url.pathname}${url.search}`, { scroll: false }));
@@ -46,6 +50,13 @@ export function SelectThatApplies({ defaultValue, ...rest }: Omit<ComponentProps
   useEffect(() => {
     if (!loading || !select.current) return;
     return lockPage([select.current]);
+  }, [loading]);
+
+  useEffect(() => {
+    if (loading || !hadFocus.current) return;
+    hadFocus.current = false;
+    const focused = document.activeElement;
+    if (!focused || focused === document.body) select.current?.focus();
   }, [loading]);
 
   return (

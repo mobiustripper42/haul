@@ -566,6 +566,23 @@ test.describe("AC4 (issue 235) — the week dropdown while its week loads", () =
   });
 });
 
+test.describe("AC18 (issue 235, follow-up) — a keyboard pick keeps its place", () => {
+  test("AC18: a week picked from the keyboard leaves the focus on the dropdown once it arrives", async ({ page, request }) => {
+    const { select, shown } = await onWeeklyLists(page, request);
+    const held = await holdPages(page, "/admin/lists");
+    await select.focus();
+
+    await page.keyboard.press("ArrowDown");
+
+    await expectHeld(held);
+    await expect(select).toBeDisabled();
+    held.release();
+    await expect(page).toHaveURL((url) => url.pathname === "/admin/lists" && url.searchParams.has("week") && url.searchParams.get("week") !== shown);
+    await expect(select).toBeEnabled();
+    await expect(select).toBeFocused();
+  });
+});
+
 test.describe("AC17 (issue 235) — the ring while a picked week loads", () => {
   test("AC17: while the picked week loads the ring stands where the dropdown's arrow was, the dropdown keeping its size; when it arrives the arrow is back", async ({ page, request }) => {
     const { select, other } = await onWeeklyLists(page, request);

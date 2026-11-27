@@ -4,8 +4,9 @@ import { useEffect, useRef } from "react";
 
 /**
  * Calls `onRestore` when the browser shows this page from its back-forward cache (a `pageshow` with `persisted`), while
- * `enabled`: the page comes back as it was left, so what a tap turned off for the load has to be put back (issue 235; it was
- * `SubmitButton`'s own, issue 240). The caller's `onRestore` may change between renders without the listener being replaced.
+ * `enabled`: the page comes back as it was left, so what a tap turned off for the load has to be put back. Moved out of
+ * `SubmitButton` (issue 240) into its own file in issue 235. The caller's `onRestore` may change between renders without the
+ * listener being replaced.
  */
 export function useCacheRestore(enabled: boolean, onRestore: () => void): void {
   const restore = useRef(onRestore);
