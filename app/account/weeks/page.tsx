@@ -32,7 +32,7 @@ type Query = { error?: string; switch?: string };
 
 /** The one muted line under an Upcoming week's title. A Locked week reads by whether the subscription is still locked (`locked`, from `lockedWeek`). */
 function lineOf(row: UpcomingRow, t: Translator, language: Language, locked: string | null): string {
-  if (row.marker === "coming" && row.chargeDate !== null) return t("account.weeks.charged", { date: formatPickupDate(row.chargeDate, language, "short") });
+  if (row.marker === "coming" && row.chargeDate !== null) return t("account.weeks.charged", { date: formatPickupDate(row.chargeDate, language) });
   if (row.marker === "closed") return t(row.closedPaid ? "account.weeks.closedPaid" : "account.weeks.closedNoCharge");
   if (row.marker === "weekCredit") return t("account.weeks.weekCredit");
   if (row.marker === "skipped") return t("account.weeks.skipped");

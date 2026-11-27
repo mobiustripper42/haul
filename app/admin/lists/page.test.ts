@@ -118,13 +118,13 @@ describe("signed in as an admin", () => {
     it("AC3: with no week named, the first upcoming week is selected and shown", async () => {
       const markup = await render();
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February\u00a07 and\u00a08")]);
     });
 
     it("AC3: ?week= names another week, which is selected and shown", async () => {
       const markup = await render({ week: FEB_14 });
       expect(weekOptions(markup).selected).toEqual([FEB_14]);
-      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 14 and 15")]);
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February\u00a014 and\u00a015")]);
     });
 
     it("AC3 [Lead]: the select sends its week as week= through a GET form", async () => {
@@ -142,7 +142,7 @@ describe("signed in as an admin", () => {
     it("AC8: a week the select does not offer falls back to the first upcoming week", async () => {
       const markup = await render({ week: "2099-01-04" });
       expect(weekOptions(markup).selected).toEqual([FEB_7]);
-      expect(h2sOf(markup)).toEqual([expect.stringContaining("February 7 and 8")]);
+      expect(h2sOf(markup)).toEqual([expect.stringContaining("February\u00a07 and\u00a08")]);
     });
   });
 

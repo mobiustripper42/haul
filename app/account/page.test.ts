@@ -213,7 +213,8 @@ const formsOf = (markup: string): { action: string; inner: string }[] =>
 const actionsOf = (markup: string): string[] => formsOf(markup).map((form) => form.action);
 
 /** Issue 219: the pending-switch line for the newer set `meal` starting the week of `weekOf`, by its catalog line. */
-const pendingLine = (meal: string, weekOf: string): string => t("account.pendingSwitch", { meal, week: titleOf(weekOf) });
+// As sentencesOf reads it: it collapses every space, a non-breaking one (issue 272) included.
+const pendingLine = (meal: string, weekOf: string): string => t("account.pendingSwitch", { meal, week: titleOf(weekOf) }).replace(/\s+/g, " ");
 
 describe("AC1 (issue 136) — /account, signed out", () => {
   it("AC1: a signed-out visitor is redirected to /sign-in", async () => {

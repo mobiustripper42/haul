@@ -138,6 +138,8 @@ const formsOf = (html: string) =>
   });
 
 const titleOf = (weekOf: string): string => weekTitle(t, pickupWeek(weekOf, null), "en");
+/** `text` as sentencesOf reads it: every space collapsed, a non-breaking one (issue 272) included. */
+const spaced = (text: string): string => text.replace(/\s+/g, " ");
 
 /** Every element in the tree a page returns, in document order. */
 const elementsOf = (node: ReactNode): ReactElement<Record<string, unknown>>[] => {
@@ -232,7 +234,7 @@ describe("AC8, AC13 (issue 139) — the confirm, at ?cancel=1", () => {
     const subscriptionId = await rosa();
     await services.repo.addLedgerRow(subscriptionId, FEB_7, "paid", 5000);
     const { html, sentences } = await render(subscriptionId, { cancel: "1" });
-    expect(sentences.join(" ")).toContain(titleOf(FEB_7));
+    expect(sentences.join(" ")).toContain(spaced(titleOf(FEB_7)));
     // The card's heading names the member, first name first.
     expect([...html.matchAll(/<h2\b[^>]*>([\s\S]*?)<\/h2>/g)].map(([, inner = ""]) => textsOf(inner).join(" "))).toEqual([expect.stringContaining("Rosa Bennett")]);
     expect(formsOf(html)).toEqual([{ action: "cancelForMember", hidden: { subscription: subscriptionId }, submits: 1 }]);
@@ -247,7 +249,7 @@ describe("AC8, AC13 (issue 139) — the confirm, at ?cancel=1", () => {
     const { html, sentences } = await render(subscriptionId, { cancel: "1" });
     expect(formsOf(html)).toHaveLength(1);
     // January 3, the one week paid, has passed: the card names no week.
-    expect(sentences.join(" ")).not.toContain(titleOf("2027-01-03"));
+    expect(sentences.join(" ")).not.toContain(spaced(titleOf("2027-01-03")));
   });
 
   it.each([1, 2])("AC4, AC13: with %i unused week credits, the card shows the credit line, one line whatever the count", async (count) => {

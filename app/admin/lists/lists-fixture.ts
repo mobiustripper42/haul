@@ -16,7 +16,7 @@ export const NOW = new Date("2027-02-03T17:00:00.000Z");
 export const FEB_7 = "2027-02-07";
 export const FEB_14 = "2027-02-14";
 /** NOW's date as the print page words it. */
-export const TODAY = "Wednesday, February 3";
+export const TODAY = "Wednesday, Feb\u00a03";
 
 export type Person = { email: string; firstName: string; lastName: string; phone: string };
 

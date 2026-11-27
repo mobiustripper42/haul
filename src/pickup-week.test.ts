@@ -6,6 +6,7 @@ import { en } from "./messages/en.js";
 import {
   addDays,
   clevelandDate,
+  defaultListedWeek,
   firstPickup,
   firstPickupLine,
   formatPickupDate,
@@ -207,13 +208,14 @@ describe("AC4, AC5 (issue 133) — pickupWhereLine and firstPickupLine", () => {
 });
 
 describe("AC13 — a pickup date in words", () => {
-  it('AC13: formatPickupDate gives "Sunday, January 3"', () => {
-    expect(formatPickupDate("2027-01-03", "en")).toBe("Sunday, January 3");
+  // Issue 272 made the short month the default, its date held together.
+  it('AC13: formatPickupDate gives "Sunday, Jan 3"', () => {
+    expect(formatPickupDate("2027-01-03", "en")).toBe("Sunday, Jan 3");
   });
 
   it("AC13: the day is the stored date's, at either end of a month", () => {
-    expect(formatPickupDate("2027-01-31", "en")).toBe("Sunday, January 31");
-    expect(formatPickupDate("2027-02-28", "en")).toBe("Sunday, February 28");
+    expect(formatPickupDate("2027-01-31", "en")).toBe("Sunday, Jan 31");
+    expect(formatPickupDate("2027-02-28", "en")).toBe("Sunday, Feb 28");
   });
 
   // Issue 230: Upcoming weeks' charge line sits beside Skip on a phone, so it takes the short month: one line from about 404px wide.
@@ -221,6 +223,23 @@ describe("AC13 — a pickup date in words", () => {
   it('issue 230: with the short month it gives "Monday, Jan 11", in Spanish "lunes, 11 de ene", the date held together', () => {
     expect(formatPickupDate("2027-01-11", "en", "short")).toBe("Monday, Jan\u00a011");
     expect(formatPickupDate("2027-01-11", "es", "short")).toBe("lunes, 11\u00a0de\u00a0ene");
+  });
+});
+
+// Issue 272: a single day in a sentence takes the short month by default, and its month never breaks from its day; the
+// space after the weekday's comma still may. The rule's edges are owned here; every site that writes one day reads it
+// through its own test.
+describe("AC7 (issue 272) \u2014 a single day in a sentence", () => {
+  it('AC7: with no month asked for it is the short month, held to its day: "Monday, Nov 30"', () => {
+    expect(formatPickupDate("2026-11-30", "en")).toBe("Monday, Nov\u00a030");
+  });
+
+  it('AC7: the long month, asked for, is held to its day too: "Monday, November 30"', () => {
+    expect(formatPickupDate("2026-11-30", "en", "long")).toBe("Monday, November\u00a030");
+  });
+
+  it('AC7: in Spanish the default is the short month too, held: "domingo, 3 de ene"', () => {
+    expect(formatPickupDate("2027-01-03", "es")).toBe("domingo, 3\u00a0de\u00a0ene");
   });
 });
 
@@ -246,9 +265,10 @@ describe("AC3 (issue 59) — formatShortDate", () => {
     vi.unstubAllEnvs();
   });
 
+  // Issue 272, AC8: the month is held to its day.
   it.each([
-    ["2026-12-01", "Dec 1"],
-    ["2027-01-31", "Jan 31"],
+    ["2026-12-01", "Dec 1"],
+    ["2027-01-31", "Jan 31"],
   ])("AC3 (issue 59): %s reads %j", (date, words) => {
     expect(formatShortDate(date, "en")).toBe(words);
   });
@@ -256,7 +276,7 @@ describe("AC3 (issue 59) — formatShortDate", () => {
   // It runs in the browser, on the viewer's clock: a date is a date there too.
   it.each(["America/New_York", "America/Los_Angeles", "Pacific/Auckland"])("AC3 (issue 59): it is the same day on a clock in %s", (zone) => {
     vi.stubEnv("TZ", zone);
-    expect(formatShortDate("2026-12-01", "en")).toBe("Dec 1");
+    expect(formatShortDate("2026-12-01", "en")).toBe("Dec 1");
   });
 
   it("AC3 (issue 59): it is in the language given", () => {
@@ -566,32 +586,69 @@ describe("AC3 (issue 134) — latestCutoffWeek", () => {
   });
 });
 
-// Issue 142: the weeks the weekly lists offer. The range and the closed weeks are owned here; the screen, the two
-// downloads and the print page each take one offered and one fallen-back week through it (app/admin/lists/).
-// Wednesday, February 3, 2027, noon in Cleveland: the calendar starts at February 7, and January 31's pickup is over.
-describe("AC3 (issue 142) — listableWeeks", () => {
+// Issue 272, replacing issue 142's AC3: the weeks the weekly lists offer, in calendar order. The range and the closed
+// weeks are owned here; the screen, the two downloads and the print page each take one offered and one fallen-back
+// week through it (app/admin/lists/). Wednesday, February 3, 2027, noon in Cleveland: the calendar starts at February 7,
+// and January 31's pickup is over.
+describe("AC1, AC2 (issue 272) — listableWeeks", () => {
   const FEB_3 = new Date("2027-02-03T17:00:00.000Z");
   const sundaysFrom = (first: string, count: number, step = 7): string[] =>
     Array.from({ length: count }, (_, i) => new Date(Date.parse(`${first}T00:00:00Z`) + i * step * 86_400_000).toISOString().slice(0, 10));
   const weeksOf = (weeks: AdminWeek[]): string[] => weeks.map((week) => week.weekOf);
   const closed = (weekOf: string): ChangedWeek => ({ weekOf, closedAt: new Date("2027-01-05T15:00:00.000Z"), note: null, firstDay: null, lastDay: null });
 
-  it("AC3: the calendar's 12 upcoming weeks oldest first, then the 4 most recent past weeks newest first", () => {
-    expect(weeksOf(listableWeeks(product(), FEB_3, []))).toEqual([...sundaysFrom("2027-02-07", 12), "2027-01-31", "2027-01-24", "2027-01-17", "2027-01-10"]);
+  it("AC1: 12 weeks in calendar order, from 2 weeks before the current week to 9 after it: January 24 to April 11", () => {
+    expect(weeksOf(listableWeeks(product(), FEB_3, []))).toEqual(["2027-01-24", "2027-01-31", ...sundaysFrom("2027-02-07", 10)]);
   });
 
-  it("AC3: each week is the one the calendar builds, a moved week's days and cutoffPassed included", () => {
+  it("AC1: each week is the one the calendar builds, a moved week's days and cutoffPassed included", () => {
     const changed: ChangedWeek[] = [{ weekOf: "2027-02-21", closedAt: null, note: "Heads up", firstDay: "2027-02-20", lastDay: "2027-02-21" }];
-    expect(listableWeeks(product(), FEB_3, changed)).toEqual([...upcomingWeeks(product(), FEB_3, changed), ...pastWeeks(product(), FEB_3, changed, "2027-01-03").slice(0, 4)]);
+    expect(listableWeeks(product(), FEB_3, changed)).toEqual([
+      ...pastWeeks(product(), FEB_3, changed, "2027-01-03").slice(0, 2).reverse(),
+      ...upcomingWeeks(product(), FEB_3, changed).slice(0, 10),
+    ]);
   });
 
-  it("AC3 [Lead]: a closed week is left out, upcoming or past, with no week added in its place", () => {
-    const upcoming = sundaysFrom("2027-02-07", 12).filter((weekOf) => weekOf !== "2027-02-14");
-    expect(weeksOf(listableWeeks(product(), FEB_3, [closed("2027-02-14"), closed("2027-01-24")]))).toEqual([...upcoming, "2027-01-31", "2027-01-17", "2027-01-10"]);
+  it("AC2: a closed week is left out, past or ahead, the others in the same order, with no week added in its place", () => {
+    const ahead = sundaysFrom("2027-02-07", 10).filter((weekOf) => weekOf !== "2027-02-14");
+    expect(weeksOf(listableWeeks(product(), FEB_3, [closed("2027-02-14"), closed("2027-01-24")]))).toEqual(["2027-01-31", ...ahead]);
   });
 
-  it("AC3: never a past week before the product's first pickup date: near its start there are fewer than 4", () => {
-    expect(weeksOf(listableWeeks(product(), new Date("2027-01-13T17:00:00.000Z"), []))).toEqual([...sundaysFrom("2027-01-17", 12), "2027-01-10", "2027-01-03"]);
+  it("AC1: never a week before the product's first pickup date: with one past week, the list holds 11", () => {
+    // Wednesday, January 6: January 3's pickup is over, January 10 is the current week.
+    expect(weeksOf(listableWeeks(product(), new Date("2027-01-06T17:00:00.000Z"), []))).toEqual(["2027-01-03", ...sundaysFrom("2027-01-10", 10)]);
+  });
+});
+
+// Issue 272: the week the weekly lists open on, owned here; loadWeekLists and the week-lists seed take it through this.
+// The current week is the one upcomingWeeks starts from: the earliest whose last pickup day has not passed in Cleveland.
+describe("AC3 (issue 272) — defaultListedWeek", () => {
+  const FEB_3 = new Date("2027-02-03T17:00:00.000Z");
+  // Monday, February 1, noon in Cleveland: January 31's last pickup day.
+  const FEB_1 = new Date("2027-02-01T17:00:00.000Z");
+  const closedWeek = (weekOf: string): ChangedWeek => ({ weekOf, closedAt: new Date("2027-01-05T15:00:00.000Z"), note: null, firstDay: null, lastDay: null });
+  const opensOn = (now: Date, changed: ChangedWeek[]): AdminWeek | undefined => defaultListedWeek(product(), now, changed, listableWeeks(product(), now, changed));
+
+  it("AC3: it is the current week, not the first week listed: February 7", () => {
+    const weeks = listableWeeks(product(), FEB_3, []);
+    expect(defaultListedWeek(product(), FEB_3, [], weeks)).toEqual(weeks.find((week) => week.weekOf === "2027-02-07"));
+  });
+
+  it("AC3: on a week's last pickup day it is still that week: on Monday, February 1, January 31", () => {
+    expect(opensOn(FEB_1, [])?.weekOf).toBe("2027-01-31");
+  });
+
+  it("AC3: a week moved to Saturday and Sunday is over by its Monday: on Monday, February 1, January 31 so moved gives February 7", () => {
+    expect(opensOn(FEB_1, [moved("2027-01-31", "2027-01-30", "2027-01-31")])?.weekOf).toBe("2027-02-07");
+  });
+
+  it("AC3: when the current week is closed it is the first open week after it: February 14", () => {
+    expect(opensOn(FEB_3, [closedWeek("2027-02-07")])?.weekOf).toBe("2027-02-14");
+  });
+
+  it("AC3: when every week from the current one on is closed, it is the first week listed: January 24", () => {
+    const ahead = Array.from({ length: 10 }, (_, i) => closedWeek(addDays("2027-02-07", i * 7)));
+    expect(opensOn(FEB_3, ahead)?.weekOf).toBe("2027-01-24");
   });
 });
 

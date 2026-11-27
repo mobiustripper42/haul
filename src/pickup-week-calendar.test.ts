@@ -79,18 +79,33 @@ describe("AC10 — isMoved", () => {
 describe("AC14 — weekTitle", () => {
   const t = createTranslator("en");
 
+  // Issue 272, AC5 and AC6: each month held to its day, and a same-month week's last day held to its "and".
   it('AC14: an ordinary week is its two dates: "January 17 and 18"', () => {
-    expect(weekTitle(t, pickupWeek("2027-01-17", null), "en")).toBe("January 17 and 18");
+    expect(weekTitle(t, pickupWeek("2027-01-17", null), "en")).toBe("January 17 and 18");
   });
 
   it('AC14: a moved week names its days: "Saturday, February 6 and Sunday, February 7"', () => {
     expect(weekTitle(t, { weekOf: "2027-02-07", firstDay: "2027-02-06", lastDay: "2027-02-07" }, "en")).toBe(
-      "Saturday, February 6 and Sunday, February 7",
+      "Saturday, February 6 and Sunday, February 7",
     );
   });
 
   it('AC14: a one-day week is that day only: "Sunday, February 7 only"', () => {
-    expect(weekTitle(t, { weekOf: "2027-02-07", firstDay: "2027-02-07", lastDay: "2027-02-07" }, "en")).toBe("Sunday, February 7 only");
+    expect(weekTitle(t, { weekOf: "2027-02-07", firstDay: "2027-02-07", lastDay: "2027-02-07" }, "en")).toBe("Sunday, February 7 only");
+  });
+});
+
+// Issue 272: a week's name keeps the full month and never breaks a month from its day. The rule's edges are owned
+// here; listedWeekTitle and every screen and email that names a week read it through their own tests.
+describe("AC5, AC6 (issue 272) — a week's name held together", () => {
+  const t = createTranslator("en");
+
+  it('AC5: across months each month is held to its day, and nothing holds the "and": "November 30 and December 1"', () => {
+    expect(weekTitle(t, pickupWeek("2025-11-30", null), "en")).toBe("November 30 and December 1");
+  });
+
+  it('AC6: in a same-month week the month is held to the first day and the last day to its "and": "December 6 and 7"', () => {
+    expect(weekTitle(t, pickupWeek("2026-12-06", null), "en")).toBe("December 6 and 7");
   });
 });
 
