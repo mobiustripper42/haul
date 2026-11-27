@@ -1,9 +1,9 @@
 // Issue 235: two forms that react to what is in them, once the page's script runs. On Weekly lists a pick in the week
 // dropdown loads that week, with no Show week button; on Your account, Your details' Save is off, reading its off line, until
 // the form holds something other than what the server sent. Both pages assume their script runs (DEC-057). The comparison's edge
-// cases are components/ui/form-state.test.ts's, so here each kind of control is changed and put back once; the lock while a
-// week loads and Back from the browser's cache are e2e/tap-feedback.spec.ts's; what the server sends a page with no script
-// on Your account, and that a save that works shows no Notice, are app/account/page.test.ts's. Each week's table and summary
+// cases are components/ui/form-state.test.ts's, so here each kind of control is changed and put back once; the lock, the ring
+// and the focus while a week loads are e2e/tap-feedback.spec.ts's; that the server sends Weekly lists with no button is
+// app/admin/lists/page.test.ts's, and what it sends Your account, with no Notice after a save, app/account/page.test.ts's. Each week's table and summary
 // are app/admin/lists/page.test.ts's, so a loaded week is shown here by its URL and its list's heading changing.
 // Save's two lines are a choice between lines, so they are read by their catalog keys; a control is found by its element.
 import type { Page } from "@playwright/test";
@@ -23,7 +23,6 @@ test.describe.configure({ timeout: 90_000 });
 
 const LISTS_FORM = 'form[action="/admin/lists"]';
 const weekSelect = (page: Page) => page.locator(`${LISTS_FORM} select[name="week"]`);
-const showWeek = (page: Page) => page.locator(`${LISTS_FORM} button[type="submit"]`);
 /** The list Card's heading, which names the week its list is for. */
 const listHeading = (page: Page) => page.getByRole("main").getByRole("heading", { level: 2 });
 const onWeek = (week: string) => (url: URL) => url.pathname === "/admin/lists" && url.searchParams.get("week") === week;
@@ -53,15 +52,6 @@ test.describe("AC1 (issue 235) — a pick loads its week", () => {
     await expect(listHeading(page)).not.toHaveText(heading);
     await expect(weekSelect(page)).toHaveValue(other);
     expect(await page.evaluate(() => (window as unknown as { haulSamePage?: boolean }).haulSamePage), "the pick loaded a whole page").toBe(true);
-  });
-});
-
-test.describe("AC2 (issue 235) — Show week, with the script running", () => {
-  test("AC2: once the script runs, the Show week button is not on the page", async ({ page, request }) => {
-    await onWeeklyLists(page, request);
-    await scriptHasRun(weekSelect(page));
-
-    await expect(showWeek(page)).toBeHidden();
   });
 });
 
