@@ -45,6 +45,8 @@
   --color-gold: #c8b43d;
   --color-gold-hover: #d6c55e;
   --color-on-gold: var(--color-teal);
+  --color-gold-off: #efe9c5;
+  --color-on-gold-off: #436e6e;
   --color-border: #7a9692;
   --color-divider: var(--color-sage);
   --color-success: #1c4723;
@@ -205,9 +207,9 @@
   button[aria-busy="true"]:disabled {
     opacity: 1;
   }
-  /* Issue 258: a Save that is off because nothing has changed reads as the confirmation (DEC-058): no fill, not faded, its teal text. Under the pointer too, which would bring the gold back. */
+  /* Issue 258: a Save that is off because nothing has changed reads as the confirmation (DEC-058): a pale gold, not faded, its text at the 4.5:1 floor. Under the pointer too, which would bring the full gold back. */
   .btn-primary[data-unchanged] {
-    @apply cursor-default bg-transparent opacity-100 hover:bg-transparent;
+    @apply cursor-default bg-gold-off text-on-gold-off opacity-100 hover:bg-gold-off;
   }
   /* A link to the page that is showing: the header's Sign in on the sign-in pane. */
   .btn-secondary[aria-current="page"] {

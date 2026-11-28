@@ -33,7 +33,7 @@ The mockups own look and position; the spec owns the words. Where a frame and th
 
 teal is the brand and carries headings, links and focus. gold is the one accent and belongs to the primary action. Everything else is neutral. One gold button to a card or a notice, so a screen with two cards can show two (Eric, 2026-11-24; the rule was one per screen).
 
-- Primary button: `gold` fill, `on-gold` text (teal, 5.5:1), `radius-md`. Hover `gold-hover`. Off because nothing has changed (an `untilChanged` Save): no fill, no fade, `teal` text, at rest and under the pointer (issue 258). Never white text on gold (2.1:1); the Wix site does this and it is hard to read.
+- Primary button: `gold` fill, `on-gold` text (teal, 5.5:1), `radius-md`. Hover `gold-hover`. Off because nothing has changed (an `untilChanged` Save): `gold-off` fill, `on-gold-off` text (4.6:1, just over AA's 4.5:1), no fade, a plain pointer, the same at rest and under the pointer (issue 258). Never white text on gold (2.1:1); the Wix site does this and it is hard to read.
 - Secondary button: `surface` fill, `teal` text and 1px `teal` border.
 - Strong button: `teal` fill, `surface` text (about 11:1), the inverse of secondary; hover `teal-muted` (about 5:1). For emphasis where gold is already in the card or would repeat, such as a row's Unskip in a list of weeks (Eric, 2026-11-22). Never beside a gold button for the same action.
 - Quiet button: no fill, `teal` text, always underlined, for in-line actions and the language switch. It has no hover change; the pointer cursor is its hover (issue 262).
