@@ -9,11 +9,12 @@ import { createElement, isValidElement, type ReactElement, type ReactNode } from
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { InMemoryRepository } from "@core/adapters/in-memory-repository.js";
-import { subscriberName } from "@core/member-list.js";
+import { subscriberName, type MemberRow } from "@core/member-list.js";
 import type { Role } from "@core/members.js";
 import type { Subscriber } from "@core/ports/repository.js";
 import { signSession } from "@core/sign-in/session.js";
 import { Button } from "../../components/ui/button";
+import { Card } from "../../components/ui/card";
 import { Heading } from "../../components/ui/heading";
 import { Hint } from "../../components/ui/hint";
 import { emptyRequest } from "../next-headers-fake";
@@ -21,6 +22,7 @@ import { findAll, redirectOf, textsOf } from "../screen-test-helpers";
 import { SiteHeader } from "../site-header";
 import Admin from "./page";
 import { MembersList } from "./members-list";
+import { NeverSubscribedList } from "./never-subscribed-list";
 import { activeSubscriber, addSupperClub, pendingSignup } from "./subscribers-fixture";
 
 
@@ -95,11 +97,11 @@ describe("issue 59 — /admin, signed in as an admin", () => {
     await signInAs("admin");
   });
 
-  /** The page as a tree, and what it gives the list. */
+  /** The page as a tree, and what it gives the list: each person's current subscription (issue 263). */
   const page = async () => {
     const element = await Admin();
     const [list] = findAll(element, MembersList);
-    return { element, list, rows: (list?.props.rows ?? []) as Subscriber[] };
+    return { element, list, rows: ((list?.props.rows ?? []) as MemberRow[]).map((person) => person.current) as Subscriber[] };
   };
 
   describe("AC3 — the rows", () => {
@@ -273,6 +275,56 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       const cells = [...body.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell = ""]) => textsOf(cell).join(" "));
 
       expect(cells[4]).toBe("Dec\u00a01");
+    });
+  });
+
+  // Issue 263: the list takes people, grouped by groupByMember (src/member-list.test.ts owns which subscription is current);
+  // the never-subscribed card takes listUnsubscribedMembers' rows (src/adapters/signup-contract.ts owns who is in them). One
+  // case each through the page, and where the card sits.
+  describe("issue 263 — people on the list, and the never-subscribed card", () => {
+    it("AC1, AC2: a member who cancelled and joined again is one person on the list: the active subscription current, the cancelled one earlier", async () => {
+      const product = addSupperClub(services.repo);
+      const first = await pendingSignup(services.repo, product, ROSA, PICKS);
+      await services.repo.confirmSignupRows(first.ledgerId, `PAYMENT_${first.ledgerId}`, first.amountCents, new Date("2026-11-02T17:00:00.000Z"));
+      await services.repo.cancelSubscription(first.subscriptionId, new Date("2026-11-10T17:00:00.000Z"));
+      const again = await pendingSignup(services.repo, product, ROSA, PICKS);
+      await services.repo.confirmSignupRows(again.ledgerId, `PAYMENT_${again.ledgerId}`, again.amountCents, new Date("2026-11-20T17:00:00.000Z"));
+
+      const { list } = await page();
+      const people = (list?.props.rows ?? []) as MemberRow[];
+
+      expect(people.map((person) => ({ current: person.current.subscriptionId, earlier: person.earlier.map((row) => row.subscriptionId) }))).toEqual([
+        { current: again.subscriptionId, earlier: [first.subscriptionId] },
+      ]);
+    });
+
+    it("AC7: the never-subscribed card gets the members with no paid subscription: one who never signed up, and not the subscriber", async () => {
+      const product = addSupperClub(services.repo);
+      await activeSubscriber(services.repo, product, ROSA, PICKS);
+      await services.repo.createMember({ email: "never@example.com" });
+
+      const [card] = findAll(await Admin(), NeverSubscribedList);
+
+      expect(((card?.props.rows ?? []) as { email: string }[]).map((row) => row.email)).toEqual(["never@example.com"]);
+    });
+
+    it.each([
+      ["with a subscriber and nobody in the card", true, false],
+      ["with no subscriber and a member who never signed up", false, true],
+    ])("AC7, AC8: the never-subscribed card is on the page once, after the members card and outside it, %s", async (_what, subscribed, neverSigned) => {
+      const product = addSupperClub(services.repo);
+      if (subscribed) await activeSubscriber(services.repo, product, ROSA, PICKS);
+      if (neverSigned) await services.repo.createMember({ email: "never@example.com" });
+
+      const element = await Admin();
+      const order = elementsOf(element);
+      const [members] = findAll(element, Card);
+      const cards = findAll(element, NeverSubscribedList);
+
+      expect(cards).toHaveLength(1);
+      expect(members).toBeDefined();
+      expect(findAll(members, NeverSubscribedList)).toEqual([]);
+      expect(order.indexOf(cards[0] as ReactElement<Record<string, unknown>>)).toBeGreaterThan(order.indexOf(members as ReactElement<Record<string, unknown>>));
     });
   });
 });

@@ -138,6 +138,7 @@ export type MemberSubscription = SignupConfirmation & { status: "active" | "canc
  */
 export type Subscriber = {
   subscriptionId: string;
+  memberId: string;
   firstName: string | null;
   lastName: string | null;
   email: string;
@@ -147,6 +148,20 @@ export type Subscriber = {
   status: "active" | "cancelled";
   refundOwed: boolean;
   cardDeclined: boolean;
+};
+
+/**
+ * Issue 263: a member with an account and no paid subscription to a product. `createdDate` is the Cleveland day the
+ * account was made, `YYYY-MM-DD`; `confirmed` is whether the email has been confirmed.
+ */
+export type UnsubscribedMember = {
+  memberId: string;
+  firstName: string | null;
+  lastName: string | null;
+  email: string;
+  phone: string | null;
+  createdDate: string;
+  confirmed: boolean;
 };
 
 /**
@@ -449,8 +464,16 @@ export interface Repository extends SignInStore, RateLimitStore {
   findOptionsForWeeks(subscriptionId: string, weekOfs: string[]): Promise<Map<string, { typeName: string; optionName: string }[]>>;
   /** Issue 142: the week's meals and skips, as of `cutoff`, the week's cutoff instant. */
   listWeekBoxes(productId: string, weekOf: string, cutoff: Date): Promise<WeekBoxes>;
-  /** A product's active and cancelled subscriptions (issue 139), unsorted by contract beyond being stable. */
+  /**
+   * A product's active and cancelled subscriptions (issue 139), each with its member's id, in the order their first
+   * payment was made, ties on the subscription's id (issue 263).
+   */
   listSubscribers(productId: string): Promise<Subscriber[]>;
+  /**
+   * Issue 263: members whose role is member and who hold no paid active or cancelled subscription to the product,
+   * newest account first, ties on the member's id, descending.
+   */
+  listUnsubscribedMembers(productId: string): Promise<UnsubscribedMember[]>;
   /** Issue 140: every menu, newest `updatedAt` first. */
   listMenus(): Promise<Menu[]>;
   /** Issue 140: null for an unknown id and for a string that isn't a UUID. */

@@ -20,6 +20,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type UnsubscribedMember,
   type WeekBoxes,
   type WeekCredit,
   type WeekDue,
@@ -1637,12 +1638,13 @@ export class PostgresRepository implements Repository {
   /**
    * The active and cancelled subscriptions to the product, each with its member and the date its first paid row was
    * paid, in Cleveland. A subscription with no paid row is left out: only a paid row makes one active. `refundOwed`
-   * is a cancelled subscription holding a week credit not yet spent; `cardDeclined` an active one holding a declined row. Stable by the date joined, then by id.
+   * is a cancelled subscription holding a week credit not yet spent; `cardDeclined` an active one holding a declined row. In the order the first payment was made, then by id (issue 263).
    */
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     if (!UUID_SHAPE.test(productId)) return [];
     const { rows } = await this.db.query<{
       id: string;
+      member_id: string;
       first_name: string | null;
       last_name: string | null;
       email: string;
@@ -1652,7 +1654,7 @@ export class PostgresRepository implements Repository {
       refund_owed: boolean;
       card_declined: boolean;
     }>(
-      `select s.id, m.first_name, m.last_name, m.email, m.phone,
+      `select s.id, s.member_id, m.first_name, m.last_name, m.email, m.phone,
               ${clevelandDay("paid.first_paid_at")} as joined, s.status,
               (s.status = 'cancelled'
                 and exists (select 1 from week_credits c where c.subscription_id = s.id and c.spent_on is null)) as refund_owed,
@@ -1670,6 +1672,7 @@ export class PostgresRepository implements Repository {
     const options = await this.optionsOf(rows.map((row) => row.id));
     return rows.map((row) => ({
       subscriptionId: row.id,
+      memberId: row.member_id,
       firstName: row.first_name,
       lastName: row.last_name,
       email: row.email,
@@ -1679,6 +1682,43 @@ export class PostgresRepository implements Repository {
       status: row.status,
       refundOwed: row.refund_owed,
       cardDeclined: row.card_declined,
+    }));
+  }
+
+  /**
+   * Issue 263: members whose role is member with no paid active or cancelled subscription to the product, `listSubscribers`'
+   * rule turned over, newest account first, ties on the member's id, descending.
+   */
+  async listUnsubscribedMembers(productId: string): Promise<UnsubscribedMember[]> {
+    const { rows } = await this.db.query<{
+      id: string;
+      first_name: string | null;
+      last_name: string | null;
+      email: string;
+      phone: string | null;
+      created: string;
+      confirmed: boolean;
+    }>(
+      `select m.id, m.first_name, m.last_name, m.email, m.phone,
+              ${clevelandDay("m.created_at")} as created, (m.email_confirmed_at is not null) as confirmed
+         from members m
+        where m.role = 'member'
+          and not exists (
+            select 1 from subscriptions s
+             where s.member_id = m.id and s.product_id = $1 and s.status in ('active', 'cancelled')
+               and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'paid' and l.paid_at is not null)
+          )
+        order by m.created_at desc, m.id desc`,
+      [UUID_SHAPE.test(productId) ? productId : "00000000-0000-0000-0000-000000000000"],
+    );
+    return rows.map((row) => ({
+      memberId: row.id,
+      firstName: row.first_name,
+      lastName: row.last_name,
+      email: row.email,
+      phone: row.phone,
+      createdDate: row.created,
+      confirmed: row.confirmed,
     }));
   }
 

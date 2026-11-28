@@ -261,7 +261,8 @@
   .disclosure-summary {
     @apply -mx-1 flex min-h-touch items-center px-1 text-small text-teal underline wrap-anywhere;
   }
-  details[open] > .disclosure-summary::after {
+  details[open] > .disclosure-summary::after,
+  .disclosure-summary[aria-expanded="true"]::after {
     @apply rotate-180;
   }
 

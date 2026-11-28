@@ -1,4 +1,4 @@
-import { OPENING_SORT, sortSubscribers } from "@core/member-list.js";
+import { groupByMember, OPENING_SORT, sortMembers } from "@core/member-list.js";
 import { requireSupperClub } from "@core/products.js";
 import { Button } from "../../components/ui/button";
 import { Card } from "../../components/ui/card";
@@ -10,6 +10,7 @@ import { getRepository } from "../services";
 import { requireAdmin } from "../session";
 import { SiteHeader } from "../site-header";
 import { MembersList } from "./members-list";
+import { NeverSubscribedList } from "./never-subscribed-list";
 import { titled } from "../page-title";
 
 export const generateMetadata = titled("admin.members.title");
@@ -24,7 +25,11 @@ export default async function Admin() {
   const [t, language] = await Promise.all([getTranslator(), getLanguage()]);
   const repo = getRepository();
   const product = await requireSupperClub(repo);
-  const [held, subscribers] = await Promise.all([repo.countHeldSpots(product.id), repo.listSubscribers(product.id)]);
+  const [held, subscribers, unsubscribed] = await Promise.all([
+    repo.countHeldSpots(product.id),
+    repo.listSubscribers(product.id),
+    repo.listUnsubscribedMembers(product.id),
+  ]);
 
   return (
     <>
@@ -48,7 +53,7 @@ export default async function Admin() {
               </>
             ) : (
               <MembersList
-                rows={sortSubscribers(subscribers, OPENING_SORT)}
+                rows={sortMembers(groupByMember(subscribers), OPENING_SORT)}
                 language={language}
                 text={{
                   search: t("admin.members.search"),
@@ -73,10 +78,29 @@ export default async function Admin() {
                     status: t("admin.members.status"),
                   },
                   joinedLine: t("admin.members.joinedLine", { meal: "{meal}", date: "{date}" }),
+                  past: t("admin.members.past"),
+                  earlier: t("admin.members.earlier", { n: "{n}" }),
                 }}
               />
             )}
           </Card>
+          <NeverSubscribedList
+            rows={unsubscribed}
+            language={language}
+            text={{
+              title: t("admin.members.neverTitle"),
+              intro: t("admin.members.neverIntro"),
+              empty: t("admin.members.neverEmpty"),
+              columns: {
+                name: t("admin.members.name"),
+                email: t("admin.members.email"),
+                phone: t("admin.members.phone"),
+                accountMade: t("admin.members.accountMade"),
+              },
+              notConfirmed: t("admin.members.notConfirmed"),
+              accountMadeLine: t("admin.members.accountMadeLine", { date: "{date}" }),
+            }}
+          />
         </div>
       </Shell>
     </>

@@ -5,6 +5,7 @@
 import type { Locator, Page, TestInfo } from "@playwright/test";
 import { runSeed } from "../db/seed.js";
 import { SQUARE_SANDBOX_VALUES } from "../src/adapters/square-payments.js";
+import { en } from "../src/messages/en.js";
 import { e2eDatabaseUrl } from "./database";
 import { expect, signIn, test } from "./fixtures";
 
@@ -152,7 +153,9 @@ test.describe("AC2 — a divided list adds no space at its ends", () => {
     await signIn(page, request, LENNY, "/admin");
     await page.goto("/admin");
 
-    const rows = await rowsOf(page.locator(".row-list > ul"));
+    // Issue 263: the members card, the one holding the search; the never-subscribed card below it has stacked rows too.
+    const membersCard = page.locator("section", { has: page.getByLabel(en["admin.members.search"], { exact: true }) });
+    const rows = await rowsOf(membersCard.locator(".row-list > ul"));
     expect(rows.length, "the list has fewer than three rows, so none is between").toBeGreaterThanOrEqual(3);
     expect(rows[0]?.top, "the first row's top padding").toBeGreaterThan(0);
     expect(rows[0]?.borderTop, "the first row's top border").toBeGreaterThan(0);

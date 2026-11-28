@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { Fragment, type ReactNode } from "react";
 
 export type DataTableColumn = {
   id: string;
@@ -14,7 +14,8 @@ export type DataTableColumn = {
  * cell is the row's name, set stronger. The sorted header carries `aria-sort` and the others `none`; the arrow
  * after the word is drawn from it in CSS (`.sort-button`), so no arrow is text. Below 720px the table is hidden
  * (`.data-table`), and `RowList` shows in its place, unless `always` keeps it shown. `footer`, given, is a closing row
- * of cells lining up with `columns`, set stronger (issue 142: a total).
+ * of cells lining up with `columns`, set stronger (issue 142: a total). A row's `under` lines are rows of cells lining up
+ * with `columns` too, drawn muted below it and read as part of it (issue 263: a person's earlier subscriptions).
  */
 export function DataTable({
   columns,
@@ -23,7 +24,7 @@ export function DataTable({
   always = false,
 }: {
   columns: DataTableColumn[];
-  rows: { id: string; cells: ReactNode[] }[];
+  rows: { id: string; cells: ReactNode[]; under?: { id: string; cells: ReactNode[] }[] }[];
   footer?: ReactNode[];
   always?: boolean;
 }) {
@@ -49,15 +50,29 @@ export function DataTable({
           </tr>
         </thead>
         <tbody>
-          {rows.map((row) => (
-            <tr key={row.id} className="border-b border-divider">
-              {row.cells.map((cell, at) => (
-                <td key={columns[at]?.id ?? at} className={at === 0 ? `whitespace-nowrap p-3 text-body-strong text-teal ${align(at)}` : `p-3 ${align(at)}`}>
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {rows.map((row) => {
+            const lines = row.under ?? [];
+            return (
+              <Fragment key={row.id}>
+                <tr className={lines.length > 0 ? "" : "border-b border-divider"}>
+                  {row.cells.map((cell, at) => (
+                    <td key={columns[at]?.id ?? at} className={at === 0 ? `whitespace-nowrap p-3 text-body-strong text-teal ${align(at)}` : `p-3 ${align(at)}`}>
+                      {cell}
+                    </td>
+                  ))}
+                </tr>
+                {lines.map((line, n) => (
+                  <tr key={line.id} className={n === lines.length - 1 ? "border-b border-divider" : ""}>
+                    {line.cells.map((cell, at) => (
+                      <td key={columns[at]?.id ?? at} className={`px-3 py-2 text-ink-muted ${align(at)}`}>
+                        {cell}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </Fragment>
+            );
+          })}
         </tbody>
         {footer && (
           <tfoot>

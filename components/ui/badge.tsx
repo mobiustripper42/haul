@@ -17,6 +17,8 @@ const LOOKS = {
   declined: "bg-danger-soft text-danger",
   /** A week a declined card locked (issue 198): the closed look, with a padlock. */
   locked: OUTLINE,
+  /** An account whose email is not confirmed (issue 263): the plain outline, no icon. */
+  unconfirmed: OUTLINE,
 } as const;
 
 export type BadgeKind = keyof typeof LOOKS;

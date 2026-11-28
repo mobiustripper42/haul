@@ -1,13 +1,17 @@
 // Issue 59, AC3, AC5 and AC6: what the list's search and sort do, framework-free. What the browser does
-// with them is e2e/admin-members.spec.ts.
+// with them is e2e/admin-members.spec.ts. Issue 263: search and sort run over people, each a member's current
+// subscription and their earlier ones (`groupByMember`, AC1–AC3 below), so issue 59's search and sort cases read
+// one-subscription people.
 import { describe, expect, it } from "vitest";
-import { compareNames, filterSubscribers, mealLabel, nextSort, sortSubscribers, subscriberName, type Sort, type SortKey } from "./member-list.js";
+import { compareNames, filterMembers, groupByMember, mealLabel, nextSort, sortMembers, subscriberName, type MemberRow, type Sort, type SortKey } from "./member-list.js";
 import type { Subscriber } from "./ports/repository.js";
 
 let serial = 0;
 
+/** A subscription; each held by a member of its own unless `memberId` is given. */
 const row = (over: Partial<Subscriber> = {}): Subscriber => ({
   subscriptionId: `subscription-${++serial}`,
+  memberId: `member-${serial}`,
   firstName: "Rosa",
   lastName: "Bennett",
   email: "rosa.bennett@example.com",
@@ -28,7 +32,10 @@ const meal = (size: string, menu: string): Subscriber["options"] => [
   { typeName: "Which menu?", optionName: menu },
 ];
 
-const named = (rows: Subscriber[]): string[] => rows.map((r) => `${r.lastName}, ${r.firstName}`);
+/** A person: their current subscription, then their earlier ones as given. */
+const person = (current: Subscriber, ...earlier: Subscriber[]): MemberRow => ({ memberId: current.memberId, current, earlier });
+
+const named = (rows: MemberRow[]): string[] => rows.map(({ current }) => `${current.lastName}, ${current.firstName}`);
 
 describe("AC3 — the words a row shows", () => {
   it.each([
@@ -55,13 +62,13 @@ describe("AC3 — the words a row shows", () => {
 });
 
 describe("AC5 — search", () => {
-  const rosa = row();
-  const chidi = row({ firstName: "Chidi", lastName: "Abara", email: "chidi.abara@example.com", phone: "(440) 555-0133" });
-  const linh = row({ firstName: "Linh", lastName: "Dang", email: "ld@farm.example", phone: "216.555.0166" });
+  const rosa = person(row());
+  const chidi = person(row({ firstName: "Chidi", lastName: "Abara", email: "chidi.abara@example.com", phone: "(440) 555-0133" }));
+  const linh = person(row({ firstName: "Linh", lastName: "Dang", email: "ld@farm.example", phone: "216.555.0166" }));
   const rows = [rosa, chidi, linh];
 
   it("AC5: an empty search keeps every row, in the order given", () => {
-    expect(filterSubscribers(rows, "")).toEqual(rows);
+    expect(filterMembers(rows, "")).toEqual(rows);
   });
 
   it.each([
@@ -74,7 +81,7 @@ describe("AC5 — search", () => {
     ["the email", "rosa.bennett@"],
     ["the email in another case", "ROSA.BENNETT@EXAMPLE"],
   ])("AC5: it matches on %s", (_what, query) => {
-    expect(filterSubscribers(rows, query)).toEqual([rosa]);
+    expect(filterMembers(rows, query)).toEqual([rosa]);
   });
 
   it.each([
@@ -84,37 +91,37 @@ describe("AC5 — search", () => {
     ["with spaces", "440 555 0133"],
     ["part of the number", "0133"],
   ])("AC5: a phone query matches the phone's digits, ignoring punctuation in both: %s", (_what, query) => {
-    expect(filterSubscribers(rows, query)).toEqual([chidi]);
+    expect(filterMembers(rows, query)).toEqual([chidi]);
   });
 
   it("AC5: the digits match across punctuation in the stored phone", () => {
-    expect(filterSubscribers(rows, "2165550166")).toEqual([linh]);
+    expect(filterMembers(rows, "2165550166")).toEqual([linh]);
   });
 
   it.each(["(", ")", "-", "."])("AC5: a query of %j holds no digits, so it does not match on phone", (query) => {
-    const noPunctuationInEmail = rows.map((r) => ({ ...r, email: "plain@examplecom" }));
-    expect(filterSubscribers(noPunctuationInEmail, query)).toEqual([]);
+    const noPunctuationInEmail = rows.map((r) => person({ ...r.current, email: "plain@examplecom" }));
+    expect(filterMembers(noPunctuationInEmail, query)).toEqual([]);
   });
 
   it("AC5: any digits in a query match the phone: bob2 finds a phone with a 2 in it, and not one without", () => {
-    expect(filterSubscribers(rows, "bob2")).toEqual([rosa, linh]);
+    expect(filterMembers(rows, "bob2")).toEqual([rosa, linh]);
   });
 
   it("AC5: the same letters with no digit match nothing, so it is the 2 that bob2 matched on", () => {
-    expect(filterSubscribers(rows, "bob")).toEqual([]);
+    expect(filterMembers(rows, "bob")).toEqual([]);
   });
 
   it("AC5: a row with no phone is not matched by digits, and does not throw", () => {
-    const phoneless = row({ phone: null, email: "plain@example.com" });
-    expect(filterSubscribers([phoneless, chidi], "0133")).toEqual([chidi]);
+    const phoneless = person(row({ phone: null, email: "plain@example.com" }));
+    expect(filterMembers([phoneless, chidi], "0133")).toEqual([chidi]);
   });
 
   it("AC5: a row with a null name part is found by the part it has, and the word null finds nothing", () => {
-    const lastOnly = row({ firstName: null, lastName: "Lovelace", email: "plain@example.com" });
-    const firstOnly = row({ firstName: "Grace", lastName: null, email: "other@example.com" });
-    expect(filterSubscribers([lastOnly, firstOnly], "lovelace")).toEqual([lastOnly]);
-    expect(filterSubscribers([lastOnly, firstOnly], "grace")).toEqual([firstOnly]);
-    expect(filterSubscribers([lastOnly, firstOnly], "null")).toEqual([]);
+    const lastOnly = person(row({ firstName: null, lastName: "Lovelace", email: "plain@example.com" }));
+    const firstOnly = person(row({ firstName: "Grace", lastName: null, email: "other@example.com" }));
+    expect(filterMembers([lastOnly, firstOnly], "lovelace")).toEqual([lastOnly]);
+    expect(filterMembers([lastOnly, firstOnly], "grace")).toEqual([firstOnly]);
+    expect(filterMembers([lastOnly, firstOnly], "null")).toEqual([]);
   });
 });
 
@@ -147,11 +154,11 @@ describe("AC6 — name order", () => {
 });
 
 describe("AC6 — the sort", () => {
-  const sorted = (rows: Subscriber[], key: SortKey, direction: Sort["direction"]) => named(sortSubscribers(rows, { key, direction }));
+  const sorted = (rows: MemberRow[], key: SortKey, direction: Sort["direction"]) => named(sortMembers(rows, { key, direction }));
 
-  const abara = row({ lastName: "Abara", firstName: "Chidi", options: meal("3–4 people", "Standard"), joinedDate: "2026-12-05" });
-  const bennett = row({ lastName: "Bennett", firstName: "Rosa", options: meal("2 people", "Vegan"), joinedDate: "2026-12-01" });
-  const castillo = row({ lastName: "Castillo", firstName: "Marco", options: meal("2 people", "Standard"), joinedDate: "2026-12-03" });
+  const abara = person(row({ lastName: "Abara", firstName: "Chidi", options: meal("3–4 people", "Standard"), joinedDate: "2026-12-05" }));
+  const bennett = person(row({ lastName: "Bennett", firstName: "Rosa", options: meal("2 people", "Vegan"), joinedDate: "2026-12-01" }));
+  const castillo = person(row({ lastName: "Castillo", firstName: "Marco", options: meal("2 people", "Standard"), joinedDate: "2026-12-03" }));
   const rows = [bennett, castillo, abara];
 
   it("AC6: by name, ascending", () => {
@@ -180,9 +187,9 @@ describe("AC6 — the sort", () => {
 
   describe("a tie breaks on name, ascending, even when the column is descending", () => {
     const tied = (over: Partial<Subscriber>) => [
-      row({ lastName: "Castillo", firstName: "Marco", ...over }),
-      row({ lastName: "Abara", firstName: "Chidi", ...over }),
-      row({ lastName: "Bennett", firstName: "Rosa", ...over }),
+      person(row({ lastName: "Castillo", firstName: "Marco", ...over })),
+      person(row({ lastName: "Abara", firstName: "Chidi", ...over })),
+      person(row({ lastName: "Bennett", firstName: "Rosa", ...over })),
     ];
     const NAMES = ["Abara, Chidi", "Bennett, Rosa", "Castillo, Marco"];
 
@@ -201,10 +208,10 @@ describe("AC6 — the sort", () => {
     // Issue 139: the Status column reads each row's own status.
     it("AC9 (issue 139): on status, ascending, Active before Cancelled; descending, Cancelled first; ties on name, ascending, both ways", () => {
       const rows = [
-        row({ lastName: "Castillo", firstName: "Marco", status: "cancelled" }),
-        row({ lastName: "Abara", firstName: "Chidi" }),
-        row({ lastName: "Bennett", firstName: "Rosa", status: "cancelled" }),
-        row({ lastName: "Diaz", firstName: "Lena" }),
+        person(row({ lastName: "Castillo", firstName: "Marco", status: "cancelled" })),
+        person(row({ lastName: "Abara", firstName: "Chidi" })),
+        person(row({ lastName: "Bennett", firstName: "Rosa", status: "cancelled" })),
+        person(row({ lastName: "Diaz", firstName: "Lena" })),
       ];
       expect(sorted(rows, "status", "asc")).toEqual(["Abara, Chidi", "Diaz, Lena", "Bennett, Rosa", "Castillo, Marco"]);
       expect(sorted(rows, "status", "desc")).toEqual(["Bennett, Rosa", "Castillo, Marco", "Abara, Chidi", "Diaz, Lena"]);
@@ -213,7 +220,7 @@ describe("AC6 — the sort", () => {
 
   it("AC6: it gives back a new list and leaves the one it was handed alone", () => {
     const given = [...rows];
-    expect(sortSubscribers(given, { key: "name", direction: "asc" })).toHaveLength(3);
+    expect(sortMembers(given, { key: "name", direction: "asc" })).toHaveLength(3);
     expect(given).toEqual(rows);
   });
 });
@@ -240,5 +247,129 @@ describe("AC6 — a click on a header", () => {
 
   it.each<[Sort]>([[{ key: "name", direction: "asc" }], [{ key: "meal", direction: "desc" }]])("AC6: Joined starts newest first, from %j", (current) => {
     expect(nextSort(current, "joined")).toEqual({ key: "joined", direction: "desc" });
+  });
+});
+
+// Issue 263: one row per person. Which subscription is current, and the order of the earlier ones, are owned here; the
+// list and the page take one case each through it.
+describe("issue 263 — groupByMember", () => {
+  const ROSA = "member-rosa";
+  const CHIDI = "member-chidi";
+  const rosas = (over: Partial<Subscriber>) => row({ memberId: ROSA, ...over });
+  const ids = (rows: Subscriber[]) => rows.map((r) => r.subscriptionId);
+  /** The one person `memberId` groups to. */
+  const groupOf = (rows: Subscriber[], memberId: string = ROSA): MemberRow | undefined => {
+    const found = groupByMember(rows).filter((group) => group.memberId === memberId);
+    expect(found).toHaveLength(1);
+    return found[0];
+  };
+
+  it("AC1: a member's subscriptions come back as one row, and each other member as a row of their own", () => {
+    const first = rosas({ status: "cancelled", joinedDate: "2026-11-02" });
+    const chidi = row({ memberId: CHIDI, firstName: "Chidi", lastName: "Abara" });
+    const again = rosas({ joinedDate: "2026-11-20" });
+
+    const groups = groupByMember([first, chidi, again]);
+
+    expect(groups.map((group) => group.memberId).sort()).toEqual([CHIDI, ROSA]);
+    const rosa = groups.find((group) => group.memberId === ROSA);
+    expect(ids([rosa?.current, ...(rosa?.earlier ?? [])].filter((r): r is Subscriber => r !== undefined)).sort()).toEqual(ids([first, again]).sort());
+  });
+
+  it("AC3: a member with one subscription is a row whose current is it and whose earlier is empty", () => {
+    const only = rosas({});
+    expect(groupByMember([only])).toEqual([{ memberId: ROSA, current: only, earlier: [] }]);
+  });
+
+  it.each([
+    ["listed first", "first"],
+    ["listed last", "last"],
+  ])("AC2: an active subscription is current over a cancelled one joined later, the active one %s", (_what, where) => {
+    const active = rosas({ status: "active", joinedDate: "2026-11-01" });
+    const cancelled = rosas({ status: "cancelled", joinedDate: "2026-11-20" });
+    const group = groupOf(where === "first" ? [active, cancelled] : [cancelled, active]);
+    expect(group?.current.subscriptionId).toBe(active.subscriptionId);
+    expect(ids(group?.earlier ?? [])).toEqual([cancelled.subscriptionId]);
+  });
+
+  it.each([
+    ["listed first", "first"],
+    ["listed last", "last"],
+  ])("AC2: an active subscription is current over a cancelled one joined the same day, the active one %s", (_what, where) => {
+    const active = rosas({ status: "active", joinedDate: "2026-11-23" });
+    const cancelled = rosas({ status: "cancelled", joinedDate: "2026-11-23" });
+    expect(groupOf(where === "first" ? [active, cancelled] : [cancelled, active])?.current.subscriptionId).toBe(active.subscriptionId);
+  });
+
+  it.each([
+    ["listed first", "first"],
+    ["listed last", "last"],
+  ])("AC2: of two cancelled, the one joined later is current, %s", (_what, where) => {
+    const older = rosas({ status: "cancelled", joinedDate: "2026-11-02" });
+    const newer = rosas({ status: "cancelled", joinedDate: "2026-11-20" });
+    expect(groupOf(where === "first" ? [newer, older] : [older, newer])?.current.subscriptionId).toBe(newer.subscriptionId);
+  });
+
+  it("AC2: of two cancelled joined the same day, the later in listSubscribers' order is current, whichever way round they come", () => {
+    const a = rosas({ status: "cancelled", joinedDate: "2026-11-23" });
+    const b = rosas({ status: "cancelled", joinedDate: "2026-11-23" });
+    expect(groupOf([a, b])?.current.subscriptionId).toBe(b.subscriptionId);
+    expect(groupOf([b, a])?.current.subscriptionId).toBe(a.subscriptionId);
+  });
+
+  it("AC3: earlier is newest first by the same rule: the newer joined date first, a same-day tie to the later in the list", () => {
+    const current = rosas({ status: "active", joinedDate: "2026-11-25" });
+    const oldest = rosas({ status: "cancelled", joinedDate: "2026-11-01" });
+    const sameDayFirst = rosas({ status: "cancelled", joinedDate: "2026-11-10" });
+    const sameDayLater = rosas({ status: "cancelled", joinedDate: "2026-11-10" });
+
+    const group = groupOf([sameDayFirst, oldest, current, sameDayLater]);
+
+    expect(group?.current.subscriptionId).toBe(current.subscriptionId);
+    expect(ids(group?.earlier ?? [])).toEqual(ids([sameDayLater, sameDayFirst, oldest]));
+  });
+});
+
+describe("AC5 (issue 263) — search over people", () => {
+  it("AC5: a person with earlier subscriptions is found once, as their one row", () => {
+    const current = row({ memberId: "member-rosa", joinedDate: "2026-11-20" });
+    const earlier = row({ memberId: "member-rosa", status: "cancelled", joinedDate: "2026-11-02" });
+    const rosa = person(current, earlier);
+    const chidi = person(row({ firstName: "Chidi", lastName: "Abara", email: "chidi@example.com", phone: "(440) 555-0133" }));
+
+    expect(filterMembers([rosa, chidi], "bennett")).toEqual([rosa]);
+  });
+
+  it("AC5: it matches on the current subscription's details, not an earlier one's", () => {
+    const rosa = person(row({ email: "rosa.now@example.com" }), row({ email: "rosa.then@example.com", status: "cancelled" }));
+
+    expect(filterMembers([rosa], "rosa.now")).toEqual([rosa]);
+    expect(filterMembers([rosa], "rosa.then")).toEqual([]);
+  });
+});
+
+describe("AC6 (issue 263) — sort over people", () => {
+  const sorted = (rows: MemberRow[], key: SortKey, direction: Sort["direction"]) => named(sortMembers(rows, { key, direction }));
+
+  it("AC6: by status, a person whose current subscription is active sorts with the active, before every cancelled person, whatever their earlier ones", () => {
+    const rejoined = person(row({ lastName: "Castillo", firstName: "Marco" }), row({ lastName: "Castillo", firstName: "Marco", status: "cancelled" }));
+    const gone = person(row({ lastName: "Abara", firstName: "Chidi", status: "cancelled" }));
+    const active = person(row({ lastName: "Bennett", firstName: "Rosa" }));
+
+    expect(sorted([gone, rejoined, active], "status", "asc")).toEqual(["Bennett, Rosa", "Castillo, Marco", "Abara, Chidi"]);
+  });
+
+  it("AC6: by joined, a person sorts on their current subscription's date, not an earlier one's", () => {
+    const rejoined = person(row({ lastName: "Abara", firstName: "Chidi", joinedDate: "2026-12-10" }), row({ lastName: "Abara", firstName: "Chidi", status: "cancelled", joinedDate: "2026-11-01" }));
+    const single = person(row({ lastName: "Bennett", firstName: "Rosa", joinedDate: "2026-12-05" }));
+
+    expect(sorted([rejoined, single], "joined", "asc")).toEqual(["Bennett, Rosa", "Abara, Chidi"]);
+  });
+
+  it("AC6: by meal, a person sorts on their current subscription's meal", () => {
+    const switched = person(row({ lastName: "Abara", firstName: "Chidi", options: meal("3–4 people", "Vegan") }), row({ lastName: "Abara", firstName: "Chidi", status: "cancelled", options: meal("2 people", "Standard") }));
+    const single = person(row({ lastName: "Bennett", firstName: "Rosa", options: meal("2 people", "Vegan") }));
+
+    expect(sorted([switched, single], "meal", "asc")).toEqual(["Bennett, Rosa", "Abara, Chidi"]);
   });
 });
