@@ -24,6 +24,7 @@ import { DEFAULT_DATABASE_URL } from "./migrate.js";
 import { seed as accountWeeks } from "./seeds/account-weeks.js";
 import { seed as details } from "./seeds/details.js";
 import { seed as members } from "./seeds/members.js";
+import { seed as membersList } from "./seeds/members-list.js";
 import { seed as menus } from "./seeds/menus.js";
 import { seed as pickupWeeks } from "./seeds/pickup-weeks.js";
 import { seed as subscribers } from "./seeds/subscribers.js";
@@ -36,6 +37,7 @@ export const SEEDS: Readonly<Record<string, Seed>> = {
   "account-weeks": accountWeeks,
   details,
   members,
+  "members-list": membersList,
   menus,
   "pickup-weeks": pickupWeeks,
   subscribers,

@@ -21,6 +21,7 @@ import {
   type Repository,
   type SignupConfirmation,
   type Subscriber,
+  type UnsubscribedMember,
   type WeekBoxes,
   type WeekCredit,
   type WeekDue,
@@ -1031,26 +1032,46 @@ export class InMemoryRepository implements Repository {
   async listSubscribers(productId: string): Promise<Subscriber[]> {
     return [...this.subscriptions.values()]
       .filter((s) => s.productId === productId && (s.status === "active" || s.status === "cancelled"))
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id))
       .flatMap((subscription) => {
         const member = this.members.get(subscription.memberId);
         const paidAt = this.ledgerOf(subscription.id)?.paidAt;
-        if (!member || !paidAt) return [];
-        return [
-          {
-            subscriptionId: subscription.id,
-            firstName: member.firstName,
-            lastName: member.lastName,
-            email: member.email,
-            phone: member.phone,
-            options: this.optionsNamed(subscription, this.newestSet(subscription)?.optionIds ?? {}),
-            joinedDate: clevelandDate(paidAt),
-            status: subscription.status as "active" | "cancelled",
-            refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
-            cardDeclined: subscription.status === "active" && this.holdsDeclinedRow(subscription.id),
-          },
-        ];
-      });
+        // The order is Postgres's: the subscription's earliest paid row, whichever week it is for.
+        const firstPaidAt = Math.min(
+          ...[...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id && row.status === "paid" && row.paidAt).map((row) => row.paidAt?.getTime() ?? Infinity),
+        );
+        return member && paidAt ? [{ subscription, member, paidAt, firstPaidAt: Number.isFinite(firstPaidAt) ? firstPaidAt : paidAt.getTime() }] : [];
+      })
+      .sort((a, b) => a.firstPaidAt - b.firstPaidAt || a.subscription.id.localeCompare(b.subscription.id))
+      .map(({ subscription, member, paidAt }) => ({
+        subscriptionId: subscription.id,
+        memberId: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        email: member.email,
+        phone: member.phone,
+        options: this.optionsNamed(subscription, this.newestSet(subscription)?.optionIds ?? {}),
+        joinedDate: clevelandDate(paidAt),
+        status: subscription.status as "active" | "cancelled",
+        refundOwed: subscription.status === "cancelled" && this.unspentCreditsOf(subscription.id) > 0,
+        cardDeclined: subscription.status === "active" && this.holdsDeclinedRow(subscription.id),
+      }));
+  }
+
+  /** Issue 263: `listSubscribers`' rule turned over, over the members whose role is member, newest account first. */
+  async listUnsubscribedMembers(productId: string): Promise<UnsubscribedMember[]> {
+    const subscribed = new Set((await this.listSubscribers(productId)).map((row) => row.memberId));
+    return [...this.members.values()]
+      .filter((member) => member.role === "member" && !subscribed.has(member.id))
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime() || b.id.localeCompare(a.id))
+      .map((member) => ({
+        memberId: member.id,
+        firstName: member.firstName,
+        lastName: member.lastName,
+        email: member.email,
+        phone: member.phone,
+        createdDate: clevelandDate(member.createdAt),
+        confirmed: member.emailConfirmedAt !== null,
+      }));
   }
 
   getSignInCode(subjectId: string): Promise<SignInCode | null> {

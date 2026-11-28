@@ -17,8 +17,10 @@ const FLUSH_CLASS = { start: "btn-flush", end: "btn-flush-end", "end-narrow": "b
 const flushClass = (flush: ButtonFlush | undefined) => (flush === true ? FLUSH_CLASS.start : flush ? FLUSH_CLASS[flush] : false);
 
 export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlush; nowrap?: boolean; children: ReactNode } & (
-  | { href: string; back?: boolean; current?: boolean; download?: boolean; loadsPage?: never; untilChanged?: never }
+  | { href: string; pressed?: never; back?: boolean; current?: boolean; download?: boolean; loadsPage?: never; untilChanged?: never }
   | (Omit<ButtonHTMLAttributes<HTMLButtonElement>, "className" | "style" | "children"> & {
+      /** A button that stays down once pressed (issue 263: Past): sets `aria-pressed`. */
+      pressed?: boolean;
       href?: never;
       back?: boolean;
       current?: never;
@@ -35,7 +37,7 @@ export type ButtonProps = { kind: ButtonKind; full?: boolean; flush?: ButtonFlus
  * sage-soft. `back` adds the back arrow, to a link or to a submit button. `nowrap` keeps the label on one line, for the header's buttons, which wrap as a row instead.
  */
 export function Button(props: ButtonProps) {
-  const { kind, full, flush, nowrap, children, href, back, current, download, loadsPage, untilChanged, ...rest } = props;
+  const { kind, full, flush, nowrap, children, href, back, current, download, loadsPage, untilChanged, pressed, ...rest } = props;
   if (href !== undefined) {
     const className = [`btn-${kind}`, back && "back-link", full && "w-full", flushClass(flush), nowrap && "btn-nowrap"].filter(Boolean).join(" ");
     const aria = current ? { "aria-current": "page" as const } : {};
@@ -56,7 +58,7 @@ export function Button(props: ButtonProps) {
   }
   const className = [`btn-${kind}`, back && "back-link", full && "w-full", flushClass(flush), nowrap && "btn-nowrap"].filter(Boolean).join(" ");
   return (
-    <SubmitButton {...rest} loadsPage={loadsPage} untilChanged={untilChanged} className={className}>
+    <SubmitButton {...rest} {...(pressed !== undefined && { "aria-pressed": pressed })} loadsPage={loadsPage} untilChanged={untilChanged} className={className}>
       {children}
     </SubmitButton>
   );

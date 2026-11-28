@@ -12,6 +12,7 @@ let serial = 0;
 
 const row = (over: Partial<Subscriber> = {}): Subscriber => ({
   subscriptionId: `subscription-${++serial}`,
+  memberId: `member-${serial}`,
   firstName: "Rosa",
   lastName: "Bennett",
   email: "rosa@example.com",

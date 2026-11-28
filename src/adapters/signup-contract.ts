@@ -6,7 +6,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import type { AccountDetails } from "../create-account.js";
-import type { ChangedWeek } from "../pickup-week.js";
+import { clevelandDate, type ChangedWeek } from "../pickup-week.js";
 import type { Card } from "../ports/payments.js";
 import type { PendingSignup, PendingSignupInput, Repository } from "../ports/repository.js";
 import type { ProductInput, ProductWithOptions } from "../products.js";
@@ -1007,6 +1007,7 @@ export function runSignupContract(
         expect(await repo.listSubscribers(product.id)).toEqual([
           {
             subscriptionId: signup.subscriptionId,
+            memberId,
             firstName: "Ada",
             lastName: "Lovelace",
             email: "ada@example.com",
@@ -1308,6 +1309,135 @@ export function runSignupContract(
           const signup = await confirmed();
           await repo.closePickupWeek(product.id, "2027-01-03", null, CLOSED_AT);
           expect(await listed(signup.subscriptionId)).toMatchObject({ status: "active", refundOwed: false });
+        });
+      });
+    });
+
+    // Issue 263: the admin's list is one row per person, grouped in plain code (src/member-list.ts) over listSubscribers'
+    // rows, whose order breaks a same-day tie; and the members who have an account but no paid subscription.
+    describe("issue 263 — listSubscribers' member and order, and listUnsubscribedMembers", () => {
+      const CANCELLED_AT = new Date("2026-11-20T15:00:00.000Z");
+      const ADA: AccountDetails = { email: "ada@example.com", firstName: "Ada", lastName: "Lovelace", phone: "216-555-0100", language: "en" };
+
+      /** A tick of the real clock, so a later row's created_at is later in either adapter. */
+      const tick = () => new Promise((resolve) => setTimeout(resolve, 5));
+      const newMember = async (email: string): Promise<string> => {
+        await tick();
+        return (await repo.createMember({ email })).id;
+      };
+      /** A member's signup on `on`, charged at `paidAt`. */
+      const confirmed = async (who: string = memberId, on: ProductWithOptions = product, paidAt: Date = PAID_AT): Promise<PendingSignup> => {
+        const choices = Object.fromEntries(on.optionTypes.map((type) => [type.id, type.options[0]?.id ?? "no such option"]));
+        const signup = await saved({ memberId: who, productId: on.id, choices });
+        expect(await repo.confirmSignupRows(signup.ledgerId, `PAYMENT_${signup.ledgerId}`, signup.amountCents, paidAt)).toBe("confirmed");
+        return signup;
+      };
+      const unsubscribed = async (on: ProductWithOptions = product) => (await repo.listUnsubscribedMembers(on.id)).map((row) => row.email);
+
+      describe("AC1, AC2 — listSubscribers", () => {
+        it("AC1: each subscription carries its member's id: a member's cancelled one and the one they joined again with, and another member's", async () => {
+          const first = await confirmed();
+          expect(await repo.cancelSubscription(first.subscriptionId, CANCELLED_AT)).toBe(true);
+          await tick();
+          const again = await confirmed();
+          const grace = await newMember("grace@example.com");
+          const graces = await confirmed(grace);
+
+          const rows = await repo.listSubscribers(product.id);
+
+          expect(Object.fromEntries(rows.map((row) => [row.subscriptionId, row.memberId]))).toEqual({
+            [first.subscriptionId]: memberId,
+            [again.subscriptionId]: memberId,
+            [graces.subscriptionId]: grace,
+          });
+        });
+
+        it("AC2: the rows come in first-payment order: two subscriptions paid the opposite way round to their signups come back in the order they were paid", async () => {
+          const ada = await saved();
+          const grace = await newMember("grace@example.com");
+          await tick();
+          const graces = await saved({ memberId: grace });
+          expect(await repo.confirmSignupRows(graces.ledgerId, "PAYMENT_GRACE", graces.amountCents, PAID_AT)).toBe("confirmed");
+          expect(await repo.confirmSignupRows(ada.ledgerId, "PAYMENT_ADA", ada.amountCents, LATER_AT)).toBe("confirmed");
+
+          expect((await repo.listSubscribers(product.id)).map((row) => row.subscriptionId)).toEqual([graces.subscriptionId, ada.subscriptionId]);
+        });
+      });
+
+      describe("AC7 — listUnsubscribedMembers", () => {
+        it("AC7: a member who never signed up is listed with their name, email, phone, the Cleveland day their account was made, and not confirmed", async () => {
+          await repo.saveAccount(ADA);
+          const member = await repo.findMemberById(memberId);
+          if (!member) throw new Error("the member made before each test is gone");
+
+          expect(await repo.listUnsubscribedMembers(product.id)).toEqual([
+            {
+              memberId,
+              firstName: "Ada",
+              lastName: "Lovelace",
+              email: "ada@example.com",
+              phone: "216-555-0100",
+              createdDate: clevelandDate(member.createdAt),
+              confirmed: false,
+            },
+          ]);
+        });
+
+        it("AC7: a member with no details reads as nulls", async () => {
+          expect(await repo.listUnsubscribedMembers(product.id)).toEqual([expect.objectContaining({ memberId, firstName: null, lastName: null, phone: null })]);
+        });
+
+        it("AC7: once the member's email is confirmed, they are listed as confirmed", async () => {
+          await repo.confirmMemberEmail(memberId, PAID_AT);
+          expect(await repo.listUnsubscribedMembers(product.id)).toEqual([expect.objectContaining({ memberId, confirmed: true })]);
+        });
+
+        it("AC7: an admin is not listed", async () => {
+          await repo.createMember({ email: "lenny@example.com", role: "admin" });
+          expect(await unsubscribed()).toEqual(["ada@example.com"]);
+        });
+
+        it("AC7: a member with an active subscription, and one whose subscription is cancelled, are not listed", async () => {
+          await confirmed(await newMember("grace@example.com"));
+          const linh = await confirmed(await newMember("linh@example.com"));
+          expect(await repo.cancelSubscription(linh.subscriptionId, CANCELLED_AT)).toBe(true);
+
+          expect(await unsubscribed()).toEqual(["ada@example.com"]);
+        });
+
+        it("AC7: a member whose first payment is pending, out with Square, or declined is listed", async () => {
+          await saved({ memberId: await newMember("cardless@example.com") });
+          const carded = await saved({ memberId: await newMember("carded@example.com") });
+          await repo.startSignupCharge(carded.subscriptionId, SENT_AT);
+          const declined = await saved({ memberId: await newMember("declined@example.com") });
+          await repo.recordSignupDecline(declined.ledgerId);
+
+          expect((await unsubscribed()).sort()).toEqual(["ada@example.com", "carded@example.com", "cardless@example.com", "declined@example.com"]);
+        });
+
+        it("AC7: a member who cancelled and is partway through joining again is not listed", async () => {
+          const first = await confirmed();
+          expect(await repo.cancelSubscription(first.subscriptionId, CANCELLED_AT)).toBe(true);
+          await tick();
+          await saved();
+          await newMember("grace@example.com");
+
+          expect(await unsubscribed()).toEqual(["grace@example.com"]);
+        });
+
+        it("AC7: a member subscribed only to another product is listed for this one, and not for that one", async () => {
+          const crate = await addProduct({ ...BOX, name: "Crate" });
+          await confirmed(await newMember("grace@example.com"), crate);
+
+          expect((await unsubscribed()).sort()).toEqual(["ada@example.com", "grace@example.com"]);
+          expect(await unsubscribed(crate)).toEqual(["ada@example.com"]);
+        });
+
+        it("AC7: the newest account comes first", async () => {
+          await newMember("grace@example.com");
+          await newMember("linh@example.com");
+
+          expect(await unsubscribed()).toEqual(["linh@example.com", "grace@example.com", "ada@example.com"]);
         });
       });
     });
