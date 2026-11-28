@@ -1035,9 +1035,13 @@ export class InMemoryRepository implements Repository {
       .flatMap((subscription) => {
         const member = this.members.get(subscription.memberId);
         const paidAt = this.ledgerOf(subscription.id)?.paidAt;
-        return member && paidAt ? [{ subscription, member, paidAt }] : [];
+        // The order is Postgres's: the subscription's earliest paid row, whichever week it is for.
+        const firstPaidAt = Math.min(
+          ...[...this.ledger.values()].filter((row) => row.subscriptionId === subscription.id && row.status === "paid" && row.paidAt).map((row) => row.paidAt?.getTime() ?? Infinity),
+        );
+        return member && paidAt ? [{ subscription, member, paidAt, firstPaidAt: Number.isFinite(firstPaidAt) ? firstPaidAt : paidAt.getTime() }] : [];
       })
-      .sort((a, b) => a.paidAt.getTime() - b.paidAt.getTime() || a.subscription.id.localeCompare(b.subscription.id))
+      .sort((a, b) => a.firstPaidAt - b.firstPaidAt || a.subscription.id.localeCompare(b.subscription.id))
       .map(({ subscription, member, paidAt }) => ({
         subscriptionId: subscription.id,
         memberId: member.id,

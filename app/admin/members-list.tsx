@@ -130,7 +130,12 @@ export function MembersList({ rows, text, language }: { rows: MemberRow[]; text:
             formatPhone(person.current.phone),
             ...subscriptionCells(person.current),
           ],
-          under: open.has(person.memberId) ? person.earlier.map((earlier) => ({ id: earlier.subscriptionId, cells: ["", "", "", ...subscriptionCells(earlier)] })) : undefined,
+          under:
+            person.earlier.length === 0
+              ? undefined
+              : open.has(person.memberId)
+                ? person.earlier.map((earlier) => ({ id: earlier.subscriptionId, cells: ["", "", "", ...subscriptionCells(earlier)] }))
+                : [],
         }))}
       />
       <RowList

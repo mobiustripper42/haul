@@ -130,6 +130,8 @@ const toSignInCode = (row: SignInCodeRow): SignInCode => ({
 
 // The shape Postgres accepts for a uuid parameter, any version.
 const UUID_SHAPE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** A well-formed id no row holds, bound in place of a string that is not a UUID, which Postgres would refuse to cast. */
+const NO_SUCH_ID = "00000000-0000-0000-0000-000000000000";
 
 /** A menu's texts keyed by option id, aggregated from `menu_texts t` over `menus m` grouped by `m.id`: the one home of it, for every read of a menu. */
 const MENU_TEXTS_SQL = "coalesce(jsonb_object_agg(t.option_id, t.text) filter (where t.option_id is not null), '{}'::jsonb)";
@@ -1709,7 +1711,7 @@ export class PostgresRepository implements Repository {
                and exists (select 1 from ledger l where l.subscription_id = s.id and l.status = 'paid' and l.paid_at is not null)
           )
         order by m.created_at desc, m.id desc`,
-      [UUID_SHAPE.test(productId) ? productId : "00000000-0000-0000-0000-000000000000"],
+      [UUID_SHAPE.test(productId) ? productId : NO_SUCH_ID],
     );
     return rows.map((row) => ({
       memberId: row.id,

@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
  */
 export function RolldownToggle({ open, onToggle, children }: { open: boolean; onToggle: () => void; children: ReactNode }) {
   return (
-    <button type="button" aria-expanded={open} onClick={onToggle} className="menu-chevron disclosure-summary">
+    <button type="button" aria-expanded={open} onClick={onToggle} className="menu-chevron disclosure-summary w-fit">
       {children}
     </button>
   );
