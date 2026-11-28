@@ -32,7 +32,7 @@ const calendar = (menus: Array<[string, string]>, changed: ChangedWeek[] = []): 
 describe("AC1 — assignedLine", () => {
   it('AC1: "Assigned to" each week the menu is on, titled as the calendar titles it, in week order, joined with " · "', () => {
     const line = assignedLine("autumn", calendar([["2027-02-21", "autumn"], ["2027-02-14", "autumn"], ["2027-02-28", "winter"]]), t, "en");
-    expect(line).toBe(t("admin.menus.assignedTo", { weeks: "February 14 and 15 · February 21 and 22" }));
+    expect(line).toBe(t("admin.menus.assignedTo", { weeks: "February\u00a014 and\u00a015 · February\u00a021 and\u00a022" }));
   });
 
   it('AC1: a menu on no week reads "Not assigned to a week"', () => {

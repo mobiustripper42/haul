@@ -137,19 +137,29 @@ export function firstPickupLine(t: Translator, week: PickupWeek, language: Langu
 }
 
 /**
- * A pickup date as words: "Sunday, January 3". With the short month, "Sunday, Jan 3" (issue 230), its date held
- * together by non-breaking spaces, so a line that wraps breaks after the weekday, never between "Jan" and "3".
+ * A date's words with every space inside the date a non-breaking one (issue 257, DEC-059), so a line that wraps never
+ * breaks a month from its day. The space after a weekday's comma stays breakable: a wrap may fall after the weekday
+ * (issue 230).
  */
-export function formatPickupDate(date: string, language: Language, month: "long" | "short" = "long"): string {
-  const words = new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
-    weekday: "long",
-    month,
-    day: "numeric",
-    timeZone: "UTC",
-  });
-  if (month === "long") return words;
+function held(words: string): string {
   const comma = words.indexOf(", ");
-  return comma === -1 ? words : `${words.slice(0, comma + 2)}${words.slice(comma + 2).replaceAll(" ", "\u00a0")}`;
+  return comma === -1 ? words.replaceAll(" ", "\u00a0") : `${words.slice(0, comma + 2)}${words.slice(comma + 2).replaceAll(" ", "\u00a0")}`;
+}
+
+/**
+ * A pickup date as words, the short month by default: "Sunday, Jan 3" (issue 230); with the long month, "Sunday,
+ * January 3". Either way its date is held together (`held`), so a line that wraps breaks after the weekday, never
+ * between "Jan" and "3".
+ */
+export function formatPickupDate(date: string, language: Language, month: "long" | "short" = "short"): string {
+  return held(
+    new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
+      weekday: "long",
+      month,
+      day: "numeric",
+      timeZone: "UTC",
+    }),
+  );
 }
 
 /** `instant`'s date on Cleveland's wall clock, `YYYY-MM-DD`. */
@@ -200,7 +210,7 @@ export function isMoved(week: PickupWeek): boolean {
 
 /** A date as its month and day, as the locale writes them: "January 17", "17 de enero". */
 function monthDay(date: string, language: Language): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, { month: "long", day: "numeric", timeZone: "UTC" });
+  return held(new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, { month: "long", day: "numeric", timeZone: "UTC" }));
 }
 
 /**
@@ -209,8 +219,11 @@ function monthDay(date: string, language: Language): string {
  */
 export function weekTitle(t: Translator, week: PickupWeek, language: Language): string {
   if (isMoved(week)) {
-    if (week.firstDay === week.lastDay) return t("admin.weeks.titleOneDay", { day: formatPickupDate(week.firstDay, language) });
-    return t("admin.weeks.titleTwoDays", { first: formatPickupDate(week.firstDay, language), last: formatPickupDate(week.lastDay, language) });
+    if (week.firstDay === week.lastDay) return t("admin.weeks.titleOneDay", { day: formatPickupDate(week.firstDay, language, "long") });
+    return t("admin.weeks.titleTwoDays", {
+      first: formatPickupDate(week.firstDay, language, "long"),
+      last: formatPickupDate(week.lastDay, language, "long"),
+    });
   }
   if (week.firstDay.slice(0, 7) !== week.lastDay.slice(0, 7)) {
     return t("admin.weeks.titleTwoDays", { first: monthDay(week.firstDay, language), last: monthDay(week.lastDay, language) });
@@ -282,15 +295,27 @@ export function pastWeeks(product: ProductWithOptions, now: Date, changed: Chang
 }
 
 /** How many past weeks the weekly lists offer (issue 142). */
-export const PAST_LISTED_WEEKS = 4;
+export const PAST_LISTED_WEEKS = 2;
 
 /**
- * The weeks the admin's weekly lists offer (issue 142): the calendar's upcoming weeks oldest first, then the
- * `PAST_LISTED_WEEKS` most recent past weeks newest first, a closed week left out of either with no week added in its place.
+ * The weeks the admin's weekly lists offer (issue 272), in calendar order: the `PAST_LISTED_WEEKS` most recent past
+ * weeks, then the current week and the weeks after it, 12 in all, a closed week left out with no week added in its
+ * place. `pastWeeks` holds the clamp at the product's first pickup, so near its start the list is shorter.
  */
 export function listableWeeks(product: ProductWithOptions, now: Date, changed: ChangedWeek[]): AdminWeek[] {
-  const past = pastWeeks(product, now, changed, product.firstPickupDate).slice(0, PAST_LISTED_WEEKS);
-  return [...upcomingWeeks(product, now, changed), ...past].filter((week) => week.closedAt === null);
+  const past = pastWeeks(product, now, changed, product.firstPickupDate).slice(0, PAST_LISTED_WEEKS).reverse();
+  const ahead = upcomingWeeks(product, now, changed).slice(0, CALENDAR_WEEKS - PAST_LISTED_WEEKS);
+  return [...past, ...ahead].filter((week) => week.closedAt === null);
+}
+
+/**
+ * The week the weekly lists open on (issue 272): the first of `weeks` on or after the current week, so a closed current
+ * week gives way to the next open one; else the first listed week. `weeks` are already open, so `nextPickup`'s closed
+ * check changes nothing. The page and the dev seed both call it, so they agree.
+ */
+export function defaultListedWeek(product: ProductWithOptions, now: Date, changed: ChangedWeek[], weeks: AdminWeek[]): AdminWeek | undefined {
+  const byWeek = new Map(changed.map((week) => [week.weekOf, week]));
+  return nextPickup(weeks, currentSunday(product, clevelandDate(now), byWeek)) ?? weeks[0];
 }
 
 /** A listed week's title (issue 155): a closed week carries its ordinary days, its move waiting for a reopen. */
@@ -335,11 +360,13 @@ export function checkMove(
   return "ok";
 }
 
-/** A date as a short label: "Dec 1". */
+/** A date as a short label, held together: "Dec 1". */
 export function formatShortDate(date: string, language: Language): string {
-  return new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
-    month: "short",
-    day: "numeric",
-    timeZone: "UTC",
-  });
+  return held(
+    new Date(`${date}T00:00:00Z`).toLocaleDateString(LANGUAGES[language].locale, {
+      month: "short",
+      day: "numeric",
+      timeZone: "UTC",
+    }),
+  );
 }

@@ -186,7 +186,7 @@ export const en = {
   "admin.weeks.hint":
     "The next 12 weeks. Close a week when there is no pickup, or move its pickup days. Closing before the cutoff skips that week's charge, and members who paid for it at signup get a week credit. Closing after the cutoff gives everyone who paid a week credit: their next meal is made and not charged.",
   "admin.weeks.upcoming": "Upcoming weeks",
-  "admin.weeks.titleSameMonth": "{month} {first} and {last}",
+  "admin.weeks.titleSameMonth": "{month}\u00a0{first} and\u00a0{last}",
   "admin.weeks.titleTwoDays": "{first} and {last}",
   "admin.weeks.titleOneDay": "{day} only",
   "admin.weeks.closeHeading": "Close the week of {days}?",

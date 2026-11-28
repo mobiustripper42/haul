@@ -160,8 +160,9 @@ describe("AC5 (issue 58) — a member with no first name", () => {
 describe("AC6 (issue 58) — the member's stored language", () => {
   it("AC6: a member stored as es gets their dates in Spanish", async () => {
     const { text } = await sent(member({ language: "es" }));
-    expect(text).toContain("domingo, 3 de enero");
-    expect(text).toContain("sábado, 7 de noviembre");
+    // Issue 272: a single day takes the short month, held to its day, in Spanish too.
+    expect(text).toContain("domingo, 3\u00a0de\u00a0ene");
+    expect(text).toContain("sábado, 7\u00a0de\u00a0nov");
   });
 });
 

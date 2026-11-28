@@ -134,7 +134,7 @@ describe("AC5 — Edit menu", () => {
 
   it("AC5: a menu on a week shows the weeks it is on", async () => {
     await services.repo.assignWeekMenu(product.id, FEB_14, menu.id);
-    expect(textsOf(await render(menu.id)).join(" ")).toContain("February 14 and 15");
+    expect(textsOf(await render(menu.id)).join(" ")).toContain("February\u00a014 and\u00a015");
   });
 
   it("AC5: the form's save is saveMenu for this menu: what it posts replaces this menu and lands on the list with it saved", async () => {

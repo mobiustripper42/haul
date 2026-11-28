@@ -919,7 +919,7 @@ describe("issue 56 — the pay action", () => {
         signIn();
         await join(pay());
         await runScheduled();
-        expect(onlyText()).toContain("domingo, 3 de enero");
+        expect(onlyText()).toContain("domingo, 3\u00a0de\u00a0ene");
       });
 
       describe("AC4 (issue 130) — the email's language is the saved one, not the page's", () => {
@@ -929,7 +929,7 @@ describe("issue 56 — the pay action", () => {
           request.current.cookies.lang = "en";
           await join(pay());
           await runScheduled();
-          expect(onlyText()).toContain("domingo, 3 de enero");
+          expect(onlyText()).toContain("domingo, 3\u00a0de\u00a0ene");
         });
       });
     });

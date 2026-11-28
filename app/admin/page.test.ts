@@ -272,7 +272,7 @@ describe("issue 59 — /admin, signed in as an admin", () => {
       const body = /<tbody\b[^>]*>([\s\S]*?)<\/tbody>/.exec(html)?.[1] ?? "";
       const cells = [...body.matchAll(/<td\b[^>]*>([\s\S]*?)<\/td>/g)].map(([, cell = ""]) => textsOf(cell).join(" "));
 
-      expect(cells[4]).toBe("Dec 1");
+      expect(cells[4]).toBe("Dec\u00a01");
     });
   });
 });

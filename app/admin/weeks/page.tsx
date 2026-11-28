@@ -46,7 +46,7 @@ const one = (value: string | string[] | undefined): string | undefined => (Array
 const panelHref = (name: "close" | "reopen" | "note" | "move" | "menu", weekOf: string): string =>
   `${ADMIN_WEEKS_PATH}?${new URLSearchParams({ [name]: weekOf })}${name === "close" || name === "reopen" ? "" : `#${OPEN_PANEL}`}`;
 
-/** "Monday, January 18": the date a week's cutoff falls on, as the screen words it. */
+/** "Monday, Jan 18", held together (issue 257): the date a week's cutoff falls on, as the screen words it. */
 const cutoffWords = ({ product, language }: Wording, week: AdminWeek): string => formatPickupDate(cutoffDate(product, week.weekOf), language);
 
 /** Closing an open week: who it gives week credits to, before or after the cutoff, how many members are emailed, and a note to the members it emails, which starts as the week's own. */

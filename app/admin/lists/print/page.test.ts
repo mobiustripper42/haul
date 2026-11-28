@@ -58,8 +58,8 @@ afterEach(() => {
 const render = async (query: Record<string, string> = {}): Promise<string> =>
   screenMarkup(renderToStaticMarkup(await AdminPickupPrint({ searchParams: Promise.resolve(query) })));
 
-/** The page's text as one line: tags dropped, spaces collapsed. */
-const lineText = (markup: string): string => markup.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ");
+/** The page's text as one line: tags dropped, spaces collapsed; a non-breaking space (issue 272) is kept. */
+const lineText = (markup: string): string => markup.replace(/<[^>]*>/g, " ").replace(/[^\S\u00a0]+/g, " ");
 
 const t = createTranslator("en");
 
@@ -97,7 +97,7 @@ describe("signed in as an admin", () => {
       const markup = await render({ week: FEB_14 });
       expect(SiteHeader).not.toHaveBeenCalled();
       expect(markup).not.toMatch(/<a\b[^>]*\bhref="\/admin\/menus/);
-      expect(textsOf(markup).join(" ")).toContain("February 14 and 15");
+      expect(textsOf(markup).join(" ")).toContain("February\u00a014 and\u00a015");
     });
 
     it("AC7: before the cutoff the meta line counts the meals, dates the printing and is marked not final", async () => {
@@ -128,7 +128,7 @@ describe("signed in as an admin", () => {
     });
 
     it("AC8: a week the select does not offer falls back to the first upcoming week", async () => {
-      expect(textsOf(await render({ week: "2027-02-13" })).join(" ")).toContain("February 7 and 8");
+      expect(textsOf(await render({ week: "2027-02-13" })).join(" ")).toContain("February\u00a07 and\u00a08");
     });
   });
 
