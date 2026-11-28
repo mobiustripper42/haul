@@ -86,6 +86,7 @@ in the sibling repo and are background, not rulings for Haul.
 - DEC-057 — A form assumes its script runs: the server sends it as the script keeps it
 - DEC-058 — A Save off until changed reads Saved, and a save that lands shows no Notice
 - DEC-059 — A week's name keeps the full month, a single day the short one, a month its day
+- DEC-060 — An address with no page answers 404 with the farm's page, never a redirect
 
 _**This file is GENERATED** by `npm run gen:decisions` —
 edit `docs/decisions/DEC-*.md`, not this file. `npm run check:decisions` fails on a stale index, a

@@ -420,7 +420,7 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
     expect(usage).not.toMatch(/field/i);
   });
 
-  it("AC3: a size group holds field 40px, button 44px, code-field 52px, touch 44px, card 376px, page 960px, reading 640px, bar 1152px, shaped as spacing is", () => {
+  it("AC3: a size group holds field 40px, button 44px, code-field 52px, touch 44px, card 376px, page 960px, reading 640px, bar 1152px, card-padding 16px, shaped as spacing is", () => {
     const size = tokens().size?.tokens ?? [];
     expect(Object.fromEntries(size.map(({ name, value }) => [name, value]))).toEqual({
       field: "40px",
@@ -431,6 +431,7 @@ describe("AC3 — tokens.json gains what the approved frame draws", () => {
       page: "960px",
       reading: "640px",
       bar: "1152px",
+      "card-padding": "16px",
     });
     for (const token of size) expect(typeof token.usage, `${token.name} has no usage`).toBe("string");
   });

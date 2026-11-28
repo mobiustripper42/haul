@@ -117,6 +117,7 @@ const MESSAGES = {
   Shell: useComponent("Shell", "every screen's page frame is one."),
   Card: useComponent("Card", "every card is one."),
   Notice: useComponent("Notice", "every alert is one, with its icon."),
+  ListRow: "Use <ListRow> from components/ui (DEC-024): every divided list's row is one. Its className adds the row's layout; the divider and spacing live in app/globals.css.",
   Link: "Use <Button>, <TextLink> or <Wordmark> from components/ui (DEC-050): every link is one, so a tap on an in-app link swaps the page body instead of reloading it. Pass no className; the look lives in app/globals.css.",
 };
 
@@ -142,6 +143,7 @@ const OWNED_CLASSES = {
   Input: "field|field-code",
   Notice: "notice(?:-[\\w-]+)?",
   Button: "btn-[\\w-]+|back-link",
+  ListRow: "list-row",
 };
 const componentClassSelectors = Object.entries(OWNED_CLASSES).flatMap(([component, classes]) =>
   inClassName(`(?<![\\w-])(?:${classes})(?![\\w-])`, MESSAGES[component]),

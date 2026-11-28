@@ -459,6 +459,11 @@ export const en = {
   "legal.lastUpdated": "Last updated November 1, 2026",
   "legal.terms.text": legalTermsEn,
   "legal.privacy.text": legalPrivacyEn,
+  // Issue 271: the page for a URL the app has no page for.
+  "notFound.title": "Page not found",
+  "notFound.line": "There is no page at this address.",
+  "notFound.toSupperClub": "Go to the Supper Club",
+  "notFound.toAccount": "Go to Your account",
 } as const satisfies Record<string, string>;
 
 export type MessageKey = keyof typeof en;

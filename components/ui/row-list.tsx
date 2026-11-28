@@ -1,4 +1,5 @@
 import type { ReactNode } from "react";
+import { ListRow } from "./list-row";
 
 /**
  * The table's rows stacked inside a card, for phone width: each is a name with a badge beside it, a line of
@@ -17,14 +18,14 @@ export function RowList({
       {before}
       <ul className="flex flex-col">
         {rows.map((row) => (
-          <li key={row.id} className="flex flex-col gap-1 border-t border-divider py-4">
+          <ListRow key={row.id} className="flex flex-col gap-1 first:border-t first:pt-4">
             <span className="flex items-start justify-between gap-3">
               <strong className="font-semibold text-teal">{row.title}</strong>
               {row.badge}
             </span>
             <span>{row.detail}</span>
             <span className="text-small text-ink-muted">{row.note}</span>
-          </li>
+          </ListRow>
         ))}
       </ul>
     </div>
