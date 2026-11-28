@@ -67,12 +67,14 @@ const OPEN = "2027-02-14";
 const BEFORE_FEB_14_CUTOFF = new Date("2027-02-02T15:00:00.000Z");
 const DAY = 24 * 60 * 60_000;
 
-const TITLE_FEB_7 = "February 7 and 8";
-const TITLE_FEB_14 = "February 14 and 15";
-const TITLE_FEB_21 = "February 21 and 22";
+// Issue 272: a week's name holds each month to its day, and a same-month week's last day to its "and"; a single day
+// takes the short month, held to its day.
+const TITLE_FEB_7 = "February\u00a07 and\u00a08";
+const TITLE_FEB_14 = "February\u00a014 and\u00a015";
+const TITLE_FEB_21 = "February\u00a021 and\u00a022";
 
-const FEB_1_CUTOFF = "Monday, February 1";
-const FEB_8_CUTOFF = "Monday, February 8";
+const FEB_1_CUTOFF = "Monday, Feb\u00a01";
+const FEB_8_CUTOFF = "Monday, Feb\u00a08";
 
 const t = createTranslator("en");
 
@@ -208,20 +210,20 @@ describe("AC1 — the weeks", () => {
   it("AC1: 12 rows in date order from the earliest week whose pickup is not over, each with its cutoff", async () => {
     const { runs } = await render();
     // The cutoff dates are the only weekday-named dates on the page as it opens.
-    const cutoffs = runs.flatMap((run) => run.match(/\b\w+day, \w+ \d+\b/g) ?? []);
+    const cutoffs = runs.flatMap((run) => run.match(/\b\w+day, \w+\u00a0\d+\b/g) ?? []);
     expect(cutoffs).toEqual([
-      "Monday, February 1",
-      "Monday, February 8",
-      "Monday, February 15",
-      "Monday, February 22",
-      "Monday, March 1",
-      "Monday, March 8",
-      "Monday, March 15",
-      "Monday, March 22",
-      "Monday, March 29",
-      "Monday, April 5",
-      "Monday, April 12",
-      "Monday, April 19",
+      "Monday, Feb\u00a01",
+      "Monday, Feb\u00a08",
+      "Monday, Feb\u00a015",
+      "Monday, Feb\u00a022",
+      "Monday, Mar\u00a01",
+      "Monday, Mar\u00a08",
+      "Monday, Mar\u00a015",
+      "Monday, Mar\u00a022",
+      "Monday, Mar\u00a029",
+      "Monday, Apr\u00a05",
+      "Monday, Apr\u00a012",
+      "Monday, Apr\u00a019",
     ]);
   });
 
@@ -479,7 +481,7 @@ describe("AC9, AC10, AC14 — a moved row", () => {
   it("AC9, AC10, AC14: titled by its days, Moved, the days it moved from, the same cutoff, Move days, Put back and Close week", async () => {
     await save(OPEN, { firstDay: "2027-02-13", lastDay: "2027-02-14" });
     const screen = await render();
-    const row = rowOf(screen, "Saturday, February 13 and Sunday, February 14", TITLE_FEB_21);
+    const row = rowOf(screen, "Saturday, February\u00a013 and Sunday, February\u00a014", TITLE_FEB_21);
     expect(row.runs).toContain(t("admin.weeks.badgeMoved"));
     expect(row.runs).toContain(t("admin.weeks.movedFrom", { days: TITLE_FEB_14 }));
     expect(row.runs).toContain(t("admin.weeks.cutoff", { cutoff: FEB_8_CUTOFF }));
@@ -549,7 +551,7 @@ describe("AC9, AC11, AC14 — the move panel", () => {
   it.each([
     ["beforeCutoff", "2027-02-08", "2027-02-14", () => t("admin.weeks.errorBeforeCutoff", { cutoff: FEB_8_CUTOFF }), "firstDay"],
     ["order", "2027-02-14", "2027-02-13", () => t("admin.weeks.errorOrder"), "lastDay"],
-    ["overlapsNext", "2027-02-14", "2027-02-16", () => t("admin.weeks.errorOverlapsNext", { day: "Tuesday, February 16", cutoff: "Monday, February 15" }), "lastDay"],
+    ["overlapsNext", "2027-02-14", "2027-02-16", () => t("admin.weeks.errorOverlapsNext", { day: "Tuesday, Feb\u00a016", cutoff: "Monday, Feb\u00a015" }), "lastDay"],
   ])("AC9: error=%s shows its fault under the day at fault, with the dates entered back in the inputs", async (error, first, last, fault, atFault) => {
     const screen = await render({ move: OPEN, error, first, last });
     const row = rowOf(screen, TITLE_FEB_14, TITLE_FEB_21);

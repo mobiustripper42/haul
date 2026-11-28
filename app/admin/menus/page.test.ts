@@ -134,7 +134,7 @@ describe("AC1 — the library", () => {
     await services.repo.assignWeekMenu(product.id, FEB_14, autumn.id);
     const html = await render();
     const text = textsOf(html).join(" ");
-    const wanted = ["Winter roots", "Beef stew · Potato rolls", "Autumn harvest", "Squash soup · Rye bread", "February 14 and 15 · February 21 and 22"];
+    const wanted = ["Winter roots", "Beef stew · Potato rolls", "Autumn harvest", "Squash soup · Rye bread", "February\u00a014 and\u00a015 · February\u00a021 and\u00a022"];
     const at = wanted.map((value) => text.indexOf(value));
     expect(at).not.toContain(-1);
     expect(at).toEqual([...at].sort((a, b) => a - b));
@@ -156,9 +156,9 @@ describe("AC1 — the library", () => {
     const autumn = await made("Autumn harvest", "Squash soup", "Lentil soup");
     await services.repo.assignWeekMenu(product.id, FEB_14, autumn.id);
     await services.repo.closePickupWeek(product.id, FEB_14, null, NOW);
-    expect(textsOf(await render()).join(" ")).not.toContain("February 14 and 15");
+    expect(textsOf(await render()).join(" ")).not.toContain("February\u00a014 and\u00a015");
     await services.repo.reopenPickupWeek(product.id, FEB_14);
-    expect(textsOf(await render()).join(" ")).toContain("February 14 and 15");
+    expect(textsOf(await render()).join(" ")).toContain("February\u00a014 and\u00a015");
   });
 
   it("AC1: a save moves a menu to the top of the list", async () => {

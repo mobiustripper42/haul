@@ -66,7 +66,7 @@ const tableHeaders = (html: string) => {
 
 describe("AC3 — the rows", () => {
   it('AC3: a row reads "Last, First", email, phone, the meal, the joined date and the Active badge', () => {
-    expect(tableRows(render([ROSA]))).toEqual([["Bennett, Rosa", "rosa@example.com", "(216) 555-0187", "2 people · Vegan", "Dec 1", TEXT.status.active]]);
+    expect(tableRows(render([ROSA]))).toEqual([["Bennett, Rosa", "rosa@example.com", "(216) 555-0187", "2 people · Vegan", "Dec\u00a01", TEXT.status.active]]);
   });
 
   it("AC3: there is one row for each row it is given", () => {
@@ -75,7 +75,7 @@ describe("AC3 — the rows", () => {
 
   it("AC3: a member with no name and no phone has empty cells, not the word null", () => {
     const ada = subscriber({ firstName: null, lastName: null, phone: null, email: "ada@example.com" });
-    expect(tableRows(render([ada]))).toEqual([["", "ada@example.com", "", "2 people · Vegan", "Dec 1", TEXT.status.active]]);
+    expect(tableRows(render([ada]))).toEqual([["", "ada@example.com", "", "2 people · Vegan", "Dec\u00a01", TEXT.status.active]]);
   });
 
   it("AC3: the columns show the six column words it is given, in order: name, email, phone, meal, joined, status", () => {

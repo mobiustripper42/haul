@@ -16,7 +16,7 @@
  * rotates the roles, and a week credit spent on a row that is no longer the credit row stays spent: `db:reset:dev` first.
  */
 import type { Client } from "../../src/adapters/pg-connect.js";
-import { addDays, cutoffInstant, listableWeeks } from "../../src/pickup-week.js";
+import { addDays, cutoffInstant, defaultListedWeek, listableWeeks } from "../../src/pickup-week.js";
 import { SUPPER_CLUB_PRODUCT_NAME } from "../../src/products.js";
 import { seed as subscribers } from "./subscribers.js";
 
@@ -54,7 +54,9 @@ export async function seed(db: Client): Promise<void> {
     [product.id],
   );
   const changed = stored.rows.map((row) => ({ weekOf: row.week_of, closedAt: row.closed_at, note: row.note, firstDay: row.first_day, lastDay: row.last_day }));
-  const first = listableWeeks(settings, new Date(), changed)[0]?.weekOf;
+  const now = new Date();
+  const listed = listableWeeks(settings, now, changed);
+  const first = defaultListedWeek(settings, now, changed, listed)?.weekOf;
   if (first === undefined) throw new Error("week-lists seed: the Supper Club has no week to list");
   // The first week is the `subscribers` seed's: the week before the default is written only when it is after it, and a
   // default that is the first week gives way to the week after.
